@@ -240,6 +240,46 @@ def _compact_dict(data: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if value not in (None, "", [], {})}
 
 
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value if item not in (None, ""))
+    return str(value)
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "open", "oa"}
+
+
+def _as_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _score_component(value: Any) -> float | None:
+    parsed = _as_float(value)
+    if parsed is None:
+        return None
+    if parsed > 5:
+        parsed = parsed / 20 if parsed <= 100 else 5
+    return max(0.0, min(5.0, parsed))
+
+
+def _write_csv_rows(path: Path, headers: list[str], rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def _estimate_confirmation(scope: ProjectScope, top_n: int | tuple[int, int], access_mode: AccessMode) -> dict[str, Any]:
     recommended_max = _recommended_max(top_n)
     multiplier = 1.0 if access_mode == "index_only" else 1.5 if access_mode == "open_access_only" else 2.2
@@ -276,6 +316,12 @@ def _timestamp_key(value: str | None = None) -> str:
         .replace(".", "")
         .replace("T", "T")[:15]
     )
+
+
+def _reference_year(value: int | None = None) -> int:
+    if value:
+        return value
+    return int(EARecord.now_iso()[:4])
 
 
 def plan_literature_deployment(
@@ -452,7 +498,11 @@ def prepare_literature_acquisition_handoff(
     if not status_path.exists():
         raise FileNotFoundError(status_path)
     status = read_yaml(status_path)
-    if status.get("status") not in {"confirmed_awaiting_acquisition", "acquisition_handoff_ready"}:
+    if status.get("status") not in {
+        "confirmed_awaiting_acquisition",
+        "ranked_candidates_ready",
+        "acquisition_handoff_ready",
+    }:
         raise ValueError("Literature acquisition handoff requires confirmed_awaiting_acquisition status")
     selected_top_n = status.get("selected_top_n")
     if not selected_top_n:
@@ -619,6 +669,7 @@ def prepare_literature_acquisition_request(
     status = read_yaml(status_path)
     if status.get("status") not in {
         "confirmed_awaiting_acquisition",
+        "ranked_candidates_ready",
         "acquisition_handoff_ready",
         "acquisition_request_ready",
     }:
@@ -738,7 +789,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
 
 
 def _manifest_items(manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    for key in ("items", "papers", "references"):
+    for key in ("items", "papers", "references", "candidates"):
         value = manifest.get(key)
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
@@ -751,6 +802,386 @@ def _manifest_items(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(targets, list):
         return [item for item in targets if isinstance(item, dict)]
     return []
+
+
+def _load_candidate_items(path: Path) -> list[dict[str, Any]]:
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return _read_csv_rows(path)
+    if suffix == ".jsonl":
+        items = []
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line:
+                    data = json.loads(line)
+                    if isinstance(data, dict):
+                        items.append(data)
+        return items
+    data = _load_manifest(path)
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    return _manifest_items(data)
+
+
+def _normalized_title(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", _as_text(value).lower()).strip()
+
+
+def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
+    doi = _as_text(candidate.get("doi") or candidate.get("DOI")).lower().strip()
+    if doi:
+        return f"doi:{doi.removeprefix('https://doi.org/').removeprefix('http://doi.org/')}"
+    url = _as_text(candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url")).lower().strip()
+    if url:
+        return f"url:{url.rstrip('/')}"
+    title = _normalized_title(candidate.get("title"))
+    if title:
+        return f"title:{title}"
+    return f"row:{candidate.get('_row_index')}"
+
+
+def _project_ranking_terms(root: Path, extra_keywords: list[str] | None = None) -> list[str]:
+    project = _project_context(root)
+    keywords = generate_literature_keywords(
+        project_name=str(project.get("project_name", "")),
+        research_direction=str(project.get("research_direction", "")),
+        material_system=str(project.get("material_system", "")),
+        experiment_type=str(project.get("experiment_type", "")),
+        extra_keywords=extra_keywords,
+    )
+    terms: list[str] = []
+    for key in ("material_terms", "method_terms", "topic_terms", "exact_terms"):
+        terms.extend(_tokenize(" ".join(keywords.get(key) or [])))
+    return _unique(terms)
+
+
+def _candidate_body(candidate: dict[str, Any]) -> str:
+    fields = [
+        candidate.get("title"),
+        candidate.get("abstract"),
+        candidate.get("keywords"),
+        candidate.get("notes"),
+        candidate.get("venue") or candidate.get("journal") or candidate.get("container_title"),
+    ]
+    return " ".join(_as_text(field) for field in fields).lower()
+
+
+def _score_relevance(candidate: dict[str, Any], project_terms: list[str]) -> float:
+    supplied = _score_component(candidate.get("project_relevance") or candidate.get("relevance_score") or candidate.get("relevance"))
+    if supplied is not None:
+        return supplied
+    body = _candidate_body(candidate)
+    if not body or not project_terms:
+        return 1.0
+    body_tokens = set(_tokenize(body))
+    matches = sum(1 for term in project_terms if term.lower() in body_tokens or term.lower() in body)
+    title = _as_text(candidate.get("title")).lower()
+    title_matches = sum(1 for term in project_terms if term.lower() in title)
+    return max(1.0, min(5.0, 1.0 + matches * 0.45 + title_matches * 0.35))
+
+
+def _score_venue(candidate: dict[str, Any]) -> float:
+    supplied = _score_component(candidate.get("venue_authority") or candidate.get("journal_authority") or candidate.get("venue_score"))
+    if supplied is not None:
+        return supplied
+    impact = _as_float(candidate.get("impact_factor") or candidate.get("journal_impact_factor"))
+    if impact is not None:
+        if impact >= 30:
+            return 5.0
+        if impact >= 15:
+            return 4.5
+        if impact >= 8:
+            return 4.0
+        if impact >= 4:
+            return 3.0
+        if impact >= 1:
+            return 2.0
+        return 1.0
+    tier = _as_text(candidate.get("venue_tier") or candidate.get("journal_tier")).lower()
+    if tier in {"flagship", "top", "high", "q1"}:
+        return 4.5
+    if tier in {"medium", "q2"}:
+        return 3.0
+    venue = _as_text(candidate.get("venue") or candidate.get("journal") or candidate.get("container_title")).lower()
+    if any(marker in venue for marker in ("nature", "science", "cell")):
+        return 5.0
+    if any(marker in venue for marker in ("advanced", "acs nano", "nano letters", "angewandte")):
+        return 4.0
+    if any(marker in venue for marker in ("journal", "letters", "communications")):
+        return 3.0
+    return 2.0 if venue else 1.0
+
+
+def _score_recency(candidate: dict[str, Any], reference_year: int) -> float:
+    supplied = _score_component(candidate.get("recency") or candidate.get("recency_score"))
+    if supplied is not None:
+        return supplied
+    year = _as_float(candidate.get("year") or candidate.get("publication_year") or candidate.get("published_year"))
+    if year is None:
+        return 1.0
+    age = max(0, reference_year - int(year))
+    if age <= 5:
+        return 5.0
+    if age <= 15:
+        return 3.5
+    return 2.0
+
+
+def _score_influence(candidate: dict[str, Any]) -> float:
+    supplied = _score_component(
+        candidate.get("citation_or_influence") or candidate.get("influence_score") or candidate.get("citation_score")
+    )
+    if supplied is not None:
+        return supplied
+    citations = _as_float(candidate.get("citation_count") or candidate.get("cited_by_count") or candidate.get("citations"))
+    if citations is None:
+        return 1.0
+    if citations >= 1000:
+        return 5.0
+    if citations >= 300:
+        return 4.5
+    if citations >= 100:
+        return 4.0
+    if citations >= 30:
+        return 3.0
+    if citations >= 1:
+        return 2.0
+    return 1.0
+
+
+def _score_fulltext(candidate: dict[str, Any]) -> float:
+    supplied = _score_component(
+        candidate.get("fulltext_availability_and_usefulness")
+        or candidate.get("fulltext_score")
+        or candidate.get("availability_score")
+    )
+    if supplied is not None:
+        return supplied
+    if candidate.get("local_path") or candidate.get("cache_path") or candidate.get("pdf_path"):
+        return 5.0
+    status = _as_text(candidate.get("status") or candidate.get("acquisition_status") or candidate.get("fulltext_status")).lower()
+    if any(marker in status for marker in ("cached", "downloaded", "fulltext", "full_text")):
+        return 5.0
+    if _as_bool(candidate.get("open_access")) or candidate.get("pdf_url") or candidate.get("oa_url"):
+        return 4.0
+    if candidate.get("abstract"):
+        return 2.0
+    return 1.0
+
+
+def _score_candidate(candidate: dict[str, Any], *, project_terms: list[str], reference_year: int) -> dict[str, float]:
+    project_relevance = _score_relevance(candidate, project_terms)
+    venue_authority = _score_venue(candidate)
+    recency = _score_recency(candidate, reference_year)
+    influence = _score_influence(candidate)
+    fulltext = _score_fulltext(candidate)
+    score = (
+        project_relevance * 0.40
+        + venue_authority * 0.20
+        + recency * 0.15
+        + influence * 0.15
+        + fulltext * 0.10
+    ) / 5 * 100
+    return {
+        "project_relevance": round(project_relevance, 2),
+        "venue_authority": round(venue_authority, 2),
+        "recency": round(recency, 2),
+        "citation_or_influence": round(influence, 2),
+        "fulltext_availability_and_usefulness": round(fulltext, 2),
+        "score": round(score, 2),
+    }
+
+
+def _candidate_record(candidate: dict[str, Any], *, candidate_id: str, scores: dict[str, float], notes: str) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "title": candidate.get("title"),
+        "authors": _as_text(candidate.get("authors") or candidate.get("author")),
+        "year": candidate.get("year") or candidate.get("publication_year") or candidate.get("published_year"),
+        "venue": candidate.get("venue") or candidate.get("journal") or candidate.get("container_title"),
+        "doi": candidate.get("doi") or candidate.get("DOI"),
+        "url": candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url"),
+        "project_relevance": scores["project_relevance"],
+        "venue_authority": scores["venue_authority"],
+        "recency": scores["recency"],
+        "citation_or_influence": scores["citation_or_influence"],
+        "fulltext_availability_and_usefulness": scores["fulltext_availability_and_usefulness"],
+        "score": scores["score"],
+        "notes": notes,
+    }
+
+
+def rank_literature_candidates(
+    root: Path,
+    *,
+    candidates_path: Path,
+    top_n: int | None = None,
+    reference_year: int | None = None,
+    source_label: str | None = None,
+    extra_keywords: list[str] | None = None,
+    ranked_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
+    resolved_path = candidates_path if candidates_path.is_absolute() else root / candidates_path
+    if not resolved_path.exists():
+        raise FileNotFoundError(resolved_path)
+
+    project = _project_context(root)
+    project_id = str(project.get("project_id", "unknown-project"))
+    status_path = ensure_literature_status(root, project_id=project_id)
+    status = read_yaml(status_path)
+    raw_candidates = _load_candidate_items(resolved_path)
+    if not raw_candidates:
+        raise ValueError("candidate file contains no literature candidate records")
+
+    reference_year = _reference_year(reference_year)
+    project_terms = _project_ranking_terms(root, extra_keywords=extra_keywords)
+    source_label = source_label or resolved_path.name
+    ranked_at = ranked_at or EARecord.now_iso()
+    candidate_rows: list[dict[str, Any]] = []
+    best_by_key: dict[str, dict[str, Any]] = {}
+    duplicate_count = 0
+
+    for raw_index, raw in enumerate(raw_candidates, start=1):
+        candidate = dict(raw)
+        candidate["_row_index"] = raw_index
+        title = candidate.get("title")
+        doi = candidate.get("doi") or candidate.get("DOI")
+        url = candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url")
+        if not (title or doi or url):
+            continue
+        scores = _score_candidate(candidate, project_terms=project_terms, reference_year=reference_year)
+        notes = _as_text(candidate.get("notes"))
+        source_id = candidate.get("candidate_id") or candidate.get("id")
+        if source_id:
+            notes = f"{notes}; source_id={source_id}".strip("; ")
+        if not notes:
+            notes = "Ranked from supplied candidate metadata; venue authority uses supplied fields or conservative text heuristics."
+        record = _candidate_record(candidate, candidate_id=f"cand-raw-{raw_index:03d}", scores=scores, notes=notes)
+        candidate_rows.append(
+            {
+                "candidate_id": record["candidate_id"],
+                "title": record["title"],
+                "authors": record["authors"],
+                "year": record["year"],
+                "venue": record["venue"],
+                "doi": record["doi"],
+                "url": record["url"],
+                "source": candidate.get("source") or source_label,
+                "abstract": candidate.get("abstract"),
+                "keywords": _as_text(candidate.get("keywords")),
+            }
+        )
+        key = _candidate_dedup_key(candidate)
+        existing = best_by_key.get(key)
+        if existing is None or float(record["score"]) > float(existing["score"]):
+            if existing is not None:
+                duplicate_count += 1
+            best_by_key[key] = record
+        else:
+            duplicate_count += 1
+
+    ranked_rows = sorted(
+        best_by_key.values(),
+        key=lambda row: (
+            -float(row["score"]),
+            -int(float(row["year"])) if _as_float(row.get("year")) is not None else 0,
+            _as_text(row.get("title")).lower(),
+        ),
+    )
+    for rank, row in enumerate(ranked_rows, start=1):
+        row["candidate_id"] = f"cand-{rank:03d}"
+
+    confirmed_top_n = status.get("selected_top_n")
+    effective_top_n = int(confirmed_top_n or top_n or _recommended_max(status.get("recommended_top_n", recommended_top_n("ordinary"))))
+    if effective_top_n <= 0:
+        raise ValueError("top_n must be positive")
+    selected_rows = ranked_rows[:effective_top_n]
+    selection_status = "selected_from_ranked_candidates" if confirmed_top_n else "ranked_preview_awaiting_user_confirmation"
+    selected_items = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "selection_status": selection_status,
+        "selected_top_n": effective_top_n,
+        "source_ranking_ref": "literature/ranking.csv",
+        "items": [
+            _compact_dict(
+                {
+                    "rank": rank,
+                    "candidate_id": row.get("candidate_id"),
+                    "title": row.get("title"),
+                    "authors": row.get("authors"),
+                    "year": row.get("year"),
+                    "venue": row.get("venue"),
+                    "doi": row.get("doi"),
+                    "url": row.get("url"),
+                    "score": row.get("score"),
+                    "notes": row.get("notes"),
+                }
+            )
+            for rank, row in enumerate(selected_rows, start=1)
+        ],
+    }
+    ranking_path = literature_root / "ranking.csv"
+    candidates_table_path = literature_root / "candidates.csv"
+    selected_path = literature_root / "selected_items.yml"
+    _write_csv_rows(candidates_table_path, RANKING_HEADERS[:7] + ["source", "abstract", "keywords"], candidate_rows)
+    _write_csv_rows(ranking_path, RANKING_HEADERS, ranked_rows)
+    write_yaml(selected_path, selected_items)
+
+    status.update(
+        {
+            "status": "ranked_candidates_ready" if confirmed_top_n else "ranked_awaiting_user_confirmation",
+            "candidate_count": len(candidate_rows),
+            "deduped_count": len(ranked_rows),
+            "duplicate_candidate_count": duplicate_count,
+            "ranking_ref": "literature/ranking.csv",
+            "candidate_table_ref": "literature/candidates.csv",
+            "selected_items_ref": "literature/selected_items.yml",
+            "candidate_source_ref": _project_relative(root, resolved_path),
+            "candidate_ranking_updated_at": ranked_at,
+            "candidate_ranking_method": {
+                "schema_version": "0.2",
+                "reference_year": reference_year,
+                "component_scale": "0_to_5",
+                "score_scale": "0_to_100",
+                "weights": {
+                    "project_relevance": 0.40,
+                    "venue_authority": 0.20,
+                    "recency": 0.15,
+                    "citation_or_influence": 0.15,
+                    "fulltext_availability_and_usefulness": 0.10,
+                },
+                "boundaries": [
+                    "No live web search, Zotero call, browser automation, DOI resolution, or PDF download was executed.",
+                    "Venue authority uses supplied metadata or conservative text heuristics; it is not automatic impact-factor lookup.",
+                    "Scores support triage only and require user review before bulk acquisition.",
+                ],
+            },
+            "summary_for_origin_thread": (
+                f"Ranked {len(ranked_rows)} literature candidate(s) from {len(candidate_rows)} supplied record(s). "
+                "No live search or full-text acquisition was executed."
+            ),
+        }
+    )
+    if confirmed_top_n:
+        status["selected_top_n"] = confirmed_top_n
+    write_yaml(status_path, status)
+    return {
+        "status_path": str(status_path),
+        "candidates_path": str(candidates_table_path),
+        "ranking_path": str(ranking_path),
+        "selected_items_path": str(selected_path),
+        "candidate_count": len(candidate_rows),
+        "deduped_count": len(ranked_rows),
+        "duplicate_candidate_count": duplicate_count,
+        "selected_count": len(selected_rows),
+        "selection_status": selection_status,
+        "top_candidate": ranked_rows[0] if ranked_rows else None,
+        "status": status,
+    }
 
 
 def _item_citation(item: dict[str, Any]) -> str | None:

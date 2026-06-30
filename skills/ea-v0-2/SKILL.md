@@ -102,6 +102,7 @@ ea batch run /path/to/ea-project batch_manifest.yml
 ea literature status /path/to/ea-project
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
+ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
@@ -138,7 +139,7 @@ ea-release-checklist
 
 The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. The verifier checks the sidecar, embedded manifest, and manifest-listed payload checksums. Optional release signing writes a detached `.sig.yml` sidecar using an explicit user-managed Ed25519 keypair. The distribution checklist writes JSON/Markdown summaries of required release commands, artifacts, verification state, optional signature state, and public boundaries. These release checks do not use Zotero, browser profiles, institution login, local literature caches, or implicit developer-machine key paths.
 
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image-data, scientific-figure style, and local-literature-library entries as concrete initial workflows. The literature workflow covers initialization decisions, planning, confirmation, handoff/request generation, import, and status sync; live search, Zotero, browser, institution login, and PDF acquisition still run only after user confirmation in a dedicated or explicit workflow.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image-data, scientific-figure style, and local-literature-library entries as concrete initial workflows. The literature workflow covers initialization decisions, planning, confirmation, supplied-candidate ranking, handoff/request generation, import, and status sync; live search, Zotero, browser, institution login, and PDF acquisition still run only after user confirmation in a dedicated or explicit workflow.
 
 Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level.
 

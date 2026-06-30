@@ -24,7 +24,7 @@ skills:
     status: builtin_v0_2_reference
     category: literature.library
     method: local_literature_library
-    notes: Literature initialization decision, planning, confirmation, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; live search, Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
+    notes: Literature initialization decision, planning, confirmation, supplied-candidate ranking, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; live search, Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
   - id: ea.pl-analysis
     manifest: skill-registry/builtins/pl-analysis.yml
     status: builtin_v0_2_reference

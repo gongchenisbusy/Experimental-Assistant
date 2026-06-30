@@ -32,6 +32,7 @@ from ea.literature import (
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    rank_literature_candidates,
     sync_literature_acquisition_status,
 )
 from ea.materials import assignment_candidates, available_materials, get_material_profile
@@ -407,6 +408,13 @@ def build_parser() -> argparse.ArgumentParser:
     lit_confirm.add_argument("workspace", type=Path)
     lit_confirm.add_argument("--selected-top-n", required=True, type=int)
     lit_confirm.add_argument("--user-response", required=True)
+    lit_rank = literature_sub.add_parser("rank-candidates", help="rank supplied literature candidates without live search or download")
+    lit_rank.add_argument("workspace", type=Path)
+    lit_rank.add_argument("--candidates", required=True, type=Path)
+    lit_rank.add_argument("--top-n", type=int)
+    lit_rank.add_argument("--reference-year", type=int)
+    lit_rank.add_argument("--source-label")
+    lit_rank.add_argument("--keyword", action="append", default=[])
     lit_handoff = literature_sub.add_parser("handoff", help="prepare an acquisition handoff packet for a dedicated literature workflow")
     lit_handoff.add_argument("workspace", type=Path)
     lit_handoff.add_argument("--mode", choices=["dedicated_thread", "manual_agent", "same_thread"], default="dedicated_thread")
@@ -1165,6 +1173,19 @@ def main(argv: list[str] | None = None) -> int:
                     args.workspace,
                     selected_top_n=args.selected_top_n,
                     user_response=args.user_response,
+                )
+            )
+            return 0
+        if args.literature_command == "rank-candidates":
+            candidates_path = args.candidates if args.candidates.is_absolute() else args.workspace / args.candidates
+            _print_json(
+                rank_literature_candidates(
+                    args.workspace,
+                    candidates_path=candidates_path,
+                    top_n=args.top_n,
+                    reference_year=args.reference_year,
+                    source_label=args.source_label,
+                    extra_keywords=args.keyword,
                 )
             )
             return 0

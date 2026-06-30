@@ -12,6 +12,7 @@ from ea.literature import (
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    rank_literature_candidates,
     sync_literature_acquisition_status,
 )
 from ea.projects import initialize_project
@@ -224,6 +225,160 @@ def test_literature_acquisition_request_without_targets_keeps_search_boundary(tm
     assert "Run literature search/ranking" in result["request"]["next_action"]
     assert (tmp_path / "literature" / "zotero_codex_queries.jsonl").read_text(encoding="utf-8")
     assert (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Candidate Ranking",
+        project_slug="mos2-candidate-ranking",
+        research_direction="MoS2 Raman and PL literature",
+        material_system="MoS2",
+        experiment_type="Raman and PL characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    write_yaml(
+        tmp_path / "literature" / "candidate_input.yml",
+        {
+            "schema_version": "0.2",
+            "candidates": [
+                {
+                    "title": "MoS2 Raman strain review",
+                    "authors": ["A. Author", "B. Author"],
+                    "year": 2024,
+                    "venue": "Advanced Materials",
+                    "doi": "10.1000/mos2-rank-1",
+                    "project_relevance": 5,
+                    "venue_authority": 4,
+                    "recency": 5,
+                    "citation_or_influence": 3,
+                    "fulltext_availability_and_usefulness": 4,
+                    "source": "crossref",
+                },
+                {
+                    "title": "Duplicate lower score",
+                    "year": 2016,
+                    "doi": "10.1000/mos2-rank-1",
+                    "project_relevance": 2,
+                    "venue_authority": 2,
+                    "recency": 3,
+                    "citation_or_influence": 1,
+                    "fulltext_availability_and_usefulness": 1,
+                },
+                {
+                    "title": "Classic monolayer MoS2 photoluminescence",
+                    "authors": "K. Mak et al.",
+                    "year": 2010,
+                    "venue": "Physical Review Letters",
+                    "doi": "10.1000/mos2-rank-2",
+                    "project_relevance": 4,
+                    "venue_authority": 4,
+                    "recency": 2,
+                    "citation_or_influence": 5,
+                    "fulltext_availability_and_usefulness": 3,
+                },
+                {
+                    "title": "Unrelated graphene battery paper",
+                    "year": 2025,
+                    "venue": "Nature",
+                    "doi": "10.1000/not-mos2",
+                    "project_relevance": 1,
+                    "venue_authority": 5,
+                    "recency": 5,
+                    "citation_or_influence": 5,
+                    "fulltext_availability_and_usefulness": 1,
+                },
+            ],
+        },
+    )
+
+    result = rank_literature_candidates(
+        tmp_path,
+        candidates_path=Path("literature/candidate_input.yml"),
+        reference_year=2026,
+        ranked_at="2026-07-01T09:00:00",
+    )
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    selected = read_yaml(tmp_path / "literature" / "selected_items.yml")
+    with (tmp_path / "literature" / "ranking.csv").open(encoding="utf-8") as handle:
+        ranking = list(csv.DictReader(handle))
+
+    assert result["candidate_count"] == 4
+    assert result["deduped_count"] == 3
+    assert result["duplicate_candidate_count"] == 1
+    assert result["selection_status"] == "selected_from_ranked_candidates"
+    assert status["status"] == "ranked_candidates_ready"
+    assert status["candidate_ranking_method"]["weights"]["project_relevance"] == 0.40
+    assert "No live search" in status["summary_for_origin_thread"]
+    assert ranking[0]["candidate_id"] == "cand-001"
+    assert ranking[0]["title"] == "MoS2 Raman strain review"
+    assert selected["items"][0]["candidate_id"] == "cand-001"
+    assert selected["items"][1]["candidate_id"] == "cand-002"
+    assert len(selected["items"]) == 2
+
+    acquisition = prepare_literature_acquisition_request(tmp_path, created_at="2026-07-01T09:05:00")
+    assert acquisition["request"]["status"] == "ready_for_batch_acquisition"
+    assert acquisition["request"]["target_count"] == 2
+
+
+def test_cli_literature_rank_candidates_populates_acquisition_targets(tmp_path: Path, capsys) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="CLI Candidate Ranking",
+        project_slug="cli-candidate-ranking",
+        research_direction="MoS2 Raman literature ranking",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    candidates_path = tmp_path / "literature" / "candidates.json"
+    candidates_path.write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "title": "MoS2 Raman CLI ranking",
+                        "year": 2025,
+                        "venue": "ACS Nano",
+                        "doi": "10.1000/cli-rank",
+                        "project_relevance": 5,
+                        "venue_authority": 4,
+                        "recency": 5,
+                        "citation_or_influence": 2,
+                        "fulltext_availability_and_usefulness": 4,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "literature",
+                "rank-candidates",
+                str(tmp_path),
+                "--candidates",
+                "literature/candidates.json",
+                "--reference-year",
+                "2026",
+            ]
+        )
+        == 0
+    )
+    ranked = json.loads(capsys.readouterr().out)
+    assert ranked["status"]["status"] == "ranked_candidates_ready"
+    assert ranked["selected_count"] == 1
+
+    assert main(["literature", "acquisition-request", str(tmp_path)]) == 0
+    request = json.loads(capsys.readouterr().out)
+    assert request["request"]["status"] == "ready_for_batch_acquisition"
+    assert request["request"]["target_count"] == 1
 
 
 def test_literature_import_acquisition_manifest_registers_references_and_syncs_status(tmp_path: Path) -> None:
@@ -465,10 +620,14 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     manifest = read_yaml(root / "skill-registry" / "builtins" / "local-literature-library.yml")["ea_skill"]
 
     assert "literature-library decision record" in readme
+    assert "rank-candidates" in readme
     assert "open-items/" in reference
+    assert "rank-candidates" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
+    assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
+    assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

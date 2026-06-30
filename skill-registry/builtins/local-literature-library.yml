@@ -6,12 +6,15 @@ ea_skill:
   input_artifacts:
     - project_context
     - search_scope
+    - supplied_candidate_metadata
     - user_confirmation
     - access_settings
     - optional_bibtex_export
   output_artifacts:
     - open_item
     - literature_status
+    - ranked_candidate_table
+    - selected_literature_items
     - reference_record
     - report_section
     - provenance_record
@@ -45,6 +48,7 @@ ea_skill:
       - deployment_status_when_literature_enabled
       - search_query_and_confirmation_package_generation
       - top_n_confirmation_record
+      - supplied_candidate_ranking_and_selection_export
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
       - acquisition_manifest_import_and_reference_registration

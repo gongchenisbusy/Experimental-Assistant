@@ -125,7 +125,15 @@ ea literature confirm /path/to/ea-project \
   --user-response "confirmed"
 ```
 
-Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
+If a dedicated literature workflow or the user has exported candidate metadata, rank it locally before generating acquisition targets:
+
+```bash
+ea literature rank-candidates /path/to/ea-project \
+  --candidates literature/candidate_results.yml \
+  --reference-year 2026
+```
+
+`rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not run live search, look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
 
 ## 6. Traceability And Handoff Checks
 

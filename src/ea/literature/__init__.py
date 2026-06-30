@@ -7,6 +7,7 @@ from ea.literature.service import (
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    rank_literature_candidates,
     recommended_top_n,
     sync_literature_acquisition_status,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "plan_literature_deployment",
     "prepare_literature_acquisition_request",
     "prepare_literature_acquisition_handoff",
+    "rank_literature_candidates",
     "recommended_top_n",
     "sync_literature_acquisition_status",
 ]
