@@ -34,4 +34,4 @@ Workflow:
 5. Write reports, figure records, provenance, and review records.
 6. Save new findings as memory candidates until the user confirms them.
 7. Keep open questions in `open-items/` when they matter but do not block the current step.
-8. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, or provenance.
+8. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, provenance, references, or memory.

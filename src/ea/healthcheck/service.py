@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from ea.config import doctor_project_config
 from ea.provenance import file_sha256
+from ea.references import validate_report_citations
 from ea.storage.files import read_markdown_record, read_yaml
 
 Severity = Literal["error", "warning", "info"]
@@ -30,6 +31,13 @@ def _clean_ref(ref: str) -> str:
 def _project_path(root: Path, ref: str) -> Path:
     path = Path(_clean_ref(ref))
     return path if path.is_absolute() else root / path
+
+
+def _provenance_path(root: Path, ref: str) -> Path:
+    path = Path(_clean_ref(ref))
+    if path.suffix or len(path.parts) > 1:
+        return path if path.is_absolute() else root / path
+    return root / "provenance" / f"{ref}.yml"
 
 
 def _safe_read_yaml(path: Path, findings: list[HealthFinding]) -> dict[str, Any]:
@@ -357,6 +365,312 @@ def _check_figures_and_reports(root: Path, findings: list[HealthFinding]) -> Non
                     )
                 )
 
+        report_reference_ids = list(report.get("reference_ids") or [])
+        frontmatter_reference_ids = list(frontmatter.get("reference_ids") or [])
+        for reference_id in sorted(set(str(item) for item in report_reference_ids + frontmatter_reference_ids)):
+            _check_reference_id(root, reference_id, findings, report_path)
+        if report_reference_ids and frontmatter_reference_ids and report_reference_ids != frontmatter_reference_ids:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "report_reference_index_mismatch",
+                    "Report reference_ids do not match reports/index.yml.",
+                    path=str(report_path),
+                    ref=str(report_id),
+                )
+            )
+        citation_result = validate_report_citations(report_path)
+        if not citation_result["ok"]:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "report_reference_numbering_invalid",
+                    "Report inline numeric citations do not match its References entries.",
+                    path=str(report_path),
+                    ref=str(citation_result),
+                )
+            )
+
+
+def _check_reference_id(root: Path, reference_id: str, findings: list[HealthFinding], owner: Path) -> None:
+    index_path = root / "literature" / "references" / "index.yml"
+    index = _safe_read_yaml(index_path, findings).get("references", {}) if index_path.exists() else {}
+    record = index.get(reference_id)
+    if not record:
+        findings.append(
+            HealthFinding(
+                "error",
+                "reference_id_missing",
+                "Report references an unknown reference_id.",
+                path=str(owner),
+                ref=reference_id,
+            )
+        )
+        return
+    record_path = _project_path(root, str(record.get("path") or f"literature/references/{reference_id}.yml"))
+    if not record_path.exists():
+        findings.append(
+            HealthFinding(
+                "error",
+                "reference_record_missing",
+                "Reference index points to a missing reference record.",
+                path=str(index_path),
+                ref=reference_id,
+            )
+        )
+        return
+    data = _safe_read_yaml(record_path, findings)
+    if data.get("reference_id") != reference_id:
+        findings.append(
+            HealthFinding(
+                "error",
+                "reference_id_mismatch",
+                "Reference record reference_id does not match literature/references/index.yml.",
+                path=str(record_path),
+                ref=reference_id,
+            )
+        )
+
+
+def _check_references(root: Path, findings: list[HealthFinding]) -> None:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return
+    references = _safe_read_yaml(index_path, findings).get("references", {})
+    for reference_id, record in references.items():
+        record_path = _project_path(root, str(record.get("path") or f"literature/references/{reference_id}.yml"))
+        if not record_path.exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "reference_record_missing",
+                    "Reference index points to a missing reference record.",
+                    path=str(index_path),
+                    ref=str(reference_id),
+                )
+            )
+            continue
+        data = _safe_read_yaml(record_path, findings)
+        if data.get("reference_id") != reference_id:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "reference_id_mismatch",
+                    "Reference record reference_id does not match literature/references/index.yml.",
+                    path=str(record_path),
+                    ref=str(reference_id),
+                )
+            )
+        if not str(data.get("citation") or "").strip():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "reference_citation_missing",
+                    "Reference record is missing citation text.",
+                    path=str(record_path),
+                    ref=str(reference_id),
+                )
+            )
+        local_path = data.get("local_path")
+        if local_path and not _project_path(root, str(local_path)).exists():
+            findings.append(
+                HealthFinding(
+                    "warning",
+                    "reference_local_file_missing",
+                    "Reference local_path does not exist in the project workspace.",
+                    path=str(record_path),
+                    ref=str(local_path),
+                )
+            )
+
+
+def _check_candidate_record(
+    root: Path,
+    *,
+    candidate_id: str,
+    candidate_ref: str,
+    index_record: dict[str, Any],
+    findings: list[HealthFinding],
+) -> dict[str, Any]:
+    candidate_path = _project_path(root, candidate_ref)
+    if not candidate_path.exists():
+        findings.append(
+            HealthFinding(
+                "error",
+                "memory_candidate_record_missing",
+                "Memory candidate index points to a missing candidate record.",
+                path=str(root / "memory" / "candidates" / "index.yml"),
+                ref=candidate_id,
+            )
+        )
+        return {}
+    frontmatter, body = read_markdown_record(candidate_path)
+    if frontmatter.get("memory_candidate_id") != candidate_id:
+        findings.append(
+            HealthFinding(
+                "error",
+                "memory_candidate_id_mismatch",
+                "Memory candidate frontmatter ID does not match memory/candidates/index.yml.",
+                path=str(candidate_path),
+                ref=candidate_id,
+            )
+        )
+    if index_record.get("status") and frontmatter.get("status") != index_record.get("status"):
+        findings.append(
+            HealthFinding(
+                "error",
+                "memory_candidate_status_mismatch",
+                "Memory candidate status does not match memory/candidates/index.yml.",
+                path=str(candidate_path),
+                ref=candidate_id,
+            )
+        )
+    if frontmatter.get("status") == "committed" and not frontmatter.get("committed_memory_id"):
+        findings.append(
+            HealthFinding(
+                "error",
+                "memory_candidate_committed_id_missing",
+                "Committed memory candidate is missing committed_memory_id.",
+                path=str(candidate_path),
+                ref=candidate_id,
+            )
+        )
+    if not body.strip():
+        findings.append(
+            HealthFinding(
+                "warning",
+                "memory_candidate_body_empty",
+                "Memory candidate body is empty.",
+                path=str(candidate_path),
+                ref=candidate_id,
+            )
+        )
+    for review_ref in frontmatter.get("review_refs") or []:
+        _check_review_ref(root, str(review_ref), findings, candidate_path)
+    for source_ref in frontmatter.get("source_refs") or []:
+        if not _project_path(root, str(source_ref)).exists():
+            findings.append(
+                HealthFinding(
+                    "warning",
+                    "memory_candidate_source_ref_missing",
+                    "Memory candidate source_ref is missing.",
+                    path=str(candidate_path),
+                    ref=str(source_ref),
+                )
+            )
+    for provenance_ref in frontmatter.get("provenance_refs") or []:
+        if not _provenance_path(root, str(provenance_ref)).exists():
+            findings.append(
+                HealthFinding(
+                    "warning",
+                    "memory_candidate_provenance_ref_missing",
+                    "Memory candidate provenance_ref is missing.",
+                    path=str(candidate_path),
+                    ref=str(provenance_ref),
+                )
+            )
+    return frontmatter
+
+
+def _check_memory(root: Path, findings: list[HealthFinding]) -> None:
+    candidates_index_path = root / "memory" / "candidates" / "index.yml"
+    memory_index_path = root / "memory" / "index.yml"
+    candidates: dict[str, Any] = {}
+    if candidates_index_path.exists():
+        candidates = _safe_read_yaml(candidates_index_path, findings).get("candidates", {})
+        for candidate_id, candidate in candidates.items():
+            _check_candidate_record(
+                root,
+                candidate_id=str(candidate_id),
+                candidate_ref=str(candidate.get("path") or f"memory/candidates/{candidate_id}.md"),
+                index_record=candidate,
+                findings=findings,
+            )
+    if not memory_index_path.exists():
+        return
+    memories = _safe_read_yaml(memory_index_path, findings).get("memories", {})
+    for memory_id, memory in memories.items():
+        if memory.get("memory_id") and memory.get("memory_id") != memory_id:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "memory_id_mismatch",
+                    "Memory index key does not match memory_id.",
+                    path=str(memory_index_path),
+                    ref=str(memory_id),
+                )
+            )
+        target_ref = str(memory.get("target_ref") or "")
+        target_path = _project_path(root, target_ref) if target_ref else root / "memory" / "missing-target"
+        if not target_ref or not target_path.exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "memory_target_missing",
+                    "Committed memory target file is missing.",
+                    path=str(memory_index_path),
+                    ref=str(memory_id),
+                )
+            )
+        elif f"Memory {memory_id}" not in target_path.read_text(encoding="utf-8"):
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "memory_target_block_missing",
+                    "Committed memory target file does not contain the indexed memory block.",
+                    path=str(target_path),
+                    ref=str(memory_id),
+                )
+            )
+        candidate_ref = str(memory.get("candidate_ref") or "")
+        candidate_path = _project_path(root, candidate_ref) if candidate_ref else root / "memory" / "candidates" / "missing.md"
+        if not candidate_ref or not candidate_path.exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "memory_candidate_ref_missing",
+                    "Committed memory candidate_ref is missing.",
+                    path=str(memory_index_path),
+                    ref=str(memory_id),
+                )
+            )
+        else:
+            candidate_frontmatter, _ = read_markdown_record(candidate_path)
+            if candidate_frontmatter.get("committed_memory_id") != memory_id:
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "memory_candidate_commit_mismatch",
+                        "Memory candidate does not point back to the committed memory ID.",
+                        path=str(candidate_path),
+                        ref=str(memory_id),
+                    )
+                )
+        for source_ref in memory.get("source_refs") or []:
+            if not _project_path(root, str(source_ref)).exists():
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "memory_source_ref_missing",
+                        "Committed memory source_ref is missing.",
+                        path=str(memory_index_path),
+                        ref=str(source_ref),
+                    )
+                )
+        for provenance_ref in memory.get("provenance_refs") or []:
+            if not _provenance_path(root, str(provenance_ref)).exists():
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "memory_provenance_ref_missing",
+                        "Committed memory provenance_ref is missing.",
+                        path=str(memory_index_path),
+                        ref=str(provenance_ref),
+                    )
+                )
+        for review_ref in memory.get("review_refs") or []:
+            _check_review_ref(root, str(review_ref), findings, memory_index_path)
+
 
 def run_healthcheck(root: Path) -> dict[str, Any]:
     root = root.resolve()
@@ -370,6 +684,8 @@ def run_healthcheck(root: Path) -> dict[str, Any]:
         _check_raw_files(root, findings)
         _check_provenance(root, findings)
         _check_figures_and_reports(root, findings)
+        _check_references(root, findings)
+        _check_memory(root, findings)
     error_count = sum(1 for finding in findings if finding.severity == "error")
     warning_count = sum(1 for finding in findings if finding.severity == "warning")
     return {
