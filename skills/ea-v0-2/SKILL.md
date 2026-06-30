@@ -29,6 +29,8 @@ ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd 
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea literature status /path/to/ea-project
+ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
+ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
 ea add-skills check /path/to/child-skill-manifest.yml
 ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea add-skills register /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml

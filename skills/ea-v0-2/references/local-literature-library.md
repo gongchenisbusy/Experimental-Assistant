@@ -27,3 +27,12 @@ score = 0.45*project_relevance + 0.20*venue_authority + 0.15*recency + 0.10*cita
 Recommended top N: narrow project 30, ordinary project 50, review/broad direction 100-200 in batches.
 
 Treat "full web search" as systematic multi-source coverage with a search log, not a guarantee of no omissions. Use journal impact factors only when the user provides a reliable source or a verified source is available.
+
+Use the planning commands before any bulk search or full-text acquisition:
+
+```bash
+ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only --keyword strain
+ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
+```
+
+`plan` writes `search_queries.yml`, `search_log.md`, empty `candidates.csv`, empty `ranking.csv`, and `confirmation_request.yml`. It does not run web searches, open Zotero, use browser profiles, or download PDFs. `confirm` records the user's selected top N and moves the deployment state to `confirmed_awaiting_acquisition`.

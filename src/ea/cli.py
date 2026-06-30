@@ -7,7 +7,7 @@ from pathlib import Path
 from ea.config import doctor_project_config
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
-from ea.literature import ensure_literature_status
+from ea.literature import confirm_literature_selection, ensure_literature_status, plan_literature_deployment
 from ea.projects.service import initialize_project
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record
@@ -58,6 +58,15 @@ def build_parser() -> argparse.ArgumentParser:
     lit_status = literature_sub.add_parser("status", help="create or show literature deployment status")
     lit_status.add_argument("workspace", type=Path)
     lit_status.add_argument("--project-id")
+    lit_plan = literature_sub.add_parser("plan", help="prepare literature search queries and user confirmation package")
+    lit_plan.add_argument("workspace", type=Path)
+    lit_plan.add_argument("--scope", choices=["narrow", "ordinary", "review"], default="ordinary")
+    lit_plan.add_argument("--access-mode", choices=["index_only", "open_access_only", "user_authenticated"], default="open_access_only")
+    lit_plan.add_argument("--keyword", action="append", default=[])
+    lit_confirm = literature_sub.add_parser("confirm", help="record user confirmation for selected literature top N")
+    lit_confirm.add_argument("workspace", type=Path)
+    lit_confirm.add_argument("--selected-top-n", required=True, type=int)
+    lit_confirm.add_argument("--user-response", required=True)
 
     add_skills = sub.add_parser("add-skills", help="validate EA child-skill manifests")
     add_skills_sub = add_skills.add_subparsers(dest="add_skills_command", required=True)
@@ -147,6 +156,25 @@ def main(argv: list[str] | None = None) -> int:
             project_id = args.project_id or _project_id_from_workspace(args.workspace)
             path = ensure_literature_status(args.workspace, project_id=project_id)
             _print_json({"status_path": str(path)})
+            return 0
+        if args.literature_command == "plan":
+            _print_json(
+                plan_literature_deployment(
+                    args.workspace,
+                    scope=args.scope,
+                    access_mode=args.access_mode,
+                    extra_keywords=args.keyword,
+                )
+            )
+            return 0
+        if args.literature_command == "confirm":
+            _print_json(
+                confirm_literature_selection(
+                    args.workspace,
+                    selected_top_n=args.selected_top_n,
+                    user_response=args.user_response,
+                )
+            )
             return 0
     if args.command == "add-skills":
         if args.add_skills_command == "check":
