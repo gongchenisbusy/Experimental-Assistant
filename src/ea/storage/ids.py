@@ -22,6 +22,7 @@ KIND_PREFIX = {
     "open_item": "openitem",
     "memory": "mem",
     "memory_candidate": "memcand",
+    "reference": "ref",
 }
 
 

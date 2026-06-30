@@ -15,6 +15,7 @@ EA_PROJECT_DIRS = [
     "figures",
     "reports",
     "literature",
+    "literature/references",
     "skill-registry",
     "memory",
     "memory/paper-materials",

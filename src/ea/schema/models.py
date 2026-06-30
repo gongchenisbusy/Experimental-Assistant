@@ -139,6 +139,7 @@ class ImageAnalysisResult(EARecord):
     figure_id: str | None = None
     warnings: list[Any] = Field(default_factory=list)
     references: list[dict[str, Any]] = Field(default_factory=list)
+    reference_ids: list[str] = Field(default_factory=list)
 
 
 class ReportRecord(EARecord):
@@ -153,6 +154,21 @@ class ReportRecord(EARecord):
     figure_ids: list[str] = Field(default_factory=list)
     include_next_step_suggestions: bool = False
     status: Literal["draft", "user_reviewed"] = "draft"
+
+
+class ReferenceRecord(EARecord):
+    reference_id: str
+    project_id: str
+    citation: str
+    title: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    venue: str | None = None
+    doi: str | None = None
+    url: str | None = None
+    local_path: str | None = None
+    source_type: Literal["manual", "literature_library", "web", "local_pdf", "report"] = "manual"
+    notes: str | None = None
 
 
 class ReviewRecord(BaseModel):

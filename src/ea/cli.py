@@ -17,6 +17,7 @@ from ea.literature import (
 )
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.projects.service import initialize_project
+from ea.references import register_reference, validate_report_citations
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record
 
@@ -104,6 +105,26 @@ def build_parser() -> argparse.ArgumentParser:
     image_report.add_argument("--project-id")
     image_report.add_argument("--experiment-ref", action="append", default=[])
     image_report.add_argument("--sample-ref", action="append", default=[])
+    image_report.add_argument("--reference-id", action="append", default=[])
+
+    references = sub.add_parser("references", help="register and validate report references")
+    references_sub = references.add_subparsers(dest="references_command", required=True)
+    ref_add = references_sub.add_parser("add", help="register a literature or web reference in the EA project")
+    ref_add.add_argument("workspace", type=Path)
+    ref_add.add_argument("--project-id")
+    ref_add.add_argument("--citation", required=True)
+    ref_add.add_argument("--title")
+    ref_add.add_argument("--author", action="append", default=[])
+    ref_add.add_argument("--year", type=int)
+    ref_add.add_argument("--venue")
+    ref_add.add_argument("--doi")
+    ref_add.add_argument("--url")
+    ref_add.add_argument("--local-path")
+    ref_add.add_argument("--source-type", choices=["manual", "literature_library", "web", "local_pdf", "report"], default="manual")
+    ref_add.add_argument("--notes")
+    ref_validate = references_sub.add_parser("validate-report", help="check report inline citations against its References section")
+    ref_validate.add_argument("workspace", type=Path)
+    ref_validate.add_argument("report", type=Path)
 
     memory = sub.add_parser("memory", help="review-gated project memory helpers")
     memory_sub = memory.add_subparsers(dest="memory_command", required=True)
@@ -277,9 +298,34 @@ def main(argv: list[str] | None = None) -> int:
                 image_metadata_path=args.metadata,
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
             )
             _print_json({"report": str(path)})
             return 0
+    if args.command == "references":
+        if args.references_command == "add":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            path = register_reference(
+                args.workspace,
+                project_id=project_id,
+                citation=args.citation,
+                title=args.title,
+                authors=args.author,
+                year=args.year,
+                venue=args.venue,
+                doi=args.doi,
+                url=args.url,
+                local_path=args.local_path,
+                source_type=args.source_type,
+                notes=args.notes,
+            )
+            _print_json({"reference": str(path)})
+            return 0
+        if args.references_command == "validate-report":
+            report_path = args.report if args.report.is_absolute() else args.workspace / args.report
+            result = validate_report_citations(report_path)
+            _print_json(result)
+            return 0 if result["ok"] else 2
     if args.command == "memory":
         if args.memory_command == "propose":
             project_id = args.project_id or _project_id_from_workspace(args.workspace)

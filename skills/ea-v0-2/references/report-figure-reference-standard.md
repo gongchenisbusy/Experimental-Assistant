@@ -20,14 +20,23 @@ Every generated figure needs a stable figure ID and a footer in the lower-right 
 FigID: fig-example-raman-20260630-001 | Report: rpt-example-20260630-001
 ```
 
-References use inline numeric citations at the exact supported text location, then matching entries:
+References use inline numeric citations at the exact supported text location, then matching entries. Adjacent references use `[1][2]`, not `[1,2]`, so the report validator can map each marker directly.
 
 ```text
-Layer-related Raman shifts can be affected by strain and doping[1,2].
+Layer-related Raman shifts can be affected by strain and doping[1][2].
 
 ## References
 
 [1] Author A. Title. Journal volume, pages (year). DOI: ... | Local: ... | Web: ...
 ```
+
+Register reusable references before report generation when possible:
+
+```bash
+ea references add /path/to/ea-project --citation "Author A. Title. Journal volume, pages (year)." --doi 10.xxxx/example --url https://doi.org/10.xxxx/example --local-path literature/fulltext/example.pdf
+ea references validate-report /path/to/ea-project reports/rpt-example-20260630-001.md
+```
+
+Reference records are stored under `literature/references/{reference_id}.yml` and indexed in `literature/references/index.yml`. Reports should store `reference_ids` and `numbered_references` in YAML frontmatter so another agent can trace each inline marker back to a local PDF, web page, DOI, or literature-library item.
 
 Confidence labels: high, medium, low, insufficient. In Chinese reports use `高`, `中`, `低`, `不足`.

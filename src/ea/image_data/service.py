@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from ea.figures import figure_footer, register_figure, update_figure_report_ref
 from ea.provenance import write_provenance_entry
 from ea.raw_import import assert_not_raw_output_path
+from ea.references import build_report_reference_block
 from ea.reports.service import register_report
 from ea.review import require_confirmed_review
 from ea.schema import ImageAnalysisResult, ReportRecord
@@ -107,6 +108,7 @@ def create_image_analysis_record(
     scale_bar: str | None = None,
     imaging_conditions: dict[str, Any] | None = None,
     references: list[dict[str, Any]] | None = None,
+    reference_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
     if not user_description.strip():
@@ -180,6 +182,7 @@ def create_image_analysis_record(
         figure_id=figure_id,
         warnings=warnings,
         references=references or [],
+        reference_ids=reference_ids or [],
         review_refs=[description_review_ref],
         created_at=created_at or EARecord.now_iso(),
         updated_at=created_at or EARecord.now_iso(),
@@ -239,6 +242,7 @@ def generate_image_analysis_report(
     image_metadata_path: Path,
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata_path = _project_path(root, image_metadata_path)
@@ -271,8 +275,18 @@ def generate_image_analysis_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in metadata.get("warnings", [])
     ) or "未记录高风险 warning。"
+    reference_ids = reference_ids if reference_ids is not None else metadata.get("reference_ids", [])
+    reference_block = build_report_reference_block(root, reference_ids)
+    if reference_block["reference_ids"]:
+        references_markdown = reference_block["references_markdown"]
+        citation_text = reference_block["inline_citation"]
+    else:
+        references_markdown = _reference_text(metadata.get("references") or [])
+        citation_text = ""
     observations = metadata.get("ea_observations") or ["未记录独立视觉观察；当前分析主要依据用户描述。"]
     interpretation = metadata.get("interpretation") or "当前报告未写入强解释；建议结合样品背景、仪器参数和必要的人工复核后再进入项目记忆。"
+    if citation_text and not interpretation.rstrip().endswith(citation_text):
+        interpretation = f"{interpretation}{citation_text}"
     confidence = CONFIDENCE_LABEL_ZH.get(metadata.get("confidence", "insufficient"), "不足")
     body = f"""# 图片类表征数据分析报告
 
@@ -318,13 +332,16 @@ def generate_image_analysis_report(
 
 ## References
 
-{_reference_text(metadata.get('references') or [])}
+{references_markdown}
 
 ## 溯源
 
 本报告草稿引用 image result `{metadata['result_id']}`，对应 provenance 将在报告生成后写入。
 """
-    write_markdown_record(report_path, report.model_dump(exclude_none=True), body)
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
     provenance_path = write_provenance_entry(
         root,
         workflow="image_report_generation",
@@ -354,5 +371,6 @@ def generate_image_analysis_report(
         figure_ids=figure_ids,
         sample_ids=related_samples,
         experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
     )
     return report_path

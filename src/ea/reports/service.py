@@ -6,6 +6,7 @@ import pandas as pd
 
 from ea.figures import update_figure_report_ref
 from ea.provenance import write_provenance_entry
+from ea.references import build_report_reference_block
 from ea.schema import ReportRecord
 from ea.schema.models import EARecord
 from ea.standards import infer_project_slug
@@ -34,6 +35,7 @@ def generate_raman_report(
     raman_metadata_path: Path,
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(raman_metadata_path)
@@ -66,6 +68,9 @@ def generate_raman_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in warnings
     ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献引用。"
     body = f"""# Raman 分析报告
 
 ## 报告 ID 信息
@@ -89,7 +94,7 @@ def generate_raman_report(
 
 ## 谨慎解释
 
-在当前数据范围内，图谱特征可能与 MoS2 Raman 响应相一致，但不能仅凭本次 Raman 数据直接确认层数、缺陷机制或生长机理。任何科学解释进入项目记忆前都需要用户审核。
+在当前数据范围内，图谱特征可能与 MoS2 Raman 响应相一致，但不能仅凭本次 Raman 数据直接确认层数、缺陷机制或生长机理。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
 
 ## 不确定性与限制
 
@@ -104,7 +109,7 @@ def generate_raman_report(
 
 ## References
 
-本报告当前未引用外部文献。若后续加入文献解释，正文对应位置必须使用 `[1]` 形式标注，并在本节列出 DOI、本地 PDF 或网页链接。
+{reference_block['references_markdown']}
 
 ## 溯源
 
@@ -113,7 +118,10 @@ def generate_raman_report(
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
-    write_markdown_record(report_path, report.model_dump(exclude_none=True), body)
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
     provenance_path = write_provenance_entry(
         root,
         workflow="report_generation",
@@ -142,6 +150,7 @@ def generate_raman_report(
         figure_ids=figure_ids,
         sample_ids=related_samples,
         experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
     )
     return report_path
 
@@ -163,6 +172,7 @@ def register_report(
     figure_ids: list[str],
     sample_ids: list[str],
     experiment_ids: list[str],
+    reference_ids: list[str] | None = None,
 ) -> dict:
     index_path = root / "reports" / "index.yml"
     index = read_yaml(index_path) if index_path.exists() else {"schema_version": "0.2", "reports": {}}
@@ -174,6 +184,7 @@ def register_report(
         "figure_ids": figure_ids,
         "sample_ids": sample_ids,
         "experiment_ids": experiment_ids,
+        "reference_ids": reference_ids or [],
     }
     index.setdefault("reports", {})[report_id] = record
     write_yaml(index_path, index)
