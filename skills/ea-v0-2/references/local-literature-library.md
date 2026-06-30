@@ -54,6 +54,7 @@ ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-co
 ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature reconcile-acquisition /path/to/ea-project
+ea literature render-reconciliation /path/to/ea-project --reconciliation literature/acquisition_reconciliation.yml
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib
 ```
@@ -74,7 +75,9 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 
 `import-zotero-status` reads `zotero_codex_batch_status.json` plus optional sidecar verification and rendered status refs, writes `zotero_codex_status_import.yml` and `acquisition_status_update.yml`, then syncs `deployment_status.yml` and `origin_thread_sync.yml`. It normalizes cached/downloaded counts, login needs, and blocked items. It imports status artifacts only; it does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
 
-`reconcile-acquisition` writes `acquisition_reconciliation.yml` by comparing acquisition manifest, Zotero-Codex status import, library manifest, cache index, reference index, deployment status, and origin-thread sync records when present. It reports pass/warnings/fail with finding codes, source refs, per-finding `repair_suggestion`, top-level `repair_actions`, and `questions_for_user` for uncertainties that affect the next repair step. It reads local artifacts only; it does not auto-repair records, run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
+`reconcile-acquisition` writes `acquisition_reconciliation.yml` and `acquisition_reconciliation.md` by comparing acquisition manifest, Zotero-Codex status import, library manifest, cache index, reference index, deployment status, and origin-thread sync records when present. It reports pass/warnings/fail with finding codes, source refs, per-finding `repair_suggestion`, top-level `repair_actions`, and `questions_for_user` for uncertainties that affect the next repair step. It reads local artifacts only; it does not auto-repair records, run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
+
+`render-reconciliation` regenerates `acquisition_reconciliation.md` from an existing reconciliation YAML. Use it when a user or future agent needs a readable audit view of current findings, repair actions, questions, and boundaries. It is local artifact rendering only and does not repair records or perform Zotero/browser/DOI/PDF/full-text/credential work.
 
 `import-acquisition` imports a dedicated literature workflow's `acquisition_manifest.yml` into EA. It updates `library_manifest.yml`, `cache_index.yml`, `deployment_status.yml`, and `origin_thread_sync.yml`, and registers reusable project references under `literature/references/` while de-duplicating by DOI, URL, title, or citation. The manifest can include `title`, `authors`, `year`, `venue`, `doi`, `url`, `local_path`, `cache_path`, `zotero_item_key`, and acquisition `status`.
 

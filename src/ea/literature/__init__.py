@@ -13,6 +13,7 @@ from ea.literature.service import (
     rank_literature_candidates,
     reconcile_literature_acquisition,
     recommended_top_n,
+    render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "rank_literature_candidates",
     "reconcile_literature_acquisition",
     "recommended_top_n",
+    "render_literature_acquisition_reconciliation",
     "search_public_literature_metadata",
     "sync_literature_acquisition_status",
 ]

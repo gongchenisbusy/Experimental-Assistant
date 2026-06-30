@@ -1831,6 +1831,206 @@ def _reconciliation_questions_for_user(findings: list[dict[str, Any]]) -> list[d
     return list(questions.values())
 
 
+def _markdown_value(value: Any) -> str:
+    if value in (None, "", [], {}):
+        return "not recorded"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, list):
+        return "; ".join(_markdown_value(item) for item in value if item not in (None, "", [], {})) or "not recorded"
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value).replace("\n", " ").strip() or "not recorded"
+
+
+def _markdown_bullets(values: list[Any], *, code: bool = False) -> list[str]:
+    if not values:
+        return ["- not recorded"]
+    lines = []
+    for value in values:
+        text = _markdown_value(value)
+        lines.append(f"- `{text}`" if code else f"- {text}")
+    return lines
+
+
+def _markdown_mapping(mapping: dict[str, Any]) -> list[str]:
+    if not mapping:
+        return ["- not recorded"]
+    return [f"- {key}: {_markdown_value(value)}" for key, value in mapping.items()]
+
+
+def _reconciliation_markdown(reconciliation: dict[str, Any]) -> str:
+    summary = reconciliation.get("summary") if isinstance(reconciliation.get("summary"), dict) else {}
+    source_refs = reconciliation.get("source_refs") if isinstance(reconciliation.get("source_refs"), dict) else {}
+    findings = reconciliation.get("findings") if isinstance(reconciliation.get("findings"), list) else []
+    repair_actions = reconciliation.get("repair_actions") if isinstance(reconciliation.get("repair_actions"), list) else []
+    questions = reconciliation.get("questions_for_user") if isinstance(reconciliation.get("questions_for_user"), list) else []
+    boundaries = reconciliation.get("boundaries") if isinstance(reconciliation.get("boundaries"), list) else []
+
+    lines = [
+        "# Literature Acquisition Reconciliation Audit",
+        "",
+        "Generated from `literature/acquisition_reconciliation.yml` as a human-readable audit view.",
+        "",
+        "## Report",
+        "",
+        f"- project_id: {_markdown_value(reconciliation.get('project_id'))}",
+        f"- status: {_markdown_value(reconciliation.get('status'))}",
+        f"- reconciled_at: {_markdown_value(reconciliation.get('reconciled_at'))}",
+        f"- yaml_ref: {_markdown_value(reconciliation.get('yaml_ref', 'literature/acquisition_reconciliation.yml'))}",
+        f"- markdown_ref: {_markdown_value(reconciliation.get('markdown_ref', 'literature/acquisition_reconciliation.md'))}",
+        "",
+        "## Source Refs",
+        "",
+        *_markdown_mapping(source_refs),
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "| --- | --- |",
+    ]
+    for key, value in summary.items():
+        lines.append(f"| {key} | {_markdown_value(value)} |")
+
+    lines.extend(["", "## Findings", ""])
+    if findings:
+        for index, finding in enumerate(findings, start=1):
+            if not isinstance(finding, dict):
+                continue
+            suggestion = finding.get("repair_suggestion") if isinstance(finding.get("repair_suggestion"), dict) else {}
+            details = finding.get("details") if isinstance(finding.get("details"), dict) else {}
+            lines.extend(
+                [
+                    f"### F{index:03d} `{_markdown_value(finding.get('code'))}` [{_markdown_value(finding.get('severity'))}]",
+                    "",
+                    _markdown_value(finding.get("message")),
+                    "",
+                    "**Details**",
+                    "",
+                    *_markdown_mapping(details),
+                    "",
+                    "**Repair Suggestion**",
+                    "",
+                    f"- title: {_markdown_value(suggestion.get('title'))}",
+                    f"- recommended_next_step: {_markdown_value(suggestion.get('recommended_next_step'))}",
+                    f"- requires_user_confirmation: {_markdown_value(suggestion.get('requires_user_confirmation'))}",
+                    f"- auto_applied: {_markdown_value(suggestion.get('auto_applied'))}",
+                    "- command_hints:",
+                    *_markdown_bullets(suggestion.get("command_hints") or [], code=True),
+                    "- file_refs:",
+                    *_markdown_bullets(suggestion.get("file_refs") or [], code=True),
+                    "",
+                ]
+            )
+    else:
+        lines.append("No findings recorded.")
+
+    lines.extend(["", "## Repair Actions", ""])
+    if repair_actions:
+        for index, action in enumerate(repair_actions, start=1):
+            if not isinstance(action, dict):
+                continue
+            lines.extend(
+                [
+                    f"### A{index:03d} {_markdown_value(action.get('title'))}",
+                    "",
+                    f"- finding_codes: {_markdown_value(action.get('finding_codes'))}",
+                    f"- recommended_next_step: {_markdown_value(action.get('recommended_next_step'))}",
+                    f"- requires_user_confirmation: {_markdown_value(action.get('requires_user_confirmation'))}",
+                    "- command_hints:",
+                    *_markdown_bullets(action.get("command_hints") or [], code=True),
+                    "- file_refs:",
+                    *_markdown_bullets(action.get("file_refs") or [], code=True),
+                    "",
+                ]
+            )
+    else:
+        lines.append("No repair actions recorded.")
+
+    lines.extend(["", "## Questions For User", ""])
+    if questions:
+        for index, question in enumerate(questions, start=1):
+            if not isinstance(question, dict):
+                continue
+            lines.extend(
+                [
+                    f"### Q{index:03d}",
+                    "",
+                    f"- question: {_markdown_value(question.get('question'))}",
+                    f"- finding_codes: {_markdown_value(question.get('finding_codes'))}",
+                    f"- why_it_matters: {_markdown_value(question.get('why_it_matters'))}",
+                    "",
+                ]
+            )
+    else:
+        lines.append("No user questions recorded.")
+
+    lines.extend(
+        [
+            "",
+            "## Boundaries",
+            "",
+            *(_markdown_bullets(boundaries) if boundaries else ["- This Markdown rendering is local artifact rendering only."]),
+            "- Rendering this Markdown view does not repair records, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, store credentials, or handle institution-login state.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_literature_acquisition_reconciliation(
+    root: Path,
+    *,
+    reconciliation_path: Path | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    reconciliation_path = reconciliation_path or literature_root / "acquisition_reconciliation.yml"
+    if not reconciliation_path.is_absolute():
+        reconciliation_path = root / reconciliation_path
+    if not reconciliation_path.exists():
+        raise FileNotFoundError(reconciliation_path)
+
+    reconciliation = read_yaml(reconciliation_path)
+    if not isinstance(reconciliation, dict):
+        raise ValueError(f"Reconciliation artifact must be a mapping: {reconciliation_path}")
+
+    markdown_path = literature_root / "acquisition_reconciliation.md"
+    yaml_ref = _project_relative(root, reconciliation_path)
+    markdown_ref = _project_relative(root, markdown_path)
+    updated_reconciliation = {**reconciliation, "yaml_ref": yaml_ref, "markdown_ref": markdown_ref}
+    if updated_reconciliation != reconciliation:
+        write_yaml(reconciliation_path, updated_reconciliation)
+
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text(_reconciliation_markdown(updated_reconciliation), encoding="utf-8")
+
+    status_path = literature_root / "deployment_status.yml"
+    status: dict[str, Any] | None = None
+    if status_path.exists():
+        status = read_yaml(status_path)
+        status.update(
+            _compact_dict(
+                {
+                    "acquisition_reconciliation_ref": yaml_ref,
+                    "acquisition_reconciliation_markdown_ref": markdown_ref,
+                    "acquisition_reconciliation_status": updated_reconciliation.get("status"),
+                    "last_acquisition_reconciliation_at": updated_reconciliation.get("reconciled_at"),
+                }
+            )
+        )
+        write_yaml(status_path, status)
+
+    return {
+        "reconciliation_path": str(reconciliation_path),
+        "markdown_path": str(markdown_path),
+        "status_path": str(status_path) if status_path.exists() else None,
+        "reconciliation": updated_reconciliation,
+        "status": status,
+    }
+
+
 def reconcile_literature_acquisition(
     root: Path,
     *,
@@ -1989,6 +2189,8 @@ def reconcile_literature_acquisition(
         "project_id": project_id,
         "reconciled_at": reconciled_at,
         "status": reconciliation_status,
+        "yaml_ref": "literature/acquisition_reconciliation.yml",
+        "markdown_ref": "literature/acquisition_reconciliation.md",
         "summary": {
             "error_count": error_count,
             "warning_count": warning_count,
@@ -2010,10 +2212,13 @@ def reconcile_literature_acquisition(
         ],
     }
     reconciliation_path = literature_root / "acquisition_reconciliation.yml"
+    markdown_path = literature_root / "acquisition_reconciliation.md"
     write_yaml(reconciliation_path, reconciliation)
+    markdown_path.write_text(_reconciliation_markdown(reconciliation), encoding="utf-8")
     status.update(
         {
             "acquisition_reconciliation_ref": "literature/acquisition_reconciliation.yml",
+            "acquisition_reconciliation_markdown_ref": "literature/acquisition_reconciliation.md",
             "acquisition_reconciliation_status": reconciliation_status,
             "last_acquisition_reconciliation_at": reconciled_at,
         }
@@ -2021,6 +2226,7 @@ def reconcile_literature_acquisition(
     write_yaml(status_path, status)
     return {
         "reconciliation_path": str(reconciliation_path),
+        "markdown_path": str(markdown_path),
         "status_path": str(status_path),
         "reconciliation": reconciliation,
         "status": status,

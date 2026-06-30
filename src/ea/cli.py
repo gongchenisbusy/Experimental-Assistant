@@ -37,6 +37,7 @@ from ea.literature import (
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     reconcile_literature_acquisition,
+    render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
@@ -471,6 +472,9 @@ def build_parser() -> argparse.ArgumentParser:
     lit_zotero_status.add_argument("--no-sync", action="store_true")
     lit_reconcile = literature_sub.add_parser("reconcile-acquisition", help="reconcile local literature acquisition records")
     lit_reconcile.add_argument("workspace", type=Path)
+    lit_render_reconciliation = literature_sub.add_parser("render-reconciliation", help="render acquisition reconciliation markdown audit")
+    lit_render_reconciliation.add_argument("workspace", type=Path)
+    lit_render_reconciliation.add_argument("--reconciliation", type=Path)
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
@@ -1314,6 +1318,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.literature_command == "reconcile-acquisition":
             _print_json(reconcile_literature_acquisition(args.workspace))
+            return 0
+        if args.literature_command == "render-reconciliation":
+            reconciliation_path = args.reconciliation
+            if reconciliation_path and not reconciliation_path.is_absolute():
+                reconciliation_path = args.workspace / reconciliation_path
+            _print_json(render_literature_acquisition_reconciliation(args.workspace, reconciliation_path=reconciliation_path))
             return 0
         if args.literature_command == "sync-status":
             _print_json(

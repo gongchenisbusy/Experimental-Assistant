@@ -18,6 +18,7 @@ from ea.literature import (
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     reconcile_literature_acquisition,
+    render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
@@ -721,17 +722,24 @@ def test_literature_reconcile_acquisition_passes_consistent_records(tmp_path: Pa
 
     result = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-01T14:10:00")
     reconciliation = read_yaml(tmp_path / "literature" / "acquisition_reconciliation.yml")
+    markdown = (tmp_path / "literature" / "acquisition_reconciliation.md").read_text(encoding="utf-8")
     status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
 
     assert result["reconciliation"]["status"] == "pass"
+    assert result["markdown_path"] == str(tmp_path / "literature" / "acquisition_reconciliation.md")
+    assert reconciliation["markdown_ref"] == "literature/acquisition_reconciliation.md"
     assert reconciliation["summary"]["error_count"] == 0
     assert reconciliation["summary"]["warning_count"] == 0
     assert reconciliation["summary"]["library_items"] == 2
     assert reconciliation["source_refs"]["zotero_codex_status_import"] == "literature/zotero_codex_status_import.yml"
     assert reconciliation["repair_actions"] == []
     assert reconciliation["questions_for_user"] == []
+    assert "# Literature Acquisition Reconciliation Audit" in markdown
+    assert "status: pass" in markdown
+    assert "## Summary" in markdown
     assert status["acquisition_reconciliation_status"] == "pass"
     assert status["acquisition_reconciliation_ref"] == "literature/acquisition_reconciliation.yml"
+    assert status["acquisition_reconciliation_markdown_ref"] == "literature/acquisition_reconciliation.md"
 
 
 def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> None:
@@ -807,6 +815,7 @@ def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> 
 
     result = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-01T14:20:00")
     reconciliation = read_yaml(tmp_path / "literature" / "acquisition_reconciliation.yml")
+    markdown = (tmp_path / "literature" / "acquisition_reconciliation.md").read_text(encoding="utf-8")
     codes = {finding["code"] for finding in result["reconciliation"]["findings"]}
 
     assert result["reconciliation"]["status"] == "fail"
@@ -825,6 +834,10 @@ def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> 
     assert any("cache_index.yml" in " ".join(action.get("file_refs", [])) for action in reconciliation["repair_actions"])
     assert any(question["question"].startswith("Should cache item") for question in reconciliation["questions_for_user"])
     assert "Repair suggestions are advisory" in " ".join(reconciliation["boundaries"])
+    assert "## Findings" in markdown
+    assert "Refresh origin_thread_sync.yml from deployment_status.yml." in markdown
+    assert "## Questions For User" in markdown
+    assert "Repair suggestions are advisory" in markdown
 
 
 def test_cli_literature_reconcile_acquisition_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -837,6 +850,91 @@ def test_cli_literature_reconcile_acquisition_wires_arguments(tmp_path: Path, ca
     assert main(["literature", "reconcile-acquisition", str(tmp_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["reconciliation"]["status"] == "pass"
+
+
+def test_literature_render_reconciliation_regenerates_markdown(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Render Reconciliation",
+        project_slug="mos2-render-reconciliation",
+        research_direction="MoS2 literature reconciliation",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    write_yaml(
+        tmp_path / "literature" / "acquisition_reconciliation.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-mos2-render-reconciliation",
+            "reconciled_at": "2026-07-01T15:00:00",
+            "status": "warnings",
+            "summary": {"error_count": 0, "warning_count": 1},
+            "source_refs": {"deployment_status": "literature/deployment_status.yml"},
+            "findings": [
+                {
+                    "severity": "warning",
+                    "code": "deployment_cache_count_differs_from_cache_index",
+                    "message": "Counts differ.",
+                    "details": {"deployment_status": 2, "cache_index": 1},
+                    "repair_suggestion": {
+                        "title": "Choose the authoritative cached-fulltext count.",
+                        "recommended_next_step": "Ask the user which count is authoritative.",
+                        "command_hints": ["ea literature reconcile-acquisition /path/to/ea-project"],
+                        "requires_user_confirmation": True,
+                        "auto_applied": False,
+                    },
+                }
+            ],
+            "repair_actions": [
+                {
+                    "title": "Choose the authoritative cached-fulltext count.",
+                    "finding_codes": ["deployment_cache_count_differs_from_cache_index"],
+                    "recommended_next_step": "Ask the user which count is authoritative.",
+                    "requires_user_confirmation": True,
+                }
+            ],
+            "questions_for_user": [
+                {
+                    "question": "Should EA trust deployment_status.yml or cache_index.yml?",
+                    "finding_codes": ["deployment_cache_count_differs_from_cache_index"],
+                    "why_it_matters": "The next repair step depends on the authoritative source.",
+                }
+            ],
+            "boundaries": ["Repair suggestions are advisory."],
+        },
+    )
+
+    result = render_literature_acquisition_reconciliation(tmp_path)
+    reconciliation = read_yaml(tmp_path / "literature" / "acquisition_reconciliation.yml")
+    markdown = (tmp_path / "literature" / "acquisition_reconciliation.md").read_text(encoding="utf-8")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert result["markdown_path"] == str(tmp_path / "literature" / "acquisition_reconciliation.md")
+    assert reconciliation["markdown_ref"] == "literature/acquisition_reconciliation.md"
+    assert reconciliation["yaml_ref"] == "literature/acquisition_reconciliation.yml"
+    assert "# Literature Acquisition Reconciliation Audit" in markdown
+    assert "deployment_cache_count_differs_from_cache_index" in markdown
+    assert "Should EA trust deployment_status.yml or cache_index.yml?" in markdown
+    assert "does not repair records, operate Zotero, open browsers" in markdown
+    assert status["acquisition_reconciliation_status"] == "warnings"
+    assert status["acquisition_reconciliation_markdown_ref"] == "literature/acquisition_reconciliation.md"
+
+
+def test_cli_literature_render_reconciliation_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_render_literature_acquisition_reconciliation(workspace: Path, *, reconciliation_path: Path | None = None):
+        assert workspace == tmp_path
+        assert reconciliation_path == tmp_path / "literature" / "acquisition_reconciliation.yml"
+        return {"markdown_path": str(tmp_path / "literature" / "acquisition_reconciliation.md")}
+
+    monkeypatch.setattr(
+        "ea.cli.render_literature_acquisition_reconciliation",
+        fake_render_literature_acquisition_reconciliation,
+    )
+
+    assert main(["literature", "render-reconciliation", str(tmp_path), "--reconciliation", "literature/acquisition_reconciliation.yml"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["markdown_path"].endswith("acquisition_reconciliation.md")
 
 
 def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tmp_path: Path) -> None:
@@ -1513,6 +1611,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero-bridge" in readme
     assert "import-zotero-status" in readme
     assert "reconcile-acquisition" in readme
+    assert "render-reconciliation" in readme
     assert "repair_actions" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
@@ -1521,6 +1620,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_bridge.yml" in reference
     assert "zotero_codex_status_import.yml" in reference
     assert "acquisition_reconciliation.yml" in reference
+    assert "acquisition_reconciliation.md" in reference
     assert "questions_for_user" in reference
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
@@ -1536,6 +1636,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "acquisition_status_update" in manifest["output_artifacts"]
     assert "acquisition_reconciliation" in manifest["output_artifacts"]
     assert "acquisition_reconciliation_repair_guidance" in manifest["output_artifacts"]
+    assert "acquisition_reconciliation_markdown" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "institution_access_guidance" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
@@ -1546,4 +1647,5 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_checks" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_repair_guidance" in manifest["current_v0_2_support"]["implemented"]
+    assert "acquisition_reconciliation_markdown_audit" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]
