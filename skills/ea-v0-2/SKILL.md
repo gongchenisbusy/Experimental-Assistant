@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, run batch characterization manifests, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -50,6 +50,8 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
+ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ea literature status /path/to/ea-project
@@ -79,6 +81,8 @@ Built-in child-skill manifests live in `skill-registry/builtins/` and are indexe
 
 Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level.
 
+Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
+
 ## References
 
 - For project structure and workflow, read `references/project-workflow.md`.
@@ -87,6 +91,7 @@ Healthcheck and evaluator reports are the local handoff gate. They audit batch r
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
 - For scientific figure style infrastructure, read `references/scientific-figure-workflow.md`.
 - For evaluator/readiness checks, read `references/evaluator-workflow.md`.
+- For editable YAML template generation, read `references/template-workflow.md`.
 - For built-in material assignment records, read `references/material-assignment-library.md`.
 - For batch Raman/PL/XRD execution, read `references/batch-workflow.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.

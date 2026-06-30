@@ -12,6 +12,7 @@ EA_PROJECT_DIRS = [
     "evaluation",
     "samples",
     "raw",
+    "templates",
     "processed",
     "processed/batches",
     "figures",

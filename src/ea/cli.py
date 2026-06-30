@@ -31,6 +31,13 @@ from ea.reports import generate_pl_report, generate_raman_report, generate_xrd_r
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
+from ea.templates import (
+    SUPPORTED_TEMPLATE_METHODS,
+    batch_manifest_template,
+    processing_parameters_template,
+    write_batch_manifest_template,
+    write_processing_parameters_template,
+)
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
 
@@ -184,6 +191,21 @@ def build_parser() -> argparse.ArgumentParser:
     batch_run = batch_sub.add_parser("run", help="run a review-gated batch characterization manifest")
     batch_run.add_argument("workspace", type=Path)
     batch_run.add_argument("manifest", type=Path)
+
+    templates = sub.add_parser("templates", help="write editable EA YAML templates")
+    templates_sub = templates.add_subparsers(dest="templates_command", required=True)
+    parameter_template = templates_sub.add_parser("parameters", help="show or write method processing parameters")
+    parameter_template.add_argument("method", choices=list(SUPPORTED_TEMPLATE_METHODS))
+    parameter_template.add_argument("--output", type=Path)
+    batch_template = templates_sub.add_parser("batch-manifest", help="show or write a batch manifest skeleton")
+    batch_template.add_argument("workspace", type=Path)
+    batch_template.add_argument("--output", type=Path)
+    batch_template.add_argument("--method", choices=list(SUPPORTED_TEMPLATE_METHODS), action="append", default=[])
+    batch_template.add_argument("--project-id")
+    batch_template.add_argument("--sample-ref", default="sample-001")
+    batch_template.add_argument("--experiment-ref", default="exp-001")
+    batch_template.add_argument("--no-reports", action="store_true")
+    batch_template.add_argument("--stop-on-error", action="store_true")
 
     literature = sub.add_parser("literature", help="local literature-library helpers")
     literature_sub = literature.add_subparsers(dest="literature_command", required=True)
@@ -574,6 +596,53 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             _print_json(result)
             return 0 if result["status"] == "success" else 2
+    if args.command == "templates":
+        if args.templates_command == "parameters":
+            written = None
+            if args.output:
+                written = write_processing_parameters_template(args.output, args.method)
+            _print_json(
+                {
+                    "template_type": "processing_parameters",
+                    "method": args.method,
+                    "review_target_type": f"{args.method}_parameters",
+                    "parameters": processing_parameters_template(args.method),
+                    "written": str(written) if written else None,
+                }
+            )
+            return 0
+        if args.templates_command == "batch-manifest":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            methods = args.method or list(SUPPORTED_TEMPLATE_METHODS)
+            output_path = None
+            if args.output:
+                output_path = args.output if args.output.is_absolute() else args.workspace / args.output
+                write_batch_manifest_template(
+                    output_path,
+                    project_id=project_id,
+                    methods=methods,
+                    sample_ref=args.sample_ref,
+                    experiment_ref=args.experiment_ref,
+                    create_reports=not args.no_reports,
+                    continue_on_error=not args.stop_on_error,
+                )
+            manifest = batch_manifest_template(
+                project_id=project_id,
+                methods=methods,
+                sample_ref=args.sample_ref,
+                experiment_ref=args.experiment_ref,
+                create_reports=not args.no_reports,
+                continue_on_error=not args.stop_on_error,
+            )
+            _print_json(
+                {
+                    "template_type": "batch_manifest",
+                    "methods": methods,
+                    "manifest": manifest,
+                    "written": str(output_path) if output_path else None,
+                }
+            )
+            return 0
     if args.command == "materials":
         if args.materials_command == "list":
             _print_json({"materials": available_materials()})

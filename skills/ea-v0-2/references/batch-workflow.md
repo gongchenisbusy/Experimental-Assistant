@@ -17,6 +17,14 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ```
 
+Generate an editable skeleton:
+
+```bash
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
+```
+
+The generated skeleton uses placeholders for raw metadata and review refs. Fill those with real project values before running `ea batch validate`.
+
 Minimal manifest:
 
 ```yaml

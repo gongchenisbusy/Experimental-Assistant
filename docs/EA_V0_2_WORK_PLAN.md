@@ -125,6 +125,8 @@ ea inspect-spectrum
 ea process-raman
 ea report
 ea healthcheck
+ea templates parameters
+ea templates batch-manifest
 ea literature status
 ea config init
 ea config doctor
@@ -133,6 +135,7 @@ ea config doctor
 验收：
 
 - 用户能通过 CLI 完成初始化、raw 导入、光谱检查、Raman 处理、报告生成和项目健康检查。
+- 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。
 - 初始化命令会询问项目根目录、project slug、报告语言、Zotero/浏览器/文献缓存等必要配置。

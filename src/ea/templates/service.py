@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+from ea.pl import default_pl_processing_parameters
+from ea.raman import default_processing_parameters
+from ea.storage.files import write_yaml
+from ea.xrd import default_xrd_processing_parameters
+
+
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd")
+
+
+def _normalise_method(method: str) -> str:
+    normalized = method.lower().strip()
+    if normalized not in SUPPORTED_TEMPLATE_METHODS:
+        supported = ", ".join(SUPPORTED_TEMPLATE_METHODS)
+        raise ValueError(f"Unsupported template method: {method}. Supported methods: {supported}")
+    return normalized
+
+
+def processing_parameters_template(method: str) -> dict[str, Any]:
+    normalized = _normalise_method(method)
+    if normalized == "raman":
+        return deepcopy(default_processing_parameters())
+    if normalized == "pl":
+        return deepcopy(default_pl_processing_parameters())
+    return deepcopy(default_xrd_processing_parameters())
+
+
+def write_processing_parameters_template(path: Path, method: str) -> Path:
+    return write_yaml(path, processing_parameters_template(method))
+
+
+def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: str) -> dict[str, Any]:
+    if method == "xrd":
+        metadata = "raw/xrd/char-YYYYMMDD-001/metadata.yml"
+        x_column = "two_theta"
+        y_column = "intensity"
+        x_unit = "2theta_deg"
+    elif method == "pl":
+        metadata = "raw/pl/char-YYYYMMDD-001/metadata.yml"
+        x_column = "col_0"
+        y_column = "col_1"
+        x_unit = "eV"
+    else:
+        metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
+        x_column = "col_0"
+        y_column = "col_1"
+        x_unit = "cm^-1"
+    return {
+        "item_id": f"{method}-{index:03d}",
+        "method": method,
+        "metadata": metadata,
+        "sample_refs": [sample_ref],
+        "experiment_refs": [experiment_ref],
+        "x_column": x_column,
+        "y_column": y_column,
+        "x_unit": x_unit,
+        "column_review_ref": "review-YYYYMMDD-001",
+        "parameter_review_ref": "review-YYYYMMDD-002",
+        "processing_parameters": {},
+    }
+
+
+def batch_manifest_template(
+    *,
+    project_id: str,
+    methods: list[str] | tuple[str, ...] | None = None,
+    sample_ref: str = "sample-001",
+    experiment_ref: str = "exp-001",
+    create_reports: bool = True,
+    continue_on_error: bool = True,
+) -> dict[str, Any]:
+    selected_methods = tuple(_normalise_method(method) for method in (methods or SUPPORTED_TEMPLATE_METHODS))
+    return {
+        "schema_version": "0.2",
+        "batch": {
+            "project_id": project_id,
+            "create_reports": create_reports,
+            "continue_on_error": continue_on_error,
+            "items": [
+                _item_defaults(method, index, sample_ref=sample_ref, experiment_ref=experiment_ref)
+                for index, method in enumerate(selected_methods, start=1)
+            ],
+        },
+    }
+
+
+def write_batch_manifest_template(
+    path: Path,
+    *,
+    project_id: str,
+    methods: list[str] | tuple[str, ...] | None = None,
+    sample_ref: str = "sample-001",
+    experiment_ref: str = "exp-001",
+    create_reports: bool = True,
+    continue_on_error: bool = True,
+) -> Path:
+    return write_yaml(
+        path,
+        batch_manifest_template(
+            project_id=project_id,
+            methods=methods,
+            sample_ref=sample_ref,
+            experiment_ref=experiment_ref,
+            create_reports=create_reports,
+            continue_on_error=continue_on_error,
+        ),
+    )

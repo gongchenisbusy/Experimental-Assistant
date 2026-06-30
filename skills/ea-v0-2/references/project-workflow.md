@@ -13,6 +13,7 @@ ea-project/
 ├── evaluation/
 ├── samples/
 ├── raw/
+├── templates/
 ├── processed/
 │   └── batches/
 ├── figures/
@@ -71,6 +72,15 @@ ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/
 ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-005 --parameter-review-ref review-20260630-006 --sample-ref sample-001
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
+
+Editable templates:
+
+```bash
+ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
+```
+
+Parameter templates are directly usable with `--parameters-file` after the user confirms the parameter content. Batch manifest templates still need real metadata and confirmed review refs before validation.
 
 Project readiness evaluation:
 
