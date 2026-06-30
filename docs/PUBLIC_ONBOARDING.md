@@ -128,12 +128,17 @@ ea literature confirm /path/to/ea-project \
 If a dedicated literature workflow or the user has exported candidate metadata, rank it locally before generating acquisition targets:
 
 ```bash
+ea literature search-public /path/to/ea-project \
+  --source crossref \
+  --source openalex \
+  --source arxiv \
+  --max-results 20
 ea literature rank-candidates /path/to/ea-project \
   --candidates literature/candidate_results.yml \
   --reference-year 2026
 ```
 
-`rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not run live search, look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
+`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml` and `literature/search_coverage.yml`, then ranks candidates. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
 
 ## 6. Traceability And Handoff Checks
 

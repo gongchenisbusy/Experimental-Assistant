@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import json
 import re
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
@@ -13,6 +16,7 @@ from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
 HandoffMode = Literal["dedicated_thread", "manual_agent", "same_thread"]
+PublicMetadataSource = Literal["crossref", "openalex", "arxiv"]
 
 SEARCH_SOURCES = [
     "project_zotero_library",
@@ -24,6 +28,8 @@ SEARCH_SOURCES = [
     "publisher_or_doi_pages",
     "wos_scopus_google_scholar_cnki_wanfang_when_user_has_access",
 ]
+
+PUBLIC_METADATA_SOURCES: list[PublicMetadataSource] = ["crossref", "openalex", "arxiv"]
 
 RANKING_HEADERS = [
     "candidate_id",
@@ -1020,6 +1026,7 @@ def rank_literature_candidates(
     reference_year: int | None = None,
     source_label: str | None = None,
     extra_keywords: list[str] | None = None,
+    metadata_search_executed: bool = False,
     ranked_at: str | None = None,
 ) -> dict[str, Any]:
     literature_root = root / "literature"
@@ -1155,14 +1162,23 @@ def rank_literature_candidates(
                     "fulltext_availability_and_usefulness": 0.10,
                 },
                 "boundaries": [
-                    "No live web search, Zotero call, browser automation, DOI resolution, or PDF download was executed.",
+                    (
+                        "Public metadata search was executed, but no Zotero call, browser automation, "
+                        "institution login, DOI full-text resolution, or PDF download was executed."
+                        if metadata_search_executed
+                        else "No live web search, Zotero call, browser automation, DOI resolution, or PDF download was executed."
+                    ),
                     "Venue authority uses supplied metadata or conservative text heuristics; it is not automatic impact-factor lookup.",
                     "Scores support triage only and require user review before bulk acquisition.",
                 ],
             },
             "summary_for_origin_thread": (
                 f"Ranked {len(ranked_rows)} literature candidate(s) from {len(candidate_rows)} supplied record(s). "
-                "No live search or full-text acquisition was executed."
+                + (
+                    "Public metadata search was executed; no full-text acquisition was executed."
+                    if metadata_search_executed
+                    else "No live search or full-text acquisition was executed."
+                )
             ),
         }
     )
@@ -1180,6 +1196,338 @@ def rank_literature_candidates(
         "selected_count": len(selected_rows),
         "selection_status": selection_status,
         "top_candidate": ranked_rows[0] if ranked_rows else None,
+        "status": status,
+    }
+
+
+def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "EA-v0.2 public-metadata-search/0.2 (local-first research assistant)",
+            "Accept": "application/json, application/xml, text/xml, */*",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - explicit user-invoked public metadata query
+        return response.read().decode("utf-8", errors="replace")
+
+
+def _public_search_url(source: PublicMetadataSource, query: str, max_results: int) -> str:
+    if source == "crossref":
+        return "https://api.crossref.org/works?" + urllib.parse.urlencode(
+            {"query.bibliographic": query, "rows": max_results}
+        )
+    if source == "openalex":
+        return "https://api.openalex.org/works?" + urllib.parse.urlencode({"search": query, "per-page": max_results})
+    if source == "arxiv":
+        return "https://export.arxiv.org/api/query?" + urllib.parse.urlencode(
+            {"search_query": f'all:"{query}"', "start": 0, "max_results": max_results}
+        )
+    raise ValueError(f"Unsupported public metadata source: {source}")
+
+
+def _first(value: Any) -> Any:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _crossref_year(item: dict[str, Any]) -> int | None:
+    for key in ("published-print", "published-online", "issued", "created"):
+        parts = item.get(key, {}).get("date-parts") if isinstance(item.get(key), dict) else None
+        if parts and parts[0]:
+            try:
+                return int(parts[0][0])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _crossref_authors(item: dict[str, Any]) -> list[str]:
+    authors = []
+    for author in item.get("author") or []:
+        if not isinstance(author, dict):
+            continue
+        name = " ".join(part for part in [author.get("given"), author.get("family")] if part)
+        if name:
+            authors.append(name)
+    return authors
+
+
+def _normalize_crossref_results(payload: dict[str, Any], *, query: str) -> list[dict[str, Any]]:
+    items = payload.get("message", {}).get("items") or []
+    candidates = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        candidates.append(
+            _compact_dict(
+                {
+                    "title": _first(item.get("title")),
+                    "authors": _crossref_authors(item),
+                    "year": _crossref_year(item),
+                    "venue": _first(item.get("container-title")),
+                    "doi": item.get("DOI"),
+                    "url": item.get("URL"),
+                    "abstract": item.get("abstract"),
+                    "citation_count": item.get("is-referenced-by-count"),
+                    "source": "crossref",
+                    "source_query": query,
+                }
+            )
+        )
+    return candidates
+
+
+def _openalex_abstract(item: dict[str, Any]) -> str | None:
+    inverted = item.get("abstract_inverted_index")
+    if not isinstance(inverted, dict):
+        return None
+    positions: list[tuple[int, str]] = []
+    for word, indices in inverted.items():
+        if isinstance(indices, list):
+            positions.extend((int(index), str(word)) for index in indices if isinstance(index, int))
+    return " ".join(word for _, word in sorted(positions)) if positions else None
+
+
+def _normalize_openalex_results(payload: dict[str, Any], *, query: str) -> list[dict[str, Any]]:
+    items = payload.get("results") or []
+    candidates = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        location = item.get("primary_location") if isinstance(item.get("primary_location"), dict) else {}
+        source = location.get("source") if isinstance(location.get("source"), dict) else {}
+        host_venue = item.get("host_venue") if isinstance(item.get("host_venue"), dict) else {}
+        open_access = item.get("open_access") if isinstance(item.get("open_access"), dict) else {}
+        candidates.append(
+            _compact_dict(
+                {
+                    "title": item.get("display_name") or item.get("title"),
+                    "authors": [
+                        authorship.get("author", {}).get("display_name")
+                        for authorship in item.get("authorships") or []
+                        if isinstance(authorship, dict) and authorship.get("author")
+                    ],
+                    "year": item.get("publication_year"),
+                    "venue": source.get("display_name") or host_venue.get("display_name"),
+                    "doi": _as_text(item.get("doi")).replace("https://doi.org/", "") or None,
+                    "url": location.get("landing_page_url") or item.get("doi"),
+                    "abstract": _openalex_abstract(item),
+                    "citation_count": item.get("cited_by_count"),
+                    "open_access": open_access.get("is_oa"),
+                    "pdf_url": location.get("pdf_url"),
+                    "source": "openalex",
+                    "source_query": query,
+                }
+            )
+        )
+    return candidates
+
+
+def _normalize_arxiv_results(payload: str, *, query: str) -> list[dict[str, Any]]:
+    root = ET.fromstring(payload)
+    ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    candidates = []
+    for entry in root.findall("atom:entry", ns):
+        title = (entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+        url = (entry.findtext("atom:id", default="", namespaces=ns) or "").strip()
+        published = entry.findtext("atom:published", default="", namespaces=ns) or ""
+        doi = entry.findtext("arxiv:doi", default="", namespaces=ns) or None
+        authors = [
+            (author.findtext("atom:name", default="", namespaces=ns) or "").strip()
+            for author in entry.findall("atom:author", ns)
+        ]
+        candidates.append(
+            _compact_dict(
+                {
+                    "title": re.sub(r"\s+", " ", title),
+                    "authors": [author for author in authors if author],
+                    "year": int(published[:4]) if published[:4].isdigit() else None,
+                    "venue": "arXiv",
+                    "doi": doi,
+                    "url": url,
+                    "abstract": (entry.findtext("atom:summary", default="", namespaces=ns) or "").strip(),
+                    "source": "arxiv",
+                    "source_query": query,
+                    "open_access": True,
+                }
+            )
+        )
+    return candidates
+
+
+def _normalize_public_response(source: PublicMetadataSource, response_text: str, *, query: str) -> list[dict[str, Any]]:
+    if source == "crossref":
+        return _normalize_crossref_results(json.loads(response_text), query=query)
+    if source == "openalex":
+        return _normalize_openalex_results(json.loads(response_text), query=query)
+    if source == "arxiv":
+        return _normalize_arxiv_results(response_text, query=query)
+    raise ValueError(f"Unsupported public metadata source: {source}")
+
+
+def _search_query_strings(root: Path, extra_keywords: list[str] | None = None) -> list[str]:
+    query_path = root / "literature" / "search_queries.yml"
+    if query_path.exists():
+        data = read_yaml(query_path)
+        queries = [str(item.get("query")) for item in data.get("queries") or [] if item.get("query")]
+        if extra_keywords:
+            queries.extend(extra_keywords)
+        return _unique(queries)
+    project = _project_context(root)
+    keywords = generate_literature_keywords(
+        project_name=str(project.get("project_name", "")),
+        research_direction=str(project.get("research_direction", "")),
+        material_system=str(project.get("material_system", "")),
+        experiment_type=str(project.get("experiment_type", "")),
+        extra_keywords=extra_keywords,
+    )
+    return [item["query"] for item in build_search_queries(keywords)]
+
+
+def search_public_literature_metadata(
+    root: Path,
+    *,
+    sources: list[PublicMetadataSource] | None = None,
+    max_results: int = 20,
+    query_limit: int | None = 3,
+    top_n: int | None = None,
+    reference_year: int | None = None,
+    extra_keywords: list[str] | None = None,
+    searched_at: str | None = None,
+    fetcher: Callable[[str, str], str] | None = None,
+) -> dict[str, Any]:
+    if max_results <= 0:
+        raise ValueError("max_results must be positive")
+    if query_limit is not None and query_limit <= 0:
+        raise ValueError("query_limit must be positive when supplied")
+    selected_sources = sources or PUBLIC_METADATA_SOURCES
+    unsupported = [source for source in selected_sources if source not in PUBLIC_METADATA_SOURCES]
+    if unsupported:
+        raise ValueError(f"Unsupported public metadata source(s): {', '.join(unsupported)}")
+
+    literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
+    project = _project_context(root)
+    project_id = str(project.get("project_id", "unknown-project"))
+    status_path = ensure_literature_status(root, project_id=project_id)
+    searched_at = searched_at or EARecord.now_iso()
+    queries = _search_query_strings(root, extra_keywords=extra_keywords)
+    if query_limit is not None:
+        queries = queries[:query_limit]
+    fetch = fetcher or (lambda url, source: _public_fetch_text(url, source=source))
+
+    candidates: list[dict[str, Any]] = []
+    coverage_entries: list[dict[str, Any]] = []
+    for source in selected_sources:
+        for query in queries:
+            url = _public_search_url(source, query, max_results)
+            entry: dict[str, Any] = {
+                "source": source,
+                "query": query,
+                "url": url,
+                "status": "not_started",
+                "candidate_count": 0,
+            }
+            try:
+                response_text = fetch(url, source)
+                normalized = _normalize_public_response(source, response_text, query=query)
+            except Exception as exc:  # noqa: BLE001 - coverage records should preserve source-level failures
+                entry.update({"status": "error", "error": str(exc)})
+                coverage_entries.append(entry)
+                continue
+            entry.update({"status": "ok", "candidate_count": len(normalized)})
+            coverage_entries.append(entry)
+            candidates.extend(normalized)
+
+    candidate_manifest_path = literature_root / "public_search_candidates.yml"
+    coverage_path = literature_root / "search_coverage.yml"
+    candidate_manifest = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "created_at": searched_at,
+        "source_type": "public_metadata_search",
+        "sources": selected_sources,
+        "query_count": len(queries),
+        "candidate_count": len(candidates),
+        "boundaries": [
+            "Public metadata APIs only; no Zotero, browser profile, institution login, credentials, paywall access, DOI full-text resolution, or PDF download.",
+            "Coverage is source-limited and query-limited; do not claim exhaustive web coverage.",
+        ],
+        "candidates": candidates,
+    }
+    coverage = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "created_at": searched_at,
+        "sources": selected_sources,
+        "query_count": len(queries),
+        "max_results_per_query": max_results,
+        "candidate_count": len(candidates),
+        "coverage_entries": coverage_entries,
+        "known_limits": [
+            "Source API availability, query syntax, indexing lag, and API rate limits can omit relevant literature.",
+            "No source proves exhaustive web coverage.",
+            "Full-text acquisition, Zotero use, browser assistance, and institution access remain separate user-confirmed workflows.",
+        ],
+    }
+    write_yaml(candidate_manifest_path, candidate_manifest)
+    write_yaml(coverage_path, coverage)
+
+    ranking = rank_literature_candidates(
+        root,
+        candidates_path=Path("literature/public_search_candidates.yml"),
+        top_n=top_n,
+        reference_year=reference_year,
+        source_label="public_metadata_search",
+        extra_keywords=extra_keywords,
+        metadata_search_executed=True,
+        ranked_at=searched_at,
+    )
+    status = read_yaml(status_path)
+    status.update(
+        {
+            "status": "public_metadata_ranked_ready"
+            if status.get("selected_top_n")
+            else "public_metadata_ranked_awaiting_user_confirmation",
+            "public_metadata_search_ref": "literature/public_search_candidates.yml",
+            "search_coverage_ref": "literature/search_coverage.yml",
+            "public_metadata_sources": selected_sources,
+            "public_metadata_search_completed_at": searched_at,
+            "summary_for_origin_thread": (
+                f"Public metadata search collected {len(candidates)} candidate record(s) from "
+                f"{len(selected_sources)} source(s) and {len(queries)} query/queries. "
+                "No full-text acquisition, Zotero, browser, institution login, or PDF download was executed."
+            ),
+        }
+    )
+    write_yaml(status_path, status)
+
+    search_log = literature_root / "search_log.md"
+    previous_log = search_log.read_text(encoding="utf-8") if search_log.exists() else "# Literature Search Log\n"
+    log_lines = [
+        previous_log.rstrip(),
+        "",
+        "## Public Metadata Search",
+        "",
+        f"- searched_at: {searched_at}",
+        f"- sources: {', '.join(selected_sources)}",
+        f"- query_count: {len(queries)}",
+        f"- candidate_count: {len(candidates)}",
+        "- boundary: public metadata only; no full-text acquisition, Zotero, browser, institution login, or PDF download.",
+        "- coverage: source-limited and query-limited; no exhaustive web coverage claim.",
+    ]
+    search_log.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+    ranking["status"] = status
+    return {
+        "candidate_manifest_path": str(candidate_manifest_path),
+        "coverage_path": str(coverage_path),
+        "ranking_path": ranking["ranking_path"],
+        "selected_items_path": ranking["selected_items_path"],
+        "candidate_count": len(candidates),
+        "coverage": coverage,
+        "ranking": ranking,
         "status": status,
     }
 

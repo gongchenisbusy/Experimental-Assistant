@@ -45,6 +45,7 @@ Use the planning commands before any bulk search or full-text acquisition:
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type" --enable-literature
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only --keyword strain
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
+ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
@@ -54,6 +55,8 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 ```
 
 `plan` writes `search_queries.yml`, `search_log.md`, empty `candidates.csv`, empty `ranking.csv`, and `confirmation_request.yml`. It does not run web searches, open Zotero, use browser profiles, or download PDFs. `confirm` records the user's selected top N and moves the deployment state to `confirmed_awaiting_acquisition`.
+
+`search-public` explicitly queries public metadata APIs such as Crossref, OpenAlex, and arXiv, writes `public_search_candidates.yml`, `search_coverage.yml`, appends `search_log.md`, and feeds the same ranking workflow. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF download. Treat the result as source-limited metadata coverage, not exhaustive web coverage.
 
 `rank-candidates` consumes a user- or dedicated-workflow-supplied CSV/YAML/JSON candidate file, de-duplicates by DOI/URL/title, scores project relevance, venue authority, recency, citation/influence, and full-text availability, writes `ranking.csv`, and refreshes `selected_items.yml`. It does not run live web search, look up journal impact factors, use Zotero/browser access, log into institutions, or download PDFs.
 

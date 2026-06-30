@@ -9,6 +9,7 @@ from ea.literature.service import (
     prepare_literature_acquisition_handoff,
     rank_literature_candidates,
     recommended_top_n,
+    search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "prepare_literature_acquisition_handoff",
     "rank_literature_candidates",
     "recommended_top_n",
+    "search_public_literature_metadata",
     "sync_literature_acquisition_status",
 ]

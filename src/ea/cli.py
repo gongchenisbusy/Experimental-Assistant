@@ -33,6 +33,7 @@ from ea.literature import (
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     rank_literature_candidates,
+    search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
 from ea.materials import assignment_candidates, available_materials, get_material_profile
@@ -415,6 +416,14 @@ def build_parser() -> argparse.ArgumentParser:
     lit_rank.add_argument("--reference-year", type=int)
     lit_rank.add_argument("--source-label")
     lit_rank.add_argument("--keyword", action="append", default=[])
+    lit_search = literature_sub.add_parser("search-public", help="query public metadata APIs and rank candidates")
+    lit_search.add_argument("workspace", type=Path)
+    lit_search.add_argument("--source", action="append", choices=["crossref", "openalex", "arxiv"], default=[])
+    lit_search.add_argument("--max-results", type=int, default=20)
+    lit_search.add_argument("--query-limit", type=int, default=3)
+    lit_search.add_argument("--top-n", type=int)
+    lit_search.add_argument("--reference-year", type=int)
+    lit_search.add_argument("--keyword", action="append", default=[])
     lit_handoff = literature_sub.add_parser("handoff", help="prepare an acquisition handoff packet for a dedicated literature workflow")
     lit_handoff.add_argument("workspace", type=Path)
     lit_handoff.add_argument("--mode", choices=["dedicated_thread", "manual_agent", "same_thread"], default="dedicated_thread")
@@ -1185,6 +1194,19 @@ def main(argv: list[str] | None = None) -> int:
                     top_n=args.top_n,
                     reference_year=args.reference_year,
                     source_label=args.source_label,
+                    extra_keywords=args.keyword,
+                )
+            )
+            return 0
+        if args.literature_command == "search-public":
+            _print_json(
+                search_public_literature_metadata(
+                    args.workspace,
+                    sources=args.source or None,
+                    max_results=args.max_results,
+                    query_limit=args.query_limit,
+                    top_n=args.top_n,
+                    reference_year=args.reference_year,
                     extra_keywords=args.keyword,
                 )
             )

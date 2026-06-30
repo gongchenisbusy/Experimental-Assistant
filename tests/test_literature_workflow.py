@@ -13,6 +13,7 @@ from ea.literature import (
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     rank_literature_candidates,
+    search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
 from ea.projects import initialize_project
@@ -381,6 +382,134 @@ def test_cli_literature_rank_candidates_populates_acquisition_targets(tmp_path: 
     assert request["request"]["target_count"] == 1
 
 
+def test_literature_search_public_normalizes_coverage_and_ranks_candidates(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Public Search",
+        project_slug="mos2-public-search",
+        research_direction="MoS2 Raman public metadata search",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+
+    def fake_fetcher(url: str, source: str) -> str:
+        assert "MoS2" in url or "mos2" in url.lower()
+        if source == "crossref":
+            return json.dumps(
+                {
+                    "message": {
+                        "items": [
+                            {
+                                "title": ["MoS2 Raman from Crossref"],
+                                "author": [{"given": "A.", "family": "Author"}],
+                                "issued": {"date-parts": [[2024]]},
+                                "container-title": ["ACS Nano"],
+                                "DOI": "10.1000/public-crossref",
+                                "URL": "https://doi.org/10.1000/public-crossref",
+                                "is-referenced-by-count": 25,
+                            }
+                        ]
+                    }
+                }
+            )
+        if source == "openalex":
+            return json.dumps(
+                {
+                    "results": [
+                        {
+                            "display_name": "MoS2 photoluminescence from OpenAlex",
+                            "publication_year": 2023,
+                            "doi": "https://doi.org/10.1000/public-openalex",
+                            "authorships": [{"author": {"display_name": "B. Author"}}],
+                            "primary_location": {
+                                "source": {"display_name": "Nature Communications"},
+                                "landing_page_url": "https://example.org/openalex",
+                                "pdf_url": "https://example.org/openalex.pdf",
+                            },
+                            "open_access": {"is_oa": True},
+                            "cited_by_count": 50,
+                        }
+                    ]
+                }
+            )
+        if source == "arxiv":
+            return """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2601.00001v1</id>
+    <published>2026-01-01T00:00:00Z</published>
+    <title>MoS2 Raman from arXiv</title>
+    <summary>MoS2 Raman metadata candidate.</summary>
+    <author><name>C. Author</name></author>
+  </entry>
+</feed>
+"""
+        raise AssertionError(f"unexpected source {source}")
+
+    result = search_public_literature_metadata(
+        tmp_path,
+        sources=["crossref", "openalex", "arxiv"],
+        max_results=1,
+        query_limit=1,
+        reference_year=2026,
+        searched_at="2026-07-01T10:00:00",
+        fetcher=fake_fetcher,
+    )
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    coverage = read_yaml(tmp_path / "literature" / "search_coverage.yml")
+    manifest = read_yaml(tmp_path / "literature" / "public_search_candidates.yml")
+    selected = read_yaml(tmp_path / "literature" / "selected_items.yml")
+    search_log = (tmp_path / "literature" / "search_log.md").read_text(encoding="utf-8")
+
+    assert result["candidate_count"] == 3
+    assert len(coverage["coverage_entries"]) == 3
+    assert {entry["source"] for entry in coverage["coverage_entries"]} == {"crossref", "openalex", "arxiv"}
+    assert manifest["boundaries"][0].startswith("Public metadata APIs only")
+    assert status["status"] == "public_metadata_ranked_ready"
+    assert status["public_metadata_sources"] == ["crossref", "openalex", "arxiv"]
+    assert "No full-text acquisition" in status["summary_for_origin_thread"]
+    assert selected["selection_status"] == "selected_from_ranked_candidates"
+    assert len(selected["items"]) == 2
+    assert "Public Metadata Search" in search_log
+
+
+def test_cli_literature_search_public_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_search_public_literature_metadata(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["sources"] == ["crossref"]
+        assert kwargs["max_results"] == 3
+        assert kwargs["query_limit"] == 1
+        assert kwargs["extra_keywords"] == ["strain"]
+        return {"status": {"status": "public_metadata_ranked_ready"}, "candidate_count": 1}
+
+    monkeypatch.setattr("ea.cli.search_public_literature_metadata", fake_search_public_literature_metadata)
+
+    assert (
+        main(
+            [
+                "literature",
+                "search-public",
+                str(tmp_path),
+                "--source",
+                "crossref",
+                "--max-results",
+                "3",
+                "--query-limit",
+                "1",
+                "--keyword",
+                "strain",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["candidate_count"] == 1
+    assert result["status"]["status"] == "public_metadata_ranked_ready"
+
+
 def test_literature_import_acquisition_manifest_registers_references_and_syncs_status(tmp_path: Path) -> None:
     initialize_project(
         tmp_path,
@@ -621,13 +750,17 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
 
     assert "literature-library decision record" in readme
     assert "rank-candidates" in readme
+    assert "search-public" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
+    assert "search-public" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
+    assert "public_search_candidate_manifest" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
+    assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]
