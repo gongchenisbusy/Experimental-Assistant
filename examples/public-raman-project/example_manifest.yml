@@ -1,0 +1,32 @@
+schema_version: '0.2'
+example_id: public-raman-project
+example_type: packaged_public_project
+project_id: prj-public-raman-example
+report_id: rpt-public-raman-example-20260602-001
+result_id: res-public-raman-example-raman-20260602-001
+figure_id: fig-public-raman-example-raman-20260602-001
+public_boundary:
+  uses_developer_machine_defaults: false
+  zotero_enabled: false
+  browser_assist_enabled: false
+  institution_access: null
+  private_cache_required: false
+key_artifacts:
+  project: EA_PROJECT.md
+  rule_card: PROJECT_RULE_CARD.md
+  source_input: source-inputs/raw/mos2-raman-public-fixture.txt
+  raw_metadata: raw/raman/char-20260602-001/metadata.yml
+  raw_file: raw/raman/char-20260602-001/mos2-raman-public-fixture.txt
+  sample: samples/sample-example-mos2-001.md
+  experiment: experiments/exp-20260516-001.md
+  raman_metadata: processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_metadata.yml
+  processed_csv: processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_processed.csv
+  peak_table: processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_peaks.csv
+  figure: processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/fig-public-raman-example-raman-20260602-001.png
+  report: reports/rpt-public-raman-example-20260602-001.md
+validation:
+  healthcheck_status: pass
+  healthcheck_errors: 0
+  evaluation_status: pass
+  evaluation_errors: 0
+regenerate: python3 scripts/build_packaged_example_project.py --force

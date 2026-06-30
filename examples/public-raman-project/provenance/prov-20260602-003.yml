@@ -1,0 +1,21 @@
+provenance_id: prov-20260602-003
+workflow: raw_file_import
+created_at: '2026-06-02T17:10:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files:
+  - source-inputs/raw/mos2-raman-public-fixture.txt
+outputs:
+  records:
+  - raw/raman/char-20260602-001/metadata.yml
+  files:
+  - raw/raman/char-20260602-001/mos2-raman-public-fixture.txt
+parameters:
+  import_status: imported
+  sha256: 33d7f2c9a7712058f7b376c715ea730df278dde8984e7320728f7e0403fce998
+review_refs: []
+warnings: []
+source_refs: []
+scripts: []

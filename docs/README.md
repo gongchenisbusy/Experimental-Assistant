@@ -14,31 +14,35 @@
    - 面向报告/批处理项目导出包接收者和后续 agent 的交接验证路径。
    - 说明 `bundle_manifest.yml`、`batch_bundle_manifest.yml`、`bundle_checksums.yml`、archive checksum、provenance 审计和项目导出包签名边界。
 
-4. `EA_PROJECT_DESIGN.md`
+4. `../examples/public-raman-project/`
+   - 随 release 打包的公开安全 Raman 示例项目。
+   - 用于新用户和后续 agent 检查 EA 项目结构、review gates、Raman 处理结果、报告、图件和 provenance，不作为真实用户项目默认值。
+
+5. `EA_PROJECT_DESIGN.md`
    - EA 的项目级设计文档。
    - 描述长期目标、核心价值、架构原则、数据/记忆/证据模型。
    - 不把任何单一版本、单一测试样本或单一表征方法写成项目整体目标。
 
-5. `EA_V0_2_WORK_PLAN.md`
+6. `EA_V0_2_WORK_PLAN.md`
    - EA v0.2 工作计划草案。
    - 用于承接 v0.1 已完成纵向切片，并收集后续用户提出的新版本改进建议。
 
-6. `EA_SKILL_MODULE_ARCHITECTURE.md`
+7. `EA_SKILL_MODULE_ARCHITECTURE.md`
    - EA 父级 skill、子 skill 清单、`add-skills` 接入治理和模块契约。
 
-7. `EA_REPORT_AND_FIGURE_STANDARD.md`
+8. `EA_REPORT_AND_FIGURE_STANDARD.md`
    - 数据分析报告、图片 ID、报告 ID、图片 footer、引用格式和可信度表达。
 
-8. `EA_LOCAL_LITERATURE_LIBRARY_SKILL.md`
+9. `EA_LOCAL_LITERATURE_LIBRARY_SKILL.md`
    - 本地文献库部署流程、Zotero 集成、候选文献评分和专用文献线程同步。
 
-9. `EA_PUBLIC_RELEASE_INITIALIZATION.md`
+10. `EA_PUBLIC_RELEASE_INITIALIZATION.md`
    - 公开发布场景下的初始化、配置、路径、账号和测试隔离要求。
 
-10. `EA_V0_2_CONFIRMATION_CHECKLIST.md`
+11. `EA_V0_2_CONFIRMATION_CHECKLIST.md`
    - v0.2 开始实现前需要用户确认或修改的标准清单。
 
-11. `ea-brief-agent-native-zh.md`
+12. `ea-brief-agent-native-zh.md`
    - 当前简版 agent 入口。
    - 给后续 agent 快速理解 EA 当前方向和应该先读哪些文件。
 

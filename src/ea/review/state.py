@@ -59,7 +59,7 @@ def write_review_record(
     reviewed_at: str | None = None,
 ) -> Path:
     classification = classify_user_response(user_response)
-    review_id = next_id(root, "review")
+    review_id = next_id(root, "review", reviewed_at[:10] if reviewed_at else None)
     record = ReviewRecord(
         review_id=review_id,
         target_type=target_type,

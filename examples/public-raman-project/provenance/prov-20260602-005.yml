@@ -1,0 +1,29 @@
+provenance_id: prov-20260602-005
+workflow: report_generation
+created_at: '2026-06-02T17:20:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_metadata.yml
+  files:
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_processed.csv
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_peaks.csv
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/fig-public-raman-example-raman-20260602-001.png
+outputs:
+  records:
+  - reports/rpt-public-raman-example-20260602-001.md
+  files: []
+parameters:
+  include_next_step_suggestions: false
+  language: zh
+review_refs: []
+warnings:
+- code: normalization_applied
+  message: Intensity normalized by processing parameters.
+  severity: low
+- code: baseline_not_corrected
+  message: No baseline correction was applied.
+  severity: low
+source_refs: []
+scripts: []

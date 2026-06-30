@@ -1,0 +1,8 @@
+review_id: review-20260602-003
+target_type: raman_parameters
+target_ref: raw/raman/char-20260602-001/metadata.yml
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-02T17:13:00'
+user_original_text: 可以，保存
+reviewed_content_hash: d097c1813d84b128fac74b8a27376cc80f5644fec36eee806c68501affa78126

@@ -43,6 +43,13 @@ def _find_by_sha(root: Path, sha256: str) -> tuple[Path, dict[str, Any]] | None:
     return None
 
 
+def _source_ref(root: Path, source_path: Path) -> str:
+    try:
+        return source_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(source_path)
+
+
 def _set_readonly(path: Path) -> str | None:
     try:
         current = path.stat().st_mode
@@ -79,13 +86,14 @@ def import_raw_file(
     sample_refs = sample_refs or []
     experiment_refs = experiment_refs or []
     sha256 = file_sha256(source_path)
+    source_ref = _source_ref(root, source_path)
     file_size = source_path.stat().st_size
     original_mtime = source_path.stat().st_mtime
     duplicate = _find_by_sha(root, sha256)
 
     if duplicate:
         canonical_metadata_path, canonical_metadata = duplicate
-        characterization_id = next_id(root, "characterization")
+        characterization_id = next_id(root, "characterization", imported_at[:10])
         metadata_path = root / "raw" / characterization_type / characterization_id / "metadata.yml"
         canonical_samples = set(canonical_metadata.get("sample_refs") or [])
         canonical_experiments = set(canonical_metadata.get("experiment_refs") or [])
@@ -98,7 +106,7 @@ def import_raw_file(
         alias = {
             "characterization_id": characterization_id,
             "original_filename": source_path.name,
-            "original_source_path": str(source_path),
+            "original_source_path": source_ref,
             "imported_at": imported_at,
             "sample_refs": sample_refs,
             "experiment_refs": experiment_refs,
@@ -115,7 +123,7 @@ def import_raw_file(
             "sample_refs": sample_refs,
             "experiment_refs": experiment_refs,
             "original_filename": source_path.name,
-            "original_source_path": str(source_path),
+            "original_source_path": source_ref,
             "project_raw_path": canonical_metadata["project_raw_path"],
             "sha256": sha256,
             "file_size_bytes": file_size,
@@ -132,7 +140,7 @@ def import_raw_file(
         provenance_path = write_provenance_entry(
             root,
             workflow="raw_file_import",
-            inputs={"records": [], "files": [str(source_path)]},
+            inputs={"records": [], "files": [source_ref]},
             outputs={"records": [str(metadata_path.relative_to(root))], "files": []},
             parameters={"import_status": import_status, "sha256": sha256},
             warnings=[{"code": "duplicate_refs_need_review", "message": "Duplicate raw file was linked to different sample or experiment refs.", "severity": "high"}] if refs_conflict else [],
@@ -149,7 +157,7 @@ def import_raw_file(
             canonical_metadata_path=canonical_metadata_path,
         )
 
-    characterization_id = next_id(root, "characterization")
+    characterization_id = next_id(root, "characterization", imported_at[:10])
     raw_dir = root / "raw" / characterization_type / characterization_id
     raw_dir.mkdir(parents=True, exist_ok=True)
     destination = raw_dir / source_path.name
@@ -167,7 +175,7 @@ def import_raw_file(
         sample_refs=sample_refs,
         experiment_refs=experiment_refs,
         original_filename=source_path.name,
-        original_source_path=str(source_path),
+        original_source_path=source_ref,
         project_raw_path=str(destination.relative_to(root)),
         sha256=sha256,
         file_size_bytes=file_size,
@@ -183,7 +191,7 @@ def import_raw_file(
     provenance_path = write_provenance_entry(
         root,
         workflow="raw_file_import",
-        inputs={"records": [], "files": [str(source_path)]},
+        inputs={"records": [], "files": [source_ref]},
         outputs={
             "records": [str(metadata_path.relative_to(root))],
             "files": [str(destination.relative_to(root))],

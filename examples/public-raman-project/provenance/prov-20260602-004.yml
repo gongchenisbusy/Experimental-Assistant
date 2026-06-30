@@ -1,0 +1,64 @@
+provenance_id: prov-20260602-004
+workflow: raman_processing
+created_at: '2026-06-02T17:15:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - raw/raman/char-20260602-001/metadata.yml
+  files:
+  - raw/raman/char-20260602-001/mos2-raman-public-fixture.txt
+outputs:
+  records:
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_metadata.yml
+  files:
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_processed.csv
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_peaks.csv
+  - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/fig-public-raman-example-raman-20260602-001.png
+parameters:
+  x_column: col_0
+  y_column: col_1
+  x_unit: cm^-1
+  processing_parameters:
+    baseline_correction:
+      enabled: false
+      method: asls
+      lambda: 100000.0
+      p: 0.01
+      niter: 10
+    smoothing:
+      enabled: false
+      method: savitzky_golay
+      window_length: 9
+      polyorder: 2
+    normalization:
+      enabled: true
+      method: max_intensity
+    spike_detection:
+      enabled: false
+      method: rolling_mad
+      window: 7
+      mad_threshold: 8.0
+    peak_detection:
+      method: scipy_find_peaks
+      prominence: auto
+      distance: auto
+    peak_fitting:
+      enabled: true
+      method: local_gaussian
+      window_cm-1: auto
+      min_points: 7
+review_refs:
+- review-20260602-002
+- review-20260602-003
+warnings:
+- code: normalization_applied
+  message: Intensity normalized by processing parameters.
+  severity: low
+- code: baseline_not_corrected
+  message: No baseline correction was applied.
+  severity: low
+source_refs: []
+scripts:
+- path: src/ea/raman/service.py
+  version: 0.2.0

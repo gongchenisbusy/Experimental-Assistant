@@ -13,6 +13,7 @@ def _minimal_release_root(root: Path) -> Path:
     (root / "skills" / "ea-v0-2").mkdir(parents=True)
     (root / "skill-registry").mkdir()
     (root / "docs").mkdir()
+    (root / "examples").mkdir()
     (root / "tests").mkdir()
     (root / "scripts").mkdir()
     (root / "dist").mkdir()
@@ -55,6 +56,7 @@ ea-release-checklist = "ea.release_distribution:main"
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
         "# EA v0.2 Project Bundle Verification\n", encoding="utf-8"
     )
+    (root / "examples" / "example_manifest.yml").write_text("example_id: minimal\n", encoding="utf-8")
     (root / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
     (root / "scripts" / "demo.py").write_text("print('demo')\n", encoding="utf-8")
     (root / "dist" / "ignored.yml").write_text("ignored: true\n", encoding="utf-8")
@@ -80,6 +82,7 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "docs/RELEASE_VERIFICATION.md" in paths
     assert "docs/PROJECT_BUNDLE_VERIFICATION.md" in paths
+    assert "examples/example_manifest.yml" in paths
     assert "src/ea/__init__.py" in paths
     assert "src/ea/__pycache__/ignored.pyc" not in paths
     assert "dist/ignored.yml" not in paths

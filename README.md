@@ -4,7 +4,7 @@ EA v0.2 is the clean implementation workspace for the local-first Experimental A
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
+New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. A packaged public-safe example project lives in `examples/public-raman-project/`. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
 ## Public Setup
 
@@ -15,6 +15,8 @@ ea init-project /path/to/ea-project --name "Project name" --slug project-slug --
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea healthcheck examples/public-raman-project
+ea eval project examples/public-raman-project --no-write
 ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
@@ -84,6 +86,7 @@ python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
 python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
+python3 scripts/build_packaged_example_project.py --force
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 python3 scripts/sign_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
@@ -94,6 +97,7 @@ python3 scripts/build_distribution_checklist.py
 `scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.
+`scripts/build_packaged_example_project.py` regenerates the public-safe Raman example project under `examples/public-raman-project/`; the example is included in default release manifests/packages and should pass `ea healthcheck` and `ea eval project --no-write`.
 `scripts/generate_release_keypair.py`, `scripts/sign_release_package.py`, and `scripts/verify_release_signature.py` implement an optional detached Ed25519 signature workflow for release packages. Private/public key paths must be supplied explicitly by the user; EA does not assume or search developer-machine key locations. The installed console entry points are `ea-release-keygen`, `ea-sign-release-package`, and `ea-verify-release-signature`.
 `scripts/build_distribution_checklist.py` writes `dist/ea-v0.2-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
 

@@ -1,0 +1,24 @@
+schema_version: '0.2'
+source_refs: []
+provenance_refs:
+- prov-20260602-003
+review_refs: []
+characterization_id: char-20260602-001
+project_id: prj-public-raman-example
+sample_refs:
+- sample-example-mos2-001
+characterization_type: raman
+original_source_path: source-inputs/raw/mos2-raman-public-fixture.txt
+project_raw_path: raw/raman/char-20260602-001/mos2-raman-public-fixture.txt
+sha256: 33d7f2c9a7712058f7b376c715ea730df278dde8984e7320728f7e0403fce998
+file_size_bytes: 7714
+imported_at: '2026-06-02T17:10:00'
+import_status: imported
+original_filename: mos2-raman-public-fixture.txt
+aliases: []
+instrument_metadata: {}
+column_candidates: []
+experiment_refs:
+- exp-20260516-001
+original_mtime: 1780420140.0
+warnings: []

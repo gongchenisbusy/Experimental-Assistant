@@ -1,0 +1,55 @@
+schema_version: '0.2'
+figures:
+  fig-public-raman-example-raman-20260602-001:
+    figure_id: fig-public-raman-example-raman-20260602-001
+    path: processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/fig-public-raman-example-raman-20260602-001.png
+    report_id: rpt-public-raman-example-20260602-001
+    result_id: res-public-raman-example-raman-20260602-001
+    raw_data_ids:
+    - char-20260602-001
+    sample_ids:
+    - sample-example-mos2-001
+    experiment_ids:
+    - exp-20260516-001
+    generation:
+      style_profile: nature_like_clean
+      script: src/ea/raman/service.py
+      parameters:
+        x_column: col_0
+        y_column: col_1
+        x_unit: cm^-1
+        processing_parameters:
+          baseline_correction:
+            enabled: false
+            method: asls
+            lambda: 100000.0
+            p: 0.01
+            niter: 10
+          smoothing:
+            enabled: false
+            method: savitzky_golay
+            window_length: 9
+            polyorder: 2
+          normalization:
+            enabled: true
+            method: max_intensity
+          spike_detection:
+            enabled: false
+            method: rolling_mad
+            window: 7
+            mad_threshold: 8.0
+          peak_detection:
+            method: scipy_find_peaks
+            prominence: auto
+            distance: auto
+          peak_fitting:
+            enabled: true
+            method: local_gaussian
+            window_cm-1: auto
+            min_points: 7
+    caption: Raman spectrum with processed intensity and detected peaks.
+    purpose: raman_analysis_report
+    style_profile: nature_like_clean
+    source_data_refs:
+    - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_processed.csv
+    - processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/raman_peaks.csv

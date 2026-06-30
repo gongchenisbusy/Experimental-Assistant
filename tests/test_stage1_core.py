@@ -56,6 +56,7 @@ def test_review_and_provenance_records_are_written_with_links(tmp_path: Path) ->
     )
     review = read_yaml(review_path)
 
+    assert review["review_id"] == "review-20260602-001"
     assert review["review_status"] == "user_confirmed"
     assert review["target_ref"] == "experiments/exp-20260602-001.md"
     assert len(review["reviewed_content_hash"]) == 64
@@ -71,6 +72,7 @@ def test_review_and_provenance_records_are_written_with_links(tmp_path: Path) ->
     )
     provenance = read_yaml(provenance_path)
 
+    assert provenance["provenance_id"] == "prov-20260602-001"
     assert provenance["workflow"] == "experiment_log_save"
     assert provenance["review_refs"] == [review["review_id"]]
     assert provenance["outputs"]["records"] == ["experiments/exp-20260602-001.md"]

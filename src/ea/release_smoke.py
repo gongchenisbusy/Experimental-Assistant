@@ -17,7 +17,7 @@ FORBIDDEN_PORTABILITY_PATTERNS = [
     "Chrome Profile",
     "institution password",
 ]
-DEFAULT_SCAN_ROOTS = ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry"]
+DEFAULT_SCAN_ROOTS = ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry", "examples"]
 DEFAULT_EXCLUDED_SCAN_PATHS = {
     "src/ea/config/service.py",
     "src/ea/release_smoke.py",

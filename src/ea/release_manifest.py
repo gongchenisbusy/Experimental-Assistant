@@ -19,6 +19,7 @@ DEFAULT_INCLUDE_ROOTS = [
     "skills/ea-v0-2",
     "skill-registry",
     "docs",
+    "examples",
     "tests",
     "scripts",
 ]
@@ -192,7 +193,7 @@ def build_release_manifest(
                 "portability_scan",
             ],
             "skill_validation_target": "skills/ea-v0-2",
-            "portability_scan_scope": ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry"],
+            "portability_scan_scope": ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry", "examples"],
         },
         "public_boundaries": PUBLIC_BOUNDARY_NOTES,
         "signature": {

@@ -33,7 +33,7 @@ def write_provenance_entry(
     skill_name: str = "ea-core",
     created_at: str | None = None,
 ) -> Path:
-    provenance_id = next_id(root, "provenance")
+    provenance_id = next_id(root, "provenance", created_at[:10] if created_at else None)
     entry = ProvenanceEntry(
         provenance_id=provenance_id,
         workflow=workflow,

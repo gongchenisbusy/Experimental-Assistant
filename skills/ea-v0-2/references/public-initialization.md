@@ -6,6 +6,8 @@ EA must default to an unknown public user environment. Do not hardcode developer
 
 For a first-project public-user walkthrough in the repository docs, read `docs/PUBLIC_ONBOARDING.md`.
 
+For a packaged public-safe project artifact that agents can inspect before touching a user's real project, read `examples/public-raman-project/README.md` from the repository root and run health/eval checks on that copied example.
+
 Ask for or explicitly disable:
 
 - Project root, project name, and project slug.

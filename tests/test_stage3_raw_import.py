@@ -35,6 +35,28 @@ def test_raw_import_copies_readonly_file_and_writes_metadata(tmp_path: Path) -> 
     assert metadata["provenance_refs"]
 
 
+def test_raw_import_uses_reviewed_date_ids_and_project_relative_source_refs(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    source = project / "source-inputs" / "raw" / "source.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("300\t100\n301\t120\n", encoding="utf-8")
+
+    result = import_raw_file(
+        project,
+        source,
+        project_id="project-20260602-mos2",
+        sample_refs=["sample-1"],
+        imported_at="2026-06-02T14:00:00",
+    )
+
+    assert result.characterization_id == "char-20260602-001"
+    metadata = read_yaml(result.metadata_path)
+    assert metadata["original_source_path"] == "source-inputs/raw/source.txt"
+    provenance = read_yaml(project / "provenance" / f"{metadata['provenance_refs'][0]}.yml")
+    assert provenance["provenance_id"] == "prov-20260602-001"
+    assert provenance["inputs"]["files"] == ["source-inputs/raw/source.txt"]
+
+
 def test_duplicate_raw_import_creates_alias_without_second_copy(tmp_path: Path) -> None:
     source = tmp_path / "source.txt"
     renamed = tmp_path / "renamed.txt"

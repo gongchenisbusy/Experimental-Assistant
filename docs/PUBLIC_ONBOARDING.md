@@ -21,6 +21,8 @@ ea --help
 
 For normal use without test tools, install the package in the user's preferred Python environment and run `ea --help` to confirm the console entry point is available.
 
+The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact that can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
+
 ## 2. Create A First Project
 
 Choose a project folder and initialize it with explicit project metadata:
@@ -39,6 +41,15 @@ ea eval project /path/to/ea-project
 ```
 
 The initialization step writes `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, and the project directory structure. It does not assume a Zotero database, browser profile, institution login, literature cache, or test fixture path.
+
+To inspect the packaged example before creating a real project:
+
+```bash
+ea healthcheck examples/public-raman-project
+ea eval project examples/public-raman-project --no-write
+```
+
+Copy the example folder before making experimental edits. It is an orientation artifact, not a template that stores a user's real project memory.
 
 ## 3. Import And Analyze Characterization Data
 

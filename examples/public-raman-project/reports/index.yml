@@ -1,0 +1,15 @@
+schema_version: '0.2'
+reports:
+  rpt-public-raman-example-20260602-001:
+    report_id: rpt-public-raman-example-20260602-001
+    path: reports/rpt-public-raman-example-20260602-001.md
+    project_id: prj-public-raman-example
+    result_ids:
+    - res-public-raman-example-raman-20260602-001
+    figure_ids:
+    - fig-public-raman-example-raman-20260602-001
+    sample_ids:
+    - sample-example-mos2-001
+    experiment_ids:
+    - exp-20260516-001
+    reference_ids: []
