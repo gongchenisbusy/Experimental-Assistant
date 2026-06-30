@@ -64,6 +64,7 @@ literature/
 ├── zotero_codex_settings_request.yml
 ├── zotero_codex_status_import.yml
 ├── zotero_codex_sidecars_verify.json
+├── acquisition_reconciliation.yml
 ├── acquisition_manifest.yml
 ├── selected_items.yml
 ├── references.bib

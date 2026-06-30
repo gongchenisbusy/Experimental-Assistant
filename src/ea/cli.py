@@ -35,6 +35,7 @@ from ea.literature import (
     prepare_literature_acquisition_handoff,
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
+    reconcile_literature_acquisition,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
@@ -454,6 +455,8 @@ def build_parser() -> argparse.ArgumentParser:
     lit_zotero_status.add_argument("--sidecar-verification", type=Path)
     lit_zotero_status.add_argument("--status-markdown", type=Path)
     lit_zotero_status.add_argument("--no-sync", action="store_true")
+    lit_reconcile = literature_sub.add_parser("reconcile-acquisition", help="reconcile local literature acquisition records")
+    lit_reconcile.add_argument("workspace", type=Path)
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
@@ -1276,6 +1279,9 @@ def main(argv: list[str] | None = None) -> int:
                     sync=not args.no_sync,
                 )
             )
+            return 0
+        if args.literature_command == "reconcile-acquisition":
+            _print_json(reconcile_literature_acquisition(args.workspace))
             return 0
         if args.literature_command == "sync-status":
             _print_json(

@@ -1296,6 +1296,245 @@ def import_zotero_codex_batch_status(
     }
 
 
+def _literature_identifier_keys(item: dict[str, Any]) -> set[str]:
+    keys = set()
+    doi = _as_text(item.get("doi")).strip().lower()
+    if doi:
+        doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi)
+        keys.add(f"doi:{doi.rstrip('.')}")
+    title = _normalized_title(item.get("title"))
+    if title:
+        keys.add(f"title:{title}")
+    reference_id = _as_text(item.get("reference_id")).strip()
+    if reference_id:
+        keys.add(f"reference:{reference_id}")
+    zotero_key = _as_text(item.get("zotero_item_key") or item.get("item_key")).strip()
+    if zotero_key:
+        keys.add(f"zotero:{zotero_key}")
+    cache_path = _as_text(item.get("cache_path") or item.get("cache_dir")).strip()
+    if cache_path:
+        keys.add(f"cache:{cache_path}")
+    return keys
+
+
+def _literature_items_by_key(items: list[dict[str, Any]]) -> set[str]:
+    keys = set()
+    for item in items:
+        keys.update(_literature_identifier_keys(item))
+    return keys
+
+
+def _status_import_items(status_import: dict[str, Any]) -> list[dict[str, Any]]:
+    grouped = status_import.get("items")
+    if isinstance(grouped, dict):
+        items = []
+        for value in grouped.values():
+            if isinstance(value, list):
+                items.extend(item for item in value if isinstance(item, dict))
+        return items
+    return []
+
+
+def _reconciliation_finding(
+    findings: list[dict[str, Any]],
+    *,
+    severity: str,
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    findings.append(_compact_dict({"severity": severity, "code": code, "message": message, "details": details or {}}))
+
+
+def reconcile_literature_acquisition(
+    root: Path,
+    *,
+    reconciled_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    reconciled_at = reconciled_at or EARecord.now_iso()
+    status = read_yaml(status_path)
+    project_id = str(status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
+    artifact_paths = {
+        "acquisition_manifest": literature_root / "acquisition_manifest.yml",
+        "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
+        "library_manifest": literature_root / "library_manifest.yml",
+        "cache_index": literature_root / "cache_index.yml",
+        "reference_index": literature_root / "references" / "index.yml",
+        "deployment_status": status_path,
+        "origin_thread_sync": literature_root / "origin_thread_sync.yml",
+    }
+    artifacts: dict[str, dict[str, Any]] = {}
+    refs: dict[str, str] = {}
+    findings: list[dict[str, Any]] = []
+    for name, path in artifact_paths.items():
+        if path.exists():
+            artifacts[name] = _load_manifest(path)
+            refs[name] = _project_relative(root, path)
+        elif name in {"acquisition_manifest", "zotero_codex_status_import", "library_manifest", "cache_index", "reference_index"}:
+            _reconciliation_finding(
+                findings,
+                severity="warning",
+                code=f"missing_{name}",
+                message=f"Optional literature acquisition artifact is missing: {name}.",
+                details={"expected_ref": _project_relative(root, path)},
+            )
+
+    if not any(name in artifacts for name in ("acquisition_manifest", "zotero_codex_status_import", "library_manifest")):
+        _reconciliation_finding(
+            findings,
+            severity="error",
+            code="missing_reconciliation_sources",
+            message="No acquisition manifest, Zotero-Codex status import, or library manifest is available to reconcile.",
+        )
+
+    manifest_items = _manifest_items(artifacts.get("acquisition_manifest", {})) if "acquisition_manifest" in artifacts else []
+    library = artifacts.get("library_manifest", {})
+    library_items = [item for item in library.get("items") or [] if isinstance(item, dict)]
+    cache = artifacts.get("cache_index", {})
+    cache_items = [item for item in cache.get("items") or [] if isinstance(item, dict)]
+    references = (artifacts.get("reference_index", {}).get("references") or {}) if "reference_index" in artifacts else {}
+    status_import = artifacts.get("zotero_codex_status_import", {})
+    status_items = _status_import_items(status_import)
+    origin_sync = artifacts.get("origin_thread_sync", {})
+
+    declared_library_count = library.get("item_count")
+    if declared_library_count is not None and _safe_int(declared_library_count, -1) != len(library_items):
+        _reconciliation_finding(
+            findings,
+            severity="error",
+            code="library_item_count_mismatch",
+            message="library_manifest.yml item_count does not match the number of library items.",
+            details={"declared": declared_library_count, "actual": len(library_items)},
+        )
+    declared_cache_count = cache.get("cached_count")
+    actual_cache_count = sum(1 for item in cache_items if item.get("cache_path"))
+    if declared_cache_count is not None and _safe_int(declared_cache_count, -1) != actual_cache_count:
+        _reconciliation_finding(
+            findings,
+            severity="error",
+            code="cache_count_mismatch",
+            message="cache_index.yml cached_count does not match items with cache_path.",
+            details={"declared": declared_cache_count, "actual": actual_cache_count},
+        )
+
+    reference_ids = set(references.keys()) if isinstance(references, dict) else set()
+    for item in library_items:
+        reference_id = _as_text(item.get("reference_id")).strip()
+        if reference_id and reference_id not in reference_ids:
+            _reconciliation_finding(
+                findings,
+                severity="error",
+                code="missing_reference_record",
+                message="A library item points to a reference_id missing from literature/references/index.yml.",
+                details={"reference_id": reference_id, "title": item.get("title"), "doi": item.get("doi")},
+            )
+
+    library_keys = _literature_items_by_key(library_items)
+    status_keys = _literature_items_by_key(status_items)
+    combined_result_keys = library_keys | status_keys
+    for item in manifest_items:
+        keys = _literature_identifier_keys(item)
+        if keys and not (keys & combined_result_keys):
+            _reconciliation_finding(
+                findings,
+                severity="error",
+                code="manifest_item_missing_from_outputs",
+                message="An acquisition manifest item is not represented in the library manifest or Zotero-Codex status import.",
+                details={"title": item.get("title"), "doi": item.get("doi")},
+            )
+
+    for item in cache_items:
+        keys = _literature_identifier_keys(item)
+        if keys and not (keys & (library_keys | status_keys)):
+            _reconciliation_finding(
+                findings,
+                severity="error",
+                code="cache_item_missing_from_library_or_status",
+                message="A cache index item is not represented in the library manifest or Zotero-Codex status import.",
+                details={"title": item.get("title"), "doi": item.get("doi"), "cache_path": item.get("cache_path")},
+            )
+
+    if status_import:
+        for field, status_field in [
+            ("downloaded_fulltext", "downloaded_fulltext"),
+            ("cached_fulltext", "cached_fulltext"),
+        ]:
+            imported_value = status_import.get(field)
+            deployed_value = status.get(status_field)
+            if imported_value is not None and deployed_value is not None and _safe_int(imported_value, -1) != _safe_int(deployed_value, -1):
+                _reconciliation_finding(
+                    findings,
+                    severity="error",
+                    code=f"deployment_{status_field}_mismatch",
+                    message=f"deployment_status.yml {status_field} does not match Zotero-Codex status import.",
+                    details={"status_import": imported_value, "deployment_status": deployed_value},
+                )
+    if cache and status.get("cached_fulltext") is not None and _safe_int(status.get("cached_fulltext"), -1) != actual_cache_count:
+        _reconciliation_finding(
+            findings,
+            severity="warning",
+            code="deployment_cache_count_differs_from_cache_index",
+            message="deployment_status.yml cached_fulltext differs from cache_index.yml cached_count.",
+            details={"deployment_status": status.get("cached_fulltext"), "cache_index": actual_cache_count},
+        )
+    for field in ("downloaded_fulltext", "cached_fulltext", "candidate_count", "deduped_count"):
+        if origin_sync and status.get(field) is not None and origin_sync.get(field) is not None:
+            if _safe_int(status.get(field), -1) != _safe_int(origin_sync.get(field), -1):
+                _reconciliation_finding(
+                    findings,
+                    severity="error",
+                    code=f"origin_sync_{field}_mismatch",
+                    message=f"origin_thread_sync.yml {field} does not mirror deployment_status.yml.",
+                    details={"deployment_status": status.get(field), "origin_thread_sync": origin_sync.get(field)},
+                )
+
+    error_count = sum(1 for item in findings if item.get("severity") == "error")
+    warning_count = sum(1 for item in findings if item.get("severity") == "warning")
+    reconciliation_status = "fail" if error_count else "warnings" if warning_count else "pass"
+    reconciliation = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "reconciled_at": reconciled_at,
+        "status": reconciliation_status,
+        "summary": {
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "acquisition_manifest_items": len(manifest_items),
+            "library_items": len(library_items),
+            "cache_items": len(cache_items),
+            "cached_count": actual_cache_count,
+            "reference_count": len(reference_ids),
+            "zotero_status_items": len(status_items),
+        },
+        "source_refs": refs,
+        "findings": findings,
+        "boundaries": [
+            "This reconciliation reads local EA/Zotero-Codex status artifacts only.",
+            "No Zotero scripts, browser automation, DOI resolution, PDF download, credential handling, or full-text parsing is executed by EA.",
+        ],
+    }
+    reconciliation_path = literature_root / "acquisition_reconciliation.yml"
+    write_yaml(reconciliation_path, reconciliation)
+    status.update(
+        {
+            "acquisition_reconciliation_ref": "literature/acquisition_reconciliation.yml",
+            "acquisition_reconciliation_status": reconciliation_status,
+            "last_acquisition_reconciliation_at": reconciled_at,
+        }
+    )
+    write_yaml(status_path, status)
+    return {
+        "reconciliation_path": str(reconciliation_path),
+        "status_path": str(status_path),
+        "reconciliation": reconciliation,
+        "status": status,
+    }
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".json":

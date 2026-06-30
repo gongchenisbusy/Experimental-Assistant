@@ -23,6 +23,7 @@ ea_skill:
     - zotero_codex_settings_request
     - zotero_codex_status_import
     - acquisition_status_update
+    - acquisition_reconciliation
     - reference_record
     - report_section
     - provenance_record
@@ -63,6 +64,7 @@ ea_skill:
       - zotero_codex_query_and_target_manifest_generation
       - zotero_codex_acquisition_bridge_runbook
       - zotero_codex_status_import_and_sync
+      - acquisition_reconciliation_checks
       - acquisition_manifest_import_and_reference_registration
       - origin_thread_status_sync
     external_or_user_confirmed:

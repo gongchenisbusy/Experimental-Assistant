@@ -16,6 +16,7 @@ from ea.literature import (
     prepare_literature_acquisition_handoff,
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
+    reconcile_literature_acquisition,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
@@ -522,6 +523,184 @@ def test_cli_literature_import_zotero_status_wires_arguments(tmp_path: Path, cap
     )
     result = json.loads(capsys.readouterr().out)
     assert result["status_update"]["status"] == "acquisition_complete"
+
+
+def test_literature_reconcile_acquisition_passes_consistent_records(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Reconcile Clean",
+        project_slug="mos2-reconcile-clean",
+        research_direction="MoS2 literature reconciliation",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    manifest_path = tmp_path / "literature" / "acquisition_manifest.yml"
+    write_yaml(
+        manifest_path,
+        {
+            "schema_version": "0.2",
+            "items": [
+                {
+                    "title": "Raman modes in MoS2",
+                    "doi": "10.1000/mos2-raman",
+                    "url": "https://doi.org/10.1000/mos2-raman",
+                    "local_path": "literature/fulltext/raman.pdf",
+                    "cache_path": "knowledge/project/fulltext/ABCD1234",
+                    "zotero_item_key": "ABCD1234",
+                    "status": "cached",
+                },
+                {
+                    "title": "MoS2 photoluminescence",
+                    "doi": "10.1000/mos2-pl",
+                    "url": "https://doi.org/10.1000/mos2-pl",
+                    "local_path": "literature/fulltext/pl.pdf",
+                    "cache_path": "knowledge/project/fulltext/EFGH5678",
+                    "zotero_item_key": "EFGH5678",
+                    "status": "cached",
+                },
+            ],
+        },
+    )
+    import_literature_acquisition_manifest(
+        tmp_path,
+        manifest_path=Path("literature/acquisition_manifest.yml"),
+        created_at="2026-07-01T14:00:00",
+    )
+    (tmp_path / "literature" / "zotero_codex_batch_status.json").write_text(
+        json.dumps(
+            {
+                "target_count": 2,
+                "items": [
+                    {
+                        "target_id": "target-001",
+                        "title": "Raman modes in MoS2",
+                        "doi": "10.1000/mos2-raman",
+                        "status": "cached",
+                        "cache_path": "knowledge/project/fulltext/ABCD1234",
+                        "zotero_item_key": "ABCD1234",
+                    },
+                    {
+                        "target_id": "target-002",
+                        "title": "MoS2 photoluminescence",
+                        "doi": "10.1000/mos2-pl",
+                        "status": "cached",
+                        "cache_path": "knowledge/project/fulltext/EFGH5678",
+                        "zotero_item_key": "EFGH5678",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    import_zotero_codex_batch_status(tmp_path, imported_at="2026-07-01T14:05:00")
+
+    result = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-01T14:10:00")
+    reconciliation = read_yaml(tmp_path / "literature" / "acquisition_reconciliation.yml")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert result["reconciliation"]["status"] == "pass"
+    assert reconciliation["summary"]["error_count"] == 0
+    assert reconciliation["summary"]["warning_count"] == 0
+    assert reconciliation["summary"]["library_items"] == 2
+    assert reconciliation["source_refs"]["zotero_codex_status_import"] == "literature/zotero_codex_status_import.yml"
+    assert status["acquisition_reconciliation_status"] == "pass"
+    assert status["acquisition_reconciliation_ref"] == "literature/acquisition_reconciliation.yml"
+
+
+def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Reconcile Mismatch",
+        project_slug="mos2-reconcile-mismatch",
+        research_direction="MoS2 literature reconciliation",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    write_yaml(
+        tmp_path / "literature" / "library_manifest.yml",
+        {
+            "schema_version": "0.2",
+            "item_count": 2,
+            "items": [
+                {
+                    "reference_id": "ref-missing",
+                    "title": "Library only paper",
+                    "doi": "10.1000/library-only",
+                }
+            ],
+        },
+    )
+    write_yaml(
+        tmp_path / "literature" / "cache_index.yml",
+        {
+            "schema_version": "0.2",
+            "cached_count": 2,
+            "items": [
+                {
+                    "title": "Cache orphan",
+                    "doi": "10.1000/cache-orphan",
+                    "cache_path": "knowledge/project/fulltext/ORPHAN",
+                }
+            ],
+        },
+    )
+    write_yaml(tmp_path / "literature" / "references" / "index.yml", {"schema_version": "0.2", "references": {}})
+    write_yaml(
+        tmp_path / "literature" / "zotero_codex_status_import.yml",
+        {
+            "schema_version": "0.2",
+            "downloaded_fulltext": 1,
+            "cached_fulltext": 1,
+            "items": {"successful": [{"title": "Status paper", "doi": "10.1000/status", "status": "cached"}]},
+        },
+    )
+    write_yaml(
+        tmp_path / "literature" / "deployment_status.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-mos2-reconcile-mismatch",
+            "status": "acquisition_complete",
+            "candidate_count": 4,
+            "deduped_count": 4,
+            "downloaded_fulltext": 3,
+            "cached_fulltext": 4,
+        },
+    )
+    write_yaml(
+        tmp_path / "literature" / "origin_thread_sync.yml",
+        {
+            "schema_version": "0.2",
+            "candidate_count": 4,
+            "deduped_count": 4,
+            "downloaded_fulltext": 0,
+            "cached_fulltext": 0,
+        },
+    )
+
+    result = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-01T14:20:00")
+    codes = {finding["code"] for finding in result["reconciliation"]["findings"]}
+
+    assert result["reconciliation"]["status"] == "fail"
+    assert "library_item_count_mismatch" in codes
+    assert "cache_count_mismatch" in codes
+    assert "missing_reference_record" in codes
+    assert "cache_item_missing_from_library_or_status" in codes
+    assert "deployment_cached_fulltext_mismatch" in codes
+    assert "origin_sync_downloaded_fulltext_mismatch" in codes
+
+
+def test_cli_literature_reconcile_acquisition_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_reconcile_literature_acquisition(workspace: Path):
+        assert workspace == tmp_path
+        return {"reconciliation": {"status": "pass"}}
+
+    monkeypatch.setattr("ea.cli.reconcile_literature_acquisition", fake_reconcile_literature_acquisition)
+
+    assert main(["literature", "reconcile-acquisition", str(tmp_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["reconciliation"]["status"] == "pass"
 
 
 def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tmp_path: Path) -> None:
@@ -1196,11 +1375,13 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "public_search_state.yml" in readme
     assert "zotero-bridge" in readme
     assert "import-zotero-status" in readme
+    assert "reconcile-acquisition" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
     assert "zotero_codex_bridge.yml" in reference
     assert "zotero_codex_status_import.yml" in reference
+    assert "acquisition_reconciliation.yml" in reference
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
@@ -1213,10 +1394,12 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_settings_request" in manifest["output_artifacts"]
     assert "zotero_codex_status_import" in manifest["output_artifacts"]
     assert "acquisition_status_update" in manifest["output_artifacts"]
+    assert "acquisition_reconciliation" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]
+    assert "acquisition_reconciliation_checks" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]
