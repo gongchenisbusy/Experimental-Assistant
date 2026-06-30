@@ -879,6 +879,32 @@ def _uv_vis_tauc_text(metadata: dict) -> str:
     )
 
 
+def _uv_vis_derivative_text(metadata: dict) -> str:
+    derivative = (metadata.get("peak_analysis") or {}).get("derivative_analysis")
+    if not derivative:
+        return "当前没有启用或记录 UV-Vis derivative screening。"
+    status = derivative.get("status", "unknown")
+    axis = derivative.get("axis", "unknown")
+    axis_unit = derivative.get("axis_unit", "unknown")
+    confidence = derivative.get("confidence", "insufficient")
+    source = derivative.get("assignment_source", "ea.uv_vis.derivative_screening:v0.2")
+    strongest = derivative.get("max_abs_slope") or {}
+    axis_value = strongest.get("axis_value")
+    wavelength = strongest.get("wavelength_nm")
+    energy = strongest.get("energy_eV")
+    first_derivative = strongest.get("first_derivative")
+    axis_text = f"{float(axis_value):.4g} {axis_unit}" if axis_value is not None else "n/a"
+    wavelength_text = f"{float(wavelength):.1f} nm" if wavelength is not None else "n/a"
+    energy_text = f"{float(energy):.3f} eV" if energy is not None else "n/a"
+    derivative_text = f"{float(first_derivative):.4g}" if first_derivative is not None else "n/a"
+    return (
+        f"Derivative screening 状态为 `{status}`；axis: `{axis}` (`{axis_unit}`)；"
+        f"最大一阶导数绝对值附近坐标为 `{axis_text}`，对应 `{wavelength_text}` / `{energy_text}`，"
+        f"first_derivative: `{derivative_text}`；confidence: `{confidence}`；assignment_source: `{source}`。"
+        "该记录只用于提示谱肩、边缘或拐点候选区域，不等同于最终 optical transition 或 band gap 结论。"
+    )
+
+
 def _uv_vis_interpretation_text(metadata: dict, citation_text: str) -> str:
     peak_analysis = metadata.get("peak_analysis") or {}
     interpretations = peak_analysis.get("possible_interpretations") or []
@@ -935,6 +961,7 @@ def generate_uv_vis_report(
     feature_table = _uv_vis_feature_table(root, outputs["peak_table"])
     edge_text = _uv_vis_edge_text(metadata)
     tauc_text = _uv_vis_tauc_text(metadata)
+    derivative_text = _uv_vis_derivative_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -985,6 +1012,10 @@ def generate_uv_vis_report(
 
 {tauc_text}
 
+## Derivative screening
+
+{derivative_text}
+
 ## 可能结论与可信度
 
 {interpretation_text}
@@ -1002,6 +1033,7 @@ def generate_uv_vis_report(
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{outputs['peak_table']}`
 {f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get('tauc_table') else "- Tauc/Kubelka-Munk table: `未生成`"}
+{f"- derivative table: `{outputs['derivative_table']}`" if outputs.get('derivative_table') else "- derivative table: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1025,7 +1057,17 @@ def generate_uv_vis_report(
         workflow="report_generation",
         inputs={
             "records": [str(uv_vis_metadata_path.relative_to(root))],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [
+                value
+                for value in [
+                    outputs["processed_csv"],
+                    outputs["peak_table"],
+                    outputs.get("tauc_table"),
+                    outputs.get("derivative_table"),
+                    outputs["figure"],
+                ]
+                if value
+            ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},

@@ -99,6 +99,13 @@ def default_uv_vis_processing_parameters() -> dict[str, Any]:
             "min_r2_for_low_confidence": 0.9,
             "source": "ea.uv_vis.tauc_screening:v0.2",
         },
+        "derivative_analysis": {
+            "enabled": False,
+            "method": "numpy_gradient",
+            "axis": "auto",
+            "min_points": 8,
+            "source": "ea.uv_vis.derivative_screening:v0.2",
+        },
     }
 
 
@@ -619,12 +626,170 @@ def _run_tauc_analysis(
     )
 
 
-def _analyze_features(features: pd.DataFrame, edge: dict[str, Any] | None, tauc: dict[str, Any] | None = None) -> dict[str, Any]:
+def _derivative_axis(processed: pd.DataFrame, params: dict[str, Any]) -> tuple[str | None, str | None, list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    requested = str(params.get("axis") or "auto")
+    if requested == "auto":
+        if "energy_eV" in processed.columns:
+            return "energy_eV", "eV", warnings
+        return "uv_vis_axis", "reviewed_axis", warnings
+    axis_units = {
+        "energy_eV": "eV",
+        "wavelength_nm": "nm",
+        "uv_vis_axis": "reviewed_axis",
+    }
+    if requested not in axis_units or requested not in processed.columns:
+        warnings.append(
+            _warning(
+                "uv_vis_derivative_axis_unavailable",
+                "Requested UV-Vis derivative axis is unavailable; derivative analysis was not performed.",
+                severity="medium",
+                requested_axis=requested,
+            )
+        )
+        return None, None, warnings
+    return requested, axis_units[requested], warnings
+
+
+def _finite_summary_value(row: pd.Series, column: str) -> float | None:
+    value = row.get(column)
+    return float(value) if pd.notna(value) else None
+
+
+def _derivative_point(row: pd.Series, axis_column: str, axis_unit: str) -> dict[str, Any]:
+    return {
+        "axis": axis_column,
+        "axis_unit": axis_unit,
+        "axis_value": _finite_summary_value(row, "derivative_axis"),
+        "wavelength_nm": _finite_summary_value(row, "wavelength_nm"),
+        "energy_eV": _finite_summary_value(row, "energy_eV"),
+        "processed_signal": _finite_summary_value(row, "processed_signal"),
+        "first_derivative": _finite_summary_value(row, "first_derivative"),
+        "second_derivative": _finite_summary_value(row, "second_derivative"),
+    }
+
+
+def _run_derivative_analysis(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+) -> tuple[pd.DataFrame | None, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("derivative_analysis", {})
+    if not params.get("enabled", False):
+        return None, None, []
+    source = str(params.get("source") or "ea.uv_vis.derivative_screening:v0.2")
+    warnings: list[dict[str, Any]] = []
+    axis_column, axis_unit, axis_warnings = _derivative_axis(processed, params)
+    warnings.extend(axis_warnings)
+    base = {
+        "enabled": True,
+        "method": str(params.get("method") or "numpy_gradient"),
+        "axis": axis_column or str(params.get("axis") or "auto"),
+        "axis_unit": axis_unit or "unknown",
+        "assignment_source": source,
+        "confidence": "insufficient",
+        "boundary": "UV-Vis derivative extrema and inflection hints are screening-only; they are not definitive band-gap, transition-type, defect-state, thickness, or mechanism assignments.",
+    }
+    if axis_column is None or axis_unit is None:
+        return None, {**base, "status": "axis_unavailable", "warnings": warnings}, warnings
+
+    min_points, adjusted = _coerce_int(params.get("min_points"), 8, minimum=3)
+    if adjusted:
+        warnings.append(
+            _warning(
+                "uv_vis_derivative_min_points_adjusted",
+                "Invalid UV-Vis derivative min_points was adjusted before screening.",
+                severity="medium",
+                min_points=min_points,
+            )
+        )
+    frame = processed.copy()
+    axis = pd.to_numeric(frame[axis_column], errors="coerce").to_numpy(dtype=float)
+    signal = pd.to_numeric(frame["processed_signal"], errors="coerce").to_numpy(dtype=float)
+    finite_mask = np.isfinite(axis) & np.isfinite(signal)
+    if int(np.count_nonzero(finite_mask)) < min_points:
+        warning = _warning(
+            "uv_vis_derivative_insufficient_points",
+            "UV-Vis derivative analysis had too few finite points for gradient screening.",
+            severity="medium",
+            finite_points=int(np.count_nonzero(finite_mask)),
+            min_points=min_points,
+        )
+        warnings.append(warning)
+        return None, {**base, "status": "insufficient_points", "point_count": int(np.count_nonzero(finite_mask)), "warnings": warnings}, warnings
+    finite_axis = axis[finite_mask]
+    if np.unique(finite_axis).size < min_points:
+        warning = _warning(
+            "uv_vis_derivative_duplicate_axis",
+            "UV-Vis derivative analysis requires enough unique axis values.",
+            severity="medium",
+            unique_axis_count=int(np.unique(finite_axis).size),
+            min_points=min_points,
+        )
+        warnings.append(warning)
+        return None, {**base, "status": "duplicate_axis_values", "warnings": warnings}, warnings
+
+    table = pd.DataFrame(
+        {
+            "derivative_axis": axis,
+            "axis_unit": axis_unit,
+            "wavelength_nm": frame["wavelength_nm"] if "wavelength_nm" in frame.columns else np.nan,
+            "energy_eV": frame["energy_eV"] if "energy_eV" in frame.columns else np.nan,
+            "processed_signal": signal,
+        }
+    )
+    first = np.full_like(signal, np.nan, dtype=float)
+    second = np.full_like(signal, np.nan, dtype=float)
+    finite_signal = signal[finite_mask]
+    first_values = np.gradient(finite_signal, finite_axis)
+    second_values = np.gradient(first_values, finite_axis)
+    first[finite_mask] = first_values
+    second[finite_mask] = second_values
+    table["first_derivative"] = first
+    table["second_derivative"] = second
+    table["method"] = "numpy_gradient"
+    table["assignment_source"] = source
+
+    finite_derivative = np.isfinite(first)
+    if not np.any(finite_derivative):
+        warning = _warning(
+            "uv_vis_derivative_no_finite_gradient",
+            "UV-Vis derivative analysis produced no finite first-derivative values.",
+            severity="medium",
+        )
+        warnings.append(warning)
+        return table, {**base, "status": "no_finite_gradient", "point_count": int(np.count_nonzero(finite_mask)), "warnings": warnings}, warnings
+
+    derivative_series = pd.Series(first)
+    max_positive_idx = int(derivative_series.idxmax())
+    min_negative_idx = int(derivative_series.idxmin())
+    max_abs_idx = int(pd.Series(np.abs(first)).idxmax())
+    zero_crossings = int(np.count_nonzero(np.diff(np.signbit(first[finite_derivative]))))
+    summary = {
+        **base,
+        "status": "screening_derivative_recorded",
+        "point_count": int(np.count_nonzero(finite_mask)),
+        "zero_crossing_count": zero_crossings,
+        "max_positive_slope": _derivative_point(table.iloc[max_positive_idx], axis_column, axis_unit),
+        "min_negative_slope": _derivative_point(table.iloc[min_negative_idx], axis_column, axis_unit),
+        "max_abs_slope": _derivative_point(table.iloc[max_abs_idx], axis_column, axis_unit),
+        "confidence": "low",
+        "warnings": warnings,
+    }
+    return table, summary, warnings
+
+
+def _analyze_features(
+    features: pd.DataFrame,
+    edge: dict[str, Any] | None,
+    tauc: dict[str, Any] | None = None,
+    derivative: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "feature_count": int(len(features)),
         "strongest_features": [],
         "edge_estimate": edge,
         "tauc_analysis": tauc,
+        "derivative_analysis": derivative,
         "possible_interpretations": [],
     }
     if features.empty:
@@ -679,6 +844,22 @@ def _analyze_features(features: pd.DataFrame, edge: dict[str, Any] | None, tauc:
                 "confidence": tauc.get("confidence", "low"),
                 "evidence": ["tauc_analysis"],
                 "assignment_source": tauc.get("assignment_source", "ea.uv_vis.tauc_screening:v0.2"),
+            }
+        )
+    if derivative and derivative.get("status") == "screening_derivative_recorded":
+        strongest = derivative.get("max_abs_slope", {})
+        axis_value = strongest.get("axis_value")
+        axis_unit = strongest.get("axis_unit", "unknown")
+        axis_text = f"{float(axis_value):.4g} {axis_unit}" if axis_value is not None else "not available"
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"A UV-Vis derivative screening table was recorded; the strongest first-derivative magnitude occurs near "
+                    f"{axis_text}. Treat derivative extrema as shoulder/edge orientation only, not a definitive optical transition or band-gap conclusion."
+                ),
+                "confidence": derivative.get("confidence", "low"),
+                "evidence": ["derivative_analysis"],
+                "assignment_source": derivative.get("assignment_source", "ea.uv_vis.derivative_screening:v0.2"),
             }
         )
     return analysis
@@ -741,7 +922,8 @@ def process_uv_vis_result(
     features = _detect_features(processed, parameters, request.signal_mode, request.x_unit)
     edge = _estimate_edge(processed, parameters, request.signal_mode)
     tauc_analysis, tauc_warnings = _run_tauc_analysis(processed, parameters, request.signal_mode)
-    feature_analysis = _analyze_features(features, edge, tauc_analysis)
+    derivative_table, derivative_analysis, derivative_warnings = _run_derivative_analysis(processed, parameters)
+    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -755,10 +937,11 @@ def process_uv_vis_result(
     processed_csv = output_dir / "uv_vis_processed.csv"
     features_csv = output_dir / "uv_vis_features.csv"
     tauc_csv = output_dir / "uv_vis_tauc.csv"
+    derivative_csv = output_dir / "uv_vis_derivative.csv"
     figure_name = f"{figure_id}.png" if figure_id else "uv_vis_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "uv_vis_metadata.yml"
-    for output in [processed_csv, features_csv, tauc_csv, figure, result_metadata]:
+    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -770,6 +953,12 @@ def process_uv_vis_result(
         processed[tauc_columns].to_csv(tauc_csv, index=False)
         tauc_output_ref = str(tauc_csv.relative_to(root))
         feature_analysis["tauc_analysis"]["table_ref"] = tauc_output_ref
+    derivative_output_ref: str | None = None
+    if derivative_table is not None:
+        derivative_table.to_csv(derivative_csv, index=False)
+        derivative_output_ref = str(derivative_csv.relative_to(root))
+        if feature_analysis.get("derivative_analysis"):
+            feature_analysis["derivative_analysis"]["table_ref"] = derivative_output_ref
     _plot_uv_vis(processed, features, figure, request.x_unit, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -777,6 +966,7 @@ def process_uv_vis_result(
         warnings.append(_warning("uv_vis_x_unit_unknown", "UV-Vis x unit remains unknown after confirmation.", severity="medium"))
     warnings.extend(processing_warnings)
     warnings.extend(tauc_warnings)
+    warnings.extend(derivative_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "peak_table": str(features_csv.relative_to(root)),
@@ -785,6 +975,17 @@ def process_uv_vis_result(
     }
     if tauc_output_ref:
         outputs["tauc_table"] = tauc_output_ref
+    if derivative_output_ref:
+        outputs["derivative_table"] = derivative_output_ref
+    provenance_files = [
+        str(processed_csv.relative_to(root)),
+        str(features_csv.relative_to(root)),
+        str(figure.relative_to(root)),
+    ]
+    if tauc_output_ref:
+        provenance_files.append(tauc_output_ref)
+    if derivative_output_ref:
+        provenance_files.append(derivative_output_ref)
     result = UVVisProcessingResult(
         uv_vis_result_id=result_id,
         result_id=result_id,
@@ -815,12 +1016,7 @@ def process_uv_vis_result(
         },
         outputs={
             "records": [str(result_metadata.relative_to(root))],
-            "files": [
-                str(processed_csv.relative_to(root)),
-                str(features_csv.relative_to(root)),
-                str(figure.relative_to(root)),
-            ]
-            + ([tauc_output_ref] if tauc_output_ref else []),
+            "files": provenance_files,
         },
         parameters={
             "x_column": request.x_column,
@@ -865,6 +1061,7 @@ def process_uv_vis_result(
                 str(processed_csv.relative_to(root)),
                 str(features_csv.relative_to(root)),
             ]
-            + ([tauc_output_ref] if tauc_output_ref else []),
+            + ([tauc_output_ref] if tauc_output_ref else [])
+            + ([derivative_output_ref] if derivative_output_ref else []),
         )
     return result_metadata

@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+import pandas as pd
+
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml
 from ea.uv_vis import default_uv_vis_processing_parameters, inspect_uv_vis_file
@@ -376,6 +378,158 @@ def test_uv_vis_tauc_screening_records_reviewed_fit_window(tmp_path: Path, capsy
     assert "Tauc/Kubelka-Munk table" in report_body
 
 
+def test_uv_vis_derivative_screening_records_gradient_table(tmp_path: Path, capsys) -> None:
+    fixture = _write_uv_vis_fixture(tmp_path / "synthetic-uv-vis-derivative-spectrum.txt")
+    workspace = tmp_path / "uv-vis-derivative-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV-Vis Derivative Workflow",
+            "--slug",
+            "uv-vis-derivative-workflow",
+            "--direction",
+            "UV-Vis derivative screening",
+            "--material",
+            "semiconductor thin film",
+            "--experiment-type",
+            "UV-Vis derivative screening",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "uv_vis",
+            "--sample-ref",
+            "sample-uv-vis-derivative-001",
+            "--experiment-ref",
+            "exp-uv-vis-derivative-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=wavelength_nm, y=absorbance, unit=nm, signal_mode=absorbance",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    parameters = default_uv_vis_processing_parameters()
+    parameters["derivative_analysis"].update(
+        {
+            "enabled": True,
+            "axis": "energy_eV",
+            "min_points": 20,
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "uv-vis",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-uv-vis-derivative-001",
+            "--x-column",
+            "wavelength_nm",
+            "--y-column",
+            "absorbance",
+            "--x-unit",
+            "nm",
+            "--signal-mode",
+            "absorbance",
+            "--parameters-json",
+            json.dumps({"derivative_analysis": parameters["derivative_analysis"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    uv_vis_metadata = Path(process_output["metadata"])
+    uv_vis = read_yaml(uv_vis_metadata)
+    derivative = uv_vis["peak_analysis"]["derivative_analysis"]
+
+    assert derivative["status"] == "screening_derivative_recorded"
+    assert derivative["axis"] == "energy_eV"
+    assert derivative["axis_unit"] == "eV"
+    assert derivative["confidence"] == "low"
+    assert derivative["max_abs_slope"]["energy_eV"] is not None
+    assert "screening-only" in derivative["boundary"]
+    assert uv_vis["outputs"]["derivative_table"].endswith("uv_vis_derivative.csv")
+    derivative_table = workspace / uv_vis["outputs"]["derivative_table"]
+    assert derivative_table.exists()
+    derivatives = pd.read_csv(derivative_table)
+    assert {"derivative_axis", "first_derivative", "second_derivative", "assignment_source"}.issubset(derivatives.columns)
+    assert derivatives["first_derivative"].notna().any()
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][uv_vis["figure_id"]]
+    assert uv_vis["outputs"]["derivative_table"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "uv-vis",
+            "report",
+            str(workspace),
+            "--metadata",
+            uv_vis_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-uv-vis-derivative-001",
+            "--experiment-ref",
+            "exp-uv-vis-derivative-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Derivative screening" in report_body
+    assert "derivative table" in report_body
+    assert "谱肩、边缘或拐点候选区域" in report_body
+
+
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -391,6 +545,8 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
     assert "signal_mode" in reference_text
     assert "Tauc/Kubelka-Munk" in reference_text
+    assert "derivative_analysis" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
     assert "Minimal UV-Vis workflow implemented" in uv_vis_record["notes"]
     assert "tauc_kubelka_munk_screening" in uv_vis_record["notes"]
+    assert "derivative_screening" in uv_vis_record["notes"]

@@ -11,6 +11,7 @@ ea_skill:
   output_artifacts:
     - processed_result
     - tauc_screening_table
+    - derivative_screening_table
     - figure_record
     - report_section
     - provenance_record
@@ -57,6 +58,15 @@ ea_skill:
         - kubelka_munk
       requires_reviewed_fit_window_eV: true
       confidence_boundary: screening_only
+    derivative_screening:
+      implemented: true
+      method: numpy_gradient
+      supported_axes:
+        - auto
+        - energy_eV
+        - wavelength_nm
+        - uv_vis_axis
+      confidence_boundary: screening_only
     supported_x_units:
       - nm
       - eV
@@ -65,4 +75,5 @@ ea_skill:
       - automatic features are screening evidence, not standalone material assignments
       - threshold optical-edge estimates are low-confidence orientation values
       - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
+      - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
       - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references
