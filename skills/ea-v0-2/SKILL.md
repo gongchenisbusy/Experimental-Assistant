@@ -18,7 +18,8 @@ Do not assume developer-machine Zotero, browser, institution, cache, or test pat
 3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under `processed/`, `figures/`, `reports/`, `literature/`, or other non-raw directories.
 4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
 5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
-6. Put questions that affect future work or scientific judgement at the end of the response.
+6. Run `ea healthcheck` and `ea eval project` before handoff or public-demo readiness checks.
+7. Put questions that affect future work or scientific judgement at the end of the response.
 
 ## CLI Quick Start
 
@@ -28,6 +29,7 @@ Use the repository package when available:
 ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd --direction "single-layer MoS2 on mica" --material MoS2 --experiment-type "CVD growth and Raman characterization"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
+ea eval project /path/to/ea-project
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -76,6 +78,7 @@ Built-in child-skill manifests live in `skill-registry/builtins/` and are indexe
 - For child skill manifests and `add-skills`, read `references/module-manifest.md`.
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
 - For scientific figure style infrastructure, read `references/scientific-figure-workflow.md`.
+- For evaluator/readiness checks, read `references/evaluator-workflow.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
 - For PL v0.2 behavior, read `references/pl-workflow.md`.

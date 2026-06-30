@@ -23,6 +23,7 @@ KIND_PREFIX = {
     "memory": "mem",
     "memory_candidate": "memcand",
     "reference": "ref",
+    "evaluation": "eval",
 }
 
 

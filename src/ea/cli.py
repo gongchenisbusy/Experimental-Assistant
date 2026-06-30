@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from ea.config import doctor_project_config
+from ea.evaluation import run_project_evaluation
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
@@ -60,6 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="summarize an EA project workspace")
     status.add_argument("workspace", type=Path)
+
+    eval_parser = sub.add_parser("eval", help="run EA evaluation suites")
+    eval_sub = eval_parser.add_subparsers(dest="eval_command", required=True)
+    eval_project = eval_sub.add_parser("project", help="evaluate local project readiness for handoff or public release")
+    eval_project.add_argument("workspace", type=Path)
+    eval_project.add_argument("--suite", choices=["public-release", "public_release"], default="public-release")
+    eval_project.add_argument("--no-write", action="store_true")
+    eval_project.add_argument("--output", type=Path)
 
     healthcheck = sub.add_parser("healthcheck", help="audit EA project config, provenance, raw files, reports, and figures")
     healthcheck.add_argument("workspace", type=Path)
@@ -359,6 +368,16 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
         return 0
+    if args.command == "eval":
+        if args.eval_command == "project":
+            result = run_project_evaluation(
+                args.workspace,
+                suite=args.suite,
+                write_report=not args.no_write,
+                output_path=args.output,
+            )
+            _print_json(result)
+            return 0 if result["status"] != "fail" else 2
     if args.command == "healthcheck":
         result = run_healthcheck(args.workspace)
         _print_json(result)

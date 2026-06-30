@@ -9,6 +9,7 @@ import yaml
 EA_PROJECT_DIRS = [
     ".ea",
     "experiments",
+    "evaluation",
     "samples",
     "raw",
     "processed",

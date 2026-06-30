@@ -12,6 +12,7 @@ EA must initialize projects for unknown users without assuming developer-machine
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
+ea eval project /path/to/ea-project
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -46,6 +47,7 @@ BibTeX import uses an explicit user-provided `.bib` export and de-duplicates ref
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, and review-gated memory indices.
+`ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness checks for figure style/source-data traces, report citations, and persisted evaluation records under `evaluation/`.
 
 ## Developer Setup
 

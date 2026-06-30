@@ -10,6 +10,7 @@ ea-project/
 ├── PROJECT_RULE_CARD.md
 ├── .ea/project_config.yml
 ├── experiments/
+├── evaluation/
 ├── samples/
 ├── raw/
 ├── processed/
@@ -35,6 +36,7 @@ Workflow:
 6. Save new findings as memory candidates until the user confirms them.
 7. Keep open questions in `open-items/` when they matter but do not block the current step.
 8. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, provenance, references, or memory.
+9. Run `ea eval project` before handoff, public-demo readiness checks, or long context transitions.
 
 CLI path for the first Raman workflow:
 
@@ -67,4 +69,12 @@ ea review add /path/to/ea-project --target-type xrd_columns --target-ref raw/xrd
 ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XRD parameters confirmed"
 ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-005 --parameter-review-ref review-20260630-006 --sample-ref sample-001
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+```
+
+Project readiness evaluation:
+
+```bash
+ea healthcheck /path/to/ea-project
+ea eval project /path/to/ea-project
+ea eval project /path/to/ea-project --no-write
 ```

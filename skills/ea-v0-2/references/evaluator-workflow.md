@@ -1,0 +1,39 @@
+# Evaluator Workflow
+
+Use this reference before handing an EA project to another agent, preparing a public demo, or checking whether a local project is ready for continued work.
+
+Command:
+
+```bash
+ea eval project /path/to/ea-project
+ea eval project /path/to/ea-project --no-write
+```
+
+Default behavior:
+
+- Runs local project config portability checks.
+- Runs `ea healthcheck` and includes its findings with `healthcheck.`-prefixed codes.
+- Checks generated analysis figures for `style_profile` and `source_data_refs`.
+- Checks report citation numbering and References entries.
+- Checks report provenance refs and project-level readiness signals.
+- Writes `evaluation/eval-{yyyymmdd}-{nnn}.yml` unless `--no-write` is used.
+
+Status meanings:
+
+- `pass`: no errors or warnings.
+- `warning`: no blocking errors, but some handoff/readiness metadata is incomplete.
+- `fail`: at least one blocking error, such as a missing source-data file or failed healthcheck finding.
+
+Scope limits:
+
+- Do not treat evaluator output as scientific truth scoring.
+- Do not use it for live literature search, DOI resolution, PDF download, Zotero database reads, browser profile access, or institution-login checks.
+- Use it as a deterministic local readiness report that later agents can inspect.
+
+Recommended use:
+
+1. Run workflow-specific tests or commands.
+2. Run `ea healthcheck`.
+3. Run `ea eval project`.
+4. Fix `fail` items before handoff.
+5. Either fix `warning` items or record why the warning is acceptable for the current stage.
