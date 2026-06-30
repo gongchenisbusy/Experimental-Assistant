@@ -95,6 +95,16 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "method": "nyquist_screening",
             "source": "ea.electrochemistry.eis_nyquist_screening:v0.2",
         },
+        "correction_record": {
+            "enabled": False,
+            "method": "reviewed_metadata_record",
+            "source": "ea.electrochemistry.correction_record:v0.2",
+            "reference_electrode": {},
+            "converted_potential_scale": {},
+            "uncompensated_resistance": {},
+            "ir_compensation": {},
+            "correction_notes": [],
+        },
     }
 
 
@@ -503,7 +513,128 @@ def _eis_feature_columns() -> list[str]:
     ]
 
 
-def _eis_summary(processed: pd.DataFrame, features: pd.DataFrame, request: ElectrochemistryProcessingRequest) -> dict[str, Any]:
+_ELECTROCHEMISTRY_CORRECTION_SECTIONS = (
+    "reference_electrode",
+    "converted_potential_scale",
+    "uncompensated_resistance",
+    "ir_compensation",
+)
+
+
+def _has_correction_payload(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_correction_payload(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_correction_payload(item) for item in value)
+    return True
+
+
+def _correction_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    value = params.get(name, {})
+    if isinstance(value, dict):
+        return deepcopy(value), None
+    return (
+        {},
+        _warning(
+            "electrochemistry_correction_section_ignored",
+            "An electrochemistry correction-record section was ignored because it was not a mapping.",
+            severity="medium",
+            section=name,
+        ),
+    )
+
+
+def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+    notes = params.get("correction_notes", [])
+    if isinstance(notes, list):
+        return deepcopy(notes), None
+    if isinstance(notes, tuple):
+        return list(notes), None
+    if isinstance(notes, str) and notes.strip():
+        return [notes], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_correction_notes_ignored",
+            "Electrochemistry correction notes were ignored because they were not a list or non-empty string.",
+            severity="medium",
+        ),
+    )
+
+
+def _record_correction(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("correction_record", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    sections: dict[str, dict[str, Any]] = {}
+    for name in _ELECTROCHEMISTRY_CORRECTION_SECTIONS:
+        section, warning = _correction_section(params, name)
+        sections[name] = section
+        if warning:
+            warnings.append(warning)
+    notes, notes_warning = _correction_notes(params)
+    if notes_warning:
+        warnings.append(notes_warning)
+
+    reviewed_fields = [name for name, section in sections.items() if _has_correction_payload(section)]
+    if _has_correction_payload(notes):
+        reviewed_fields.append("correction_notes")
+    has_reviewed_context = bool(reviewed_fields)
+    if not has_reviewed_context:
+        warnings.append(
+            _warning(
+                "electrochemistry_correction_record_empty",
+                "Electrochemistry correction_record was enabled, but no reviewed reference/iR compensation metadata was supplied.",
+                severity="medium",
+            )
+        )
+    source = str(params.get("source") or "ea.electrochemistry.correction_record:v0.2")
+    return (
+        {
+            "enabled": True,
+            "status": "reviewed_correction_recorded" if has_reviewed_context else "enabled_without_reviewed_correction",
+            "method": str(params.get("method") or "reviewed_metadata_record"),
+            "assignment_source": source,
+            "confidence": "low" if has_reviewed_context else "insufficient",
+            "reviewed_correction_fields": reviewed_fields,
+            **sections,
+            "correction_notes": notes,
+            "warnings": warnings,
+            "boundary": "Electrochemistry correction record is metadata/provenance only; no automatic potential-scale conversion, iR compensation, equivalent-circuit fitting, Tafel analysis, or performance calculation was applied.",
+        },
+        warnings,
+    )
+
+
+def _append_correction_interpretation(analysis: dict[str, Any], correction_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["correction_record"] = correction_record
+    if correction_record and correction_record.get("status") == "reviewed_correction_recorded":
+        fields = ", ".join(str(value) for value in correction_record.get("reviewed_correction_fields", [])) or "correction record"
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed electrochemistry correction/reference metadata was recorded for {fields}. Use it to interpret potentials, "
+                    "currents, and EIS screening summaries, but do not treat the metadata record as an automatic correction or mechanism/performance result."
+                ),
+                "confidence": correction_record.get("confidence", "low"),
+                "evidence": ["correction_record"],
+                "assignment_source": correction_record.get("assignment_source", "ea.electrochemistry.correction_record:v0.2"),
+            }
+        )
+    return analysis
+
+
+def _eis_summary(
+    processed: pd.DataFrame,
+    features: pd.DataFrame,
+    request: ElectrochemistryProcessingRequest,
+    correction_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     z_real = processed["z_real_ohm"].to_numpy(dtype=float)
     neg_imag = processed["neg_z_imag_ohm"].to_numpy(dtype=float)
     min_index = int(np.nanargmin(z_real))
@@ -512,7 +643,7 @@ def _eis_summary(processed: pd.DataFrame, features: pd.DataFrame, request: Elect
     span = float(z_real[max_index] - z_real[min_index])
     source = "ea.electrochemistry.eis_nyquist_screening:v0.2"
     convention = str(processed["imaginary_convention"].iloc[0]) if "imaginary_convention" in processed.columns and not processed.empty else "unknown"
-    return {
+    analysis = {
         "measurement_mode": request.measurement_mode,
         "context_summary": request.context_summary,
         "electrode_area_cm2": request.electrode_area_cm2,
@@ -539,11 +670,17 @@ def _eis_summary(processed: pd.DataFrame, features: pd.DataFrame, request: Elect
             }
         ],
     }
+    return _append_correction_interpretation(analysis, correction_record)
 
 
-def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ElectrochemistryProcessingRequest) -> dict[str, Any]:
+def _summary(
+    processed: pd.DataFrame,
+    features: pd.DataFrame,
+    request: ElectrochemistryProcessingRequest,
+    correction_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if request.measurement_mode == "eis":
-        return _eis_summary(processed, features, request)
+        return _eis_summary(processed, features, request, correction_record)
     current = processed["processed_current_mA"].to_numpy(dtype=float)
     start_current = float(current[0])
     end_current = float(current[-1])
@@ -595,7 +732,7 @@ def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: Electroch
                 "assignment_source": "ea.electrochemistry.summary:v0.2",
             }
         )
-    return analysis
+    return _append_correction_interpretation(analysis, correction_record)
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -678,7 +815,8 @@ def process_electrochemistry_result(
     else:
         processed, processing_warnings = _apply_processing(confirmed, parameters)
     features = _detect_features(processed, parameters, request.measurement_mode)
-    analysis = _summary(processed, features, request)
+    correction_record, correction_warnings = _record_correction(parameters)
+    analysis = _summary(processed, features, request, correction_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -691,15 +829,23 @@ def process_electrochemistry_result(
     output_dir = root / "processed" / sample_dir / "electrochemistry" / result_id
     processed_csv = output_dir / "electrochemistry_processed.csv"
     features_csv = output_dir / "electrochemistry_features.csv"
+    correction_yml = output_dir / "electrochemistry_correction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     features.to_csv(features_csv, index=False)
+    correction_ref: str | None = None
+    if correction_record is not None:
+        correction_ref = str(correction_yml.relative_to(root))
+        correction_record["record_ref"] = correction_ref
+        write_yaml(correction_yml, correction_record)
+        if analysis.get("correction_record"):
+            analysis["correction_record"]["record_ref"] = correction_ref
     _plot_electrochemistry(processed, features, figure, request.measurement_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -711,6 +857,16 @@ def process_electrochemistry_result(
     if not request.context_summary:
         warnings.append(_warning("electrochemistry_context_missing", "Electrode/electrolyte context summary is empty.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(correction_warnings)
+    outputs = {
+        "figure": str(figure.relative_to(root)),
+        "feature_table": str(features_csv.relative_to(root)),
+        "peak_table": str(features_csv.relative_to(root)),
+        "processed_csv": str(processed_csv.relative_to(root)),
+        "metadata": str(result_metadata.relative_to(root)),
+    }
+    if correction_ref:
+        outputs["correction_record"] = correction_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -726,13 +882,7 @@ def process_electrochemistry_result(
         context_summary=request.context_summary,
         electrode_area_cm2=request.electrode_area_cm2,
         processing_parameters=parameters,
-        outputs={
-            "figure": str(figure.relative_to(root)),
-            "feature_table": str(features_csv.relative_to(root)),
-            "peak_table": str(features_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
-        },
+        outputs=outputs,
         peak_analysis=analysis,
         figure_id=figure_id,
         warnings=warnings,
@@ -741,6 +891,13 @@ def process_electrochemistry_result(
         updated_at=created_at or EARecord.now_iso(),
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
+    provenance_files = [
+        str(processed_csv.relative_to(root)),
+        str(features_csv.relative_to(root)),
+        str(figure.relative_to(root)),
+    ]
+    if correction_ref:
+        provenance_files.append(correction_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -750,11 +907,7 @@ def process_electrochemistry_result(
         },
         outputs={
             "records": [str(result_metadata.relative_to(root))],
-            "files": [
-                str(processed_csv.relative_to(root)),
-                str(features_csv.relative_to(root)),
-                str(figure.relative_to(root)),
-            ],
+            "files": provenance_files,
         },
         parameters={
             "x_column": request.x_column,
@@ -809,6 +962,7 @@ def process_electrochemistry_result(
             source_data_refs=[
                 str(processed_csv.relative_to(root)),
                 str(features_csv.relative_to(root)),
-            ],
+            ]
+            + ([correction_ref] if correction_ref else []),
         )
     return result_metadata

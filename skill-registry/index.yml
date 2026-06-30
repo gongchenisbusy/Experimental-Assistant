@@ -6,7 +6,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.electrochemistry
     method: electrochemistry
-    notes: Minimal electrochemistry workflow implemented for review-gated CV/LSV/chrono/GCD/EIS-style tabular data, current conversion, optional current-density normalization, eis_nyquist_screening, traceable figures, and confidence-labeled reports; equivalent-circuit fitting and formal performance metrics remain future work.
+    notes: Minimal electrochemistry workflow implemented for review-gated CV/LSV/chrono/GCD/EIS-style tabular data, current conversion, optional current-density normalization, eis_nyquist_screening, correction_records for reviewed reference/iR metadata, traceable figures, and confidence-labeled reports; equivalent-circuit fitting, numeric correction workflows, and formal performance metrics remain future work.
   - id: ea.ftir-analysis
     manifest: skill-registry/builtins/ftir-analysis.yml
     status: builtin_v0_2_reference

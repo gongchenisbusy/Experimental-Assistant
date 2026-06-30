@@ -253,6 +253,192 @@ def test_cli_runs_synthetic_electrochemistry_workflow_end_to_end(tmp_path: Path,
     assert evaluation["reports"]["report_count"] == 1
 
 
+def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_metadata(tmp_path: Path, capsys) -> None:
+    fixture = _write_electrochemistry_fixture(tmp_path / "synthetic-electrochemistry-correction-cv.txt")
+    workspace = tmp_path / "electrochemistry-correction-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Electrochemistry Correction Workflow",
+            "--slug",
+            "electrochemistry-correction-workflow",
+            "--direction",
+            "electrochemistry correction records",
+            "--material",
+            "oxide catalyst",
+            "--experiment-type",
+            "materials electrochemistry correction record",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "electrochemistry",
+            "--sample-ref",
+            "sample-ec-correction-001",
+            "--experiment-ref",
+            "exp-ec-correction-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=potential_V, y=current_mA, x_unit=V, current_unit=mA, mode=cv",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "0.196 cm2 glassy-carbon electrode; 1 M KOH; Ag/AgCl reference; scan rate reviewed"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_electrochemistry_processing_parameters()
+    parameters["correction_record"].update(
+        {
+            "enabled": True,
+            "reference_electrode": {"type": "Ag/AgCl", "electrolyte": "sat_KCl", "status": "reviewed"},
+            "converted_potential_scale": {
+                "target_scale": "RHE",
+                "offset_V": 0.966,
+                "equation": "E_RHE = E_AgAgCl + 0.197 + 0.0591*pH",
+                "applied_to_processed_data": False,
+            },
+            "uncompensated_resistance": {"ru_ohm": 18.5, "source": "EIS high-frequency intercept", "status": "reviewed"},
+            "ir_compensation": {"status": "instrument_applied", "fraction": 0.85, "mode": "positive_feedback"},
+            "correction_notes": ["EA records correction metadata only; no potential shift or iR correction was applied."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "electrochemistry",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-correction-001",
+            "--x-column",
+            "potential_V",
+            "--y-column",
+            "current_mA",
+            "--x-unit",
+            "V",
+            "--current-unit",
+            "mA",
+            "--measurement-mode",
+            "cv",
+            "--context-summary",
+            context_text,
+            "--electrode-area-cm2",
+            "0.196",
+            "--parameters-json",
+            json.dumps({"correction_record": parameters["correction_record"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    electrochemistry_metadata = Path(process_output["metadata"])
+    electrochemistry = read_yaml(electrochemistry_metadata)
+    correction_record = electrochemistry["peak_analysis"]["correction_record"]
+
+    assert correction_record["status"] == "reviewed_correction_recorded"
+    assert correction_record["confidence"] == "low"
+    assert "reference_electrode" in correction_record["reviewed_correction_fields"]
+    assert correction_record["reference_electrode"]["type"] == "Ag/AgCl"
+    assert correction_record["converted_potential_scale"]["target_scale"] == "RHE"
+    assert correction_record["converted_potential_scale"]["applied_to_processed_data"] is False
+    assert "metadata/provenance only" in correction_record["boundary"]
+    assert electrochemistry["outputs"]["correction_record"].endswith("electrochemistry_correction.yml")
+    saved_correction = read_yaml(workspace / electrochemistry["outputs"]["correction_record"])
+    assert saved_correction["uncompensated_resistance"]["ru_ohm"] == 18.5
+    assert saved_correction["record_ref"] == electrochemistry["outputs"]["correction_record"]
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
+    assert electrochemistry["outputs"]["correction_record"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "electrochemistry",
+            "report",
+            str(workspace),
+            "--metadata",
+            electrochemistry_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-correction-001",
+            "--experiment-ref",
+            "exp-ec-correction-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Correction/reference record" in report_body
+    assert "Ag/AgCl" in report_body
+    assert "RHE" in report_body
+    assert "不自动平移电位" in report_body
+
+
 def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
     fixture = _write_eis_fixture(tmp_path / "synthetic-electrochemistry-eis.txt")
     workspace = tmp_path / "cli-eis-project"
@@ -445,6 +631,8 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "context_review_ref" in reference_text
     assert "EIS Nyquist" in reference_text
     assert "equivalent-circuit" in reference_text
+    assert "correction_record" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
     assert "eis_nyquist_screening" in electrochemistry_record["notes"]
+    assert "correction_records" in electrochemistry_record["notes"]

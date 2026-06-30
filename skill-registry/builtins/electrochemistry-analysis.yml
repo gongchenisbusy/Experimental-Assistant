@@ -11,6 +11,7 @@ ea_skill:
   output_artifacts:
     - processed_result
     - eis_screening_summary
+    - correction_record
     - figure_record
     - report_section
     - provenance_record
@@ -69,6 +70,17 @@ ea_skill:
         - unknown
     limitations:
       - eis_nyquist_screening_only_no_equivalent_circuit_fitting
+      - correction_records_preserve_reference_and_ir_metadata_without_numeric_correction
       - no_tafel_or_overpotential_extraction
       - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
       - no_memory_write_without_user_confirmation
+    correction_records:
+      implemented: true
+      record_format: yaml
+      fields:
+        - reference_electrode
+        - converted_potential_scale
+        - uncompensated_resistance
+        - ir_compensation
+        - correction_notes
+      confidence_boundary: metadata_record_only

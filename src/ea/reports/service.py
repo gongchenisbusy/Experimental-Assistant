@@ -1602,6 +1602,63 @@ def _electrochemistry_interpretation_text(metadata: dict, citation_text: str) ->
     return "\n".join(lines)
 
 
+def _has_electrochemistry_correction_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_electrochemistry_correction_value(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_electrochemistry_correction_value(item) for item in value)
+    return True
+
+
+def _format_electrochemistry_correction_value(value: object) -> str:
+    if isinstance(value, dict):
+        parts = [
+            f"{key}={_format_electrochemistry_correction_value(item)}"
+            for key, item in value.items()
+            if _has_electrochemistry_correction_value(item)
+        ]
+        return "; ".join(parts) if parts else "未记录"
+    if isinstance(value, list | tuple):
+        parts = [_format_electrochemistry_correction_value(item) for item in value if _has_electrochemistry_correction_value(item)]
+        return "; ".join(parts) if parts else "未记录"
+    return str(value)
+
+
+def _electrochemistry_correction_record_text(metadata: dict) -> str:
+    correction = (metadata.get("peak_analysis") or {}).get("correction_record")
+    if not correction:
+        return "当前没有启用或记录 electrochemistry correction record。"
+    status = correction.get("status", "unknown")
+    confidence = correction.get("confidence", "insufficient")
+    source = correction.get("assignment_source", "ea.electrochemistry.correction_record:v0.2")
+    record_ref = correction.get("record_ref", "未生成")
+    fields = correction.get("reviewed_correction_fields") or []
+    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed correction 字段"
+    labels = {
+        "reference_electrode": "reference electrode",
+        "converted_potential_scale": "converted potential scale",
+        "uncompensated_resistance": "uncompensated resistance",
+        "ir_compensation": "iR compensation",
+        "correction_notes": "correction notes",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = correction.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry correction details: `未记录`"
+    return (
+        f"Correction record 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该记录只保存已审核的参比电极、电位换算和 iR compensation/Ru 语境；本阶段不自动平移电位、不执行 iR 数值校正、不拟合等效电路，也不生成 Tafel/GCD 或性能结论。"
+    )
+
+
 def generate_electrochemistry_report(
     root: Path,
     *,
@@ -1642,6 +1699,7 @@ def generate_electrochemistry_report(
     feature_table = _electrochemistry_eis_feature_table(root, feature_table_ref) if is_eis else _electrochemistry_feature_table(root, feature_table_ref)
     current_summary = _electrochemistry_eis_summary_text(metadata) if is_eis else _electrochemistry_current_summary(metadata)
     summary_heading = "EIS Nyquist screening 摘要" if is_eis else "电流摘要"
+    correction_text = _electrochemistry_correction_record_text(metadata)
     caution_text = (
         "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
@@ -1674,6 +1732,10 @@ def generate_electrochemistry_report(
 ## 数据列、实验上下文与处理参数
 
 用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，x 轴/阻抗单位记录为 `{metadata['x_unit']}`，current 单位记录为 `{metadata['current_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。电极面积记录为 `{metadata.get('electrode_area_cm2', '未记录')}` cm^2。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## Correction/reference record
+
+{correction_text}
 
 ## 图谱
 
@@ -1709,6 +1771,7 @@ def generate_electrochemistry_report(
 
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{feature_table_ref}`
+{f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1732,7 +1795,7 @@ def generate_electrochemistry_report(
         workflow="report_generation",
         inputs={
             "records": [str(electrochemistry_metadata_path.relative_to(root))],
-            "files": [outputs["processed_csv"], feature_table_ref, outputs["figure"]],
+            "files": [value for value in [outputs["processed_csv"], feature_table_ref, outputs.get("correction_record"), outputs["figure"]] if value],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
