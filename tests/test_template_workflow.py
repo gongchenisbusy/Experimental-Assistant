@@ -12,6 +12,7 @@ from ea.raman import default_processing_parameters
 from ea.raw_import import import_raw_file
 from ea.review import write_review_record
 from ea.storage import read_markdown_record, read_yaml, write_yaml
+from ea.thermal import default_thermal_processing_parameters
 from ea.uv_vis import default_uv_vis_processing_parameters
 from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
@@ -82,6 +83,7 @@ def test_cli_writes_processing_parameter_templates(capsys, tmp_path: Path) -> No
         "uv_vis": default_uv_vis_processing_parameters(),
         "xps": default_xps_processing_parameters(),
         "electrochemistry": default_electrochemistry_processing_parameters(),
+        "thermal_analysis": default_thermal_processing_parameters(),
     }
     for method, defaults in expected.items():
         output_path = tmp_path / f"{method}_parameters.yml"

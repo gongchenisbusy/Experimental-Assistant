@@ -130,6 +130,14 @@ Electrochemistry：
 - 标注 peak-like/threshold/current-summary feature；过电位、Tafel slope、电容、容量、稳定性、倍率或机制解释不能由简单自动 feature 直接推出。
 - EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度。
 
+Thermal analysis：
+
+- x 轴为 temperature，单位 `C` 或 `K`；若内部换算为摄氏度，报告中保留原始单位和换算说明。
+- y 轴应明确是 mass、mass percent、heat flow、DTG signal 或 processed signal，并标明单位。
+- 必须记录 measurement mode、temperature program、atmosphere、sample mass、baseline/reference context 和用户确认来源。
+- TGA 可标注 mass-loss threshold 和 DTG-like extrema；DSC/DTG 可标注 heat-flow 或 derivative event，但这些只作为筛查事件。
+- Tg、Tm、Tc、分解机理、反应动力学、成分比例和热稳定性排序必须有协议、基线模型、重复性、参考文献或用户确认，不应由简单自动 feature 直接推出。
+
 SEM/TEM/光学显微镜：
 
 - 必须保留原图路径和处理图路径。
@@ -199,7 +207,7 @@ EA 报告中的推论使用四级可信度：
 正文引用统一使用数字编号：
 
 ```text
-Raman 峰位变化可能与层数、应变或掺杂有关[1,2]。
+Raman 峰位变化可能与层数、应变或掺杂有关[1][2]。
 ```
 
 引用编号必须出现在正文中实际使用该文献支撑的位置，并与文末 `References` 的序号一一对应。不能只在文末列 reference，而正文不标注引用来源。若一句话综合了多个文献来源，应在该句或该段对应位置标出多个编号。
@@ -227,7 +235,7 @@ v0.2 建议先完成：
 - `figures/index.yml` 和 `reports/index.yml`。
 - Markdown 报告模板。
 - Matplotlib 默认样式和 footer 标注。
-- Raman、PL、XRD、FTIR、UV-Vis、XPS、electrochemistry 报告的第一版完整模板。
+- Raman、PL、XRD、FTIR、UV-Vis、XPS、electrochemistry、thermal analysis 报告的第一版完整模板。
 - 对话回答中的 reference 输出约定。
 
 ## 10. 外部依据

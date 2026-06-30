@@ -133,7 +133,7 @@ figure_id: fig-{project_slug}-{method}-{yyyymmdd}-{nnn}
 
 推荐默认方案：确认。
 
-正文使用 `[1]`、`[1,2]`。文末 reference：
+正文使用 `[1]`、`[1][2]`。文末 reference：
 
 ```text
 [1] Author A, Author B. Title. Journal volume, pages (year). DOI: https://doi.org/xxxxx | Local: /absolute/path/to/paper.pdf | Web: https://...

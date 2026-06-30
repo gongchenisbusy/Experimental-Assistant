@@ -17,6 +17,7 @@ from ea.reports import (
     generate_ftir_report,
     generate_pl_report,
     generate_raman_report,
+    generate_thermal_report,
     generate_uv_vis_report,
     generate_xps_report,
     generate_xrd_report,
@@ -25,12 +26,13 @@ from ea.review import require_confirmed_review
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.storage.ids import next_id
+from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, process_thermal_result
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, process_uv_vis_result
 from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, process_xps_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, process_xrd_result
 
 
-SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry"}
+SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry", "thermal_analysis"}
 METHOD_UNITS = {
     "raman": {"cm^-1", "unknown"},
     "pl": {"eV", "nm", "unknown"},
@@ -39,6 +41,7 @@ METHOD_UNITS = {
     "uv_vis": {"nm", "eV", "unknown"},
     "xps": {"eV", "unknown"},
     "electrochemistry": {"V", "mV", "s", "unknown"},
+    "thermal_analysis": {"C", "K", "unknown"},
 }
 
 
@@ -60,7 +63,8 @@ def _project_path(root: Path, path_value: str | Path) -> Path:
 
 
 def _normalize_method(method: str) -> str:
-    return method.lower().strip().replace("-", "_")
+    normalized = method.lower().strip().replace("-", "_")
+    return "thermal_analysis" if normalized == "thermal" else normalized
 
 
 def _path_ref(root: Path, path: Path) -> str:
@@ -106,6 +110,8 @@ def _default_parameters(method: str) -> dict[str, Any]:
         return default_xps_processing_parameters()
     if method == "electrochemistry":
         return default_electrochemistry_processing_parameters()
+    if method == "thermal_analysis":
+        return default_thermal_processing_parameters()
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -128,7 +134,10 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
     errors: list[dict[str, Any]] = []
     item_id = str(item.get("item_id") or f"item-{index:03d}")
     method = _normalize_method(str(item.get("method", "")))
-    required = ["method", "metadata", "x_column", "y_column", "x_unit", "column_review_ref", "parameter_review_ref"]
+    if method == "thermal_analysis":
+        required = ["method", "metadata", "temperature_column", "signal_column", "temperature_unit", "signal_unit", "measurement_mode", "context_review_ref", "column_review_ref", "parameter_review_ref"]
+    else:
+        required = ["method", "metadata", "x_column", "y_column", "x_unit", "column_review_ref", "parameter_review_ref"]
     if method == "xps":
         required.append("calibration_review_ref")
     if method == "electrochemistry":
@@ -138,9 +147,10 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
             errors.append({"item_id": item_id, "field": field, "message": "Required field is missing."})
     if method and method not in SUPPORTED_METHODS:
         errors.append({"item_id": item_id, "field": "method", "message": f"Unsupported method: {method}"})
-    x_unit = item.get("x_unit")
+    x_unit = item.get("temperature_unit") if method == "thermal_analysis" else item.get("x_unit")
     if method in METHOD_UNITS and x_unit not in METHOD_UNITS[method]:
-        errors.append({"item_id": item_id, "field": "x_unit", "message": f"Unsupported x_unit for {method}: {x_unit}"})
+        unit_field = "temperature_unit" if method == "thermal_analysis" else "x_unit"
+        errors.append({"item_id": item_id, "field": unit_field, "message": f"Unsupported {unit_field} for {method}: {x_unit}"})
     if method == "ftir" and item.get("signal_mode") not in {"absorbance", "transmittance"}:
         errors.append({"item_id": item_id, "field": "signal_mode", "message": "FTIR signal_mode must be absorbance or transmittance."})
     if method == "uv_vis" and item.get("signal_mode") not in {"absorbance", "transmittance", "reflectance"}:
@@ -149,6 +159,10 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
         errors.append({"item_id": item_id, "field": "current_unit", "message": "Electrochemistry current_unit must be A, mA, uA, µA, or unknown."})
     if method == "electrochemistry" and item.get("measurement_mode") not in {"cv", "lsv", "chrono", "gcd", "unknown"}:
         errors.append({"item_id": item_id, "field": "measurement_mode", "message": "Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, or unknown."})
+    if method == "thermal_analysis" and item.get("signal_unit") not in {"%", "mg", "mW", "W/g", "mW/mg", "unknown"}:
+        errors.append({"item_id": item_id, "field": "signal_unit", "message": "Thermal signal_unit must be %, mg, mW, W/g, mW/mg, or unknown."})
+    if method == "thermal_analysis" and item.get("measurement_mode") not in {"tga", "dsc", "dtg", "unknown"}:
+        errors.append({"item_id": item_id, "field": "measurement_mode", "message": "Thermal measurement_mode must be tga, dsc, dtg, or unknown."})
     metadata = item.get("metadata")
     if metadata and not _project_path(root, metadata).exists():
         errors.append({"item_id": item_id, "field": "metadata", "message": f"Metadata file does not exist: {metadata}"})
@@ -159,6 +173,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
     if method == "xps":
         review_fields.append("calibration_review_ref")
     if method == "electrochemistry":
+        review_fields.append("context_review_ref")
+    if method == "thermal_analysis":
         review_fields.append("context_review_ref")
     for review_field in review_fields:
         review_ref = item.get(review_field)
@@ -205,6 +221,26 @@ def _run_method(root: Path, method: str, project_id: str, item: dict[str, Any], 
     metadata_path = _project_path(root, item["metadata"])
     sample_refs = list(item.get("sample_refs", item.get("sample_ref", [])) or [])
     parameters = _processing_parameters(root, method, item)
+    if method == "thermal_analysis":
+        return process_thermal_result(
+            root,
+            characterization_metadata_path=metadata_path,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            request=ThermalAnalysisProcessingRequest(
+                temperature_column=str(item["temperature_column"]),
+                signal_column=str(item["signal_column"]),
+                temperature_unit=str(item["temperature_unit"]),
+                signal_unit=str(item["signal_unit"]),
+                measurement_mode=str(item["measurement_mode"]),
+                context_summary=str(item.get("context_summary") or ""),
+                processing_parameters=parameters,
+                column_review_ref=str(item["column_review_ref"]),
+                context_review_ref=str(item["context_review_ref"]),
+                parameter_review_ref=str(item["parameter_review_ref"]),
+            ),
+            created_at=created_at,
+        )
     common = {
         "x_column": str(item["x_column"]),
         "y_column": str(item["y_column"]),
@@ -312,6 +348,8 @@ def _report_generator(method: str) -> Callable[..., Path]:
         return generate_xps_report
     if method == "electrochemistry":
         return generate_electrochemistry_report
+    if method == "thermal_analysis":
+        return generate_thermal_report
     raise BatchManifestError(f"Unsupported report method: {method}")
 
 
@@ -337,6 +375,7 @@ def _generate_report(
         "uv_vis": "uv_vis_metadata_path",
         "xps": "xps_metadata_path",
         "electrochemistry": "electrochemistry_metadata_path",
+        "thermal_analysis": "thermal_metadata_path",
     }[method]
     return generator(
         root,
@@ -425,22 +464,40 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
             "metadata_ref": item["metadata"],
             "sample_refs": list(item.get("sample_refs", item.get("sample_ref", [])) or []),
             "experiment_refs": list(item.get("experiment_refs", item.get("experiment_ref", [])) or []),
-            "x_column": str(item["x_column"]),
-            "y_column": str(item["y_column"]),
-            "x_unit": str(item["x_unit"]),
-            "current_unit": item.get("current_unit"),
-            "measurement_mode": item.get("measurement_mode"),
-            "context_summary": item.get("context_summary"),
-            "electrode_area_cm2": item.get("electrode_area_cm2"),
-            "signal_mode": item.get("signal_mode"),
-            "energy_shift_eV": item.get("energy_shift_eV", item.get("energy_shift_ev")),
-            "calibration_reference": item.get("calibration_reference"),
             "review_refs": [str(item["column_review_ref"]), str(item["parameter_review_ref"])],
             "status": "pending",
         }
+        if method == "thermal_analysis":
+            item_record.update(
+                {
+                    "temperature_column": str(item["temperature_column"]),
+                    "signal_column": str(item["signal_column"]),
+                    "temperature_unit": str(item["temperature_unit"]),
+                    "signal_unit": str(item["signal_unit"]),
+                    "measurement_mode": item.get("measurement_mode"),
+                    "context_summary": item.get("context_summary"),
+                }
+            )
+        else:
+            item_record.update(
+                {
+                    "x_column": str(item["x_column"]),
+                    "y_column": str(item["y_column"]),
+                    "x_unit": str(item["x_unit"]),
+                    "current_unit": item.get("current_unit"),
+                    "measurement_mode": item.get("measurement_mode"),
+                    "context_summary": item.get("context_summary"),
+                    "electrode_area_cm2": item.get("electrode_area_cm2"),
+                    "signal_mode": item.get("signal_mode"),
+                    "energy_shift_eV": item.get("energy_shift_eV", item.get("energy_shift_ev")),
+                    "calibration_reference": item.get("calibration_reference"),
+                }
+            )
         if method == "xps":
             item_record["review_refs"].append(str(item["calibration_review_ref"]))
         if method == "electrochemistry":
+            item_record["review_refs"].append(str(item["context_review_ref"]))
+        if method == "thermal_analysis":
             item_record["review_refs"].append(str(item["context_review_ref"]))
         try:
             result_path = _run_method(root, method, item_project_id, item, timestamp)

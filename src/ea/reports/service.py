@@ -1447,6 +1447,239 @@ def generate_electrochemistry_report(
     return report_path
 
 
+def _thermal_feature_summary(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前自动检测未得到稳定 thermal event，需结合人工检查。"
+    positions = []
+    for _, event in features.head(8).iterrows():
+        positions.append(f"{event['event_id']}@{float(event['temperature_C']):.1f} C")
+    return "自动检测给出的主要 thermal event 包括：" + "、".join(positions) + "。"
+
+
+def _thermal_feature_table(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前没有可展示的自动 thermal event 检测结果。"
+    rows = [
+        "| event_id | type | temperature (C) | signal | mass (%) | derivative (%/C) | confidence | source |",
+        "|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for _, event in features.head(12).iterrows():
+        signal = event.get("signal_value")
+        mass = event.get("mass_percent")
+        derivative = event.get("mass_derivative_percent_per_C")
+        rows.append(
+            "| {event_id} | {event_type} | {temperature:.1f} | {signal} | {mass} | {derivative} | {confidence} | {source} |".format(
+                event_id=event["event_id"],
+                event_type=event["event_type"],
+                temperature=float(event["temperature_C"]),
+                signal=f"{float(signal):.4g}" if pd.notna(signal) else "n/a",
+                mass=f"{float(mass):.4g}" if pd.notna(mass) else "n/a",
+                derivative=f"{float(derivative):.4g}" if pd.notna(derivative) else "n/a",
+                confidence=event.get("assignment_confidence") or "low",
+                source=event.get("assignment_source") or "未记录",
+            )
+        )
+    return "\n".join(rows)
+
+
+def _thermal_summary_text(metadata: dict) -> str:
+    analysis = metadata.get("peak_analysis") or {}
+    temperature = analysis.get("temperature_summary") or {}
+    signal = analysis.get("signal_summary") or {}
+    mass = analysis.get("mass_summary") or {}
+    parts = [
+        "temperature range `{min_temp:.1f}` to `{max_temp:.1f} C`".format(
+            min_temp=float(temperature.get("min_temperature_C", 0.0)),
+            max_temp=float(temperature.get("max_temperature_C", 0.0)),
+        ),
+        "signal start/end `{start:.4g}` / `{end:.4g}` `{unit}`".format(
+            start=float(signal.get("start_signal", 0.0)),
+            end=float(signal.get("end_signal", 0.0)),
+            unit=signal.get("signal_unit", "unknown"),
+        ),
+    ]
+    if mass:
+        parts.append(
+            "mass loss `{loss:.3g}%` from `{start:.3g}%` to `{end:.3g}%`".format(
+                loss=float(mass.get("total_mass_loss_percent", 0.0)),
+                start=float(mass.get("start_mass_percent", 0.0)),
+                end=float(mass.get("end_mass_percent", 0.0)),
+            )
+        )
+    return "；".join(parts) + "。"
+
+
+def _thermal_interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的 thermal 自动解释结果；建议先复核温度程序、气氛、基线、样品质量和重复性。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        cite = citation_text if citation_text else ""
+        source = str(item.get("assignment_source", "") or "未记录")
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`")
+    if not citation_text:
+        lines.append("- 上述 thermal 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式热稳定性、相变或机理判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
+def generate_thermal_report(
+    root: Path,
+    *,
+    project_id: str,
+    thermal_metadata_path: Path,
+    related_experiments: list[str] | None = None,
+    related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    metadata = read_yaml(thermal_metadata_path)
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
+    report_path = root / "reports" / f"{report_id}.md"
+    related_experiments = related_experiments or []
+    related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="thermal_analysis",
+        related_experiments=related_experiments,
+        related_samples=related_samples,
+        related_results=[metadata["thermal_result_id"]],
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    outputs = metadata["outputs"]
+    feature_table_ref = outputs.get("feature_table", outputs.get("peak_table"))
+    feature_text = _thermal_feature_summary(root, feature_table_ref)
+    feature_table = _thermal_feature_table(root, feature_table_ref)
+    summary_text = _thermal_summary_text(metadata)
+    warnings = metadata.get("warnings") or []
+    warning_text = "；".join(
+        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+        for warning in warnings
+    ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    interpretation_text = _thermal_interpretation_text(metadata, citation_text)
+    figure_rel = outputs["figure"]
+    figure_embed = f"![Thermal analysis trace](../{figure_rel})"
+    body = f"""# Thermal Analysis 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['thermal_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+
+## 数据来源
+
+本报告基于 thermal analysis processing result `{metadata['thermal_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+
+## 数据列、实验上下文与处理参数
+
+用户确认的 temperature 列为 `{metadata['temperature_column']}`，signal 列为 `{metadata['signal_column']}`，temperature 单位记录为 `{metadata['temperature_unit']}`，signal 单位记录为 `{metadata['signal_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## 图谱
+
+{figure_embed}
+
+原图文件：`{figure_rel}`
+
+## 主要观察
+
+{feature_text}这些 thermal event 来自自动处理结果，仍需要结合温度程序、气氛、样品质量、基线、坩埚/参比、重复性和用户审核进行解释。
+
+## 数据摘要
+
+{summary_text}
+
+## Thermal event 参数
+
+{feature_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
+## 谨慎解释
+
+在当前数据范围内，自动 thermal event 只能支持“热响应摘要/筛查”。不能仅凭本次自动处理直接确认分解机理、玻璃化转变、熔融/结晶归属、动力学参数、组成比例或热稳定性排名；正式结论需要用户确认温度程序、气氛、基线模型、样品质量、重复性和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+
+## 不确定性与限制
+
+{warning_text}
+
+## 输出文件
+
+- processed CSV: `{outputs['processed_csv']}`
+- feature table: `{feature_table_ref}`
+- plot: `{outputs['figure']}`
+- metadata: `{outputs['metadata']}`
+
+## References
+
+{reference_block['references_markdown']}
+
+## 溯源
+
+本报告草稿引用 thermal analysis result `{metadata['thermal_result_id']}`，对应 provenance 将在报告生成后写入。
+"""
+    for forbidden in FORBIDDEN_STRONG_CLAIMS:
+        body = body.replace(forbidden, "")
+
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="report_generation",
+        inputs={
+            "records": [str(thermal_metadata_path.relative_to(root))],
+            "files": [outputs["processed_csv"], feature_table_ref, outputs["figure"]],
+        },
+        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        review_refs=[],
+        warnings=warnings,
+        created_at=created_at,
+    )
+    frontmatter = read_yaml_from_markdown_frontmatter(report_path)
+    frontmatter["provenance_refs"] = [provenance_path.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["thermal_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
+    )
+    return report_path
+
+
 def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
     from ea.storage.files import read_markdown_record
 

@@ -13,6 +13,7 @@ from ea.raman import default_processing_parameters
 from ea.raw_import import import_raw_file
 from ea.review import write_review_record
 from ea.storage import read_markdown_record, read_yaml, write_yaml
+from ea.thermal import default_thermal_processing_parameters
 from ea.uv_vis import default_uv_vis_processing_parameters
 from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
@@ -105,6 +106,25 @@ def _write_electrochemistry_fixture(path: Path) -> Path:
     return path
 
 
+def _write_thermal_fixture(path: Path) -> Path:
+    lines = [
+        "# temperature_unit = C",
+        "# signal_unit = %",
+        "# measurement_mode = tga",
+        "# technique = TGA",
+        "temperature_C mass_percent",
+    ]
+    for index in range(700):
+        temperature = 25.0 + index * (775.0 / 699.0)
+        loss_1 = 7.0 / (1.0 + math.exp(-(temperature - 180.0) / 13.0))
+        loss_2 = 20.0 / (1.0 + math.exp(-(temperature - 410.0) / 20.0))
+        loss_3 = 9.0 / (1.0 + math.exp(-(temperature - 650.0) / 24.0))
+        mass = 100.0 - loss_1 - loss_2 - loss_3
+        lines.append(f"{temperature:.4f} {mass:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def _project(tmp_path: Path) -> tuple[Path, str]:
     workspace = tmp_path / "batch-project"
     outputs = initialize_project(
@@ -151,6 +171,48 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
         imported_at="2026-06-30T09:05:00",
     )
     metadata_ref = raw.metadata_path.relative_to(workspace).as_posix()
+    if method == "thermal_analysis":
+        parameters = default_thermal_processing_parameters()
+        column_review = write_review_record(
+            workspace,
+            target_type="thermal_columns",
+            target_ref=metadata_ref,
+            user_response="可以，保存",
+            reviewed_content="temperature=temperature_C, signal=mass_percent, temperature_unit=C, signal_unit=%, mode=tga",
+            reviewed_at="2026-06-30T09:10:00",
+        )
+        context_review = write_review_record(
+            workspace,
+            target_type="thermal_context",
+            target_ref=metadata_ref,
+            user_response="可以，保存",
+            reviewed_content="N2 atmosphere; 10 C/min; sample mass and baseline reviewed",
+            reviewed_at="2026-06-30T09:12:00",
+        )
+        parameter_review = write_review_record(
+            workspace,
+            target_type="thermal_parameters",
+            target_ref=metadata_ref,
+            user_response="可以，保存",
+            reviewed_content=json.dumps(parameters, ensure_ascii=False),
+            reviewed_at="2026-06-30T09:13:00",
+        )
+        return {
+            "method": method,
+            "metadata": metadata_ref,
+            "sample_refs": [sample],
+            "experiment_refs": [experiment],
+            "temperature_column": "temperature_C",
+            "signal_column": "mass_percent",
+            "temperature_unit": "C",
+            "signal_unit": "%",
+            "measurement_mode": "tga",
+            "context_summary": "N2 atmosphere; 10 C/min; sample mass and baseline reviewed",
+            "column_review_ref": column_review.stem,
+            "context_review_ref": context_review.stem,
+            "parameter_review_ref": parameter_review.stem,
+            "processing_parameters": parameters,
+        }
     if method == "xrd":
         x_column, y_column, x_unit = "two_theta", "intensity", "2theta_deg"
         parameters = default_xrd_processing_parameters()
@@ -230,6 +292,7 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     uv_vis_fixture = _write_uv_vis_fixture(tmp_path / "batch-uv-vis-spectrum.txt")
     xps_fixture = _write_xps_fixture(tmp_path / "batch-xps-spectrum.txt")
     electrochemistry_fixture = _write_electrochemistry_fixture(tmp_path / "batch-electrochemistry-cv.txt")
+    thermal_fixture = _write_thermal_fixture(tmp_path / "batch-thermal-tga.txt")
     items = [
         {
             "item_id": "raman-001",
@@ -266,6 +329,17 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
                 "exp-batch-001",
             ),
         },
+        {
+            "item_id": "thermal-001",
+            **_import_with_reviews(
+                workspace,
+                project_id,
+                "thermal_analysis",
+                thermal_fixture,
+                "sample-batch-001",
+                "exp-batch-001",
+            ),
+        },
     ]
     manifest = workspace / "batch_manifest.yml"
     write_yaml(
@@ -283,12 +357,12 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     assert main(["batch", "validate", str(workspace), "batch_manifest.yml"]) == 0
     validation = _json_output(capsys)
     assert validation["status"] == "pass"
-    assert validation["item_count"] == 7
+    assert validation["item_count"] == 8
 
     assert main(["batch", "run", str(workspace), "batch_manifest.yml"]) == 0
     output = _json_output(capsys)
     assert output["status"] == "success"
-    assert output["succeeded"] == 7
+    assert output["succeeded"] == 8
     assert output["failed"] == 0
 
     record = read_yaml(Path(output["record"]))

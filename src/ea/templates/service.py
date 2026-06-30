@@ -9,16 +9,19 @@ from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.raman import default_processing_parameters
 from ea.storage.files import write_yaml
+from ea.thermal import default_thermal_processing_parameters
 from ea.uv_vis import default_uv_vis_processing_parameters
 from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
-SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry")
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry", "thermal_analysis")
 
 
 def _normalise_method(method: str) -> str:
     normalized = method.lower().strip().replace("-", "_")
+    if normalized == "thermal":
+        normalized = "thermal_analysis"
     if normalized not in SUPPORTED_TEMPLATE_METHODS:
         supported = ", ".join(SUPPORTED_TEMPLATE_METHODS)
         raise ValueError(f"Unsupported template method: {method}. Supported methods: {supported}")
@@ -39,7 +42,9 @@ def processing_parameters_template(method: str) -> dict[str, Any]:
         return deepcopy(default_uv_vis_processing_parameters())
     if normalized == "xps":
         return deepcopy(default_xps_processing_parameters())
-    return deepcopy(default_electrochemistry_processing_parameters())
+    if normalized == "electrochemistry":
+        return deepcopy(default_electrochemistry_processing_parameters())
+    return deepcopy(default_thermal_processing_parameters())
 
 
 def write_processing_parameters_template(path: Path, method: str) -> Path:
@@ -77,6 +82,11 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         x_column = "potential_V"
         y_column = "current_mA"
         x_unit = "V"
+    elif method == "thermal_analysis":
+        metadata = "raw/thermal_analysis/char-YYYYMMDD-001/metadata.yml"
+        x_column = "temperature_C"
+        y_column = "mass_percent"
+        x_unit = "C"
     else:
         metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
         x_column = "col_0"
@@ -108,6 +118,14 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         item["measurement_mode"] = "cv"
         item["context_summary"] = "user-confirmed electrode/electrolyte/reference-electrode context"
         item["electrode_area_cm2"] = None
+        item["context_review_ref"] = "review-YYYYMMDD-003"
+    if method == "thermal_analysis":
+        item["temperature_column"] = item.pop("x_column")
+        item["signal_column"] = item.pop("y_column")
+        item["temperature_unit"] = item.pop("x_unit")
+        item["signal_unit"] = "%"
+        item["measurement_mode"] = "tga"
+        item["context_summary"] = "user-confirmed temperature program, atmosphere, sample mass, and baseline context"
         item["context_review_ref"] = "review-YYYYMMDD-003"
     return item
 

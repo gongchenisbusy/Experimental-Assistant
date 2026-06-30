@@ -46,6 +46,7 @@ from ea.reports import (
     generate_ftir_report,
     generate_pl_report,
     generate_raman_report,
+    generate_thermal_report,
     generate_uv_vis_report,
     generate_xps_report,
     generate_xrd_report,
@@ -60,6 +61,7 @@ from ea.templates import (
     write_batch_manifest_template,
     write_processing_parameters_template,
 )
+from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
 from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, inspect_xps_file, process_xps_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
@@ -337,6 +339,35 @@ def build_parser() -> argparse.ArgumentParser:
     electrochemistry_report.add_argument("--sample-ref", action="append", default=[])
     electrochemistry_report.add_argument("--reference-id", action="append", default=[])
 
+    thermal = sub.add_parser("thermal", help="Thermal analysis inspection, processing, and report helpers")
+    thermal_sub = thermal.add_subparsers(dest="thermal_command", required=True)
+    thermal_inspect = thermal_sub.add_parser("inspect", help="inspect tabular TGA/DSC/DTG data and suggest columns/units/mode")
+    thermal_inspect.add_argument("workspace", type=Path)
+    thermal_inspect.add_argument("data", type=Path)
+    thermal_process = thermal_sub.add_parser("process", help="run review-gated thermal analysis processing")
+    thermal_process.add_argument("workspace", type=Path)
+    thermal_process.add_argument("--metadata", required=True, type=Path)
+    thermal_process.add_argument("--project-id")
+    thermal_process.add_argument("--sample-ref", action="append", default=[])
+    thermal_process.add_argument("--temperature-column", required=True)
+    thermal_process.add_argument("--signal-column", required=True)
+    thermal_process.add_argument("--temperature-unit", choices=["C", "K", "unknown"], required=True)
+    thermal_process.add_argument("--signal-unit", choices=["%", "mg", "mW", "W/g", "mW/mg", "unknown"], required=True)
+    thermal_process.add_argument("--measurement-mode", choices=["tga", "dsc", "dtg", "unknown"], required=True)
+    thermal_process.add_argument("--context-summary", default="")
+    thermal_process.add_argument("--column-review-ref", required=True)
+    thermal_process.add_argument("--context-review-ref", required=True)
+    thermal_process.add_argument("--parameter-review-ref", required=True)
+    thermal_process.add_argument("--parameters-file", type=Path)
+    thermal_process.add_argument("--parameters-json")
+    thermal_report = thermal_sub.add_parser("report", help="generate a thermal analysis report from thermal metadata")
+    thermal_report.add_argument("workspace", type=Path)
+    thermal_report.add_argument("--metadata", required=True, type=Path)
+    thermal_report.add_argument("--project-id")
+    thermal_report.add_argument("--experiment-ref", action="append", default=[])
+    thermal_report.add_argument("--sample-ref", action="append", default=[])
+    thermal_report.add_argument("--reference-id", action="append", default=[])
+
     batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
     batch_sub = batch.add_subparsers(dest="batch_command", required=True)
     batch_validate = batch_sub.add_parser("validate", help="validate a batch characterization manifest")
@@ -349,7 +380,7 @@ def build_parser() -> argparse.ArgumentParser:
     templates = sub.add_parser("templates", help="write editable EA YAML templates")
     templates_sub = templates.add_subparsers(dest="templates_command", required=True)
     parameter_template = templates_sub.add_parser("parameters", help="show or write method processing parameters")
-    template_method_choices = list(SUPPORTED_TEMPLATE_METHODS) + ["uv-vis"]
+    template_method_choices = list(SUPPORTED_TEMPLATE_METHODS) + ["uv-vis", "thermal"]
     parameter_template.add_argument("method", choices=template_method_choices)
     parameter_template.add_argument("--output", type=Path)
     batch_template = templates_sub.add_parser("batch-manifest", help="show or write a batch manifest skeleton")
@@ -559,6 +590,15 @@ def _xps_processing_parameters(args: argparse.Namespace, workspace: Path) -> dic
 
 def _electrochemistry_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_electrochemistry_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _thermal_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_thermal_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -987,6 +1027,48 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_json({"report": str(path)})
             return 0
+    if args.command == "thermal":
+        project_id = getattr(args, "project_id", None)
+        if args.thermal_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.thermal_command == "inspect":
+            inspection = asdict(inspect_thermal_file(_project_path(args.workspace, args.data)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.thermal_command == "process":
+            parameters = _thermal_processing_parameters(args, args.workspace)
+            path = process_thermal_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=ThermalAnalysisProcessingRequest(
+                    temperature_column=args.temperature_column,
+                    signal_column=args.signal_column,
+                    temperature_unit=args.temperature_unit,
+                    signal_unit=args.signal_unit,
+                    measurement_mode=args.measurement_mode,
+                    context_summary=args.context_summary,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    context_review_ref=args.context_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.thermal_command == "report":
+            path = generate_thermal_report(
+                args.workspace,
+                project_id=project_id,
+                thermal_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
     if args.command == "batch":
         if args.batch_command == "validate":
             result = validate_batch_manifest(args.workspace, args.manifest)
@@ -1003,6 +1085,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "templates":
         if args.templates_command == "parameters":
             method = args.method.lower().strip().replace("-", "_")
+            if method == "thermal":
+                method = "thermal_analysis"
             written = None
             if args.output:
                 written = write_processing_parameters_template(args.output, method)
@@ -1019,6 +1103,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.templates_command == "batch-manifest":
             project_id = args.project_id or _project_id_from_workspace(args.workspace)
             methods = [method.lower().strip().replace("-", "_") for method in (args.method or list(SUPPORTED_TEMPLATE_METHODS))]
+            methods = ["thermal_analysis" if method == "thermal" else method for method in methods]
             output_path = None
             if args.output:
                 output_path = args.output if args.output.is_absolute() else args.workspace / args.output

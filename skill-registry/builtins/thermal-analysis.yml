@@ -39,3 +39,32 @@ ea_skill:
     raw_is_readonly: true
     temperature_program_required: true
     generated_outputs_outside_raw: true
+  current_v0_2_support:
+    commands:
+      - ea thermal inspect
+      - ea thermal process
+      - ea thermal report
+      - ea templates parameters thermal_analysis
+      - ea batch validate/run with method: thermal_analysis
+    supported_modes:
+      - tga
+      - dsc
+      - dtg
+      - unknown
+    supported_units:
+      temperature_unit:
+        - C
+        - K
+        - unknown
+      signal_unit:
+        - "%"
+        - mg
+        - mW
+        - W/g
+        - mW/mg
+        - unknown
+    limitations:
+      - no_glass_transition_or_melting_assignment_without_future_protocol_model
+      - no_kinetic_model_fitting
+      - no_formal_thermal_stability_ranking_without_replicates_and_user_review
+      - no_memory_write_without_user_confirmation

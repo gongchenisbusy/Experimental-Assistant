@@ -232,6 +232,26 @@ class ElectrochemistryProcessingResult(EARecord):
     warnings: list[Any] = Field(default_factory=list)
 
 
+class ThermalAnalysisProcessingResult(EARecord):
+    thermal_result_id: str
+    result_id: str
+    project_id: str
+    characterization_file_ref: str
+    sample_refs: list[str] = Field(default_factory=list)
+    status: Literal["success", "warning", "failed"]
+    temperature_column: str
+    signal_column: str
+    temperature_unit: Literal["C", "K", "unknown"] = "unknown"
+    signal_unit: Literal["%", "mg", "mW", "W/g", "mW/mg", "unknown"] = "unknown"
+    measurement_mode: Literal["tga", "dsc", "dtg", "unknown"] = "unknown"
+    context_summary: str | None = None
+    processing_parameters: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, str] = Field(default_factory=dict)
+    peak_analysis: dict[str, Any] = Field(default_factory=dict)
+    figure_id: str | None = None
+    warnings: list[Any] = Field(default_factory=list)
+
+
 class ImageAnalysisResult(EARecord):
     image_result_id: str
     result_id: str
@@ -264,6 +284,7 @@ class ReportRecord(EARecord):
         "uv_vis_analysis",
         "xps_analysis",
         "electrochemistry_analysis",
+        "thermal_analysis",
         "image_analysis",
     ]
     language: Literal["zh", "en"] = "zh"
