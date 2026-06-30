@@ -67,7 +67,7 @@ ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 
 The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-project` for v0.2 work.
 
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, and image-data entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, literature-library, and scientific-figure entries as EA contract boundaries until their implementation services exist.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, image-data, and scientific-figure style entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
 
 ## References
 
@@ -75,6 +75,7 @@ Built-in child-skill manifests live in `skill-registry/builtins/` and are indexe
 - For public-user initialization and forbidden defaults, read `references/public-initialization.md`.
 - For child skill manifests and `add-skills`, read `references/module-manifest.md`.
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
+- For scientific figure style infrastructure, read `references/scientific-figure-workflow.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
 - For PL v0.2 behavior, read `references/pl-workflow.md`.

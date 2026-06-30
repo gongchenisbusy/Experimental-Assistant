@@ -141,6 +141,11 @@ def test_cli_runs_public_pl_workflow_end_to_end(tmp_path: Path, capsys) -> None:
     assert pl["peak_analysis"]["dominant_peak"]["position_unit"] == "eV"
     assert (workspace / pl["outputs"]["peak_table"]).exists()
     assert (workspace / pl["outputs"]["figure"]).exists()
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][pl["figure_id"]]
+    assert figure_record["style_profile"] == "nature_like_clean"
+    assert figure_record["generation"]["style_profile"] == "nature_like_clean"
+    assert pl["outputs"]["processed_csv"] in figure_record["source_data_refs"]
+    assert pl["outputs"]["peak_table"] in figure_record["source_data_refs"]
 
     assert main(
         [

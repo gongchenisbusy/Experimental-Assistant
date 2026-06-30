@@ -233,4 +233,8 @@ def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(tmp_path: 
     assert report_frontmatter["figure_ids"] == ["fig-mos2-raman-v02-raman-20260630-001"]
     assert "## References" in report_body
     assert figures_index["figures"][result["figure_id"]]["report_id"] == report_frontmatter["report_id"]
+    assert figures_index["figures"][result["figure_id"]]["style_profile"] == "nature_like_clean"
+    assert figures_index["figures"][result["figure_id"]]["generation"]["style_profile"] == "nature_like_clean"
+    assert result["outputs"]["processed_csv"] in figures_index["figures"][result["figure_id"]]["source_data_refs"]
+    assert result["outputs"]["peak_table"] in figures_index["figures"][result["figure_id"]]["source_data_refs"]
     assert reports_index["reports"][report_frontmatter["report_id"]]["figure_ids"] == [result["figure_id"]]

@@ -143,6 +143,11 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert xrd["peak_analysis"]["possible_interpretations"][0]["confidence"] == "medium"
     assert (workspace / xrd["outputs"]["peak_table"]).exists()
     assert (workspace / xrd["outputs"]["figure"]).exists()
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xrd["figure_id"]]
+    assert figure_record["style_profile"] == "nature_like_clean"
+    assert figure_record["generation"]["style_profile"] == "nature_like_clean"
+    assert xrd["outputs"]["processed_csv"] in figure_record["source_data_refs"]
+    assert xrd["outputs"]["peak_table"] in figure_record["source_data_refs"]
 
     with (workspace / xrd["outputs"]["peak_table"]).open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))

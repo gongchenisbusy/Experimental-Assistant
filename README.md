@@ -43,7 +43,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
 BibTeX import uses an explicit user-provided `.bib` export and de-duplicates references by DOI, URL, title, or citation before creating new project records.
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, and image-data have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, and review-gated memory indices.
 

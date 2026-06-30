@@ -42,7 +42,7 @@ skills:
     status: builtin_v0_2_reference
     category: visualization.figure
     method: scientific_figure
-    notes: Nature-like scientific plotting contract with figure ID, report link, source-data trace, and provenance.
+    notes: Nature-like matplotlib style infrastructure implemented for report figures, with figure ID footer, style_profile, source-data trace, and provenance contracts.
   - id: ea.thermal-analysis
     manifest: skill-registry/builtins/thermal-analysis.yml
     status: builtin_v0_2_reference

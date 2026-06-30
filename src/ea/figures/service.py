@@ -31,6 +31,8 @@ def register_figure(
     generation: dict[str, Any] | None = None,
     caption: str | None = None,
     purpose: str | None = None,
+    style_profile: str | None = None,
+    source_data_refs: list[str] | None = None,
 ) -> dict[str, Any]:
     index_path = _index_path(root)
     index = read_yaml(index_path) if index_path.exists() else {"schema_version": "0.2", "figures": {}}
@@ -45,6 +47,8 @@ def register_figure(
         "generation": generation or {},
         "caption": caption,
         "purpose": purpose,
+        "style_profile": style_profile,
+        "source_data_refs": source_data_refs or [],
     }
     index.setdefault("figures", {})[figure_id] = record
     write_yaml(index_path, index)

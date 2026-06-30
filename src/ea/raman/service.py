@@ -10,7 +10,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
@@ -18,7 +17,15 @@ from scipy import sparse
 from scipy.signal import find_peaks, peak_widths, savgol_filter
 from scipy.sparse.linalg import spsolve
 
-from ea.figures import figure_footer, register_figure
+from ea.figures import (
+    NATURE_LIKE_COLORS,
+    NATURE_LIKE_STYLE_PROFILE,
+    figure_footer,
+    register_figure,
+    save_styled_figure,
+    style_axis,
+    styled_subplots,
+)
 from ea.provenance import write_provenance_entry
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -823,11 +830,11 @@ def _plot_raman(
     *,
     footer: str | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(6.0, 4.0))
+    fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(
         processed["raman_shift"],
         processed["raw_intensity"],
-        color="#0072B2",
+        color=NATURE_LIKE_COLORS["blue"],
         linewidth=1.0,
         alpha=0.55,
         label="Raw intensity",
@@ -835,7 +842,7 @@ def _plot_raman(
     ax.plot(
         processed["raman_shift"],
         processed["processed_intensity"],
-        color="#D55E00",
+        color=NATURE_LIKE_COLORS["orange"],
         linewidth=1.2,
         label="Processed intensity",
     )
@@ -843,7 +850,7 @@ def _plot_raman(
         ax.scatter(
             peaks["position_cm-1"],
             peaks["height"],
-            color="#000000",
+            color=NATURE_LIKE_COLORS["black"],
             s=18,
             label="Detected peaks",
             zorder=3,
@@ -854,28 +861,20 @@ def _plot_raman(
             spike_rows["raman_shift"],
             spike_rows["processed_intensity"],
             facecolors="none",
-            edgecolors="#CC79A7",
+            edgecolors=NATURE_LIKE_COLORS["pink"],
             s=28,
             linewidths=0.8,
             label="Spike candidates",
             zorder=4,
         )
     unit_label = "cm$^{-1}$" if x_unit == "cm^-1" else "unknown unit"
-    ax.set_title("Raman spectrum")
-    ax.set_xlabel(f"Raman shift ({unit_label})")
-    ax.set_ylabel("Intensity (a.u.)")
-    ax.legend(frameon=False)
-    ax.grid(True, alpha=0.2)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    if footer:
-        fig.text(0.99, 0.01, footer, ha="right", va="bottom", fontsize=5.5, color="#888888")
-        fig.tight_layout(rect=(0, 0.045, 1, 1))
-    else:
-        fig.tight_layout()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+    style_axis(
+        ax,
+        title="Raman spectrum",
+        xlabel=f"Raman shift ({unit_label})",
+        ylabel="Intensity (a.u.)",
+    )
+    save_styled_figure(fig, output, footer=footer)
 
 
 def process_raman_result(
@@ -1000,6 +999,7 @@ def process_raman_result(
             sample_ids=sample_refs,
             experiment_ids=metadata.get("experiment_refs", []),
             generation={
+                "style_profile": NATURE_LIKE_STYLE_PROFILE,
                 "script": "src/ea/raman/service.py",
                 "parameters": {
                     "x_column": request.x_column,
@@ -1010,5 +1010,10 @@ def process_raman_result(
             },
             caption="Raman spectrum with processed intensity and detected peaks.",
             purpose="raman_analysis_report",
+            style_profile=NATURE_LIKE_STYLE_PROFILE,
+            source_data_refs=[
+                str(processed_csv.relative_to(root)),
+                str(peaks_csv.relative_to(root)),
+            ],
         )
     return result_metadata

@@ -198,7 +198,7 @@ v0.2 建议先实现以下最小架构能力：
 - `skill-registry/index.yml` 的格式。
 - `add-skills` 的静态检查和 dry-run 检查草案。
 - 内置 manifest 目录，至少覆盖 `local-literature-library`、`scientific-figure`、`raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis`、`thermal-analysis` 和 `image-analysis`。
-- `scientific-figure` 和 `analysis-report` 的输出契约。
+- `scientific-figure` 的统一绘图样式基础设施和 `analysis-report` 的输出契约。
 - `raman-analysis`、`pl-analysis` 和 `xrd-analysis` 作为第一批可运行表征 workflow 样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 
