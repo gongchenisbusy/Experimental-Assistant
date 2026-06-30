@@ -49,6 +49,7 @@ SMOKE_GATE_COMMANDS = [
     "ea-release-keygen",
     "ea-sign-release-package",
     "ea-verify-release-signature",
+    "ea-release-checklist",
 ]
 
 
@@ -187,6 +188,7 @@ def build_release_manifest(
                 "release_signature_keygen_help",
                 "release_signature_sign_help",
                 "release_signature_verify_help",
+                "release_distribution_checklist_help",
                 "portability_scan",
             ],
             "skill_validation_target": "skills/ea-v0-2",

@@ -69,6 +69,7 @@ def build_command_steps(
                 SmokeStep("release_signature_keygen_help", [python, "-c", "from ea.release_signature import keygen_main; keygen_main(['--help'])"]),
                 SmokeStep("release_signature_sign_help", [python, "-c", "from ea.release_signature import sign_main; sign_main(['--help'])"]),
                 SmokeStep("release_signature_verify_help", [python, "-c", "from ea.release_signature import verify_main; verify_main(['--help'])"]),
+                SmokeStep("release_distribution_checklist_help", [python, "-c", "from ea.release_distribution import main; main(['--help'])"]),
             ]
         )
     return steps

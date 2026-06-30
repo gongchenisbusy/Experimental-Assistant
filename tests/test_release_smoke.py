@@ -43,6 +43,11 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
         "-c",
         "from ea.release_signature import verify_main; verify_main(['--help'])",
     ]
+    assert commands["release_distribution_checklist_help"] == [
+        "python",
+        "-c",
+        "from ea.release_distribution import main; main(['--help'])",
+    ]
 
 
 def test_public_release_smoke_env_prefers_repo_src(tmp_path: Path, monkeypatch) -> None:

@@ -39,6 +39,7 @@ ea-verify-release-package = "ea.release_package:verify_main"
 ea-release-keygen = "ea.release_signature:keygen_main"
 ea-sign-release-package = "ea.release_signature:sign_main"
 ea-verify-release-signature = "ea.release_signature:verify_main"
+ea-release-checklist = "ea.release_distribution:main"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -69,6 +70,7 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert manifest["package"]["console_scripts"]["ea-release-keygen"] == "ea.release_signature:keygen_main"
     assert manifest["package"]["console_scripts"]["ea-sign-release-package"] == "ea.release_signature:sign_main"
     assert manifest["package"]["console_scripts"]["ea-verify-release-signature"] == "ea.release_signature:verify_main"
+    assert manifest["package"]["console_scripts"]["ea-release-checklist"] == "ea.release_distribution:main"
     assert "pyproject.toml" in paths
     assert "src/ea/__init__.py" in paths
     assert "src/ea/__pycache__/ignored.pyc" not in paths
@@ -81,6 +83,7 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert "release_signature_keygen_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_signature_sign_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_signature_verify_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "release_distribution_checklist_help" in manifest["validation_contract"]["required_smoke_steps"]
 
 
 def test_write_release_manifest_creates_yaml_manifest(tmp_path: Path) -> None:

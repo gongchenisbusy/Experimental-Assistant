@@ -12,6 +12,7 @@ ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-release-checklist
 ```
 
 Script equivalents:
@@ -24,6 +25,7 @@ python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 python3 scripts/sign_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
 python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+python3 scripts/build_distribution_checklist.py
 ```
 
 Release smoke gate:
@@ -35,6 +37,7 @@ Release smoke gate:
 - Checks the release package entry point.
 - Checks the release package verifier entry point.
 - Checks the release signature keygen/sign/verify help entry points without requiring real user keys.
+- Checks the release distribution checklist help entry point.
 - Runs the public-user portability scan.
 
 Release manifest:
@@ -74,6 +77,14 @@ Optional release package signing:
 - Verifies the `.sha256` package integrity gate and then verifies the detached signature with the user-supplied public key.
 - Returns JSON with `status: pass` or `status: fail` and concrete failure records.
 - Supports encrypted private-key PEM files when the passphrase is supplied through `--passphrase-env`.
+
+Distribution checklist:
+
+- Writes `dist/ea-v0.2-distribution-checklist.json` and `dist/ea-v0.2-distribution-checklist.md` by default.
+- Summarizes current package metadata, git state, tags at `HEAD`, required release commands, public boundary notes, required artifact presence, package verification state, and optional signature state.
+- Reads existing `dist/` artifacts; it does not build packages, generate keys, sign archives, upload releases, or use network access.
+- Treats detached signatures as optional. If a signature is present and the user supplies `--public-key`, the checklist verifies it; otherwise it records that the signature is absent or unverified.
+- Returns non-zero only when required distribution artifacts or required verification checks fail.
 
 Scope limits:
 
