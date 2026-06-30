@@ -1,6 +1,6 @@
 # Batch Characterization Workflow
 
-Use this reference when running multiple already-reviewed Raman, PL, or XRD analyses from one manifest.
+Use this reference when running multiple already-reviewed Raman, PL, XRD, or FTIR analyses from one manifest.
 
 Scope:
 
@@ -20,7 +20,7 @@ ea batch run /path/to/ea-project batch_manifest.yml
 Generate an editable skeleton:
 
 ```bash
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --output batch_manifest.yml
 ```
 
 The generated skeleton uses placeholders for raw metadata and review refs. Fill those with real project values before running `ea batch validate`.
@@ -54,12 +54,25 @@ batch:
       x_unit: eV
       column_review_ref: review-20260630-003
       parameter_review_ref: review-20260630-004
+    - item_id: ftir-001
+      method: ftir
+      metadata: raw/ftir/char-20260630-003/metadata.yml
+      sample_refs: [sample-001]
+      experiment_refs: [exp-001]
+      x_column: wavenumber
+      y_column: absorbance
+      x_unit: cm^-1
+      signal_mode: absorbance
+      column_review_ref: review-20260630-005
+      parameter_review_ref: review-20260630-006
+      processing_parameters: {}
 ```
 
 Notes:
 
-- `method` must be `raman`, `pl`, or `xrd`.
+- `method` must be `raman`, `pl`, `xrd`, or `ftir`.
 - `x_unit` must match the method's allowed units.
+- FTIR items also require `signal_mode` as `absorbance` or `transmittance`.
 - `processing_parameters` are merged over each method's default parameters.
 - `parameters_file` or `processing_parameters_file` may point to a project-local YAML parameter override.
 - Set `create_reports: false` for processing-only batches.

@@ -204,7 +204,7 @@ v0.2 建议先完成：
 - `figures/index.yml` 和 `reports/index.yml`。
 - Markdown 报告模板。
 - Matplotlib 默认样式和 footer 标注。
-- Raman 报告的第一版完整模板。
+- Raman、PL、XRD、FTIR 报告的第一版完整模板。
 - 对话回答中的 reference 输出约定。
 
 ## 10. 外部依据

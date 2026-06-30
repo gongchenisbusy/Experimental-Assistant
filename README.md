@@ -43,12 +43,19 @@ ea review add /path/to/ea-project --target-type xrd_columns --target-ref raw/xrd
 ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XRD parameters confirmed"
 ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-005 --parameter-review-ref review-20260630-006 --sample-ref sample-001
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea raw import /path/to/ea-project /path/to/raw-ftir.txt --characterization-type ftir --sample-ref sample-001 --experiment-ref exp-001
+ea ftir inspect /path/to/ea-project raw/ftir/char-20260630-001/raw-ftir.txt
+ea review add /path/to/ea-project --target-type ftir_columns --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavenumber, y=absorbance, unit=cm^-1, signal_mode=absorbance"
+ea review add /path/to/ea-project --target-type ftir_parameters --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default FTIR parameters confirmed"
+ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metadata.yml --x-column wavenumber --y-column absorbance --x-unit cm^-1 --signal-mode absorbance --column-review-ref review-20260630-007 --parameter-review-ref review-20260630-008 --sample-ref sample-001
+ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
 ea materials assignments ws2 --method pl
 ea materials assignments hbn --method xrd
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
+ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
@@ -66,10 +73,10 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
 BibTeX import uses an explicit user-provided `.bib` export and de-duplicates references by DOI, URL, title, or citation before creating new project records.
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, FTIR, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
 Built-in material assignment records live in `src/ea/materials/assignments.yml`; use `ea materials list/show/assignments` to inspect the current MoS2 and WS2 Raman/PL/XRD screening rules, h-BN Raman/XRD screening rules, and their caveats.
 Template helpers write editable YAML for processing parameter files and batch manifests. They do not create review records or replace user confirmation.
-Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, and XRD items without guessing columns or parameters. Batch index records, summaries, item result/report refs, review refs, and batch provenance refs are audited by healthcheck.
+Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, XRD, and FTIR items without guessing columns or parameters. Batch index records, summaries, item result/report refs, review refs, and batch provenance refs are audited by healthcheck.
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.

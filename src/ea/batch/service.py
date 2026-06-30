@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, process_ftir_result
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, process_pl_result
 from ea.provenance import write_provenance_entry
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
-from ea.reports import generate_pl_report, generate_raman_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_xrd_report
 from ea.review import require_confirmed_review
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
@@ -14,11 +15,12 @@ from ea.storage.ids import next_id
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, process_xrd_result
 
 
-SUPPORTED_METHODS = {"raman", "pl", "xrd"}
+SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir"}
 METHOD_UNITS = {
     "raman": {"cm^-1", "unknown"},
     "pl": {"eV", "nm", "unknown"},
     "xrd": {"2theta_deg", "unknown"},
+    "ftir": {"cm^-1", "unknown"},
 }
 
 
@@ -74,6 +76,8 @@ def _default_parameters(method: str) -> dict[str, Any]:
         return default_pl_processing_parameters()
     if method == "xrd":
         return default_xrd_processing_parameters()
+    if method == "ftir":
+        return default_ftir_processing_parameters()
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -99,6 +103,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
     x_unit = item.get("x_unit")
     if method in METHOD_UNITS and x_unit not in METHOD_UNITS[method]:
         errors.append({"item_id": item_id, "field": "x_unit", "message": f"Unsupported x_unit for {method}: {x_unit}"})
+    if method == "ftir" and item.get("signal_mode") not in {"absorbance", "transmittance"}:
+        errors.append({"item_id": item_id, "field": "signal_mode", "message": "FTIR signal_mode must be absorbance or transmittance."})
     metadata = item.get("metadata")
     if metadata and not _project_path(root, metadata).exists():
         errors.append({"item_id": item_id, "field": "metadata", "message": f"Metadata file does not exist: {metadata}"})
@@ -185,6 +191,18 @@ def _run_method(root: Path, method: str, project_id: str, item: dict[str, Any], 
             request=XRDProcessingRequest(**common),
             created_at=created_at,
         )
+    if method == "ftir":
+        return process_ftir_result(
+            root,
+            characterization_metadata_path=metadata_path,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            request=FTIRProcessingRequest(
+                **common,
+                signal_mode=str(item.get("signal_mode") or "absorbance"),
+            ),
+            created_at=created_at,
+        )
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -195,6 +213,8 @@ def _report_generator(method: str) -> Callable[..., Path]:
         return generate_pl_report
     if method == "xrd":
         return generate_xrd_report
+    if method == "ftir":
+        return generate_ftir_report
     raise BatchManifestError(f"Unsupported report method: {method}")
 
 
@@ -216,6 +236,7 @@ def _generate_report(
         "raman": "raman_metadata_path",
         "pl": "pl_metadata_path",
         "xrd": "xrd_metadata_path",
+        "ftir": "ftir_metadata_path",
     }[method]
     return generator(
         root,
@@ -307,6 +328,7 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
             "x_column": str(item["x_column"]),
             "y_column": str(item["y_column"]),
             "x_unit": str(item["x_unit"]),
+            "signal_mode": item.get("signal_mode"),
             "review_refs": [str(item["column_review_ref"]), str(item["parameter_review_ref"])],
             "status": "pending",
         }

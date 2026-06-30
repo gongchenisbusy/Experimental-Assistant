@@ -4,13 +4,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.raman import default_processing_parameters
 from ea.storage.files import write_yaml
 from ea.xrd import default_xrd_processing_parameters
 
 
-SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd")
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir")
 
 
 def _normalise_method(method: str) -> str:
@@ -27,7 +28,9 @@ def processing_parameters_template(method: str) -> dict[str, Any]:
         return deepcopy(default_processing_parameters())
     if normalized == "pl":
         return deepcopy(default_pl_processing_parameters())
-    return deepcopy(default_xrd_processing_parameters())
+    if normalized == "xrd":
+        return deepcopy(default_xrd_processing_parameters())
+    return deepcopy(default_ftir_processing_parameters())
 
 
 def write_processing_parameters_template(path: Path, method: str) -> Path:
@@ -45,12 +48,17 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         x_column = "col_0"
         y_column = "col_1"
         x_unit = "eV"
+    elif method == "ftir":
+        metadata = "raw/ftir/char-YYYYMMDD-001/metadata.yml"
+        x_column = "wavenumber"
+        y_column = "absorbance"
+        x_unit = "cm^-1"
     else:
         metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
         x_column = "col_0"
         y_column = "col_1"
         x_unit = "cm^-1"
-    return {
+    item = {
         "item_id": f"{method}-{index:03d}",
         "method": method,
         "metadata": metadata,
@@ -63,6 +71,9 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         "parameter_review_ref": "review-YYYYMMDD-002",
         "processing_parameters": {},
     }
+    if method == "ftir":
+        item["signal_mode"] = "absorbance"
+    return item
 
 
 def batch_manifest_template(

@@ -12,7 +12,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: ftir
-    notes: Contract placeholder for infrared band assignment and traceable spectral reports.
+    notes: Minimal FTIR workflow implemented for review-gated band detection, broad band-family screening hints, traceable figures, and confidence-labeled reports.
   - id: ea.image-analysis
     manifest: skill-registry/builtins/image-analysis.yml
     status: builtin_v0_2_reference

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from ea.cli import main
+from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.projects import initialize_project
 from ea.raman import default_processing_parameters
@@ -74,6 +75,7 @@ def test_cli_writes_processing_parameter_templates(capsys, tmp_path: Path) -> No
         "raman": default_processing_parameters(),
         "pl": default_pl_processing_parameters(),
         "xrd": default_xrd_processing_parameters(),
+        "ftir": default_ftir_processing_parameters(),
     }
     for method, defaults in expected.items():
         output_path = tmp_path / f"{method}_parameters.yml"

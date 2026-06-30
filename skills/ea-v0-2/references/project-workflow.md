@@ -76,11 +76,23 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
+CLI path for the first FTIR workflow:
+
+```bash
+ea raw import /path/to/ea-project /path/to/raw-ftir.txt --characterization-type ftir --sample-ref sample-001 --experiment-ref exp-001
+ea ftir inspect /path/to/ea-project raw/ftir/char-20260630-001/raw-ftir.txt
+ea review add /path/to/ea-project --target-type ftir_columns --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavenumber, y=absorbance, unit=cm^-1, signal_mode=absorbance"
+ea review add /path/to/ea-project --target-type ftir_parameters --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default FTIR parameters confirmed"
+ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metadata.yml --x-column wavenumber --y-column absorbance --x-unit cm^-1 --signal-mode absorbance --column-review-ref review-20260630-007 --parameter-review-ref review-20260630-008 --sample-ref sample-001
+ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+```
+
 Editable templates:
 
 ```bash
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
+ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --output batch_manifest.yml
 ```
 
 Parameter templates are directly usable with `--parameters-file` after the user confirms the parameter content. Batch manifest templates still need real metadata and confirmed review refs before validation.
@@ -123,4 +135,4 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ```
 
-Batch manifests can coordinate Raman, PL, and XRD items. They do not replace column, unit, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.
+Batch manifests can coordinate Raman, PL, XRD, and FTIR items. They do not replace column, unit, signal-mode, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.

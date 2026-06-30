@@ -16,6 +16,7 @@ from ea.exports import (
     verify_bundle_checksums,
 )
 from ea.figures import lookup_figure
+from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, inspect_ftir_file, process_ftir_result
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
 from ea.literature import (
@@ -34,7 +35,7 @@ from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_pl_report, generate_raman_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_xrd_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
@@ -209,6 +210,32 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_report.add_argument("--experiment-ref", action="append", default=[])
     xrd_report.add_argument("--sample-ref", action="append", default=[])
     xrd_report.add_argument("--reference-id", action="append", default=[])
+
+    ftir = sub.add_parser("ftir", help="FTIR inspection, processing, and report helpers")
+    ftir_sub = ftir.add_subparsers(dest="ftir_command", required=True)
+    ftir_inspect = ftir_sub.add_parser("inspect", help="inspect an infrared spectrum file and suggest FTIR columns/unit")
+    ftir_inspect.add_argument("workspace", type=Path)
+    ftir_inspect.add_argument("spectrum", type=Path)
+    ftir_process = ftir_sub.add_parser("process", help="run review-gated FTIR processing")
+    ftir_process.add_argument("workspace", type=Path)
+    ftir_process.add_argument("--metadata", required=True, type=Path)
+    ftir_process.add_argument("--project-id")
+    ftir_process.add_argument("--sample-ref", action="append", default=[])
+    ftir_process.add_argument("--x-column", required=True)
+    ftir_process.add_argument("--y-column", required=True)
+    ftir_process.add_argument("--x-unit", choices=["cm^-1", "unknown"], required=True)
+    ftir_process.add_argument("--signal-mode", choices=["absorbance", "transmittance"], required=True)
+    ftir_process.add_argument("--column-review-ref", required=True)
+    ftir_process.add_argument("--parameter-review-ref", required=True)
+    ftir_process.add_argument("--parameters-file", type=Path)
+    ftir_process.add_argument("--parameters-json")
+    ftir_report = ftir_sub.add_parser("report", help="generate an FTIR analysis report from FTIR metadata")
+    ftir_report.add_argument("workspace", type=Path)
+    ftir_report.add_argument("--metadata", required=True, type=Path)
+    ftir_report.add_argument("--project-id")
+    ftir_report.add_argument("--experiment-ref", action="append", default=[])
+    ftir_report.add_argument("--sample-ref", action="append", default=[])
+    ftir_report.add_argument("--reference-id", action="append", default=[])
 
     batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
     batch_sub = batch.add_subparsers(dest="batch_command", required=True)
@@ -395,6 +422,15 @@ def _pl_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict
 
 def _xrd_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_xrd_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _ftir_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_ftir_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -655,6 +691,45 @@ def main(argv: list[str] | None = None) -> int:
                 args.workspace,
                 project_id=project_id,
                 xrd_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
+    if args.command == "ftir":
+        project_id = getattr(args, "project_id", None)
+        if args.ftir_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.ftir_command == "inspect":
+            inspection = asdict(inspect_ftir_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.ftir_command == "process":
+            parameters = _ftir_processing_parameters(args, args.workspace)
+            path = process_ftir_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=FTIRProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    signal_mode=args.signal_mode,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.ftir_command == "report":
+            path = generate_ftir_report(
+                args.workspace,
+                project_id=project_id,
+                ftir_metadata_path=_project_path(args.workspace, args.metadata),
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,

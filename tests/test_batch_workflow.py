@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from ea.cli import main
+from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.projects import initialize_project
 from ea.raman import default_processing_parameters
@@ -18,6 +20,26 @@ PUBLIC_RAW = Path("tests/fixtures/public/test-case-001/raw_data").resolve()
 
 def _json_output(capsys) -> dict:
     return json.loads(capsys.readouterr().out)
+
+
+def _write_ftir_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = cm^-1",
+        "# y_label = absorbance",
+        "wavenumber absorbance",
+    ]
+    for index in range(1200):
+        wavenumber = 4000.0 - index * 3.0
+        signal = 0.02
+        for center, amplitude, width in [
+            (3400.0, 0.28, 55.0),
+            (1720.0, 0.24, 30.0),
+            (1100.0, 0.32, 45.0),
+        ]:
+            signal += amplitude * math.exp(-((wavenumber - center) ** 2) / (2.0 * width**2))
+        lines.append(f"{wavenumber:.2f} {signal:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 def _project(tmp_path: Path) -> tuple[Path, str]:
@@ -72,6 +94,9 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
     elif method == "pl":
         x_column, y_column, x_unit = "col_0", "col_1", "eV"
         parameters = default_pl_processing_parameters()
+    elif method == "ftir":
+        x_column, y_column, x_unit = "wavenumber", "absorbance", "cm^-1"
+        parameters = default_ftir_processing_parameters()
     else:
         x_column, y_column, x_unit = "col_0", "col_1", "cm^-1"
         parameters = default_processing_parameters()
@@ -82,7 +107,7 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
         f"x={x_column}, y={y_column}, unit={x_unit}",
         json.dumps(parameters, ensure_ascii=False),
     )
-    return {
+    result = {
         "method": method,
         "metadata": metadata_ref,
         "sample_refs": [sample],
@@ -94,10 +119,14 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
         "parameter_review_ref": parameter_review,
         "processing_parameters": parameters,
     }
+    if method == "ftir":
+        result["signal_mode"] = "absorbance"
+    return result
 
 
 def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     workspace, project_id = _project(tmp_path)
+    ftir_fixture = _write_ftir_fixture(tmp_path / "batch-ftir-spectrum.txt")
     items = [
         {
             "item_id": "raman-001",
@@ -110,6 +139,10 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
         {
             "item_id": "xrd-001",
             **_import_with_reviews(workspace, project_id, "xrd", PUBLIC_RAW / "MoS-XRD-1.txt", "sample-batch-001", "exp-batch-001"),
+        },
+        {
+            "item_id": "ftir-001",
+            **_import_with_reviews(workspace, project_id, "ftir", ftir_fixture, "sample-batch-001", "exp-batch-001"),
         },
     ]
     manifest = workspace / "batch_manifest.yml"
@@ -128,12 +161,12 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     assert main(["batch", "validate", str(workspace), "batch_manifest.yml"]) == 0
     validation = _json_output(capsys)
     assert validation["status"] == "pass"
-    assert validation["item_count"] == 3
+    assert validation["item_count"] == 4
 
     assert main(["batch", "run", str(workspace), "batch_manifest.yml"]) == 0
     output = _json_output(capsys)
     assert output["status"] == "success"
-    assert output["succeeded"] == 3
+    assert output["succeeded"] == 4
     assert output["failed"] == 0
 
     record = read_yaml(Path(output["record"]))

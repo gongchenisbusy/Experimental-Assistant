@@ -597,6 +597,202 @@ def generate_xrd_report(
     return report_path
 
 
+def _ftir_band_summary(root: Path, peak_table_ref: str) -> str:
+    bands = pd.read_csv(root / peak_table_ref)
+    if bands.empty:
+        return "当前自动检峰未得到稳定 FTIR band，需结合人工检查。"
+    positions = []
+    for _, band in bands.sort_values("prominence", ascending=False).head(6).iterrows():
+        positions.append(f"{float(band['wavenumber_cm-1']):.0f} cm^-1")
+    return "自动检峰给出的主要 FTIR band 位于：" + "、".join(positions) + "。"
+
+
+def _ftir_band_table(root: Path, peak_table_ref: str) -> str:
+    bands = pd.read_csv(root / peak_table_ref)
+    if bands.empty:
+        return "当前没有可展示的自动 FTIR band 检测结果。"
+    rows = [
+        "| band_id | wavenumber (cm^-1) | prominence | possible band family | confidence |",
+        "|---|---:|---:|---|---|",
+    ]
+    for _, band in bands.sort_values("prominence", ascending=False).head(12).iterrows():
+        family = band.get("possible_band_family") if pd.notna(band.get("possible_band_family")) and band.get("possible_band_family") else "unassigned"
+        confidence = band.get("assignment_confidence") if pd.notna(band.get("assignment_confidence")) and band.get("assignment_confidence") else "insufficient"
+        rows.append(
+            "| {band_id} | {wavenumber:.0f} | {prominence:.3g} | {family} | {confidence} |".format(
+                band_id=band["band_id"],
+                wavenumber=float(band["wavenumber_cm-1"]),
+                prominence=float(band.get("prominence", 0.0)),
+                family=family,
+                confidence=confidence,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _ftir_interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的 FTIR 自动解释结果；建议先复核检峰参数、背景扣除和样品信息。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        cite = citation_text if citation_text else ""
+        source = str(item.get("assignment_source", "") or "未记录")
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence bands: `{evidence}`；assignment_source: `{source}`")
+    if not citation_text:
+        lines.append("- 上述 FTIR 自动解释尚未绑定外部文献或参考谱库；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
+def generate_ftir_report(
+    root: Path,
+    *,
+    project_id: str,
+    ftir_metadata_path: Path,
+    related_experiments: list[str] | None = None,
+    related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    metadata = read_yaml(ftir_metadata_path)
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
+    report_path = root / "reports" / f"{report_id}.md"
+    related_experiments = related_experiments or []
+    related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="ftir_analysis",
+        related_experiments=related_experiments,
+        related_samples=related_samples,
+        related_results=[metadata["ftir_result_id"]],
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    outputs = metadata["outputs"]
+    band_text = _ftir_band_summary(root, outputs["peak_table"])
+    band_table = _ftir_band_table(root, outputs["peak_table"])
+    warnings = metadata.get("warnings") or []
+    warning_text = "；".join(
+        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+        for warning in warnings
+    ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献或参考谱库对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或参考谱库引用。"
+    interpretation_text = _ftir_interpretation_text(metadata, citation_text)
+    figure_rel = outputs["figure"]
+    figure_embed = f"![FTIR spectrum](../{figure_rel})"
+    body = f"""# FTIR 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['ftir_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+
+## 数据来源
+
+本报告基于 FTIR processing result `{metadata['ftir_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+
+## 数据列与处理参数
+
+用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，FTIR x 轴单位记录为 `{metadata['x_unit']}`，信号模式为 `{metadata.get('signal_mode', 'absorbance')}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## 图谱
+
+{figure_embed}
+
+原图文件：`{figure_rel}`
+
+## 主要观察
+
+{band_text}这些 band 来自自动处理结果，仍需要结合样品制备、背景/空气扣除、ATR 或透射模式、其他表征结果和用户审核进行解释。
+
+## FTIR band 参数
+
+{band_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
+## 谨慎解释
+
+在当前数据范围内，自动 FTIR band family 只能支持“可能功能团或谱区提示”，不能仅凭本次 FTIR 数据直接确认化学组成、键合机制、表面吸附来源或反应路径。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+
+## 不确定性与限制
+
+{warning_text}
+
+## 输出文件
+
+- processed CSV: `{outputs['processed_csv']}`
+- band table: `{outputs['peak_table']}`
+- plot: `{outputs['figure']}`
+- metadata: `{outputs['metadata']}`
+
+## References
+
+{reference_block['references_markdown']}
+
+## 溯源
+
+本报告草稿引用 FTIR result `{metadata['ftir_result_id']}`，对应 provenance 将在报告生成后写入。
+"""
+    for forbidden in FORBIDDEN_STRONG_CLAIMS:
+        body = body.replace(forbidden, "")
+
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="report_generation",
+        inputs={
+            "records": [str(ftir_metadata_path.relative_to(root))],
+            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+        },
+        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        review_refs=[],
+        warnings=warnings,
+        created_at=created_at,
+    )
+    frontmatter = read_yaml_from_markdown_frontmatter(report_path)
+    frontmatter["provenance_refs"] = [provenance_path.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["ftir_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
+    )
+    return report_path
+
+
 def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
     from ea.storage.files import read_markdown_record
 

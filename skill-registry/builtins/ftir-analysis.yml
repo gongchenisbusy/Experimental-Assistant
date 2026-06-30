@@ -41,3 +41,14 @@ ea_skill:
     raw_is_readonly: true
     processing_parameters_required: true
     generated_outputs_outside_raw: true
+  current_v0_2_support:
+    cli:
+      - ea ftir inspect
+      - ea ftir process
+      - ea ftir report
+    processing:
+      - optional rolling-quantile baseline correction
+      - optional Savitzky-Golay smoothing
+      - max-absolute normalization
+      - absorbance maxima or transmittance minima detection
+      - broad band-family screening hints with low or insufficient confidence
