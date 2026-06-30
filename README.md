@@ -12,6 +12,12 @@ EA must initialize projects for unknown users without assuming developer-machine
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
+ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
+ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
+ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
+ea review add /path/to/ea-project --target-type raman_parameters --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default Raman parameters confirmed"
+ea raman process /path/to/ea-project --metadata raw/raman/char-20260630-001/metadata.yml --x-column col_0 --y-column col_1 --x-unit cm^-1 --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
+ea raman report /path/to/ea-project --metadata processed/sample-001/raman/res-project-raman-20260630-001/raman_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml

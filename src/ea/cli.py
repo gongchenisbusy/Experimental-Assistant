@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from ea.config import doctor_project_config
@@ -17,9 +18,13 @@ from ea.literature import (
 )
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.projects.service import initialize_project
+from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
+from ea.raw_import import import_raw_file
 from ea.references import register_reference, validate_report_citations
+from ea.reports import generate_raman_report
+from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
-from ea.storage.files import read_markdown_record
+from ea.storage.files import read_markdown_record, read_yaml
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +66,50 @@ def build_parser() -> argparse.ArgumentParser:
     config_sub = config.add_subparsers(dest="config_command", required=True)
     doctor = config_sub.add_parser("doctor", help="check project config for public-release portability")
     doctor.add_argument("workspace", type=Path)
+
+    raw = sub.add_parser("raw", help="controlled raw-data import helpers")
+    raw_sub = raw.add_subparsers(dest="raw_command", required=True)
+    raw_import = raw_sub.add_parser("import", help="import a raw characterization file as a protected project copy")
+    raw_import.add_argument("workspace", type=Path)
+    raw_import.add_argument("source", type=Path)
+    raw_import.add_argument("--project-id")
+    raw_import.add_argument("--characterization-type", default="raman")
+    raw_import.add_argument("--sample-ref", action="append", default=[])
+    raw_import.add_argument("--experiment-ref", action="append", default=[])
+
+    review = sub.add_parser("review", help="write user review records for review-gated workflows")
+    review_sub = review.add_subparsers(dest="review_command", required=True)
+    review_add = review_sub.add_parser("add", help="write a ReviewRecord")
+    review_add.add_argument("workspace", type=Path)
+    review_add.add_argument("--target-type", required=True)
+    review_add.add_argument("--target-ref", required=True)
+    review_add.add_argument("--user-response", required=True)
+    review_add.add_argument("--reviewed-content")
+
+    raman = sub.add_parser("raman", help="Raman inspection, processing, and report helpers")
+    raman_sub = raman.add_subparsers(dest="raman_command", required=True)
+    raman_inspect = raman_sub.add_parser("inspect", help="inspect a spectrum file and suggest Raman columns/unit")
+    raman_inspect.add_argument("workspace", type=Path)
+    raman_inspect.add_argument("spectrum", type=Path)
+    raman_process = raman_sub.add_parser("process", help="run review-gated Raman processing")
+    raman_process.add_argument("workspace", type=Path)
+    raman_process.add_argument("--metadata", required=True, type=Path)
+    raman_process.add_argument("--project-id")
+    raman_process.add_argument("--sample-ref", action="append", default=[])
+    raman_process.add_argument("--x-column", required=True)
+    raman_process.add_argument("--y-column", required=True)
+    raman_process.add_argument("--x-unit", choices=["cm^-1", "unknown"], required=True)
+    raman_process.add_argument("--column-review-ref", required=True)
+    raman_process.add_argument("--parameter-review-ref", required=True)
+    raman_process.add_argument("--parameters-file", type=Path)
+    raman_process.add_argument("--parameters-json")
+    raman_report = raman_sub.add_parser("report", help="generate a Raman analysis report from Raman metadata")
+    raman_report.add_argument("workspace", type=Path)
+    raman_report.add_argument("--metadata", required=True, type=Path)
+    raman_report.add_argument("--project-id")
+    raman_report.add_argument("--experiment-ref", action="append", default=[])
+    raman_report.add_argument("--sample-ref", action="append", default=[])
+    raman_report.add_argument("--reference-id", action="append", default=[])
 
     literature = sub.add_parser("literature", help="local literature-library helpers")
     literature_sub = literature.add_subparsers(dest="literature_command", required=True)
@@ -180,6 +229,19 @@ def _project_id_from_workspace(workspace: Path) -> str:
     return str(frontmatter.get("project_id", "unknown-project"))
 
 
+def _project_path(workspace: Path, path: Path) -> Path:
+    return path if path.is_absolute() else workspace / path
+
+
+def _processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "init":
@@ -229,6 +291,78 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "config":
         if args.config_command == "doctor":
             _print_json(doctor_project_config(args.workspace))
+            return 0
+    if args.command == "raw":
+        if args.raw_command == "import":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            result = import_raw_file(
+                args.workspace,
+                args.source,
+                project_id=project_id,
+                characterization_type=args.characterization_type,
+                sample_refs=args.sample_ref,
+                experiment_refs=args.experiment_ref,
+            )
+            _print_json(
+                {
+                    "characterization_id": result.characterization_id,
+                    "import_status": result.import_status,
+                    "metadata": str(result.metadata_path),
+                    "project_raw_path": str(result.project_raw_path) if result.project_raw_path else None,
+                    "canonical_metadata": str(result.canonical_metadata_path) if result.canonical_metadata_path else None,
+                    "sha256": result.sha256,
+                }
+            )
+            return 0
+    if args.command == "review":
+        if args.review_command == "add":
+            path = write_review_record(
+                args.workspace,
+                target_type=args.target_type,
+                target_ref=args.target_ref,
+                user_response=args.user_response,
+                reviewed_content=args.reviewed_content or args.user_response,
+            )
+            data = read_yaml(path)
+            _print_json({"review": str(path), "review_id": path.stem, "review_status": data.get("review_status")})
+            return 0
+    if args.command == "raman":
+        project_id = getattr(args, "project_id", None)
+        if args.raman_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.raman_command == "inspect":
+            inspection = asdict(inspect_spectrum_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.raman_command == "process":
+            parameters = _processing_parameters(args, args.workspace)
+            path = process_raman_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=RamanProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.raman_command == "report":
+            path = generate_raman_report(
+                args.workspace,
+                project_id=project_id,
+                raman_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
             return 0
     if args.command == "literature":
         if args.literature_command == "status":
