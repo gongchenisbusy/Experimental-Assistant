@@ -252,7 +252,7 @@ ea config doctor
 
 - 减少对 `test-case-001` 的过拟合。
 - 增加能暴露真实问题的回归样本。
-- 增加 `ea eval project` 本地评估入口，把 healthcheck/config、报告引用、图片风格/源数据追踪和交接就绪度汇总为可持久化评估记录。
+- 增加 `ea eval project` 本地评估入口，把 healthcheck/config、报告引用、图片风格/源数据追踪、batch 记录、材料归属可追溯性和交接就绪度汇总为可持久化评估记录。
 
 候选 test cases：
 
@@ -267,7 +267,7 @@ ea config doctor
 - 至少 3 个 public test case。
 - hidden/evaluator 材料继续隔离。
 - CI 或本地测试可以区分 public workflow test 和 evaluator-only review。
-- `evaluation/eval-{yyyymmdd}-{nnn}.yml` 能保存本地确定性评估结果，且明确不执行 live 文献检索、DOI 解析、PDF 下载、浏览器/Zotero 访问或科学真值打分。
+- `evaluation/eval-{yyyymmdd}-{nnn}.yml` 能保存本地确定性评估结果，包含 batch/material assignment readiness summary，且明确不执行 live 文献检索、DOI 解析、PDF 下载、浏览器/Zotero 访问或科学真值打分。
 
 ### Phase 12: 项目记忆升级
 

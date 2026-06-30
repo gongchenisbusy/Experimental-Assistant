@@ -58,10 +58,15 @@ def _safe_read_yaml(path: Path, findings: list[HealthFinding]) -> dict[str, Any]
 def _result_index(root: Path, findings: list[HealthFinding]) -> dict[str, Path]:
     results: dict[str, Path] = {}
     for path in sorted((root / "processed").glob("**/*.yml")):
+        if "batches" in path.parts:
+            continue
         data = _safe_read_yaml(path, findings)
-        for key in ("result_id", "raman_result_id"):
+        for key in ("result_id", "raman_result_id", "pl_result_id", "xrd_result_id"):
             value = data.get(key)
             if value:
+                results[str(value)] = path
+        for key, value in data.items():
+            if key.endswith("_result_id") and value:
                 results[str(value)] = path
     return results
 
@@ -672,6 +677,350 @@ def _check_memory(root: Path, findings: list[HealthFinding]) -> None:
             _check_review_ref(root, str(review_ref), findings, memory_index_path)
 
 
+def _check_batch_record(
+    root: Path,
+    *,
+    batch_id: str,
+    index_record: dict[str, Any],
+    record_path: Path,
+    record: dict[str, Any],
+    findings: list[HealthFinding],
+) -> None:
+    if record.get("batch_id") != batch_id:
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_record_id_mismatch",
+                "Batch run record batch_id does not match processed/batches/index.yml.",
+                path=str(record_path),
+                ref=batch_id,
+            )
+        )
+
+    for field in ["status", "item_count", "succeeded", "failed"]:
+        if field in index_record and record.get(field) != index_record.get(field):
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_index_record_mismatch",
+                    "Batch index summary does not match its batch run record.",
+                    path=str(record_path),
+                    ref=f"{batch_id}:{field}",
+                )
+            )
+
+    manifest_ref = record.get("manifest_ref")
+    if manifest_ref and not _project_path(root, str(manifest_ref)).exists():
+        findings.append(
+            HealthFinding(
+                "warning",
+                "batch_manifest_ref_missing",
+                "Batch run manifest_ref is missing from the project workspace.",
+                path=str(record_path),
+                ref=str(manifest_ref),
+            )
+        )
+
+    items = record.get("items")
+    if not isinstance(items, list):
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_items_invalid",
+                "Batch run record items must be a list.",
+                path=str(record_path),
+                ref=batch_id,
+            )
+        )
+        return
+
+    expected_count = record.get("item_count")
+    if isinstance(expected_count, int) and len(items) != expected_count:
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_item_count_mismatch",
+                "Batch run item_count does not match the number of item records.",
+                path=str(record_path),
+                ref=batch_id,
+            )
+        )
+
+    succeeded = sum(1 for item in items if item.get("status") == "success")
+    failed = sum(1 for item in items if item.get("status") == "failed")
+    if record.get("succeeded") != succeeded or record.get("failed") != failed:
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_status_count_mismatch",
+                "Batch run succeeded/failed counts do not match item statuses.",
+                path=str(record_path),
+                ref=batch_id,
+            )
+        )
+
+    for item in items:
+        item_id = str(item.get("item_id") or "unknown-item")
+        for metadata_ref in [item.get("metadata_ref")]:
+            if metadata_ref and not _project_path(root, str(metadata_ref)).exists():
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "batch_item_metadata_missing",
+                        "Batch item metadata_ref is missing.",
+                        path=str(record_path),
+                        ref=f"{item_id}:{metadata_ref}",
+                    )
+                )
+        for review_ref in item.get("review_refs") or []:
+            _check_review_ref(root, str(review_ref), findings, record_path)
+
+        if item.get("status") != "success":
+            continue
+        result_ref = item.get("result_metadata_ref")
+        if not result_ref:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_item_result_ref_missing",
+                    "Successful batch item is missing result_metadata_ref.",
+                    path=str(record_path),
+                    ref=item_id,
+                )
+            )
+        elif not _project_path(root, str(result_ref)).exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_item_result_missing",
+                    "Successful batch item result_metadata_ref is missing.",
+                    path=str(record_path),
+                    ref=f"{item_id}:{result_ref}",
+                )
+            )
+
+        report_ref = item.get("report_ref")
+        if report_ref and not _project_path(root, str(report_ref)).exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_item_report_missing",
+                    "Batch item report_ref is missing.",
+                    path=str(record_path),
+                    ref=f"{item_id}:{report_ref}",
+                )
+            )
+
+    provenance_refs = list(record.get("provenance_refs") or [])
+    if not provenance_refs:
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_provenance_refs_missing",
+                "Batch run record is missing provenance_refs.",
+                path=str(record_path),
+                ref=batch_id,
+            )
+        )
+    for provenance_ref in provenance_refs:
+        provenance_path = _provenance_path(root, str(provenance_ref))
+        if not provenance_path.exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_provenance_ref_missing",
+                    "Batch run provenance_ref is missing.",
+                    path=str(record_path),
+                    ref=str(provenance_ref),
+                )
+            )
+            continue
+        provenance = _safe_read_yaml(provenance_path, findings)
+        if provenance.get("workflow") != "batch_characterization":
+            findings.append(
+                HealthFinding(
+                    "warning",
+                    "batch_provenance_workflow_unexpected",
+                    "Batch run provenance_ref does not use the batch_characterization workflow.",
+                    path=str(record_path),
+                    ref=str(provenance_ref),
+                )
+            )
+
+
+def _check_batches(root: Path, findings: list[HealthFinding]) -> None:
+    index_path = root / "processed" / "batches" / "index.yml"
+    if not index_path.exists():
+        return
+    batches = _safe_read_yaml(index_path, findings).get("batches", {})
+    if not isinstance(batches, dict):
+        findings.append(
+            HealthFinding(
+                "error",
+                "batch_index_invalid",
+                "processed/batches/index.yml field `batches` must be a mapping.",
+                path=str(index_path),
+            )
+        )
+        return
+
+    for batch_id, index_record in batches.items():
+        batch_id = str(batch_id)
+        if not isinstance(index_record, dict):
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_index_record_invalid",
+                    "Batch index entry must be a mapping.",
+                    path=str(index_path),
+                    ref=batch_id,
+                )
+            )
+            continue
+        if index_record.get("batch_id") and str(index_record.get("batch_id")) != batch_id:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_index_id_mismatch",
+                    "Batch index key does not match its batch_id field.",
+                    path=str(index_path),
+                    ref=batch_id,
+                )
+            )
+
+        record_ref = str(index_record.get("record_ref") or "")
+        summary_ref = str(index_record.get("summary_ref") or "")
+        if not record_ref:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_record_ref_missing",
+                    "Batch index entry is missing record_ref.",
+                    path=str(index_path),
+                    ref=batch_id,
+                )
+            )
+            continue
+        record_path = _project_path(root, record_ref)
+        if not record_path.exists():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_record_missing",
+                    "Batch index points to a missing batch run record.",
+                    path=str(index_path),
+                    ref=record_ref,
+                )
+            )
+            continue
+
+        if not summary_ref:
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "batch_summary_ref_missing",
+                    "Batch index entry is missing summary_ref.",
+                    path=str(index_path),
+                    ref=batch_id,
+                )
+            )
+        else:
+            summary_path = _project_path(root, summary_ref)
+            if not summary_path.exists():
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "batch_summary_missing",
+                        "Batch index points to a missing batch summary.",
+                        path=str(index_path),
+                        ref=summary_ref,
+                    )
+                )
+            elif batch_id not in summary_path.read_text(encoding="utf-8"):
+                findings.append(
+                    HealthFinding(
+                        "warning",
+                        "batch_summary_id_missing",
+                        "Batch summary does not mention its batch_id.",
+                        path=str(summary_path),
+                        ref=batch_id,
+                    )
+                )
+
+        record = _safe_read_yaml(record_path, findings)
+        _check_batch_record(
+            root,
+            batch_id=batch_id,
+            index_record=index_record,
+            record_path=record_path,
+            record=record,
+            findings=findings,
+        )
+
+
+def _check_material_assignments(root: Path, findings: list[HealthFinding]) -> None:
+    for path in sorted((root / "processed").glob("**/*.yml")):
+        if "batches" in path.parts:
+            continue
+        metadata = _safe_read_yaml(path, findings)
+        peak_analysis = metadata.get("peak_analysis")
+        if not isinstance(peak_analysis, dict):
+            continue
+        assigned_features = peak_analysis.get("assigned_features") or []
+        if not assigned_features:
+            continue
+        if not str(peak_analysis.get("assignment_source") or "").strip():
+            findings.append(
+                HealthFinding(
+                    "error",
+                    "material_assignment_source_missing",
+                    "Result metadata has assigned material features but no peak_analysis.assignment_source.",
+                    path=str(path),
+                )
+            )
+        if not str(peak_analysis.get("material_id") or "").strip():
+            findings.append(
+                HealthFinding(
+                    "warning",
+                    "material_assignment_id_missing",
+                    "Result metadata has assigned material features but no peak_analysis.material_id.",
+                    path=str(path),
+                )
+            )
+        for index, feature in enumerate(assigned_features, start=1):
+            if not isinstance(feature, dict):
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "material_assignment_feature_invalid",
+                        "Assigned material feature must be a mapping.",
+                        path=str(path),
+                        ref=f"feature-{index:03d}",
+                    )
+                )
+                continue
+            if not str(feature.get("assignment_source") or "").strip():
+                findings.append(
+                    HealthFinding(
+                        "error",
+                        "material_assignment_feature_source_missing",
+                        "Assigned material feature is missing assignment_source.",
+                        path=str(path),
+                        ref=str(feature.get("feature") or f"feature-{index:03d}"),
+                    )
+                )
+            if not str(feature.get("confidence") or "").strip():
+                findings.append(
+                    HealthFinding(
+                        "warning",
+                        "material_assignment_confidence_missing",
+                        "Assigned material feature is missing confidence.",
+                        path=str(path),
+                        ref=str(feature.get("feature") or f"feature-{index:03d}"),
+                    )
+                )
+
+
 def run_healthcheck(root: Path) -> dict[str, Any]:
     root = root.resolve()
     findings: list[HealthFinding] = []
@@ -686,6 +1035,8 @@ def run_healthcheck(root: Path) -> dict[str, Any]:
         _check_figures_and_reports(root, findings)
         _check_references(root, findings)
         _check_memory(root, findings)
+        _check_batches(root, findings)
+        _check_material_assignments(root, findings)
     error_count = sum(1 for finding in findings if finding.severity == "error")
     warning_count = sum(1 for finding in findings if finding.severity == "warning")
     return {

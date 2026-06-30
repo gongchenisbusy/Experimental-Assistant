@@ -18,7 +18,7 @@ Do not assume developer-machine Zotero, browser, institution, cache, or test pat
 3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under `processed/`, `figures/`, `reports/`, `literature/`, or other non-raw directories.
 4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
 5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
-6. Run `ea healthcheck` and `ea eval project` before handoff or public-demo readiness checks.
+6. Run `ea healthcheck` and `ea eval project` before handoff or public-demo readiness checks; these now include batch records and material-assignment traceability in addition to raw/report/figure/reference/provenance checks.
 7. Put questions that affect future work or scientific judgement at the end of the response.
 
 ## CLI Quick Start
@@ -76,6 +76,8 @@ ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-project` for v0.2 work.
 
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, image-data, and scientific-figure style entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
+
+Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level.
 
 ## References
 

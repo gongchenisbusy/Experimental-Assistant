@@ -79,11 +79,95 @@ def _build_v0_2_raman_project(root: Path) -> dict[str, Path | str]:
     result = read_yaml(result_path)
     return {
         "project_id": project_id,
+        "raw_metadata_path": raw.metadata_path,
         "raw_path": raw.project_raw_path or root / "missing",
         "result_path": result_path,
         "report_path": report_path,
         "figure_id": result["figure_id"],
     }
+
+
+def _path_ref(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _write_minimal_batch_record(root: Path, built: dict[str, Path | str]) -> dict[str, Path]:
+    batch_id = "batch-20260630-001"
+    batch_dir = root / "processed" / "batches" / batch_id
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    record_path = batch_dir / "batch_run.yml"
+    summary_path = batch_dir / "batch_summary.md"
+    index_path = root / "processed" / "batches" / "index.yml"
+    record_ref = _path_ref(root, record_path)
+    summary_ref = _path_ref(root, summary_path)
+    result_ref = _path_ref(root, Path(built["result_path"]))
+    report_ref = _path_ref(root, Path(built["report_path"]))
+    metadata_ref = _path_ref(root, Path(built["raw_metadata_path"]))
+    record = {
+        "schema_version": "0.2",
+        "batch_id": batch_id,
+        "project_id": built["project_id"],
+        "manifest_ref": "",
+        "status": "success",
+        "item_count": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "create_reports": True,
+        "continue_on_error": True,
+        "items": [
+            {
+                "item_id": "raman-001",
+                "method": "raman",
+                "metadata_ref": metadata_ref,
+                "sample_refs": ["sample-001"],
+                "experiment_refs": ["exp-20260630-001"],
+                "x_column": "col_0",
+                "y_column": "col_1",
+                "x_unit": "cm^-1",
+                "review_refs": [],
+                "status": "success",
+                "result_metadata_ref": result_ref,
+                "report_ref": report_ref,
+            }
+        ],
+        "warnings": [],
+        "created_at": "2026-06-30T11:30:00",
+        "updated_at": "2026-06-30T11:30:00",
+        "provenance_refs": [],
+    }
+    write_yaml(record_path, record)
+    summary_path.write_text(f"# Batch Characterization Summary: {batch_id}\n\n- status: `success`\n", encoding="utf-8")
+    write_yaml(
+        index_path,
+        {
+            "schema_version": "0.2",
+            "batches": {
+                batch_id: {
+                    "batch_id": batch_id,
+                    "project_id": built["project_id"],
+                    "status": "success",
+                    "manifest_ref": "",
+                    "record_ref": record_ref,
+                    "summary_ref": summary_ref,
+                    "item_count": 1,
+                    "succeeded": 1,
+                    "failed": 0,
+                    "created_at": "2026-06-30T11:30:00",
+                    "updated_at": "2026-06-30T11:30:00",
+                }
+            },
+        },
+    )
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="batch_characterization",
+        inputs={"records": [], "files": []},
+        outputs={"records": [record_ref, summary_ref, "processed/batches/index.yml", result_ref, report_ref], "files": []},
+        created_at="2026-06-30T11:31:00",
+    )
+    record["provenance_refs"] = [provenance_path.stem]
+    write_yaml(record_path, record)
+    return {"record_path": record_path, "summary_path": summary_path, "index_path": index_path}
 
 
 def test_healthcheck_passes_complete_v0_2_raman_project(tmp_path: Path) -> None:
@@ -121,6 +205,39 @@ def test_healthcheck_detects_report_figure_backlink_mismatch(tmp_path: Path) -> 
     assert result["status"] == "fail"
     assert "figure_report_missing" in codes
     assert "report_figure_backlink_mismatch" in codes
+
+
+def test_healthcheck_detects_broken_batch_links(tmp_path: Path) -> None:
+    built = _build_v0_2_raman_project(tmp_path)
+    batch_paths = _write_minimal_batch_record(tmp_path, built)
+    batch_paths["summary_path"].unlink()
+    record = read_yaml(batch_paths["record_path"])
+    record["items"][0].pop("result_metadata_ref")
+    write_yaml(batch_paths["record_path"], record)
+
+    result = run_healthcheck(tmp_path)
+    codes = {finding["code"] for finding in result["findings"]}
+
+    assert result["status"] == "fail"
+    assert "batch_summary_missing" in codes
+    assert "batch_item_result_ref_missing" in codes
+
+
+def test_healthcheck_detects_untraceable_material_assignment_metadata(tmp_path: Path) -> None:
+    built = _build_v0_2_raman_project(tmp_path)
+    metadata_path = Path(built["result_path"])
+    metadata = read_yaml(metadata_path)
+    assert metadata["peak_analysis"]["assigned_features"]
+    metadata["peak_analysis"]["assignment_source"] = ""
+    metadata["peak_analysis"]["assigned_features"][0]["assignment_source"] = ""
+    write_yaml(metadata_path, metadata)
+
+    result = run_healthcheck(tmp_path)
+    codes = {finding["code"] for finding in result["findings"]}
+
+    assert result["status"] == "fail"
+    assert "material_assignment_source_missing" in codes
+    assert "material_assignment_feature_source_missing" in codes
 
 
 def test_cli_healthcheck_returns_nonzero_on_failure(tmp_path: Path, capsys) -> None:

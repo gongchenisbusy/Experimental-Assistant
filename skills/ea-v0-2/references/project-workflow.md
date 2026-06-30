@@ -87,4 +87,4 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ```
 
-Batch manifests can coordinate Raman, PL, and XRD items. They do not replace column, unit, or parameter confirmation; each item must reference confirmed review records.
+Batch manifests can coordinate Raman, PL, and XRD items. They do not replace column, unit, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.

@@ -325,6 +325,121 @@ def _check_reports(root: Path, findings: list[EvaluationFinding]) -> dict[str, A
     }
 
 
+def _check_batches(root: Path, findings: list[EvaluationFinding]) -> dict[str, Any]:
+    index_path = root / "processed" / "batches" / "index.yml"
+    if not index_path.exists():
+        return {
+            "batch_count": 0,
+            "item_count": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "provenance_backed_count": 0,
+        }
+
+    batches = _safe_read_yaml(index_path, findings).get("batches", {})
+    if not isinstance(batches, dict):
+        return {
+            "batch_count": 0,
+            "item_count": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "provenance_backed_count": 0,
+        }
+
+    item_count = 0
+    succeeded = 0
+    failed = 0
+    provenance_backed_count = 0
+    for batch_id, batch in batches.items():
+        if not isinstance(batch, dict):
+            continue
+        item_count += int(batch.get("item_count") or 0)
+        succeeded += int(batch.get("succeeded") or 0)
+        failed += int(batch.get("failed") or 0)
+        if int(batch.get("failed") or 0) > 0:
+            findings.append(
+                EvaluationFinding(
+                    "warning",
+                    "batch_run_has_failed_items",
+                    "Batch run is traceable but contains failed characterization items.",
+                    path=str(index_path),
+                    ref=str(batch_id),
+                )
+            )
+        record_ref = batch.get("record_ref")
+        if not record_ref:
+            continue
+        record_path = _project_path(root, str(record_ref))
+        if not record_path.exists():
+            continue
+        record = _safe_read_yaml(record_path, findings)
+        if record.get("provenance_refs"):
+            provenance_backed_count += 1
+        else:
+            findings.append(
+                EvaluationFinding(
+                    "warning",
+                    "batch_provenance_refs_missing",
+                    "Batch run record is missing provenance_refs.",
+                    path=str(record_path),
+                    ref=str(batch_id),
+                )
+            )
+
+    return {
+        "batch_count": len(batches),
+        "item_count": item_count,
+        "succeeded": succeeded,
+        "failed": failed,
+        "provenance_backed_count": provenance_backed_count,
+    }
+
+
+def _check_material_assignments(root: Path, findings: list[EvaluationFinding]) -> dict[str, Any]:
+    assigned_result_count = 0
+    assigned_feature_count = 0
+    traceable_feature_count = 0
+    missing_source_count = 0
+    for path in sorted((root / "processed").glob("**/*.yml")):
+        if "batches" in path.parts:
+            continue
+        metadata = _safe_read_yaml(path, findings)
+        peak_analysis = metadata.get("peak_analysis")
+        if not isinstance(peak_analysis, dict):
+            continue
+        assigned_features = peak_analysis.get("assigned_features") or []
+        if not assigned_features:
+            continue
+        assigned_result_count += 1
+        result_source_missing = not str(peak_analysis.get("assignment_source") or "").strip()
+        result_has_missing_source = result_source_missing
+        if result_source_missing:
+            missing_source_count += 1
+        for feature in assigned_features:
+            assigned_feature_count += 1
+            if isinstance(feature, dict) and str(feature.get("assignment_source") or "").strip():
+                traceable_feature_count += 1
+            else:
+                result_has_missing_source = True
+                missing_source_count += 1
+        if result_has_missing_source:
+            findings.append(
+                EvaluationFinding(
+                    "error",
+                    "material_assignment_traceability_missing",
+                    "Material assignments must preserve assignment_source at result and feature level.",
+                    path=str(path),
+                )
+            )
+
+    return {
+        "assigned_result_count": assigned_result_count,
+        "assigned_feature_count": assigned_feature_count,
+        "traceable_feature_count": traceable_feature_count,
+        "missing_source_count": missing_source_count,
+    }
+
+
 def _write_evaluation_report(
     root: Path,
     result: dict[str, Any],
@@ -361,6 +476,8 @@ def run_project_evaluation(
     _include_healthcheck_findings(healthcheck, findings)
     figure_summary = _check_figures(root, findings)
     report_summary = _check_reports(root, findings)
+    batch_summary = _check_batches(root, findings)
+    material_assignment_summary = _check_material_assignments(root, findings)
 
     error_count = sum(1 for finding in findings if finding.severity == "error")
     warning_count = sum(1 for finding in findings if finding.severity == "warning")
@@ -385,6 +502,8 @@ def run_project_evaluation(
         },
         "figures": figure_summary,
         "reports": report_summary,
+        "batches": batch_summary,
+        "material_assignments": material_assignment_summary,
         "scope": {
             "local_only": True,
             "live_literature_search": False,

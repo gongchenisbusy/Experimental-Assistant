@@ -16,6 +16,7 @@ The library is a deterministic local rule source, not a substitute for scientifi
 - Generated reports still need registered `reference_ids` when a claim is literature-supported. Built-in `reference_hints` are discovery hints, not automatically cited project references.
 - If a project uses a material not present in the library, workflows should keep generic low-confidence interpretation text and avoid invented assignments.
 - New material records should include aliases, caveats, method-specific `assignment_source`, feature rules, interpretation text, and regression tests.
+- Generated result metadata with `peak_analysis.assigned_features` must preserve `assignment_source` at both result and feature level; healthcheck treats missing sources as traceability errors.
 
 Current built-in MoS2 records:
 
@@ -28,5 +29,5 @@ When extending the library:
 1. Add or revise `src/ea/materials/assignments.yml`.
 2. Keep records conservative and sourceable; phrase conclusions as possible assignments with confidence labels.
 3. Add matcher tests in `tests/test_material_assignments.py`.
-4. Add or update workflow tests if generated metadata or peak-table columns change.
+4. Add or update workflow and healthcheck/evaluator tests if generated metadata, peak-table columns, or assignment-source fields change.
 5. Update this reference and any affected method workflow reference.

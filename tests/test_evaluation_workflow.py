@@ -6,6 +6,7 @@ from pathlib import Path
 from ea.cli import main
 from ea.evaluation import run_project_evaluation
 from ea.projects import initialize_project
+from ea.provenance import write_provenance_entry
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.reports import generate_raman_report
@@ -76,10 +77,89 @@ def _build_evaluable_project(root: Path) -> dict[str, str]:
     metadata = read_yaml(metadata_path)
     return {
         "project_id": project_id,
+        "raw_metadata": raw.metadata_path.relative_to(root).as_posix(),
         "metadata": metadata_path.relative_to(root).as_posix(),
         "report": report_path.relative_to(root).as_posix(),
         "figure_id": metadata["figure_id"],
     }
+
+
+def _write_minimal_batch_record(root: Path, built: dict[str, str]) -> None:
+    batch_id = "batch-20260630-001"
+    batch_dir = root / "processed" / "batches" / batch_id
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    record_path = batch_dir / "batch_run.yml"
+    summary_path = batch_dir / "batch_summary.md"
+    index_path = root / "processed" / "batches" / "index.yml"
+    record_ref = record_path.relative_to(root).as_posix()
+    summary_ref = summary_path.relative_to(root).as_posix()
+    record = {
+        "schema_version": "0.2",
+        "batch_id": batch_id,
+        "project_id": built["project_id"],
+        "manifest_ref": "",
+        "status": "success",
+        "item_count": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "create_reports": True,
+        "continue_on_error": True,
+        "items": [
+            {
+                "item_id": "raman-001",
+                "method": "raman",
+                "metadata_ref": built["raw_metadata"],
+                "sample_refs": ["sample-eval-001"],
+                "experiment_refs": ["exp-eval-001"],
+                "x_column": "col_0",
+                "y_column": "col_1",
+                "x_unit": "cm^-1",
+                "review_refs": [],
+                "status": "success",
+                "result_metadata_ref": built["metadata"],
+                "report_ref": built["report"],
+            }
+        ],
+        "warnings": [],
+        "created_at": "2026-06-30T13:20:00",
+        "updated_at": "2026-06-30T13:20:00",
+        "provenance_refs": [],
+    }
+    write_yaml(record_path, record)
+    summary_path.write_text(f"# Batch Characterization Summary: {batch_id}\n\n- status: `success`\n", encoding="utf-8")
+    write_yaml(
+        index_path,
+        {
+            "schema_version": "0.2",
+            "batches": {
+                batch_id: {
+                    "batch_id": batch_id,
+                    "project_id": built["project_id"],
+                    "status": "success",
+                    "manifest_ref": "",
+                    "record_ref": record_ref,
+                    "summary_ref": summary_ref,
+                    "item_count": 1,
+                    "succeeded": 1,
+                    "failed": 0,
+                    "created_at": "2026-06-30T13:20:00",
+                    "updated_at": "2026-06-30T13:20:00",
+                }
+            },
+        },
+    )
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="batch_characterization",
+        inputs={"records": [], "files": []},
+        outputs={
+            "records": [record_ref, summary_ref, "processed/batches/index.yml", built["metadata"], built["report"]],
+            "files": [],
+        },
+        created_at="2026-06-30T13:21:00",
+    )
+    record["provenance_refs"] = [provenance_path.stem]
+    write_yaml(record_path, record)
 
 
 def test_project_evaluation_passes_complete_project_and_writes_report(tmp_path: Path) -> None:
@@ -98,6 +178,21 @@ def test_project_evaluation_passes_complete_project_and_writes_report(tmp_path: 
     saved = read_yaml(Path(result["report_path"]))
     assert saved["evaluation_id"] == "eval-20260630-001"
     assert saved["scope"]["live_literature_search"] is False
+
+
+def test_project_evaluation_summarizes_batches_and_material_assignments(tmp_path: Path) -> None:
+    built = _build_evaluable_project(tmp_path)
+    _write_minimal_batch_record(tmp_path, built)
+
+    result = run_project_evaluation(tmp_path, write_report=False, created_at="2026-06-30T13:30:00")
+
+    assert result["status"] == "pass"
+    assert result["batches"]["batch_count"] == 1
+    assert result["batches"]["item_count"] == 1
+    assert result["batches"]["provenance_backed_count"] == 1
+    assert result["material_assignments"]["assigned_result_count"] == 1
+    assert result["material_assignments"]["assigned_feature_count"] >= 1
+    assert result["material_assignments"]["missing_source_count"] == 0
 
 
 def test_project_evaluation_warns_when_analysis_figure_lacks_source_refs(tmp_path: Path) -> None:

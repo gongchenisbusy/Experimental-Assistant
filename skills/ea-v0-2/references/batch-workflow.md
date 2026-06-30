@@ -8,6 +8,7 @@ Scope:
 - Every item must carry user-confirmed `column_review_ref` and `parameter_review_ref`.
 - Raw files must already be imported as controlled project copies.
 - Batch outputs are written under `processed/batches/{batch_id}/` with `batch_run.yml`, `batch_summary.md`, and `processed/batches/index.yml`.
+- Healthcheck audits the batch index, run record, summary, item `metadata_ref`, successful item `result_metadata_ref`, optional `report_ref`, item review refs, and batch `provenance_refs`.
 
 CLI:
 
@@ -63,3 +64,8 @@ After running a batch, run:
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ```
+
+Evaluation notes:
+
+- A fully traceable batch with no failed items should keep `ea eval project` at `pass` if the rest of the project is clean.
+- A batch with failed items is not a broken audit trail, but evaluator reports it as a readiness `warning` so the next agent can decide whether to rerun, exclude, or document the failed items.
