@@ -220,9 +220,9 @@ class ElectrochemistryProcessingResult(EARecord):
     status: Literal["success", "warning", "failed"]
     x_column: str
     y_column: str
-    x_unit: Literal["V", "mV", "s", "unknown"] = "unknown"
+    x_unit: Literal["V", "mV", "s", "ohm", "unknown"] = "unknown"
     current_unit: Literal["A", "mA", "uA", "µA", "unknown"] = "unknown"
-    measurement_mode: Literal["cv", "lsv", "chrono", "gcd", "unknown"] = "unknown"
+    measurement_mode: Literal["cv", "lsv", "chrono", "gcd", "eis", "unknown"] = "unknown"
     context_summary: str | None = None
     electrode_area_cm2: float | None = None
     processing_parameters: dict[str, Any] = Field(default_factory=dict)

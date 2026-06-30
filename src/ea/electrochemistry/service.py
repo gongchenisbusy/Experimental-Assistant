@@ -90,6 +90,11 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "fraction": 0.1,
             "source": "ea.electrochemistry.threshold_summary:v0.2",
         },
+        "eis_summary": {
+            "enabled": True,
+            "method": "nyquist_screening",
+            "source": "ea.electrochemistry.eis_nyquist_screening:v0.2",
+        },
     }
 
 
@@ -154,6 +159,8 @@ def _mode_candidate(text: str) -> str:
 
 
 def _x_unit_candidate(text: str) -> str:
+    if "ohm" in text or "zreal" in text or "z_real" in text or "impedance" in text or "nyquist" in text:
+        return "ohm"
     if "mv" in text:
         return "mV"
     if "potential" in text or "voltage" in text or " v " in f" {text} " or "(v" in text:
@@ -198,11 +205,9 @@ def inspect_electrochemistry_file(path: Path) -> ElectrochemistryInspection:
     warnings: list[str] = []
     if file_kind == "unknown":
         warnings.append("electrochemistry_file_kind_unknown")
-    if mode == "eis":
-        warnings.append("electrochemistry_eis_detected_future_work")
     if x_unit == "unknown":
         warnings.append("electrochemistry_x_unit_unknown")
-    if current_unit == "unknown":
+    if current_unit == "unknown" and mode != "eis":
         warnings.append("electrochemistry_current_unit_unknown")
     return ElectrochemistryInspection(
         path=path,
@@ -235,13 +240,32 @@ def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> 
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
         raise ElectrochemistryProcessingError("Confirmed x/y columns are not present in the raw file")
-    if request.x_unit not in {"V", "mV", "s", "unknown"}:
-        raise ElectrochemistryProcessingError("Electrochemistry x_unit must be user-confirmed as V, mV, s, or unknown")
+    if request.x_unit not in {"V", "mV", "s", "ohm", "unknown"}:
+        raise ElectrochemistryProcessingError("Electrochemistry x_unit must be user-confirmed as V, mV, s, ohm, or unknown")
     if request.current_unit not in {"A", "mA", "uA", "µA", "unknown"}:
         raise ElectrochemistryProcessingError("Electrochemistry current_unit must be user-confirmed as A, mA, uA, µA, or unknown")
-    if request.measurement_mode not in {"cv", "lsv", "chrono", "gcd", "unknown"}:
-        raise ElectrochemistryProcessingError("Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, or unknown")
+    if request.measurement_mode not in {"cv", "lsv", "chrono", "gcd", "eis", "unknown"}:
+        raise ElectrochemistryProcessingError("Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, eis, or unknown")
     data = frame[[request.x_column, request.y_column]].copy()
+    if request.measurement_mode == "eis":
+        data.columns = ["z_real_raw", "z_imag_raw"]
+        data["z_real_raw"] = pd.to_numeric(data["z_real_raw"], errors="coerce")
+        data["z_imag_raw"] = pd.to_numeric(data["z_imag_raw"], errors="coerce")
+        data = data.dropna().reset_index(drop=True)
+        if data.empty:
+            raise ElectrochemistryProcessingError("Confirmed EIS columns contain no numeric data")
+        imag = data["z_imag_raw"].to_numpy(dtype=float)
+        if float(np.nanmedian(imag)) >= 0:
+            data["z_imag_ohm"] = -imag
+            data["neg_z_imag_ohm"] = imag
+            data["imaginary_convention"] = "negative_imaginary_plotted_positive"
+        else:
+            data["z_imag_ohm"] = imag
+            data["neg_z_imag_ohm"] = -imag
+            data["imaginary_convention"] = "imaginary_negative_values_converted_to_positive"
+        data["z_real_ohm"] = data["z_real_raw"]
+        data["impedance_magnitude_ohm"] = np.sqrt(data["z_real_ohm"].to_numpy(dtype=float) ** 2 + data["z_imag_ohm"].to_numpy(dtype=float) ** 2)
+        return data
     data.columns = ["axis_raw", "current_raw"]
     data["axis_raw"] = pd.to_numeric(data["axis_raw"], errors="coerce")
     data["current_raw"] = pd.to_numeric(data["current_raw"], errors="coerce")
@@ -260,6 +284,14 @@ def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> 
     if area is not None and area > 0:
         data["current_density_mA_cm-2"] = current_mA / area
     return data
+
+
+def _apply_eis_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    processed = data.copy()
+    warnings: list[dict[str, Any]] = []
+    if not parameters.get("eis_summary", {}).get("enabled", True):
+        warnings.append(_warning("electrochemistry_eis_summary_disabled", "EIS Nyquist screening summary was disabled by processing parameters."))
+    return processed, warnings
 
 
 def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
@@ -343,6 +375,8 @@ def _feature_row(feature_id: str, feature_type: str, row: pd.Series, prominence:
 
 
 def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], measurement_mode: str) -> pd.DataFrame:
+    if measurement_mode == "eis":
+        return _detect_eis_features(processed, parameters)
     current = processed["processed_current_mA"].to_numpy(dtype=float)
     rows: list[dict[str, Any]] = []
     feature_params = parameters.get("feature_detection", {})
@@ -397,7 +431,119 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], measur
     )
 
 
+def _eis_feature_row(
+    feature_id: str,
+    feature_type: str,
+    row: pd.Series,
+    source: str,
+    *,
+    screening_resistance_ohm: float | None = None,
+) -> dict[str, Any]:
+    return {
+        "feature_id": feature_id,
+        "feature_type": feature_type,
+        "axis_value": float(row["z_real_ohm"]),
+        "axis_unit": "ohm",
+        "potential_V": np.nan,
+        "time_s": np.nan,
+        "current_mA": np.nan,
+        "current_density_mA_cm-2": np.nan,
+        "prominence": np.nan,
+        "z_real_ohm": float(row["z_real_ohm"]),
+        "z_imag_ohm": float(row["z_imag_ohm"]),
+        "neg_z_imag_ohm": float(row["neg_z_imag_ohm"]),
+        "impedance_magnitude_ohm": float(row["impedance_magnitude_ohm"]),
+        "screening_resistance_ohm": float(screening_resistance_ohm) if screening_resistance_ohm is not None else np.nan,
+        "method": "nyquist_screening",
+        "assignment_confidence": "low",
+        "assignment_source": source,
+        "notes": "automatic EIS Nyquist screening feature; no equivalent-circuit fit was performed",
+    }
+
+
+def _detect_eis_features(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
+    summary_params = parameters.get("eis_summary", {})
+    source = str(summary_params.get("source") or "ea.electrochemistry.eis_nyquist_screening:v0.2")
+    if not summary_params.get("enabled", True) or processed.empty:
+        return pd.DataFrame(columns=_eis_feature_columns())
+    z_real = processed["z_real_ohm"].to_numpy(dtype=float)
+    neg_imag = processed["neg_z_imag_ohm"].to_numpy(dtype=float)
+    min_index = int(np.nanargmin(z_real))
+    max_index = int(np.nanargmax(z_real))
+    apex_index = int(np.nanargmax(neg_imag))
+    span = float(z_real[max_index] - z_real[min_index])
+    rows = [
+        _eis_feature_row("eis-rs-001", "high_frequency_intercept_screening", processed.iloc[min_index], source),
+        _eis_feature_row("eis-apex-001", "nyquist_arc_apex_screening", processed.iloc[apex_index], source),
+        _eis_feature_row("eis-span-001", "real_axis_span_screening", processed.iloc[max_index], source, screening_resistance_ohm=span),
+    ]
+    return pd.DataFrame(rows, columns=_eis_feature_columns())
+
+
+def _eis_feature_columns() -> list[str]:
+    return [
+        "feature_id",
+        "feature_type",
+        "axis_value",
+        "axis_unit",
+        "potential_V",
+        "time_s",
+        "current_mA",
+        "current_density_mA_cm-2",
+        "prominence",
+        "z_real_ohm",
+        "z_imag_ohm",
+        "neg_z_imag_ohm",
+        "impedance_magnitude_ohm",
+        "screening_resistance_ohm",
+        "method",
+        "assignment_confidence",
+        "assignment_source",
+        "notes",
+    ]
+
+
+def _eis_summary(processed: pd.DataFrame, features: pd.DataFrame, request: ElectrochemistryProcessingRequest) -> dict[str, Any]:
+    z_real = processed["z_real_ohm"].to_numpy(dtype=float)
+    neg_imag = processed["neg_z_imag_ohm"].to_numpy(dtype=float)
+    min_index = int(np.nanargmin(z_real))
+    max_index = int(np.nanargmax(z_real))
+    apex_index = int(np.nanargmax(neg_imag))
+    span = float(z_real[max_index] - z_real[min_index])
+    source = "ea.electrochemistry.eis_nyquist_screening:v0.2"
+    convention = str(processed["imaginary_convention"].iloc[0]) if "imaginary_convention" in processed.columns and not processed.empty else "unknown"
+    return {
+        "measurement_mode": request.measurement_mode,
+        "context_summary": request.context_summary,
+        "electrode_area_cm2": request.electrode_area_cm2,
+        "feature_count": int(len(features)),
+        "eis_summary": {
+            "point_count": int(len(processed)),
+            "z_real_min_ohm": float(z_real[min_index]),
+            "z_real_max_ohm": float(z_real[max_index]),
+            "high_frequency_intercept_ohm": float(z_real[min_index]),
+            "real_axis_span_ohm": span,
+            "max_neg_z_imag_ohm": float(neg_imag[apex_index]),
+            "apex_z_real_ohm": float(z_real[apex_index]),
+            "imaginary_convention": convention,
+            "confidence": "low",
+            "assignment_source": source,
+            "boundary": "Nyquist screening summary only; no equivalent-circuit fitting or Rct assignment was performed.",
+        },
+        "possible_interpretations": [
+            {
+                "text": "EIS Nyquist screening features summarize impedance-arc shape in the reviewed dataset; treat high-frequency intercept and real-axis span as orientation values only, not equivalent-circuit parameters.",
+                "confidence": "low",
+                "evidence": [str(value) for value in features["feature_id"].head(3)] if not features.empty else [],
+                "assignment_source": source,
+            }
+        ],
+    }
+
+
 def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ElectrochemistryProcessingRequest) -> dict[str, Any]:
+    if request.measurement_mode == "eis":
+        return _eis_summary(processed, features, request)
     current = processed["processed_current_mA"].to_numpy(dtype=float)
     start_current = float(current[0])
     end_current = float(current[-1])
@@ -462,6 +608,23 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
 
 def _plot_electrochemistry(processed: pd.DataFrame, features: pd.DataFrame, output: Path, measurement_mode: str, *, footer: str | None = None) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
+    if measurement_mode == "eis":
+        ax.plot(processed["z_real_ohm"], processed["neg_z_imag_ohm"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, marker="o", markersize=2.5, label="Nyquist trace")
+        if not features.empty and "z_real_ohm" in features.columns:
+            ax.scatter(features["z_real_ohm"], features["neg_z_imag_ohm"], color=NATURE_LIKE_COLORS["black"], s=22, label="Screening features", zorder=3)
+            for _, feature in features.head(6).iterrows():
+                ax.annotate(
+                    str(feature["feature_id"]).replace("eis-", ""),
+                    (float(feature["z_real_ohm"]), float(feature["neg_z_imag_ohm"])),
+                    textcoords="offset points",
+                    xytext=(0, 6),
+                    ha="center",
+                    fontsize=7,
+                )
+        style_axis(ax, title="Electrochemistry EIS Nyquist screening", xlabel="Z real (ohm)", ylabel="-Z imag (ohm)")
+        ax.set_aspect("equal", adjustable="datalim")
+        save_styled_figure(fig, output, footer=footer)
+        return
     if "potential_V" in processed.columns:
         x = processed["potential_V"]
         xlabel = "Potential (V)"
@@ -509,7 +672,11 @@ def process_electrochemistry_result(
         raise ElectrochemistryProcessingError(f"File is {inspection.file_kind}, not electrochemistry")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    confirmed = _confirmed_frame(raw_path, request)
+    if request.measurement_mode == "eis":
+        processed, processing_warnings = _apply_eis_processing(confirmed, parameters)
+    else:
+        processed, processing_warnings = _apply_processing(confirmed, parameters)
     features = _detect_features(processed, parameters, request.measurement_mode)
     analysis = _summary(processed, features, request)
     day = _created_day(created_at)
@@ -537,8 +704,9 @@ def process_electrochemistry_result(
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("electrochemistry_x_unit_unknown", "Electrochemistry x unit remains unknown after confirmation.", severity="medium"))
-    if request.current_unit == "unknown":
+        message = "EIS impedance unit remains unknown after confirmation." if request.measurement_mode == "eis" else "Electrochemistry x unit remains unknown after confirmation."
+        warnings.append(_warning("electrochemistry_x_unit_unknown", message, severity="medium"))
+    if request.current_unit == "unknown" and request.measurement_mode != "eis":
         warnings.append(_warning("electrochemistry_current_unit_unknown", "Electrochemistry current unit remains unknown after confirmation.", severity="medium"))
     if not request.context_summary:
         warnings.append(_warning("electrochemistry_context_missing", "Electrode/electrolyte context summary is empty.", severity="medium"))
@@ -607,6 +775,11 @@ def process_electrochemistry_result(
     result_data["provenance_refs"] = [provenance_path.stem]
     write_yaml(result_metadata, result_data)
     if figure_id:
+        caption = (
+            "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
+            if request.measurement_mode == "eis"
+            else "Electrochemistry trace with processed current, screening features, reviewed context, and traceable processing parameters."
+        )
         register_figure(
             root,
             figure_id=figure_id,
@@ -630,7 +803,7 @@ def process_electrochemistry_result(
                     "processing_parameters": parameters,
                 },
             },
-            caption="Electrochemistry trace with processed current, screening features, reviewed context, and traceable processing parameters.",
+            caption=caption,
             purpose="electrochemistry_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[

@@ -1297,6 +1297,42 @@ def _electrochemistry_feature_table(root: Path, feature_table_ref: str) -> str:
     return "\n".join(rows)
 
 
+def _electrochemistry_eis_feature_summary(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前自动 EIS Nyquist screening 未得到可展示 feature，需结合人工检查。"
+    positions = []
+    for _, feature in features.head(6).iterrows():
+        positions.append(f"{feature['feature_id']}@Zreal {float(feature['z_real_ohm']):.4g} ohm / -Zimag {float(feature['neg_z_imag_ohm']):.4g} ohm")
+    return "自动 EIS Nyquist screening 记录的主要阻抗 feature 包括：" + "、".join(positions) + "。"
+
+
+def _electrochemistry_eis_feature_table(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前没有可展示的 EIS Nyquist screening feature。"
+    rows = [
+        "| feature_id | type | Z real (ohm) | -Z imag (ohm) | impedance magnitude (ohm) | screening span (ohm) | confidence | source |",
+        "|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for _, feature in features.head(12).iterrows():
+        span = feature.get("screening_resistance_ohm")
+        span_text = f"{float(span):.4g}" if pd.notna(span) else "n/a"
+        rows.append(
+            "| {feature_id} | {feature_type} | {z_real:.4g} | {neg_imag:.4g} | {magnitude:.4g} | {span} | {confidence} | {source} |".format(
+                feature_id=feature["feature_id"],
+                feature_type=feature["feature_type"],
+                z_real=float(feature["z_real_ohm"]),
+                neg_imag=float(feature["neg_z_imag_ohm"]),
+                magnitude=float(feature["impedance_magnitude_ohm"]),
+                span=span_text,
+                confidence=feature.get("assignment_confidence") or "low",
+                source=feature.get("assignment_source") or "未记录",
+            )
+        )
+    return "\n".join(rows)
+
+
 def _electrochemistry_current_summary(metadata: dict) -> str:
     summary = ((metadata.get("peak_analysis") or {}).get("current_summary") or {})
     if not summary:
@@ -1309,6 +1345,19 @@ def _electrochemistry_current_summary(metadata: dict) -> str:
         f"min/max current `{float(summary.get('min_current_mA', 0.0)):.4g}` / "
         f"`{float(summary.get('max_current_mA', 0.0)):.4g} mA`；"
         f"retention `{retention_text}`。"
+    )
+
+
+def _electrochemistry_eis_summary_text(metadata: dict) -> str:
+    summary = ((metadata.get("peak_analysis") or {}).get("eis_summary") or {})
+    if not summary:
+        return "当前 metadata 中没有可复用的 EIS Nyquist summary。"
+    return (
+        f"high-frequency intercept screening `{float(summary.get('high_frequency_intercept_ohm', 0.0)):.4g} ohm`；"
+        f"real-axis span screening `{float(summary.get('real_axis_span_ohm', 0.0)):.4g} ohm`；"
+        f"maximum -Zimag `{float(summary.get('max_neg_z_imag_ohm', 0.0)):.4g} ohm` at Zreal "
+        f"`{float(summary.get('apex_z_real_ohm', 0.0)):.4g} ohm`；confidence: `{summary.get('confidence', 'low')}`；"
+        f"assignment_source: `{summary.get('assignment_source', 'ea.electrochemistry.eis_nyquist_screening:v0.2')}`。"
     )
 
 
@@ -1365,9 +1414,16 @@ def generate_electrochemistry_report(
     )
     outputs = metadata["outputs"]
     feature_table_ref = outputs.get("feature_table", outputs.get("peak_table"))
-    feature_text = _electrochemistry_feature_summary(root, feature_table_ref)
-    feature_table = _electrochemistry_feature_table(root, feature_table_ref)
-    current_summary = _electrochemistry_current_summary(metadata)
+    is_eis = metadata.get("measurement_mode") == "eis"
+    feature_text = _electrochemistry_eis_feature_summary(root, feature_table_ref) if is_eis else _electrochemistry_feature_summary(root, feature_table_ref)
+    feature_table = _electrochemistry_eis_feature_table(root, feature_table_ref) if is_eis else _electrochemistry_feature_table(root, feature_table_ref)
+    current_summary = _electrochemistry_eis_summary_text(metadata) if is_eis else _electrochemistry_current_summary(metadata)
+    summary_heading = "EIS Nyquist screening 摘要" if is_eis else "电流摘要"
+    caution_text = (
+        "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
+        if is_eis
+        else "在当前数据范围内，自动 electrochemistry feature 只能支持“电流响应摘要/筛查”。不能仅凭本次自动处理直接确认催化机制、过电位、Tafel slope、电容、稳定性、容量、倍率性能或器件性能；正式结论需要用户确认实验协议、归一化方式、参比校正、重复性和文献依据。"
+    )
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -1394,7 +1450,7 @@ def generate_electrochemistry_report(
 
 ## 数据列、实验上下文与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，x 轴单位记录为 `{metadata['x_unit']}`，current 单位记录为 `{metadata['current_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。电极面积记录为 `{metadata.get('electrode_area_cm2', '未记录')}` cm^2。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，x 轴/阻抗单位记录为 `{metadata['x_unit']}`，current 单位记录为 `{metadata['current_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。电极面积记录为 `{metadata.get('electrode_area_cm2', '未记录')}` cm^2。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
 
 ## 图谱
 
@@ -1404,9 +1460,9 @@ def generate_electrochemistry_report(
 
 ## 主要观察
 
-{feature_text}这些 feature 来自自动处理结果，仍需要结合电极几何面积、电解液、参比电极、扫描速率/计时协议、仪器设置和用户审核进行解释。
+{feature_text}这些 feature 来自自动处理结果，仍需要结合电极几何面积、电解液、参比电极、频率/扫描/计时协议、仪器设置和用户审核进行解释。
 
-## 电流摘要
+## {summary_heading}
 
 {current_summary}
 
@@ -1420,7 +1476,7 @@ def generate_electrochemistry_report(
 
 ## 谨慎解释
 
-在当前数据范围内，自动 electrochemistry feature 只能支持“电流响应摘要/筛查”。不能仅凭本次自动处理直接确认催化机制、过电位、Tafel slope、电容、稳定性、容量、倍率性能或器件性能；正式结论需要用户确认实验协议、归一化方式、参比校正、重复性和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+{caution_text}{literature_note}任何科学解释进入项目记忆前都需要用户审核。
 
 ## 不确定性与限制
 

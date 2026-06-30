@@ -32,6 +32,23 @@ def _write_electrochemistry_fixture(path: Path) -> Path:
     return path
 
 
+def _write_eis_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = ohm",
+        "# measurement_mode = eis",
+        "# technique = electrochemical impedance spectroscopy nyquist",
+        "z_real_ohm neg_z_imag_ohm",
+    ]
+    center = 55.0
+    radius = 45.0
+    for index in range(181):
+        z_real = 10.0 + index * 0.5
+        neg_imag = math.sqrt(max(radius**2 - (z_real - center) ** 2, 0.0))
+        lines.append(f"{z_real:.6f} {neg_imag:.9f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def test_inspect_synthetic_electrochemistry_fixture(tmp_path: Path) -> None:
     fixture = _write_electrochemistry_fixture(tmp_path / "synthetic-electrochemistry-cv.txt")
 
@@ -236,6 +253,182 @@ def test_cli_runs_synthetic_electrochemistry_workflow_end_to_end(tmp_path: Path,
     assert evaluation["reports"]["report_count"] == 1
 
 
+def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
+    fixture = _write_eis_fixture(tmp_path / "synthetic-electrochemistry-eis.txt")
+    workspace = tmp_path / "cli-eis-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI EIS Workflow",
+            "--slug",
+            "cli-eis-workflow",
+            "--direction",
+            "EIS workflow",
+            "--material",
+            "oxide electrode",
+            "--experiment-type",
+            "electrochemical impedance spectroscopy",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "electrochemistry",
+            "--sample-ref",
+            "sample-eis-001",
+            "--experiment-ref",
+            "exp-eis-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata = Path(raw_output["metadata"])
+    raw_metadata_ref = raw_metadata.relative_to(workspace).as_posix()
+
+    assert main(["electrochemistry", "inspect", str(workspace), raw_output["project_raw_path"]]) == 0
+    inspection = _json_output(capsys)
+    assert inspection["file_kind"] == "electrochemistry"
+    assert inspection["x_unit_candidate"] == "ohm"
+    assert inspection["measurement_mode_candidate"] == "eis"
+    assert "electrochemistry_eis_detected_future_work" not in inspection["warnings"]
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=z_real_ohm, y=neg_z_imag_ohm, x_unit=ohm, current_unit=unknown, mode=eis",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "EIS Nyquist data; frequency order and perturbation amplitude reviewed by user"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(default_electrochemistry_processing_parameters(), ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "electrochemistry",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-eis-001",
+            "--x-column",
+            "z_real_ohm",
+            "--y-column",
+            "neg_z_imag_ohm",
+            "--x-unit",
+            "ohm",
+            "--current-unit",
+            "unknown",
+            "--measurement-mode",
+            "eis",
+            "--context-summary",
+            context_text,
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    electrochemistry_metadata = Path(process_output["metadata"])
+    electrochemistry = read_yaml(electrochemistry_metadata)
+    eis_summary = electrochemistry["peak_analysis"]["eis_summary"]
+
+    assert electrochemistry["status"] == "success"
+    assert electrochemistry["measurement_mode"] == "eis"
+    assert electrochemistry["x_unit"] == "ohm"
+    assert electrochemistry["current_unit"] == "unknown"
+    assert electrochemistry["peak_analysis"]["feature_count"] == 3
+    assert abs(eis_summary["high_frequency_intercept_ohm"] - 10.0) < 0.01
+    assert abs(eis_summary["real_axis_span_ohm"] - 90.0) < 0.01
+    assert abs(eis_summary["max_neg_z_imag_ohm"] - 45.0) < 0.1
+    assert "no equivalent-circuit fitting" in eis_summary["boundary"]
+    feature_table = workspace / electrochemistry["outputs"]["feature_table"]
+    assert feature_table.exists()
+    assert "z_real_ohm,z_imag_ohm,neg_z_imag_ohm" in feature_table.read_text(encoding="utf-8").splitlines()[0]
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
+    assert figure_record["generation"]["parameters"]["measurement_mode"] == "eis"
+    assert electrochemistry["outputs"]["feature_table"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "electrochemistry",
+            "report",
+            str(workspace),
+            "--metadata",
+            electrochemistry_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-eis-001",
+            "--experiment-ref",
+            "exp-eis-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
+    assert report_frontmatter["report_type"] == "electrochemistry_analysis"
+    assert "## EIS Nyquist screening 摘要" in report_body
+    assert "EIS Nyquist screening" in report_body
+    assert "不能仅凭本次自动处理直接确认等效电路" in report_body
+    assert "![Electrochemistry trace]" in report_body
+
+
 def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -250,6 +443,8 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert electrochemistry_reference.exists()
     reference_text = electrochemistry_reference.read_text(encoding="utf-8")
     assert "context_review_ref" in reference_text
-    assert "EIS fitting" in reference_text
+    assert "EIS Nyquist" in reference_text
+    assert "equivalent-circuit" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
+    assert "eis_nyquist_screening" in electrochemistry_record["notes"]

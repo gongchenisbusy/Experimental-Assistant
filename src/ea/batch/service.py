@@ -40,7 +40,7 @@ METHOD_UNITS = {
     "ftir": {"cm^-1", "unknown"},
     "uv_vis": {"nm", "eV", "unknown"},
     "xps": {"eV", "unknown"},
-    "electrochemistry": {"V", "mV", "s", "unknown"},
+    "electrochemistry": {"V", "mV", "s", "ohm", "unknown"},
     "thermal_analysis": {"C", "K", "unknown"},
 }
 
@@ -157,8 +157,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
         errors.append({"item_id": item_id, "field": "signal_mode", "message": "UV-Vis signal_mode must be absorbance, transmittance, or reflectance."})
     if method == "electrochemistry" and item.get("current_unit") not in {"A", "mA", "uA", "µA", "unknown"}:
         errors.append({"item_id": item_id, "field": "current_unit", "message": "Electrochemistry current_unit must be A, mA, uA, µA, or unknown."})
-    if method == "electrochemistry" and item.get("measurement_mode") not in {"cv", "lsv", "chrono", "gcd", "unknown"}:
-        errors.append({"item_id": item_id, "field": "measurement_mode", "message": "Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, or unknown."})
+    if method == "electrochemistry" and item.get("measurement_mode") not in {"cv", "lsv", "chrono", "gcd", "eis", "unknown"}:
+        errors.append({"item_id": item_id, "field": "measurement_mode", "message": "Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, eis, or unknown."})
     if method == "thermal_analysis" and item.get("signal_unit") not in {"%", "mg", "mW", "W/g", "mW/mg", "unknown"}:
         errors.append({"item_id": item_id, "field": "signal_unit", "message": "Thermal signal_unit must be %, mg, mW, W/g, mW/mg, or unknown."})
     if method == "thermal_analysis" and item.get("measurement_mode") not in {"tga", "dsc", "dtg", "unknown"}:
