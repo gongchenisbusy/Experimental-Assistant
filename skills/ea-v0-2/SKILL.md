@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman analysis, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -40,6 +40,12 @@ ea review add /path/to/ea-project --target-type pl_columns --target-ref raw/pl/c
 ea review add /path/to/ea-project --target-type pl_parameters --target-ref raw/pl/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default PL parameters confirmed"
 ea pl process /path/to/ea-project --metadata raw/pl/char-20260630-001/metadata.yml --x-column col_0 --y-column col_1 --x-unit eV --column-review-ref review-20260630-003 --parameter-review-ref review-20260630-004 --sample-ref sample-001
 ea pl report /path/to/ea-project --metadata processed/sample-001/pl/res-project-pl-20260630-001/pl_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea raw import /path/to/ea-project /path/to/raw-xrd.txt --characterization-type xrd --sample-ref sample-001 --experiment-ref exp-001
+ea xrd inspect /path/to/ea-project raw/xrd/char-20260630-001/raw-xrd.txt
+ea review add /path/to/ea-project --target-type xrd_columns --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=two_theta, y=intensity, unit=2theta_deg"
+ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XRD parameters confirmed"
+ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-005 --parameter-review-ref review-20260630-006 --sample-ref sample-001
+ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea literature status /path/to/ea-project
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
@@ -61,7 +67,7 @@ ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 
 The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-project` for v0.2 work.
 
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, literature-library, and scientific-figure entries as EA contract boundaries unless a concrete implementation service is present.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, and image-data entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, literature-library, and scientific-figure entries as EA contract boundaries until their implementation services exist.
 
 ## References
 
@@ -72,6 +78,7 @@ Built-in child-skill manifests live in `skill-registry/builtins/` and are indexe
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
 - For PL v0.2 behavior, read `references/pl-workflow.md`.
+- For XRD v0.2 behavior, read `references/xrd-workflow.md`.
 - For SEM/TEM/optical microscopy image data, read `references/image-data-workflow.md`.
 - For review-gated durable project memory, read `references/memory-workflow.md`.
 

@@ -66,4 +66,4 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.diffraction
     method: xrd
-    notes: Contract placeholder for diffraction peak detection, phase assignment, and reference-linked reports.
+    notes: Minimal XRD workflow implemented for diffraction peak detection, d-spacing tables, traceable figures, and confidence-labeled reports; full phase assignment remains future work.

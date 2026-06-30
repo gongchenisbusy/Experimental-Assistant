@@ -18,8 +18,9 @@ ea_skill:
     - confirm_method
     - confirm_two_theta_units
     - confirm_processing_parameters
-    - confirm_phase_reference_database
     - confirm_interpretation_before_memory_write
+  optional_review_gates:
+    - confirm_phase_reference_database_for_phase_assignment
   required_indices:
     - raw/index.yml
     - reports/index.yml
@@ -40,5 +41,5 @@ ea_skill:
     peak_labels_required: true
   provenance_requirements:
     raw_is_readonly: true
-    phase_database_refs_required: true
+    phase_database_refs_required_for_phase_assignment: true
     generated_outputs_outside_raw: true

@@ -22,10 +22,11 @@ from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_pl_report, generate_raman_report
+from ea.reports import generate_pl_report, generate_raman_report, generate_xrd_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
+from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,6 +137,31 @@ def build_parser() -> argparse.ArgumentParser:
     pl_report.add_argument("--experiment-ref", action="append", default=[])
     pl_report.add_argument("--sample-ref", action="append", default=[])
     pl_report.add_argument("--reference-id", action="append", default=[])
+
+    xrd = sub.add_parser("xrd", help="XRD inspection, processing, and report helpers")
+    xrd_sub = xrd.add_subparsers(dest="xrd_command", required=True)
+    xrd_inspect = xrd_sub.add_parser("inspect", help="inspect a diffraction file and suggest XRD columns/unit")
+    xrd_inspect.add_argument("workspace", type=Path)
+    xrd_inspect.add_argument("pattern", type=Path)
+    xrd_process = xrd_sub.add_parser("process", help="run review-gated XRD processing")
+    xrd_process.add_argument("workspace", type=Path)
+    xrd_process.add_argument("--metadata", required=True, type=Path)
+    xrd_process.add_argument("--project-id")
+    xrd_process.add_argument("--sample-ref", action="append", default=[])
+    xrd_process.add_argument("--x-column", required=True)
+    xrd_process.add_argument("--y-column", required=True)
+    xrd_process.add_argument("--x-unit", choices=["2theta_deg", "unknown"], required=True)
+    xrd_process.add_argument("--column-review-ref", required=True)
+    xrd_process.add_argument("--parameter-review-ref", required=True)
+    xrd_process.add_argument("--parameters-file", type=Path)
+    xrd_process.add_argument("--parameters-json")
+    xrd_report = xrd_sub.add_parser("report", help="generate an XRD analysis report from XRD metadata")
+    xrd_report.add_argument("workspace", type=Path)
+    xrd_report.add_argument("--metadata", required=True, type=Path)
+    xrd_report.add_argument("--project-id")
+    xrd_report.add_argument("--experiment-ref", action="append", default=[])
+    xrd_report.add_argument("--sample-ref", action="append", default=[])
+    xrd_report.add_argument("--reference-id", action="append", default=[])
 
     literature = sub.add_parser("literature", help="local literature-library helpers")
     literature_sub = literature.add_subparsers(dest="literature_command", required=True)
@@ -275,6 +301,15 @@ def _processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
 
 def _pl_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_pl_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _xrd_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_xrd_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -436,6 +471,44 @@ def main(argv: list[str] | None = None) -> int:
                 args.workspace,
                 project_id=project_id,
                 pl_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
+    if args.command == "xrd":
+        project_id = getattr(args, "project_id", None)
+        if args.xrd_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.xrd_command == "inspect":
+            inspection = asdict(inspect_xrd_file(_project_path(args.workspace, args.pattern)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.xrd_command == "process":
+            parameters = _xrd_processing_parameters(args, args.workspace)
+            path = process_xrd_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=XRDProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.xrd_command == "report":
+            path = generate_xrd_report(
+                args.workspace,
+                project_id=project_id,
+                xrd_metadata_path=_project_path(args.workspace, args.metadata),
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,

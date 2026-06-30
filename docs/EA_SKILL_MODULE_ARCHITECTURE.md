@@ -199,7 +199,7 @@ v0.2 建议先实现以下最小架构能力：
 - `add-skills` 的静态检查和 dry-run 检查草案。
 - 内置 manifest 目录，至少覆盖 `local-literature-library`、`scientific-figure`、`raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis`、`thermal-analysis` 和 `image-analysis`。
 - `scientific-figure` 和 `analysis-report` 的输出契约。
-- `raman-analysis` 作为第一个完整接入样例。
+- `raman-analysis`、`pl-analysis` 和 `xrd-analysis` 作为第一批可运行表征 workflow 样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 
-PL、XRD、IR 等可先进入设计和接口测试，不必一次性完整实现。
+FTIR、UV-Vis、XPS、电化学、热分析和更复杂的显微/散射模块可先进入设计和接口测试，不必一次性完整实现。
