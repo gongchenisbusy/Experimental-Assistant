@@ -9,7 +9,7 @@ from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
 from ea.literature import ensure_literature_status
 from ea.projects.service import initialize_project
-from ea.skills import validate_skill_manifest
+from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record
 
 
@@ -63,6 +63,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_skills_sub = add_skills.add_subparsers(dest="add_skills_command", required=True)
     check = add_skills_sub.add_parser("check", help="check a child skill manifest")
     check.add_argument("manifest", type=Path)
+    dry_run = add_skills_sub.add_parser("dry-run", help="write a dry-run report for a child skill manifest")
+    dry_run.add_argument("manifest", type=Path)
+    dry_run.add_argument("--workspace", required=True, type=Path)
+    dry_run.add_argument("--sample-output", type=Path)
+    register = add_skills_sub.add_parser("register", help="register a compliant child skill manifest")
+    register.add_argument("manifest", type=Path)
+    register.add_argument("--workspace", required=True, type=Path)
+    register.add_argument("--sample-output", type=Path)
+    register.add_argument("--status", choices=["active", "sandbox"], default="active")
 
     figure = sub.add_parser("lookup-figure", help="look up a figure by figure_id")
     figure.add_argument("workspace", type=Path)
@@ -151,6 +160,23 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
             return 0 if result.ok else 2
+        if args.add_skills_command == "dry-run":
+            result = run_skill_dry_run(
+                args.workspace,
+                args.manifest,
+                sample_output_path=args.sample_output,
+            )
+            _print_json(result.to_dict())
+            return 0 if result.ok else 2
+        if args.add_skills_command == "register":
+            result = register_skill_manifest(
+                args.workspace,
+                args.manifest,
+                sample_output_path=args.sample_output,
+                status=args.status,
+            )
+            _print_json(result)
+            return 0 if result["ok"] else 2
     if args.command == "lookup-figure":
         _print_json(lookup_figure(args.workspace, args.figure_id))
         return 0

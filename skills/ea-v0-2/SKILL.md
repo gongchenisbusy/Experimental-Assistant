@@ -30,6 +30,8 @@ ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea literature status /path/to/ea-project
 ea add-skills check /path/to/child-skill-manifest.yml
+ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
+ea add-skills register /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 ```
 

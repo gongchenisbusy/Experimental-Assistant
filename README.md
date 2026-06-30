@@ -12,6 +12,7 @@ EA must initialize projects for unknown users without assuming developer-machine
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
+ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ```
 
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
