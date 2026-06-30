@@ -13,4 +13,14 @@ Required gates:
 7. Interpret peaks with project context and literature references. Use confidence labels rather than empty caution.
 8. Write memory candidates only after user confirmation.
 
-v0.2 starts from the v0.1 deterministic core and should progressively add baseline correction, smoothing, spike diagnostics, peak fitting, replicate handling, and batch statistics.
+Current v0.2 preprocessing support:
+
+- Baseline correction is optional and uses AsLS when `baseline_correction.enabled` is true.
+- Smoothing is optional and uses Savitzky-Golay when `smoothing.enabled` is true.
+- Spike diagnostics are optional and use rolling MAD when `spike_detection.enabled` is true.
+- Processed CSV files always include `raw_intensity`, `processed_intensity`, and `spike_candidate`.
+- When enabled, baseline correction adds `baseline` and `baseline_corrected_intensity`.
+- When enabled, smoothing adds `smoothed_intensity`.
+- Metadata warnings record applied preprocessing steps, adjusted parameters, skipped steps, and spike-candidate counts.
+
+Future Raman work should add peak fitting, replicate handling, batch statistics, and stronger report-level interpretation.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks, peak_widths
+from scipy import sparse
+from scipy.signal import find_peaks, peak_widths, savgol_filter
+from scipy.sparse.linalg import spsolve
 
 from ea.figures import figure_footer, register_figure
 from ea.provenance import write_provenance_entry
@@ -55,15 +58,50 @@ class RamanProcessingRequest:
 
 def default_processing_parameters() -> dict[str, Any]:
     return {
-        "baseline_correction": {"enabled": False},
-        "smoothing": {"enabled": False},
+        "baseline_correction": {
+            "enabled": False,
+            "method": "asls",
+            "lambda": 100000.0,
+            "p": 0.01,
+            "niter": 10,
+        },
+        "smoothing": {
+            "enabled": False,
+            "method": "savitzky_golay",
+            "window_length": 9,
+            "polyorder": 2,
+        },
         "normalization": {"enabled": True, "method": "max_intensity"},
+        "spike_detection": {
+            "enabled": False,
+            "method": "rolling_mad",
+            "window": 7,
+            "mad_threshold": 8.0,
+        },
         "peak_detection": {
             "method": "scipy_find_peaks",
             "prominence": "auto",
             "distance": "auto",
         },
     }
+
+
+def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
+    merged = default_processing_parameters()
+    if not parameters:
+        return merged
+    for key, value in parameters.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key].update(deepcopy(value))
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
+    payload.update(details)
+    return payload
 
 
 def _parse_metadata_line(line: str) -> tuple[str, str] | None:
@@ -186,15 +224,278 @@ def _confirmed_frame(path: Path, request: RamanProcessingRequest) -> pd.DataFram
     return data
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
+def _asls_baseline(
+    intensity: np.ndarray,
+    *,
+    lam: float = 100000.0,
+    p: float = 0.01,
+    niter: int = 10,
+) -> np.ndarray:
+    length = intensity.size
+    if length < 3:
+        return np.zeros_like(intensity, dtype=float)
+    difference = sparse.diags([1, -2, 1], [0, -1, -2], shape=(length, length - 2), dtype=float, format="csc")
+    weights = np.ones(length)
+    for _ in range(niter):
+        weight_matrix = sparse.spdiags(weights, 0, length, length)
+        system = (weight_matrix + lam * difference.dot(difference.transpose())).tocsc()
+        baseline = spsolve(system, weights * intensity)
+        weights = p * (intensity > baseline) + (1 - p) * (intensity <= baseline)
+    return np.asarray(baseline, dtype=float)
+
+
+def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return default, True
+    if minimum is not None and coerced < minimum:
+        return default, True
+    if maximum is not None and coerced > maximum:
+        return default, True
+    return coerced, False
+
+
+def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        return default, True
+    if minimum is not None and coerced < minimum:
+        return default, True
+    return coerced, False
+
+
+def _apply_baseline_correction(
+    processed: pd.DataFrame,
+    intensity: np.ndarray,
+    parameters: dict[str, Any],
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    baseline_params = parameters.get("baseline_correction", {})
+    if not baseline_params.get("enabled", False):
+        return intensity, []
+
+    warnings: list[dict[str, Any]] = []
+    if baseline_params.get("method", "asls") != "asls":
+        warnings.append(
+            _warning(
+                "baseline_method_adjusted",
+                "Unsupported baseline method was replaced with AsLS.",
+                method=baseline_params.get("method"),
+            )
+        )
+
+    lam, lam_adjusted = _coerce_float(baseline_params.get("lambda"), 100000.0, minimum=1.0)
+    p, p_adjusted = _coerce_float(baseline_params.get("p"), 0.01, minimum=0.0001, maximum=0.9999)
+    niter, niter_adjusted = _coerce_int(baseline_params.get("niter"), 10, minimum=1)
+    if lam_adjusted or p_adjusted or niter_adjusted:
+        warnings.append(
+            _warning(
+                "baseline_parameter_adjusted",
+                "Invalid AsLS baseline parameters were replaced with safe defaults.",
+                lambda_value=lam,
+                p=p,
+                niter=niter,
+            )
+        )
+
+    if intensity.size < 3:
+        processed["baseline"] = 0.0
+        processed["baseline_corrected_intensity"] = intensity
+        warnings.append(
+            _warning(
+                "baseline_correction_skipped",
+                "Baseline correction was skipped because the spectrum has fewer than three points.",
+                severity="medium",
+            )
+        )
+        return intensity, warnings
+
+    baseline = _asls_baseline(intensity, lam=lam, p=p, niter=niter)
+    corrected = intensity - baseline
+    processed["baseline"] = baseline
+    processed["baseline_corrected_intensity"] = corrected
+    warnings.append(
+        _warning(
+            "baseline_correction_applied",
+            "AsLS baseline correction was applied before downstream processing.",
+            method="asls",
+            lambda_value=lam,
+            p=p,
+            niter=niter,
+        )
+    )
+    return corrected, warnings
+
+
+def _apply_smoothing(
+    processed: pd.DataFrame,
+    intensity: np.ndarray,
+    parameters: dict[str, Any],
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    smoothing_params = parameters.get("smoothing", {})
+    if not smoothing_params.get("enabled", False):
+        return intensity, []
+
+    warnings: list[dict[str, Any]] = []
+    if smoothing_params.get("method", "savitzky_golay") != "savitzky_golay":
+        warnings.append(
+            _warning(
+                "smoothing_method_adjusted",
+                "Unsupported smoothing method was replaced with Savitzky-Golay.",
+                method=smoothing_params.get("method"),
+            )
+        )
+
+    if intensity.size < 3:
+        processed["smoothed_intensity"] = intensity
+        warnings.append(
+            _warning(
+                "smoothing_skipped",
+                "Smoothing was skipped because the spectrum has fewer than three points.",
+                severity="medium",
+            )
+        )
+        return intensity, warnings
+
+    window_length, window_adjusted = _coerce_int(smoothing_params.get("window_length"), 9, minimum=3)
+    polyorder, poly_adjusted = _coerce_int(smoothing_params.get("polyorder"), 2, minimum=1)
+    max_window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
+    adjusted = window_adjusted or poly_adjusted
+    if window_length > max_window:
+        window_length = max_window
+        adjusted = True
+    if window_length % 2 == 0:
+        window_length += 1
+        if window_length > max_window:
+            window_length = max_window
+        adjusted = True
+    if polyorder >= window_length:
+        polyorder = max(1, window_length - 1)
+        adjusted = True
+    if adjusted:
+        warnings.append(
+            _warning(
+                "smoothing_parameter_adjusted",
+                "Invalid Savitzky-Golay parameters were adjusted to fit the spectrum length.",
+                window_length=window_length,
+                polyorder=polyorder,
+            )
+        )
+
+    smoothed = savgol_filter(intensity, window_length=window_length, polyorder=polyorder, mode="interp")
+    processed["smoothed_intensity"] = smoothed
+    warnings.append(
+        _warning(
+            "smoothing_applied",
+            "Savitzky-Golay smoothing was applied before normalization and peak detection.",
+            method="savitzky_golay",
+            window_length=window_length,
+            polyorder=polyorder,
+        )
+    )
+    return np.asarray(smoothed, dtype=float), warnings
+
+
+def _detect_spike_candidates(intensity: np.ndarray, parameters: dict[str, Any]) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    spike_params = parameters.get("spike_detection", {})
+    if not spike_params.get("enabled", False):
+        return np.zeros(intensity.size, dtype=bool), []
+
+    warnings: list[dict[str, Any]] = []
+    if spike_params.get("method", "rolling_mad") != "rolling_mad":
+        warnings.append(
+            _warning(
+                "spike_detection_method_adjusted",
+                "Unsupported spike detection method was replaced with rolling MAD.",
+                method=spike_params.get("method"),
+            )
+        )
+
+    window, window_adjusted = _coerce_int(spike_params.get("window"), 7, minimum=3)
+    threshold, threshold_adjusted = _coerce_float(spike_params.get("mad_threshold"), 8.0, minimum=1.0)
+    if window % 2 == 0:
+        window += 1
+        window_adjusted = True
+    if intensity.size < 3:
+        warnings.append(
+            _warning(
+                "spike_detection_skipped",
+                "Spike detection was skipped because the spectrum has fewer than three points.",
+                severity="medium",
+            )
+        )
+        return np.zeros(intensity.size, dtype=bool), warnings
+    if window > intensity.size:
+        window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
+        window_adjusted = True
+    if window_adjusted or threshold_adjusted:
+        warnings.append(
+            _warning(
+                "spike_detection_parameter_adjusted",
+                "Invalid rolling MAD spike-detection parameters were adjusted.",
+                window=window,
+                mad_threshold=threshold,
+            )
+        )
+
+    rolling_median = (
+        pd.Series(intensity)
+        .rolling(window=window, center=True, min_periods=1)
+        .median()
+        .to_numpy(dtype=float)
+    )
+    residual = np.abs(intensity - rolling_median)
+    residual_median = float(np.median(residual))
+    mad = float(np.median(np.abs(residual - residual_median)))
+    floor = max(float(np.ptp(intensity)) * 1e-8, 1e-12)
+    cutoff = residual_median + threshold * max(mad, floor)
+    candidates = residual > cutoff
+    count = int(np.count_nonzero(candidates))
+    warnings.append(
+        _warning(
+            "spike_detection_applied",
+            "Rolling MAD spike-candidate diagnostics were applied.",
+            method="rolling_mad",
+            window=window,
+            mad_threshold=threshold,
+            candidate_count=count,
+        )
+    )
+    if count:
+        warnings.append(
+            _warning(
+                "spike_candidates_detected",
+                "Potential spike candidates were marked in the processed Raman CSV for user review.",
+                severity="medium",
+                candidate_count=count,
+            )
+        )
+    return candidates, warnings
+
+
+def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
+    warnings: list[dict[str, Any]] = []
     intensity = processed["raw_intensity"].to_numpy(dtype=float)
+
+    intensity, baseline_warnings = _apply_baseline_correction(processed, intensity, parameters)
+    warnings.extend(baseline_warnings)
+
+    intensity, smoothing_warnings = _apply_smoothing(processed, intensity, parameters)
+    warnings.extend(smoothing_warnings)
+
+    spike_candidates, spike_warnings = _detect_spike_candidates(intensity, parameters)
+    processed["spike_candidate"] = spike_candidates
+    warnings.extend(spike_warnings)
+
     if parameters.get("normalization", {}).get("enabled", True):
         max_value = float(np.max(np.abs(intensity)))
         if max_value > 0:
             intensity = intensity / max_value
+        warnings.append(_warning("normalization_applied", "Intensity normalized by processing parameters."))
     processed["processed_intensity"] = intensity
-    return processed
+    return processed, warnings
 
 
 def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
@@ -268,6 +569,18 @@ def _plot_raman(
             label="Detected peaks",
             zorder=3,
         )
+    if "spike_candidate" in processed.columns and processed["spike_candidate"].any():
+        spike_rows = processed[processed["spike_candidate"]]
+        ax.scatter(
+            spike_rows["raman_shift"],
+            spike_rows["processed_intensity"],
+            facecolors="none",
+            edgecolors="#CC79A7",
+            s=28,
+            linewidths=0.8,
+            label="Spike candidates",
+            zorder=4,
+        )
     unit_label = "cm$^{-1}$" if x_unit == "cm^-1" else "unknown unit"
     ax.set_title("Raman spectrum")
     ax.set_xlabel(f"Raman shift ({unit_label})")
@@ -303,8 +616,8 @@ def process_raman_result(
     if inspection.file_kind != "raman":
         raise RamanProcessingError(f"File is {inspection.file_kind}, not Raman")
 
-    parameters = request.processing_parameters or default_processing_parameters()
-    processed = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    parameters = _merge_parameters(request.processing_parameters)
+    processed, preprocessing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
@@ -337,11 +650,10 @@ def process_raman_result(
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append({"code": "x_unit_unknown", "message": "Raman x unit remains unknown after confirmation.", "severity": "medium"})
-    if parameters.get("normalization", {}).get("enabled", False):
-        warnings.append({"code": "normalization_applied", "message": "Intensity normalized by processing parameters.", "severity": "low"})
+        warnings.append(_warning("x_unit_unknown", "Raman x unit remains unknown after confirmation.", severity="medium"))
+    warnings.extend(preprocessing_warnings)
     if not parameters.get("baseline_correction", {}).get("enabled", False):
-        warnings.append({"code": "baseline_not_corrected", "message": "No baseline correction was applied.", "severity": "low"})
+        warnings.append(_warning("baseline_not_corrected", "No baseline correction was applied."))
 
     result = RamanProcessingResult(
         raman_result_id=result_id,
