@@ -11,6 +11,7 @@ EA_PROJECT_DIRS = [
     "experiments",
     "evaluation",
     "exports",
+    "exports/batch-bundles",
     "exports/report-bundles",
     "samples",
     "raw",

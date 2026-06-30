@@ -90,6 +90,13 @@ def _reports_index(root: Path) -> dict[str, Any]:
     return read_yaml(path).get("reports", {})
 
 
+def _batch_index(root: Path) -> dict[str, Any]:
+    path = root / "processed" / "batches" / "index.yml"
+    if not path.exists():
+        raise ReportBundleError(f"Batch index is missing: {path}")
+    return read_yaml(path).get("batches", {})
+
+
 def _figures_index(root: Path) -> dict[str, Any]:
     path = root / "figures" / "index.yml"
     return read_yaml(path).get("figures", {}) if path.exists() else {}
@@ -182,6 +189,15 @@ def _copy_provenance(
                     reason=str(input_record.get("skip_reason")),
                 )
     return copied
+
+
+def _report_id_from_ref(root: Path, report_ref: str) -> str | None:
+    report_path = _project_path(root, report_ref)
+    if not report_path.exists():
+        return None
+    frontmatter, _ = read_markdown_record(report_path)
+    report_id = frontmatter.get("report_id")
+    return str(report_id) if report_id else None
 
 
 def export_report_bundle(
@@ -354,4 +370,146 @@ def export_report_bundle(
             _write_zip_archive(bundle_dir, archive_target)
         except OSError as exc:
             raise ReportBundleError(f"Failed to create report bundle archive: {archive_target}: {exc}") from exc
+    return manifest
+
+
+def export_batch_bundle(
+    root: Path,
+    *,
+    batch_id: str,
+    output_dir: Path | None = None,
+    created_at: str | None = None,
+    create_archive: bool = False,
+    archive_path: Path | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    batches = _batch_index(root)
+    batch_index_record = batches.get(batch_id)
+    if not batch_index_record:
+        raise ReportBundleError(f"Unknown batch_id: {batch_id}")
+
+    bundle_dir = output_dir or root / "exports" / "batch-bundles" / batch_id
+    if not bundle_dir.is_absolute():
+        bundle_dir = root / bundle_dir
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest: dict[str, Any] = {
+        "schema_version": "0.2",
+        "bundle_id": f"bundle-{batch_id}",
+        "batch_id": batch_id,
+        "created_at": created_at or EARecord.now_iso(),
+        "workspace": str(root),
+        "bundle_path": str(bundle_dir),
+        "artifacts": {
+            "batch_records": [],
+            "report_bundles": [],
+            "provenance": [],
+        },
+        "provenance_inputs": [],
+        "missing_refs": [],
+        "archive_created": False,
+        "archive_path": None,
+        "archive_ref": None,
+    }
+
+    batch_refs = [
+        ("batch_index", "processed/batches/index.yml"),
+        ("batch_run", str(batch_index_record.get("record_ref") or "")),
+        ("batch_summary", str(batch_index_record.get("summary_ref") or "")),
+        ("batch_manifest", str(batch_index_record.get("manifest_ref") or "")),
+    ]
+    for kind, ref in batch_refs:
+        if not ref:
+            _record_missing(manifest, kind=kind, ref=ref, reason="empty_ref")
+            continue
+        copied = _copy_project_file(root, bundle_dir, ref=ref, subdir="batch", kind=kind, label=batch_id)
+        manifest["artifacts"]["batch_records"].append(copied)
+        if not copied["copied"]:
+            _record_missing(manifest, kind=kind, ref=ref, reason=str(copied.get("skip_reason")))
+
+    batch_record_path = _project_path(root, str(batch_index_record.get("record_ref") or ""))
+    batch_record = read_yaml(batch_record_path) if batch_record_path.exists() else {}
+    manifest["batch_status"] = batch_record.get("status") or batch_index_record.get("status")
+    manifest["item_count"] = batch_record.get("item_count") or batch_index_record.get("item_count")
+    manifest["items"] = []
+
+    for item in batch_record.get("items") or []:
+        item_summary = {
+            "item_id": item.get("item_id"),
+            "method": item.get("method"),
+            "status": item.get("status"),
+            "report_ref": item.get("report_ref"),
+            "report_id": None,
+            "report_bundle_ref": None,
+            "report_manifest_ref": None,
+        }
+        manifest["items"].append(item_summary)
+        report_ref = str(item.get("report_ref") or "")
+        if not report_ref:
+            if item.get("status") == "success":
+                _record_missing(
+                    manifest,
+                    kind="item_report",
+                    ref=str(item.get("item_id") or ""),
+                    reason="missing_report_ref",
+                )
+            continue
+        report_id = _report_id_from_ref(root, report_ref)
+        if not report_id:
+            _record_missing(manifest, kind="item_report", ref=report_ref, reason="missing_or_unreadable_report")
+            continue
+        report_bundle = export_report_bundle(
+            root,
+            report_id=report_id,
+            output_dir=bundle_dir / "report-bundles" / report_id,
+            created_at=str(manifest["created_at"]),
+            create_archive=False,
+        )
+        report_bundle_ref = _project_ref(root, Path(report_bundle["bundle_path"]))
+        report_manifest_ref = _project_ref(root, Path(report_bundle["manifest_path"]))
+        item_summary["report_id"] = report_id
+        item_summary["report_bundle_ref"] = report_bundle_ref
+        item_summary["report_manifest_ref"] = report_manifest_ref
+        nested = {
+            "kind": "report_bundle",
+            "label": report_id,
+            "item_id": item.get("item_id"),
+            "status": report_bundle["status"],
+            "bundle_ref": Path(report_bundle["bundle_path"]).relative_to(bundle_dir).as_posix(),
+            "manifest_ref": Path(report_bundle["manifest_path"]).relative_to(bundle_dir).as_posix(),
+            "missing_ref_count": len(report_bundle.get("missing_refs") or []),
+        }
+        manifest["artifacts"]["report_bundles"].append(nested)
+        for missing in report_bundle.get("missing_refs") or []:
+            manifest["missing_refs"].append(
+                {
+                    "kind": f"report_bundle.{missing.get('kind')}",
+                    "ref": str(missing.get("ref")),
+                    "reason": str(missing.get("reason")),
+                    "report_id": report_id,
+                    "item_id": item.get("item_id"),
+                }
+            )
+
+    manifest["artifacts"]["provenance"].extend(
+        _copy_provenance(root, bundle_dir, manifest, [str(ref) for ref in batch_record.get("provenance_refs") or []])
+    )
+
+    manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
+    if create_archive:
+        archive_target = archive_path or _default_archive_path(bundle_dir)
+        if not archive_target.is_absolute():
+            archive_target = root / archive_target
+        manifest["archive_created"] = True
+        manifest["archive_path"] = str(archive_target)
+        manifest["archive_ref"] = _project_ref(root, archive_target)
+
+    manifest_path = bundle_dir / "batch_bundle_manifest.yml"
+    manifest["manifest_path"] = str(manifest_path)
+    write_yaml(manifest_path, manifest)
+    if create_archive:
+        try:
+            _write_zip_archive(bundle_dir, archive_target)
+        except OSError as exc:
+            raise ReportBundleError(f"Failed to create batch bundle archive: {archive_target}: {exc}") from exc
     return manifest

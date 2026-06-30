@@ -127,6 +127,7 @@ ea report
 ea healthcheck
 ea export report-bundle
 ea export report-bundle --zip
+ea export batch-bundle
 ea templates parameters
 ea templates batch-manifest
 ea literature status
@@ -137,7 +138,7 @@ ea config doctor
 验收：
 
 - 用户能通过 CLI 完成初始化、raw 导入、光谱检查、Raman 处理、报告生成和项目健康检查。
-- 用户能通过 CLI 导出单个报告的本地 handoff bundle，包含报告、图片、源数据、结果元数据、引用和 provenance，并可选择生成 zip 归档用于转交。
+- 用户能通过 CLI 导出单个报告或单个 batch run 的本地 handoff bundle，包含报告、图片、源数据、结果元数据、引用、batch 记录和 provenance，并可选择生成 zip 归档用于转交。
 - 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。

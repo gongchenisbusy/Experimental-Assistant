@@ -8,7 +8,7 @@ from pathlib import Path
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.config import doctor_project_config
 from ea.evaluation import run_project_evaluation
-from ea.exports import ReportBundleError, export_report_bundle
+from ea.exports import ReportBundleError, export_batch_bundle, export_report_bundle
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
@@ -90,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     report_bundle.add_argument("--output", type=Path)
     report_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
     report_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
+    batch_bundle = export_sub.add_parser("batch-bundle", help="bundle one batch run with nested report bundles")
+    batch_bundle.add_argument("workspace", type=Path)
+    batch_bundle.add_argument("--batch-id", required=True)
+    batch_bundle.add_argument("--output", type=Path)
+    batch_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
+    batch_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
 
     healthcheck = sub.add_parser("healthcheck", help="audit EA project config, provenance, raw files, reports, and figures")
     healthcheck.add_argument("workspace", type=Path)
@@ -450,6 +456,27 @@ def main(argv: list[str] | None = None) -> int:
                 result = export_report_bundle(
                     args.workspace,
                     report_id=args.report_id,
+                    output_dir=output_dir,
+                    create_archive=create_archive,
+                    archive_path=archive_path,
+                )
+            except ReportBundleError as exc:
+                _print_json({"status": "fail", "error": str(exc)})
+                return 2
+            _print_json(result)
+            return 0 if result["status"] == "complete" else 1
+        if args.export_command == "batch-bundle":
+            output_dir = args.output
+            if output_dir and not output_dir.is_absolute():
+                output_dir = args.workspace / output_dir
+            archive_path = args.zip_output
+            if archive_path and not archive_path.is_absolute():
+                archive_path = args.workspace / archive_path
+            create_archive = args.zip or archive_path is not None
+            try:
+                result = export_batch_bundle(
+                    args.workspace,
+                    batch_id=args.batch_id,
                     output_dir=output_dir,
                     create_archive=create_archive,
                     archive_path=archive_path,

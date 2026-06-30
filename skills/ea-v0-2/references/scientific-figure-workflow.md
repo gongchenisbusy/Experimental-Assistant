@@ -12,7 +12,7 @@ Current v0.2 support:
 - The default style profile is `nature_like_clean`.
 - Raman, PL, and XRD workflows register generated figures with `style_profile` and `source_data_refs`.
 - Figure records remain traceable through `figures/index.yml`, report backlinks, result IDs, raw data IDs, sample IDs, and provenance records.
-- `ea export report-bundle` can gather report-linked figure files and source-data refs into one local handoff folder.
+- `ea export report-bundle` can gather report-linked figure files and source-data refs into one local handoff folder; `ea export batch-bundle` does the same for nested report bundles from one batch run.
 
 Required gates:
 

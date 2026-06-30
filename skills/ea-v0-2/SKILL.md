@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export report bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export report or batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -31,6 +31,7 @@ ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --zip
+ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -84,7 +85,7 @@ Healthcheck and evaluator reports are the local handoff gate. They audit batch r
 
 Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
 
-Report bundle export is read-only for analysis state. It copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Use `--zip` or `--zip-output` when a portable archive should be created from the same bundle.
+Report bundle export is read-only for analysis state. It copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`. Use `--zip` or `--zip-output` when a portable archive should be created from the same bundle.
 
 ## References
 
