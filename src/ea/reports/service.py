@@ -851,6 +851,34 @@ def _uv_vis_edge_text(metadata: dict) -> str:
     return f"自动阈值法记录的 optical edge 估计为 `{wavelength_text}` / `{energy_text}`；confidence: `{confidence}`；assignment_source: `{source}`。"
 
 
+def _uv_vis_tauc_text(metadata: dict) -> str:
+    tauc = (metadata.get("peak_analysis") or {}).get("tauc_analysis")
+    if not tauc:
+        return "当前没有启用或记录 Tauc/Kubelka-Munk screening 分析。"
+    status = tauc.get("status", "unknown")
+    transform = tauc.get("transform", "unknown")
+    transition = tauc.get("transition", "unknown")
+    exponent = tauc.get("exponent", "unknown")
+    confidence = tauc.get("confidence", "insufficient")
+    source = tauc.get("assignment_source", "ea.uv_vis.tauc_screening:v0.2")
+    fit_window = tauc.get("fit_window_eV") or []
+    window_text = f"{float(fit_window[0]):.3g}-{float(fit_window[1]):.3g} eV" if len(fit_window) == 2 else "not recorded"
+    if status != "screening_fit_recorded":
+        return (
+            f"Tauc/Kubelka-Munk screening 状态为 `{status}`；transform: `{transform}`；transition: `{transition}`；"
+            f"exponent: `{exponent}`；fit window: `{window_text}`；confidence: `{confidence}`；assignment_source: `{source}`。"
+        )
+    intercept = tauc.get("intercept_energy_eV")
+    intercept_text = f"{float(intercept):.3f} eV" if intercept is not None else "n/a"
+    r2 = tauc.get("r2")
+    r2_text = f"{float(r2):.3f}" if r2 is not None else "n/a"
+    return (
+        f"Reviewed-parameter Tauc/Kubelka-Munk screening 使用 `{transform}` transform、`{transition}` transition "
+        f"(exponent `{exponent}`)，fit window 为 `{window_text}`，线性外推截距为 `{intercept_text}`，R2 为 `{r2_text}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。该值只作为筛查记录，不等同于最终 optical band gap。"
+    )
+
+
 def _uv_vis_interpretation_text(metadata: dict, citation_text: str) -> str:
     peak_analysis = metadata.get("peak_analysis") or {}
     interpretations = peak_analysis.get("possible_interpretations") or []
@@ -906,6 +934,7 @@ def generate_uv_vis_report(
     feature_text = _uv_vis_feature_summary(root, outputs["peak_table"])
     feature_table = _uv_vis_feature_table(root, outputs["peak_table"])
     edge_text = _uv_vis_edge_text(metadata)
+    tauc_text = _uv_vis_tauc_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -952,6 +981,10 @@ def generate_uv_vis_report(
 
 {edge_text}
 
+## Tauc/Kubelka-Munk screening
+
+{tauc_text}
+
 ## 可能结论与可信度
 
 {interpretation_text}
@@ -968,6 +1001,7 @@ def generate_uv_vis_report(
 
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{outputs['peak_table']}`
+{f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get('tauc_table') else "- Tauc/Kubelka-Munk table: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 

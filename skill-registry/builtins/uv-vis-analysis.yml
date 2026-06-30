@@ -10,6 +10,7 @@ ea_skill:
     - user_review_state
   output_artifacts:
     - processed_result
+    - tauc_screening_table
     - figure_record
     - report_section
     - provenance_record
@@ -49,6 +50,13 @@ ea_skill:
       - absorbance
       - transmittance
       - reflectance
+    tauc_screening:
+      implemented: true
+      transforms:
+        - absorbance
+        - kubelka_munk
+      requires_reviewed_fit_window_eV: true
+      confidence_boundary: screening_only
     supported_x_units:
       - nm
       - eV
@@ -56,4 +64,5 @@ ea_skill:
     limitations:
       - automatic features are screening evidence, not standalone material assignments
       - threshold optical-edge estimates are low-confidence orientation values
-      - formal band-gap analysis requires user-confirmed model context and references
+      - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
+      - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references

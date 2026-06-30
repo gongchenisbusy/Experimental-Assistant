@@ -54,7 +54,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: uv_vis
-    notes: Minimal UV-Vis workflow implemented for review-gated optical feature detection, threshold edge estimates, traceable figures, and confidence-labeled reports; formal band-gap modeling remains future work.
+    notes: Minimal UV-Vis workflow implemented for review-gated optical feature detection, threshold edge estimates, tauc_kubelka_munk_screening, traceable figures, and confidence-labeled reports; formal band-gap conclusions still require reviewed model context, corrections, and references.
   - id: ea.xps-analysis
     manifest: skill-registry/builtins/xps-analysis.yml
     status: builtin_v0_2_reference

@@ -88,6 +88,17 @@ def default_uv_vis_processing_parameters() -> dict[str, Any]:
             "threshold_fraction": 0.5,
             "source": "ea.uv_vis.edge_threshold:v0.2",
         },
+        "tauc_analysis": {
+            "enabled": False,
+            "method": "linear_window",
+            "transform": "absorbance",
+            "transition": "direct_allowed",
+            "exponent": 2.0,
+            "fit_window_eV": [],
+            "min_points": 8,
+            "min_r2_for_low_confidence": 0.9,
+            "source": "ea.uv_vis.tauc_screening:v0.2",
+        },
     }
 
 
@@ -384,11 +395,236 @@ def _estimate_edge(processed: pd.DataFrame, parameters: dict[str, Any], signal_m
     return edge
 
 
-def _analyze_features(features: pd.DataFrame, edge: dict[str, Any] | None) -> dict[str, Any]:
+def _fit_window(params: dict[str, Any]) -> tuple[float, float] | None:
+    window = params.get("fit_window_eV")
+    if not isinstance(window, list | tuple) or len(window) != 2:
+        return None
+    low, low_adjusted = _coerce_float(window[0], 0.0)
+    high, high_adjusted = _coerce_float(window[1], 0.0)
+    if low_adjusted or high_adjusted or low <= 0 or high <= 0 or low >= high:
+        return None
+    return low, high
+
+
+def _transition_exponent(params: dict[str, Any]) -> tuple[float, str]:
+    transition = str(params.get("transition") or "direct_allowed")
+    exponent_map = {
+        "direct_allowed": 2.0,
+        "indirect_allowed": 0.5,
+        "direct_forbidden": 1.5,
+        "indirect_forbidden": 3.0,
+    }
+    if transition == "custom":
+        exponent, adjusted = _coerce_float(params.get("exponent"), 2.0, minimum=0.05, maximum=6.0)
+        return exponent, "custom" if not adjusted else "custom_adjusted_to_default"
+    return exponent_map.get(transition, 2.0), transition if transition in exponent_map else "direct_allowed_defaulted"
+
+
+def _tauc_alpha_proxy(processed: pd.DataFrame, signal_mode: str, params: dict[str, Any]) -> tuple[np.ndarray | None, list[dict[str, Any]], str]:
+    warnings: list[dict[str, Any]] = []
+    transform = str(params.get("transform") or "absorbance")
+    raw = processed["raw_signal"].to_numpy(dtype=float)
+    if transform == "kubelka_munk":
+        if signal_mode != "reflectance":
+            warnings.append(
+                _warning(
+                    "uv_vis_tauc_kubelka_munk_signal_mismatch",
+                    "Kubelka-Munk transform was requested for a non-reflectance UV-Vis signal; no Tauc fit was performed.",
+                    severity="medium",
+                    signal_mode=signal_mode,
+                )
+            )
+            return None, warnings, "kubelka_munk"
+        reflectance = raw.copy()
+        unit_assumption = "fraction_reflectance"
+        finite = reflectance[np.isfinite(reflectance)]
+        if finite.size and float(np.nanmax(finite)) > 1.5:
+            reflectance = reflectance / 100.0
+            unit_assumption = "percent_reflectance_converted_to_fraction"
+        invalid = ~np.isfinite(reflectance) | (reflectance <= 0)
+        reflectance = np.where(invalid, np.nan, reflectance)
+        clipped = np.isfinite(reflectance) & (reflectance >= 1.0)
+        if np.any(clipped):
+            reflectance = np.where(clipped, 0.999999, reflectance)
+            warnings.append(
+                _warning(
+                    "uv_vis_tauc_reflectance_clipped",
+                    "Reflectance values at or above 1 were clipped for Kubelka-Munk screening.",
+                    severity="medium",
+                    unit_assumption=unit_assumption,
+                )
+            )
+        alpha = ((1.0 - reflectance) ** 2) / (2.0 * reflectance)
+        return alpha, warnings, f"kubelka_munk:{unit_assumption}"
+    if transform != "absorbance":
+        warnings.append(
+            _warning(
+                "uv_vis_tauc_transform_defaulted",
+                "Unknown Tauc transform was defaulted to absorbance proxy.",
+                severity="medium",
+                requested_transform=transform,
+            )
+        )
+    if signal_mode != "absorbance":
+        warnings.append(
+            _warning(
+                "uv_vis_tauc_absorbance_signal_mismatch",
+                "Absorbance Tauc transform was requested for a non-absorbance signal; no Tauc fit was performed.",
+                severity="medium",
+                signal_mode=signal_mode,
+            )
+        )
+        return None, warnings, "absorbance"
+    alpha = np.where(np.isfinite(raw) & (raw > 0), raw, np.nan)
+    return alpha, warnings, "absorbance"
+
+
+def _run_tauc_analysis(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    signal_mode: str,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("tauc_analysis", {})
+    if not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.uv_vis.tauc_screening:v0.2")
+    transition_exponent, transition = _transition_exponent(params)
+    transform = str(params.get("transform") or "absorbance")
+    fit_window = _fit_window(params)
+    if fit_window is None:
+        warning = _warning(
+            "uv_vis_tauc_fit_window_missing",
+            "Tauc analysis was enabled, but no valid user-reviewed fit_window_eV was supplied.",
+            severity="medium",
+        )
+        return (
+            {
+                "status": "insufficient_fit_window",
+                "method": "linear_window",
+                "transform": transform,
+                "transition": transition,
+                "exponent": transition_exponent,
+                "confidence": "insufficient",
+                "assignment_source": source,
+                "warnings": [warning],
+            },
+            [warning],
+        )
+    if "energy_eV" not in processed.columns:
+        warning = _warning(
+            "uv_vis_tauc_energy_axis_missing",
+            "Tauc analysis requires a reviewed nm or eV axis so photon energy can be computed.",
+            severity="medium",
+        )
+        return (
+            {
+                "status": "insufficient_energy_axis",
+                "method": "linear_window",
+                "transform": transform,
+                "transition": transition,
+                "exponent": transition_exponent,
+                "fit_window_eV": list(fit_window),
+                "confidence": "insufficient",
+                "assignment_source": source,
+                "warnings": [warning],
+            },
+            [warning],
+        )
+    alpha, alpha_warnings, transform_used = _tauc_alpha_proxy(processed, signal_mode, params)
+    warnings.extend(alpha_warnings)
+    if alpha is None:
+        return (
+            {
+                "status": "insufficient_transform",
+                "method": "linear_window",
+                "transform": transform_used,
+                "transition": transition,
+                "exponent": transition_exponent,
+                "fit_window_eV": list(fit_window),
+                "confidence": "insufficient",
+                "assignment_source": source,
+                "warnings": alpha_warnings,
+            },
+            warnings,
+        )
+    energy = processed["energy_eV"].to_numpy(dtype=float)
+    with np.errstate(invalid="ignore"):
+        tauc_y = np.power(alpha * energy, transition_exponent)
+    fit_mask = np.isfinite(energy) & np.isfinite(tauc_y) & (energy >= fit_window[0]) & (energy <= fit_window[1])
+    processed["tauc_energy_eV"] = energy
+    processed["tauc_alpha_proxy"] = alpha
+    processed["tauc_y"] = tauc_y
+    processed["tauc_fit_window"] = fit_mask
+    min_points, _ = _coerce_int(params.get("min_points"), 8, minimum=3)
+    fit_points = int(np.count_nonzero(fit_mask))
+    base = {
+        "status": "insufficient_fit_points",
+        "method": "linear_window",
+        "transform": transform_used,
+        "transition": transition,
+        "exponent": transition_exponent,
+        "fit_window_eV": list(fit_window),
+        "fit_point_count": fit_points,
+        "min_points": min_points,
+        "confidence": "insufficient",
+        "assignment_source": source,
+    }
+    if fit_points < min_points:
+        warning = _warning(
+            "uv_vis_tauc_insufficient_fit_points",
+            "Tauc fit window contains too few finite points for a linear screening fit.",
+            severity="medium",
+            fit_points=fit_points,
+            min_points=min_points,
+        )
+        warnings.append(warning)
+        return ({**base, "warnings": warnings}, warnings)
+    fit_frame = pd.DataFrame({"energy": energy[fit_mask], "tauc_y": tauc_y[fit_mask]}).sort_values("energy")
+    x = fit_frame["energy"].to_numpy(dtype=float)
+    y = fit_frame["tauc_y"].to_numpy(dtype=float)
+    slope, intercept = np.polyfit(x, y, 1)
+    predicted = slope * x + intercept
+    ss_res = float(np.sum((y - predicted) ** 2))
+    ss_tot = float(np.sum((y - float(np.mean(y))) ** 2))
+    r2 = 1.0 if ss_tot == 0 else 1.0 - ss_res / ss_tot
+    intercept_energy = float(-intercept / slope) if slope else None
+    min_r2, _ = _coerce_float(params.get("min_r2_for_low_confidence"), 0.9, minimum=0.0, maximum=1.0)
+    plausible_intercept = intercept_energy is not None and 0.1 <= intercept_energy <= 10.0
+    confidence = "low" if r2 >= min_r2 and plausible_intercept else "insufficient"
+    if confidence == "insufficient":
+        warnings.append(
+            _warning(
+                "uv_vis_tauc_fit_low_confidence",
+                "Tauc screening fit did not meet the configured low-confidence quality checks.",
+                severity="medium",
+                r2=r2,
+                intercept_energy_eV=intercept_energy,
+                min_r2=min_r2,
+            )
+        )
+    return (
+        {
+            **base,
+            "status": "screening_fit_recorded",
+            "slope": float(slope),
+            "intercept": float(intercept),
+            "r2": float(r2),
+            "intercept_energy_eV": intercept_energy,
+            "confidence": confidence,
+            "warnings": warnings,
+            "boundary": "Screening Tauc/Kubelka-Munk fit only; not a definitive band-gap assignment.",
+        },
+        warnings,
+    )
+
+
+def _analyze_features(features: pd.DataFrame, edge: dict[str, Any] | None, tauc: dict[str, Any] | None = None) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "feature_count": int(len(features)),
         "strongest_features": [],
         "edge_estimate": edge,
+        "tauc_analysis": tauc,
         "possible_interpretations": [],
     }
     if features.empty:
@@ -429,6 +665,20 @@ def _analyze_features(features: pd.DataFrame, edge: dict[str, Any] | None) -> di
                 "confidence": edge.get("confidence", "low"),
                 "evidence": ["edge_estimate"],
                 "assignment_source": edge.get("assignment_source", "ea.uv_vis.edge_threshold:v0.2"),
+            }
+        )
+    if tauc and tauc.get("status") == "screening_fit_recorded":
+        value = tauc.get("intercept_energy_eV")
+        value_text = f"{float(value):.3f} eV" if value is not None else "not available"
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"A screening {tauc.get('transform')} Tauc/Kubelka-Munk linear-window intercept was recorded at "
+                    f"{value_text}. Treat this as reviewed-model screening evidence only, not a definitive optical band gap."
+                ),
+                "confidence": tauc.get("confidence", "low"),
+                "evidence": ["tauc_analysis"],
+                "assignment_source": tauc.get("assignment_source", "ea.uv_vis.tauc_screening:v0.2"),
             }
         )
     return analysis
@@ -490,7 +740,8 @@ def process_uv_vis_result(
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     features = _detect_features(processed, parameters, request.signal_mode, request.x_unit)
     edge = _estimate_edge(processed, parameters, request.signal_mode)
-    feature_analysis = _analyze_features(features, edge)
+    tauc_analysis, tauc_warnings = _run_tauc_analysis(processed, parameters, request.signal_mode)
+    feature_analysis = _analyze_features(features, edge, tauc_analysis)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -503,21 +754,37 @@ def process_uv_vis_result(
     output_dir = root / "processed" / sample_dir / "uv_vis" / result_id
     processed_csv = output_dir / "uv_vis_processed.csv"
     features_csv = output_dir / "uv_vis_features.csv"
+    tauc_csv = output_dir / "uv_vis_tauc.csv"
     figure_name = f"{figure_id}.png" if figure_id else "uv_vis_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "uv_vis_metadata.yml"
-    for output in [processed_csv, features_csv, figure, result_metadata]:
+    for output in [processed_csv, features_csv, tauc_csv, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     features.to_csv(features_csv, index=False)
+    tauc_output_ref: str | None = None
+    if tauc_analysis and "tauc_y" in processed.columns:
+        tauc_columns = ["tauc_energy_eV", "tauc_alpha_proxy", "tauc_y", "tauc_fit_window"]
+        processed[tauc_columns].to_csv(tauc_csv, index=False)
+        tauc_output_ref = str(tauc_csv.relative_to(root))
+        feature_analysis["tauc_analysis"]["table_ref"] = tauc_output_ref
     _plot_uv_vis(processed, features, figure, request.x_unit, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
         warnings.append(_warning("uv_vis_x_unit_unknown", "UV-Vis x unit remains unknown after confirmation.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(tauc_warnings)
+    outputs = {
+        "figure": str(figure.relative_to(root)),
+        "peak_table": str(features_csv.relative_to(root)),
+        "processed_csv": str(processed_csv.relative_to(root)),
+        "metadata": str(result_metadata.relative_to(root)),
+    }
+    if tauc_output_ref:
+        outputs["tauc_table"] = tauc_output_ref
     result = UVVisProcessingResult(
         uv_vis_result_id=result_id,
         result_id=result_id,
@@ -530,12 +797,7 @@ def process_uv_vis_result(
         x_unit=request.x_unit,  # type: ignore[arg-type]
         signal_mode=request.signal_mode,  # type: ignore[arg-type]
         processing_parameters=parameters,
-        outputs={
-            "figure": str(figure.relative_to(root)),
-            "peak_table": str(features_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
-        },
+        outputs=outputs,
         peak_analysis=feature_analysis,
         figure_id=figure_id,
         warnings=warnings,
@@ -557,7 +819,8 @@ def process_uv_vis_result(
                 str(processed_csv.relative_to(root)),
                 str(features_csv.relative_to(root)),
                 str(figure.relative_to(root)),
-            ],
+            ]
+            + ([tauc_output_ref] if tauc_output_ref else []),
         },
         parameters={
             "x_column": request.x_column,
@@ -601,6 +864,7 @@ def process_uv_vis_result(
             source_data_refs=[
                 str(processed_csv.relative_to(root)),
                 str(features_csv.relative_to(root)),
-            ],
+            ]
+            + ([tauc_output_ref] if tauc_output_ref else []),
         )
     return result_metadata
