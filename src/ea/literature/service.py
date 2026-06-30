@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal
 
 from ea.schema.models import EARecord
+from ea.references.service import find_duplicate_reference, register_reference
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
@@ -50,6 +52,9 @@ STATUS_UPDATE_FIELDS = [
     "needs_user_login",
     "blocked_items",
     "summary_for_origin_thread",
+    "library_manifest_ref",
+    "cache_index_ref",
+    "reference_import",
 ]
 
 
@@ -215,6 +220,24 @@ def _write_csv_header(path: Path, headers: list[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(headers)
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return [dict(row) for row in csv.DictReader(handle)]
+
+
+def _project_relative(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _compact_dict(data: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in data.items() if value not in (None, "", [], {})}
 
 
 def _estimate_confirmation(scope: ProjectScope, top_n: int | tuple[int, int], access_mode: AccessMode) -> dict[str, Any]:
@@ -544,6 +567,360 @@ def prepare_literature_acquisition_handoff(
         "status_path": str(status_path),
         "handoff": handoff,
         "status": status,
+    }
+
+
+def _load_acquisition_candidates(root: Path, selected_top_n: int) -> tuple[str, list[dict[str, Any]]]:
+    selected_path = root / "literature" / "selected_items.yml"
+    selected = read_yaml(selected_path) if selected_path.exists() else {}
+    selected_items = list(selected.get("items") or [])
+    if selected_items:
+        return "selected_items", selected_items[:selected_top_n]
+
+    ranking_rows = _read_csv_rows(root / "literature" / "ranking.csv")
+    ranked = [row for row in ranking_rows if row.get("title") or row.get("doi") or row.get("url")]
+    return "ranking_table", ranked[:selected_top_n]
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(_compact_dict(row), ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _target_from_candidate(candidate: dict[str, Any], *, index: int, project_id: str) -> dict[str, Any]:
+    candidate_id = candidate.get("candidate_id") or candidate.get("id") or f"lit-target-{index:03d}"
+    return {
+        "target_id": f"target-{index:03d}",
+        "project_id": project_id,
+        "source_candidate_id": candidate_id,
+        "rank": candidate.get("rank") or candidate.get("top30_rank") or index,
+        "title": candidate.get("title"),
+        "doi": candidate.get("doi"),
+        "url": candidate.get("url"),
+        "authors": candidate.get("authors"),
+        "year": candidate.get("year"),
+        "venue": candidate.get("venue"),
+        "notes": candidate.get("notes"),
+        "tags": candidate.get("tags") or [f"project:{project_id}", "ea-literature"],
+    }
+
+
+def prepare_literature_acquisition_request(
+    root: Path,
+    *,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    status = read_yaml(status_path)
+    if status.get("status") not in {
+        "confirmed_awaiting_acquisition",
+        "acquisition_handoff_ready",
+        "acquisition_request_ready",
+    }:
+        raise ValueError("Literature acquisition request requires confirmed literature selection")
+    selected_top_n = status.get("selected_top_n")
+    if not selected_top_n:
+        raise ValueError("Literature acquisition request requires selected_top_n")
+
+    created_at = created_at or EARecord.now_iso()
+    project = _project_context(root)
+    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    request_id = f"lit-acq-{_timestamp_key(created_at)}"
+    query_rows = []
+    query_data = read_yaml(literature_root / "search_queries.yml") if (literature_root / "search_queries.yml").exists() else {}
+    for query in query_data.get("queries") or []:
+        query_rows.append(
+            {
+                "query_id": query.get("query_id"),
+                "query": query.get("query"),
+                "purpose": query.get("purpose"),
+                "project_id": project_id,
+                "access_mode": status.get("access_mode", "open_access_only"),
+            }
+        )
+
+    candidate_source, candidates = _load_acquisition_candidates(root, int(selected_top_n))
+    targets = [
+        _target_from_candidate(candidate, index=index, project_id=project_id)
+        for index, candidate in enumerate(candidates, start=1)
+    ]
+    request_path = literature_root / "acquisition_request.yml"
+    query_manifest_path = literature_root / "zotero_codex_queries.jsonl"
+    target_manifest_path = literature_root / "zotero_codex_targets.jsonl"
+    batch_status_path = literature_root / "zotero_codex_batch_status.json"
+    _write_jsonl(query_manifest_path, query_rows)
+    _write_jsonl(target_manifest_path, targets)
+
+    target_status = "ready_for_batch_acquisition" if targets else "awaiting_search_results"
+    request = {
+        "schema_version": "0.2",
+        "request_id": request_id,
+        "project_id": project_id,
+        "created_at": created_at,
+        "status": target_status,
+        "selected_top_n": selected_top_n,
+        "access_mode": status.get("access_mode", "open_access_only"),
+        "target_source": candidate_source,
+        "query_count": len(query_rows),
+        "target_count": len(targets),
+        "query_manifest_ref": _project_relative(root, query_manifest_path),
+        "target_manifest_ref": _project_relative(root, target_manifest_path),
+        "batch_status_ref": _project_relative(root, batch_status_path),
+        "zotero_codex_contract": {
+            "run_inside_skill": "zotero-codex-literature",
+            "doctor_command": "python3 scripts/literature_doctor.py --json",
+            "batch_acquire_command": (
+                "python3 scripts/batch_acquire.py --targets "
+                f"{_project_relative(root, target_manifest_path)} --batch-status "
+                f"{_project_relative(root, batch_status_path)} --resume --json"
+            ),
+            "render_status_command": (
+                "python3 scripts/render_batch_status.py --batch-status "
+                f"{_project_relative(root, batch_status_path)} --markdown "
+                "literature/zotero_codex_batch_status.md --json"
+            ),
+            "sidecar_command": (
+                "python3 scripts/write_project_sidecars.py --status "
+                f"{_project_relative(root, batch_status_path)} --json"
+            ),
+            "import_back_command": (
+                "ea literature import-acquisition /path/to/ea-project "
+                "--manifest literature/acquisition_manifest.yml"
+            ),
+        },
+        "boundaries": [
+            "This request does not execute live search, Zotero calls, browser automation, DOI resolution, or PDF downloads.",
+            "Use only user-supplied Zotero, browser, cache, proxy, VPN, or institution-access settings.",
+            "Pause for SSO, MFA, CAPTCHA, institution selection, publisher access control, or non-autofilled login.",
+            "Do not store passwords, bypass access controls, modify the reference-manager database directly, or claim exhaustive web coverage.",
+        ],
+        "next_action": (
+            "Run the Zotero-Codex batch acquisition command in a dedicated literature workflow."
+            if targets
+            else "Run literature search/ranking in a dedicated workflow, then populate selected_items.yml or ranking.csv and regenerate this request."
+        ),
+    }
+    write_yaml(request_path, request)
+    status.update(
+        {
+            "status": "acquisition_request_ready",
+            "acquisition_request_ref": _project_relative(root, request_path),
+            "zotero_codex_queries_ref": _project_relative(root, query_manifest_path),
+            "zotero_codex_targets_ref": _project_relative(root, target_manifest_path),
+            "acquisition_request_status": target_status,
+            "summary_for_origin_thread": (
+                f"Literature acquisition request prepared with {len(targets)} target(s). "
+                "No live search or full-text acquisition has been executed by EA."
+            ),
+        }
+    )
+    write_yaml(status_path, status)
+    return {
+        "request_path": str(request_path),
+        "query_manifest_path": str(query_manifest_path),
+        "target_manifest_path": str(target_manifest_path),
+        "status_path": str(status_path),
+        "request": request,
+        "status": status,
+    }
+
+
+def _load_manifest(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        return json.loads(text)
+    return read_yaml(path)
+
+
+def _manifest_items(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("items", "papers", "references"):
+        value = manifest.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    results = manifest.get("results")
+    if isinstance(results, list):
+        return [item for item in results if isinstance(item, dict)]
+    if isinstance(results, dict):
+        return [item for item in results.values() if isinstance(item, dict)]
+    targets = manifest.get("targets")
+    if isinstance(targets, list):
+        return [item for item in targets if isinstance(item, dict)]
+    return []
+
+
+def _item_citation(item: dict[str, Any]) -> str | None:
+    citation = item.get("citation")
+    if citation:
+        return str(citation)
+    title = item.get("title")
+    if not title:
+        return None
+    authors = item.get("authors") or item.get("author") or []
+    if isinstance(authors, str):
+        author_text = authors
+    elif isinstance(authors, list) and authors:
+        author_text = f"{authors[0]} et al." if len(authors) > 1 else str(authors[0])
+    else:
+        author_text = "Unknown authors"
+    venue = item.get("venue") or item.get("journal") or item.get("container_title")
+    year = item.get("year") or item.get("publication_year")
+    parts = [f"{author_text}.", f"{title}."]
+    if venue and year:
+        parts.append(f"{venue} ({year}).")
+    elif venue:
+        parts.append(f"{venue}.")
+    elif year:
+        parts.append(f"({year}).")
+    return " ".join(parts)
+
+
+def _item_authors(item: dict[str, Any]) -> list[str]:
+    authors = item.get("authors") or item.get("author") or []
+    if isinstance(authors, str):
+        return [authors]
+    if isinstance(authors, list):
+        return [str(author) for author in authors]
+    return []
+
+
+def import_literature_acquisition_manifest(
+    root: Path,
+    *,
+    manifest_path: Path,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    resolved_manifest = manifest_path if manifest_path.is_absolute() else root / manifest_path
+    if not resolved_manifest.exists():
+        raise FileNotFoundError(resolved_manifest)
+    manifest = _load_manifest(resolved_manifest)
+    status_path = literature_root / "deployment_status.yml"
+    status = read_yaml(status_path) if status_path.exists() else {}
+    project = _project_context(root)
+    project_id = str(manifest.get("project_id") or status.get("project_id") or project.get("project_id", "unknown-project"))
+    created_at = created_at or EARecord.now_iso()
+    imported: list[dict[str, Any]] = []
+    reused: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    manifest_items: list[dict[str, Any]] = []
+    cache_items: list[dict[str, Any]] = []
+
+    for index, item in enumerate(_manifest_items(manifest), start=1):
+        citation = _item_citation(item)
+        if not citation:
+            skipped.append({"index": index, "reason": "missing_title_or_citation", "item": item})
+            continue
+        title = item.get("title")
+        doi = item.get("doi")
+        url = item.get("url") or item.get("article_url")
+        local_path = item.get("local_path") or item.get("pdf_path")
+        cache_path = item.get("cache_path") or item.get("fulltext_cache_path")
+        duplicate = find_duplicate_reference(root, doi=doi, url=url, title=title, citation=citation)
+        if duplicate:
+            reference_id = duplicate["reference_id"]
+            reused.append({"index": index, "reference_id": reference_id, "match": duplicate["match"]})
+        else:
+            reference_path = register_reference(
+                root,
+                project_id=project_id,
+                citation=citation,
+                title=str(title) if title else None,
+                authors=_item_authors(item),
+                year=item.get("year") or item.get("publication_year"),
+                venue=item.get("venue") or item.get("journal") or item.get("container_title"),
+                doi=str(doi) if doi else None,
+                url=str(url) if url else None,
+                local_path=str(local_path) if local_path else None,
+                source_type="literature_library",
+                notes=f"Imported from literature acquisition manifest `{resolved_manifest.name}`.",
+                created_at=created_at,
+            )
+            reference_id = reference_path.stem
+            imported.append({"index": index, "reference_id": reference_id, "path": str(reference_path)})
+        manifest_record = {
+            "reference_id": reference_id,
+            "title": title,
+            "doi": doi,
+            "url": url,
+            "year": item.get("year") or item.get("publication_year"),
+            "venue": item.get("venue") or item.get("journal") or item.get("container_title"),
+            "zotero_item_key": item.get("zotero_item_key") or item.get("item_key"),
+            "zotero_attachment_key": item.get("zotero_attachment_key") or item.get("attachment_key"),
+            "local_path": local_path,
+            "cache_path": cache_path,
+            "status": item.get("status") or item.get("acquisition_status"),
+            "rank": item.get("rank") or item.get("top30_rank"),
+        }
+        manifest_items.append(_compact_dict(manifest_record))
+        if local_path or cache_path or manifest_record.get("zotero_item_key"):
+            cache_items.append(_compact_dict(manifest_record))
+
+    library_manifest = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "source_manifest_ref": _project_relative(root, resolved_manifest),
+        "imported_at": created_at,
+        "item_count": len(manifest_items),
+        "items": manifest_items,
+    }
+    cache_index = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "source_manifest_ref": _project_relative(root, resolved_manifest),
+        "updated_at": created_at,
+        "cached_count": sum(1 for item in cache_items if item.get("cache_path")),
+        "items": cache_items,
+    }
+    write_yaml(literature_root / "library_manifest.yml", library_manifest)
+    write_yaml(literature_root / "cache_index.yml", cache_index)
+
+    downloaded_fulltext = manifest.get("downloaded_fulltext")
+    if downloaded_fulltext is None:
+        downloaded_fulltext = sum(1 for item in manifest_items if item.get("local_path"))
+    cached_fulltext = manifest.get("cached_fulltext")
+    if cached_fulltext is None:
+        cached_fulltext = cache_index["cached_count"]
+    update = {
+        "schema_version": "0.2",
+        "status": manifest.get("status") or "acquisition_manifest_imported",
+        "candidate_count": manifest.get("candidate_count", len(manifest_items)),
+        "deduped_count": manifest.get("deduped_count", len(manifest_items)),
+        "downloaded_fulltext": downloaded_fulltext,
+        "cached_fulltext": cached_fulltext,
+        "needs_user_login": manifest.get("needs_user_login", []),
+        "blocked_items": manifest.get("blocked_items", []),
+        "summary_for_origin_thread": manifest.get(
+            "summary_for_origin_thread",
+            f"Imported {len(manifest_items)} literature item(s) from acquisition manifest.",
+        ),
+        "library_manifest_ref": "literature/library_manifest.yml",
+        "cache_index_ref": "literature/cache_index.yml",
+        "reference_import": {
+            "imported_count": len(imported),
+            "reused_count": len(reused),
+            "skipped_count": len(skipped),
+        },
+    }
+    update_path = literature_root / "acquisition_status_update.yml"
+    write_yaml(update_path, update)
+    sync = sync_literature_acquisition_status(root, update_path=Path("literature/acquisition_status_update.yml"), synced_at=created_at)
+    return {
+        "manifest_path": str(resolved_manifest),
+        "library_manifest_path": str(literature_root / "library_manifest.yml"),
+        "cache_index_path": str(literature_root / "cache_index.yml"),
+        "status_update_path": str(update_path),
+        "imported_count": len(imported),
+        "reused_count": len(reused),
+        "skipped_count": len(skipped),
+        "imported": imported,
+        "reused": reused,
+        "skipped": skipped,
+        "sync": sync,
     }
 
 

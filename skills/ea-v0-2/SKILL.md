@@ -52,6 +52,8 @@ ea literature status /path/to/ea-project
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
+ea literature acquisition-request /path/to/ea-project
+ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills check /path/to/child-skill-manifest.yml
 ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml

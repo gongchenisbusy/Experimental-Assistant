@@ -56,6 +56,10 @@ literature/
 ├── search_log.md
 ├── candidates.csv
 ├── ranking.csv
+├── acquisition_request.yml
+├── zotero_codex_queries.jsonl
+├── zotero_codex_targets.jsonl
+├── acquisition_manifest.yml
 ├── selected_items.yml
 ├── references.bib
 ├── notes/
@@ -171,6 +175,8 @@ v0.2 建议先完成：
 - 用户确认 top N 的流程。
 - 与已有 `zotero-codex-literature` skill 的调用边界。
 - `deployment_status.yml` 同步机制。
+- 用户确认后生成 acquisition request 和 Zotero-Codex target manifest，但不在 EA 主项目窗口直接执行下载。
+- 导入专用文献流程输出的 acquisition manifest，并同步 `library_manifest.yml`、`cache_index.yml`、项目引用记录和 origin-thread 状态。
 
 自动批量下载和全文缓存可以作为 v0.2 后段或 v0.3 能力，前提是先验证访问权限、检索质量和上下文隔离机制。
 

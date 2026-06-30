@@ -8,7 +8,9 @@ from ea.cli import main
 from ea.literature import (
     confirm_literature_selection,
     generate_literature_keywords,
+    import_literature_acquisition_manifest,
     plan_literature_deployment,
+    prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     sync_literature_acquisition_status,
 )
@@ -144,6 +146,198 @@ def test_literature_handoff_requires_confirmation_and_writes_sync_contract(tmp_p
     assert result["handoff"]["handoff_id"] == "lit-handoff-20260630T140500"
 
 
+def test_literature_acquisition_request_writes_zotero_codex_targets_after_confirmation(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Acquisition Request",
+        project_slug="mos2-acq-request",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-mos2-acq-request",
+            "selection_status": "selected",
+            "selected_top_n": 2,
+            "items": [
+                {
+                    "candidate_id": "cand-001",
+                    "rank": 1,
+                    "title": "Raman modes in MoS2",
+                    "doi": "10.1000/mos2-raman",
+                    "url": "https://doi.org/10.1000/mos2-raman",
+                    "authors": "Lee C. et al.",
+                    "year": "2010",
+                    "venue": "ACS Nano",
+                },
+                {
+                    "candidate_id": "cand-002",
+                    "rank": 2,
+                    "title": "MoS2 photoluminescence",
+                    "doi": "10.1000/mos2-pl",
+                    "url": "https://doi.org/10.1000/mos2-pl",
+                },
+            ],
+        },
+    )
+
+    result = prepare_literature_acquisition_request(tmp_path, created_at="2026-06-30T16:00:00")
+    request = read_yaml(tmp_path / "literature" / "acquisition_request.yml")
+    targets_text = (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_text(encoding="utf-8")
+    targets = [json.loads(line) for line in targets_text.splitlines()]
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert result["request"]["request_id"] == "lit-acq-20260630T160000"
+    assert request["status"] == "ready_for_batch_acquisition"
+    assert request["target_count"] == 2
+    assert "batch_acquire.py" in request["zotero_codex_contract"]["batch_acquire_command"]
+    assert targets[0]["doi"] == "10.1000/mos2-raman"
+    assert targets[0]["source_candidate_id"] == "cand-001"
+    assert status["status"] == "acquisition_request_ready"
+    assert status["zotero_codex_targets_ref"] == "literature/zotero_codex_targets.jsonl"
+    assert "No live search" in status["summary_for_origin_thread"]
+
+
+def test_literature_acquisition_request_without_targets_keeps_search_boundary(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Search Request",
+        project_slug="mos2-search-request",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=30, user_response="确认 top 30。")
+
+    result = prepare_literature_acquisition_request(tmp_path, created_at="2026-06-30T16:10:00")
+
+    assert result["request"]["status"] == "awaiting_search_results"
+    assert result["request"]["target_count"] == 0
+    assert "Run literature search/ranking" in result["request"]["next_action"]
+    assert (tmp_path / "literature" / "zotero_codex_queries.jsonl").read_text(encoding="utf-8")
+    assert (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_literature_import_acquisition_manifest_registers_references_and_syncs_status(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Acquisition Import",
+        project_slug="mos2-acq-import",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    manifest_path = tmp_path / "literature" / "acquisition_manifest.yml"
+    write_yaml(
+        manifest_path,
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-mos2-acq-import",
+            "status": "acquisition_complete",
+            "candidate_count": 8,
+            "deduped_count": 2,
+            "summary_for_origin_thread": "Imported literature acquisition results.",
+            "items": [
+                {
+                    "title": "Raman modes in MoS2",
+                    "authors": ["Lee C.", "Yan H."],
+                    "year": 2010,
+                    "venue": "ACS Nano",
+                    "doi": "10.1000/mos2-raman",
+                    "url": "https://doi.org/10.1000/mos2-raman",
+                    "local_path": "literature/fulltext/lee-2010.pdf",
+                    "cache_path": "literature/cache/ABCD1234",
+                    "zotero_item_key": "ABCD1234",
+                    "status": "cached",
+                },
+                {
+                    "title": "MoS2 photoluminescence",
+                    "authors": "Mak K. et al.",
+                    "year": 2010,
+                    "venue": "Physical Review Letters",
+                    "doi": "10.1000/mos2-pl",
+                    "url": "https://doi.org/10.1000/mos2-pl",
+                    "status": "metadata_only",
+                },
+            ],
+        },
+    )
+
+    result = import_literature_acquisition_manifest(
+        tmp_path,
+        manifest_path=Path("literature/acquisition_manifest.yml"),
+        created_at="2026-06-30T16:20:00",
+    )
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    library = read_yaml(tmp_path / "literature" / "library_manifest.yml")
+    cache = read_yaml(tmp_path / "literature" / "cache_index.yml")
+    references = read_yaml(tmp_path / "literature" / "references" / "index.yml")
+
+    assert result["imported_count"] == 2
+    assert result["reused_count"] == 0
+    assert status["status"] == "acquisition_complete"
+    assert status["candidate_count"] == 8
+    assert status["downloaded_fulltext"] == 1
+    assert status["cached_fulltext"] == 1
+    assert status["reference_import"]["imported_count"] == 2
+    assert library["item_count"] == 2
+    assert library["items"][0]["reference_id"].startswith("ref-")
+    assert cache["cached_count"] == 1
+    assert len(references["references"]) == 2
+
+
+def test_literature_import_acquisition_manifest_reuses_duplicate_reference(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Acquisition Reuse",
+        project_slug="mos2-acq-reuse",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    main(
+        [
+            "references",
+            "add",
+            str(tmp_path),
+            "--citation",
+            "Existing Author. Existing MoS2 reference. Journal (2010).",
+            "--doi",
+            "10.1000/existing",
+        ]
+    )
+    manifest_path = tmp_path / "literature" / "acquisition_manifest.yml"
+    write_yaml(
+        manifest_path,
+        {
+            "items": [
+                {
+                    "title": "Existing MoS2 reference",
+                    "doi": "10.1000/existing",
+                    "citation": "Existing Author. Existing MoS2 reference. Journal (2010).",
+                }
+            ]
+        },
+    )
+
+    result = import_literature_acquisition_manifest(tmp_path, manifest_path=manifest_path)
+
+    assert result["imported_count"] == 0
+    assert result["reused_count"] == 1
+
+
 def test_literature_sync_status_updates_origin_project(tmp_path: Path) -> None:
     initialize_project(
         tmp_path,
@@ -226,6 +420,30 @@ def test_cli_literature_plan_and_confirm(tmp_path: Path, capsys) -> None:
     handoff = json.loads(capsys.readouterr().out)
     assert handoff["status"]["status"] == "acquisition_handoff_ready"
     assert handoff["handoff"]["literature_thread_id"] == "thread-cli-lit"
+
+    assert main(["literature", "acquisition-request", str(tmp_path)]) == 0
+    request = json.loads(capsys.readouterr().out)
+    assert request["request"]["status"] == "awaiting_search_results"
+    assert request["request"]["query_manifest_ref"] == "literature/zotero_codex_queries.jsonl"
+
+    write_yaml(
+        tmp_path / "literature" / "acquisition_manifest.yml",
+        {
+            "status": "acquisition_complete",
+            "items": [
+                {
+                    "title": "CLI literature acquisition paper",
+                    "doi": "10.1000/cli-lit",
+                    "citation": "CLI Author. CLI literature acquisition paper. Journal (2026).",
+                    "cache_path": "literature/cache/CLI12345",
+                }
+            ],
+        },
+    )
+    assert main(["literature", "import-acquisition", str(tmp_path), "--manifest", "literature/acquisition_manifest.yml"]) == 0
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["imported_count"] == 1
+    assert imported["sync"]["status"]["status"] == "acquisition_complete"
 
     write_yaml(
         tmp_path / "literature" / "acquisition_status_update.yml",

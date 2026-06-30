@@ -198,6 +198,7 @@ ea config doctor
 - 在用户确认 top N 后调用或包装 `zotero-codex-literature` 完成下载和缓存。
 - 支持专用 literature thread，并通过状态文件同步回原项目窗口。
 - 面向公开用户运行时，通过初始化配置获得 Zotero、浏览器、缓存目录和机构访问方式，不使用开发者本机默认值。
+- 用户确认 top N 后生成 acquisition request、Zotero-Codex query/target manifests，并能导入专用文献流程返回的 acquisition manifest。
 
 验收：
 
@@ -206,6 +207,7 @@ ea config doctor
 - 对 “全网无遗漏” 的限制、影响因子来源和版权/访问限制有明确说明。
 - 原窗口能读取文献库部署摘要。
 - public setup、developer setup、local integration test setup 明确分离。
+- EA 主项目窗口不直接执行 live 下载；专用文献流程完成后可通过 `ea literature import-acquisition` 同步文献清单、缓存索引和引用记录。
 
 ### Phase 9: Raman v0.2 能力回流
 

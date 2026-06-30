@@ -13,7 +13,9 @@ from ea.image_data import create_image_analysis_record, generate_image_analysis_
 from ea.literature import (
     confirm_literature_selection,
     ensure_literature_status,
+    import_literature_acquisition_manifest,
     plan_literature_deployment,
+    prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     sync_literature_acquisition_status,
 )
@@ -190,6 +192,11 @@ def build_parser() -> argparse.ArgumentParser:
     lit_handoff.add_argument("workspace", type=Path)
     lit_handoff.add_argument("--mode", choices=["dedicated_thread", "manual_agent", "same_thread"], default="dedicated_thread")
     lit_handoff.add_argument("--literature-thread-id")
+    lit_request = literature_sub.add_parser("acquisition-request", help="prepare confirmed acquisition request and Zotero-Codex target manifests")
+    lit_request.add_argument("workspace", type=Path)
+    lit_import = literature_sub.add_parser("import-acquisition", help="import acquisition manifest output from a dedicated literature workflow")
+    lit_import.add_argument("workspace", type=Path)
+    lit_import.add_argument("--manifest", required=True, type=Path)
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
@@ -567,6 +574,13 @@ def main(argv: list[str] | None = None) -> int:
                     literature_thread_id=args.literature_thread_id,
                 )
             )
+            return 0
+        if args.literature_command == "acquisition-request":
+            _print_json(prepare_literature_acquisition_request(args.workspace))
+            return 0
+        if args.literature_command == "import-acquisition":
+            manifest_path = args.manifest if args.manifest.is_absolute() else args.workspace / args.manifest
+            _print_json(import_literature_acquisition_manifest(args.workspace, manifest_path=manifest_path))
             return 0
         if args.literature_command == "sync-status":
             _print_json(
