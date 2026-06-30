@@ -27,6 +27,7 @@ Use the repository package when available:
 ```bash
 ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd --direction "single-layer MoS2 on mica" --material MoS2 --experiment-type "CVD growth and Raman characterization"
 ea config doctor /path/to/ea-project
+ea healthcheck /path/to/ea-project
 ea literature status /path/to/ea-project
 ea add-skills check /path/to/child-skill-manifest.yml
 ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001

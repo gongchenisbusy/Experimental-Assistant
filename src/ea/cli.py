@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ea.config import doctor_project_config
 from ea.figures import lookup_figure
+from ea.healthcheck import run_healthcheck
 from ea.literature import ensure_literature_status
 from ea.projects.service import initialize_project
 from ea.skills import validate_skill_manifest
@@ -43,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="summarize an EA project workspace")
     status.add_argument("workspace", type=Path)
+
+    healthcheck = sub.add_parser("healthcheck", help="audit EA project config, provenance, raw files, reports, and figures")
+    healthcheck.add_argument("workspace", type=Path)
 
     config = sub.add_parser("config", help="EA configuration helpers")
     config_sub = config.add_subparsers(dest="config_command", required=True)
@@ -121,6 +125,10 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
         return 0
+    if args.command == "healthcheck":
+        result = run_healthcheck(args.workspace)
+        _print_json(result)
+        return 0 if result["status"] == "pass" else 2
     if args.command == "config":
         if args.config_command == "doctor":
             _print_json(doctor_project_config(args.workspace))
