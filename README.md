@@ -111,7 +111,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 Use `ea literature search-public --page-limit N --delay-seconds S --resume` for longer public metadata runs that should write and reuse `literature/public_search_state.yml`.
 Use `ea literature zotero-bridge` after `acquisition-request` to write `literature/zotero_codex_bridge.yml`, `literature/zotero_codex_bridge.md`, and `literature/zotero_codex_settings_request.yml` for a dedicated Zotero-Codex workflow. The bridge emits commands and required user settings; it does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts.
 Use `ea literature import-zotero-status` after a dedicated Zotero-Codex workflow writes batch status artifacts; it converts status JSON and optional sidecar verification into `literature/acquisition_status_update.yml` and syncs EA project status without running Zotero or downloading files.
-Use `ea literature reconcile-acquisition` to write `literature/acquisition_reconciliation.yml` and check whether acquisition/status/library/cache/reference records agree.
+Use `ea literature reconcile-acquisition` to write `literature/acquisition_reconciliation.yml`, check whether acquisition/status/library/cache/reference records agree, and include advisory `repair_actions` plus `questions_for_user` for mismatches.
 
 `ea init-project` writes an `open-items/` literature-library decision record unless `--enable-literature` is supplied. Use `--enable-literature` only when the user explicitly wants a project literature status record created during initialization; all Zotero, browser, cache, proxy/VPN, and institution settings still remain user-supplied.
 

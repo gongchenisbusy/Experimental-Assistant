@@ -604,6 +604,8 @@ def test_literature_reconcile_acquisition_passes_consistent_records(tmp_path: Pa
     assert reconciliation["summary"]["warning_count"] == 0
     assert reconciliation["summary"]["library_items"] == 2
     assert reconciliation["source_refs"]["zotero_codex_status_import"] == "literature/zotero_codex_status_import.yml"
+    assert reconciliation["repair_actions"] == []
+    assert reconciliation["questions_for_user"] == []
     assert status["acquisition_reconciliation_status"] == "pass"
     assert status["acquisition_reconciliation_ref"] == "literature/acquisition_reconciliation.yml"
 
@@ -680,6 +682,7 @@ def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> 
     )
 
     result = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-01T14:20:00")
+    reconciliation = read_yaml(tmp_path / "literature" / "acquisition_reconciliation.yml")
     codes = {finding["code"] for finding in result["reconciliation"]["findings"]}
 
     assert result["reconciliation"]["status"] == "fail"
@@ -689,6 +692,15 @@ def test_literature_reconcile_acquisition_reports_mismatches(tmp_path: Path) -> 
     assert "cache_item_missing_from_library_or_status" in codes
     assert "deployment_cached_fulltext_mismatch" in codes
     assert "origin_sync_downloaded_fulltext_mismatch" in codes
+    assert all(finding["repair_suggestion"]["auto_applied"] is False for finding in reconciliation["findings"])
+    suggestions = {finding["code"]: finding["repair_suggestion"] for finding in reconciliation["findings"]}
+    assert suggestions["missing_reference_record"]["requires_user_confirmation"] is True
+    assert "ea references import-bibtex" in " ".join(suggestions["missing_reference_record"]["command_hints"])
+    assert suggestions["cache_item_missing_from_library_or_status"]["question_for_user"].startswith("Should cache item")
+    assert any(action["title"] == "Refresh origin_thread_sync.yml from deployment_status.yml." for action in reconciliation["repair_actions"])
+    assert any("cache_index.yml" in " ".join(action.get("file_refs", [])) for action in reconciliation["repair_actions"])
+    assert any(question["question"].startswith("Should cache item") for question in reconciliation["questions_for_user"])
+    assert "Repair suggestions are advisory" in " ".join(reconciliation["boundaries"])
 
 
 def test_cli_literature_reconcile_acquisition_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -1376,12 +1388,14 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero-bridge" in readme
     assert "import-zotero-status" in readme
     assert "reconcile-acquisition" in readme
+    assert "repair_actions" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
     assert "zotero_codex_bridge.yml" in reference
     assert "zotero_codex_status_import.yml" in reference
     assert "acquisition_reconciliation.yml" in reference
+    assert "questions_for_user" in reference
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
@@ -1395,6 +1409,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_status_import" in manifest["output_artifacts"]
     assert "acquisition_status_update" in manifest["output_artifacts"]
     assert "acquisition_reconciliation" in manifest["output_artifacts"]
+    assert "acquisition_reconciliation_repair_guidance" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
@@ -1402,4 +1417,5 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_checks" in manifest["current_v0_2_support"]["implemented"]
+    assert "acquisition_reconciliation_repair_guidance" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

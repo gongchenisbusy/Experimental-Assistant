@@ -1346,6 +1346,233 @@ def _reconciliation_finding(
     findings.append(_compact_dict({"severity": severity, "code": code, "message": message, "details": details or {}}))
 
 
+def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]:
+    code = _as_text(finding.get("code"))
+    details = finding.get("details") if isinstance(finding.get("details"), dict) else {}
+    base_commands = ["ea literature reconcile-acquisition /path/to/ea-project"]
+    suggestions: dict[str, dict[str, Any]] = {
+        "missing_acquisition_manifest": {
+            "title": "Decide whether acquisition has produced a manifest.",
+            "recommended_next_step": (
+                "If a dedicated literature workflow has produced an acquisition manifest, import it. "
+                "If not, continue ranking and acquisition-request preparation first."
+            ),
+            "command_hints": [
+                "ea literature acquisition-request /path/to/ea-project",
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                *base_commands,
+            ],
+            "requires_user_confirmation": True,
+            "question_for_user": "Has the dedicated literature workflow already produced literature/acquisition_manifest.yml for this project?",
+        },
+        "missing_zotero_codex_status_import": {
+            "title": "Import the latest dedicated-workflow status before reconciling acquisition progress.",
+            "recommended_next_step": "Run the status import if Zotero-Codex batch status artifacts exist; otherwise keep this as a warning until acquisition starts.",
+            "command_hints": [
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                *base_commands,
+            ],
+            "requires_user_confirmation": False,
+        },
+        "missing_library_manifest": {
+            "title": "Create or refresh the EA literature library manifest.",
+            "recommended_next_step": "Import an acquisition manifest that contains the project literature items, then rerun reconciliation.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                *base_commands,
+            ],
+            "requires_user_confirmation": True,
+            "question_for_user": "Which acquisition manifest should EA treat as authoritative for the project library?",
+        },
+        "missing_cache_index": {
+            "title": "Refresh cache tracking from the latest acquisition import.",
+            "recommended_next_step": "Import the latest acquisition manifest or status artifacts so EA can rebuild cache-related records, then rerun reconciliation.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                *base_commands,
+            ],
+            "requires_user_confirmation": False,
+        },
+        "missing_reference_index": {
+            "title": "Register project references before relying on report citations.",
+            "recommended_next_step": "Import references from the acquisition manifest or a user-exported BibTeX file, then rerun reconciliation.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                "ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib",
+                *base_commands,
+            ],
+            "requires_user_confirmation": True,
+            "question_for_user": "Can you provide an acquisition manifest or BibTeX export containing the missing reference metadata?",
+        },
+        "missing_reconciliation_sources": {
+            "title": "Create at least one acquisition source artifact.",
+            "recommended_next_step": "Run the literature planning/ranking/acquisition-request path or import existing dedicated-workflow results before reconciliation can prove anything useful.",
+            "command_hints": [
+                "ea literature plan /path/to/ea-project",
+                "ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml",
+                "ea literature acquisition-request /path/to/ea-project",
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+            ],
+            "requires_user_confirmation": True,
+            "question_for_user": "Do you want to start literature acquisition setup, or do you already have a manifest/status artifact to import?",
+        },
+        "library_item_count_mismatch": {
+            "title": "Regenerate or manually inspect library_manifest.yml item_count.",
+            "recommended_next_step": "Treat the item list as evidence and refresh the manifest from the authoritative acquisition import, or manually fix the declared count after review.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/library_manifest.yml"],
+            "requires_user_confirmation": False,
+        },
+        "cache_count_mismatch": {
+            "title": "Regenerate or inspect cache_index.yml cached_count.",
+            "recommended_next_step": "Refresh cache records from the authoritative acquisition import/status artifacts or manually correct the count after review.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                *base_commands,
+            ],
+            "file_refs": ["literature/cache_index.yml"],
+            "requires_user_confirmation": False,
+        },
+        "missing_reference_record": {
+            "title": "Register the missing reference metadata.",
+            "recommended_next_step": "Import a BibTeX export or an acquisition manifest containing the referenced item, then rerun reconciliation.",
+            "command_hints": [
+                "ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib",
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/references/index.yml"],
+            "requires_user_confirmation": True,
+            "question_for_user": f"Can you provide metadata for missing reference_id {details.get('reference_id', '<unknown>')}?",
+        },
+        "manifest_item_missing_from_outputs": {
+            "title": "Import or match the acquisition manifest item.",
+            "recommended_next_step": "Import the acquisition manifest into EA, or verify that DOI/title/Zotero/cache identifiers match the status and library records.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                *base_commands,
+            ],
+            "file_refs": ["literature/acquisition_manifest.yml", "literature/library_manifest.yml", "literature/zotero_codex_status_import.yml"],
+            "requires_user_confirmation": False,
+        },
+        "cache_item_missing_from_library_or_status": {
+            "title": "Decide whether the cache item belongs to this project.",
+            "recommended_next_step": "If the cache item is valid for the project, import an acquisition manifest/status record that names it; if it is stale, remove or archive it only after user confirmation.",
+            "command_hints": [
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                *base_commands,
+            ],
+            "file_refs": ["literature/cache_index.yml"],
+            "requires_user_confirmation": True,
+            "question_for_user": f"Should cache item {details.get('cache_path', '<unknown cache path>')} remain part of this EA project?",
+        },
+        "deployment_downloaded_fulltext_mismatch": {
+            "title": "Resync deployment_status.yml from the latest status import.",
+            "recommended_next_step": "Import the latest Zotero-Codex batch status or sync the latest acquisition_status_update.yml, then rerun reconciliation.",
+            "command_hints": [
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/deployment_status.yml", "literature/zotero_codex_status_import.yml"],
+            "requires_user_confirmation": False,
+        },
+        "deployment_cached_fulltext_mismatch": {
+            "title": "Resync deployment_status.yml cached count from the latest status import.",
+            "recommended_next_step": "Import the latest Zotero-Codex batch status or sync the latest acquisition_status_update.yml, then rerun reconciliation.",
+            "command_hints": [
+                "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
+                "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/deployment_status.yml", "literature/zotero_codex_status_import.yml"],
+            "requires_user_confirmation": False,
+        },
+        "deployment_cache_count_differs_from_cache_index": {
+            "title": "Choose the authoritative cached-fulltext count.",
+            "recommended_next_step": "If cache_index.yml is current, sync deployment status from the latest status update; if deployment_status.yml is current, refresh cache_index.yml from acquisition import/status artifacts.",
+            "command_hints": [
+                "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
+                "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/deployment_status.yml", "literature/cache_index.yml"],
+            "requires_user_confirmation": True,
+            "question_for_user": "Should EA treat deployment_status.yml or cache_index.yml as the authoritative cached-fulltext count?",
+        },
+    }
+    if code.startswith("origin_sync_") and code.endswith("_mismatch"):
+        suggestions[code] = {
+            "title": "Refresh origin_thread_sync.yml from deployment_status.yml.",
+            "recommended_next_step": "Run sync-status with the latest acquisition status update so origin-thread handoff counts mirror deployment_status.yml.",
+            "command_hints": [
+                "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
+                *base_commands,
+            ],
+            "file_refs": ["literature/origin_thread_sync.yml", "literature/deployment_status.yml"],
+            "requires_user_confirmation": False,
+        }
+    suggestion = suggestions.get(
+        code,
+        {
+            "title": "Review this reconciliation finding manually.",
+            "recommended_next_step": "Inspect the source refs and rerun reconciliation after correcting the relevant local status artifacts.",
+            "command_hints": base_commands,
+            "requires_user_confirmation": True,
+        },
+    )
+    if expected_ref := details.get("expected_ref"):
+        suggestion = {**suggestion, "file_refs": _unique([*(suggestion.get("file_refs") or []), str(expected_ref)])}
+    return _compact_dict({"finding_code": code, **suggestion, "auto_applied": False})
+
+
+def _reconciliation_repair_actions(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: dict[str, dict[str, Any]] = {}
+    for finding in findings:
+        suggestion = finding.get("repair_suggestion")
+        if not isinstance(suggestion, dict):
+            continue
+        key = _as_text(suggestion.get("title") or suggestion.get("finding_code"))
+        action = actions.setdefault(
+            key,
+            {
+                "title": suggestion.get("title"),
+                "finding_codes": [],
+                "recommended_next_step": suggestion.get("recommended_next_step"),
+                "command_hints": [],
+                "file_refs": [],
+                "requires_user_confirmation": False,
+            },
+        )
+        action["finding_codes"] = _unique([*action["finding_codes"], _as_text(finding.get("code"))])
+        action["command_hints"] = _unique([*action["command_hints"], *(suggestion.get("command_hints") or [])])
+        action["file_refs"] = _unique([*action["file_refs"], *(suggestion.get("file_refs") or [])])
+        action["requires_user_confirmation"] = bool(action["requires_user_confirmation"] or suggestion.get("requires_user_confirmation"))
+    return [_compact_dict(action) for action in actions.values()]
+
+
+def _reconciliation_questions_for_user(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    questions: dict[str, dict[str, Any]] = {}
+    for finding in findings:
+        suggestion = finding.get("repair_suggestion")
+        if not isinstance(suggestion, dict) or not suggestion.get("question_for_user"):
+            continue
+        question = _as_text(suggestion.get("question_for_user"))
+        record = questions.setdefault(
+            question,
+            {"question": question, "finding_codes": [], "why_it_matters": "Answer only if this affects the next repair step."},
+        )
+        record["finding_codes"] = _unique([*record["finding_codes"], _as_text(finding.get("code"))])
+    return list(questions.values())
+
+
 def reconcile_literature_acquisition(
     root: Path,
     *,
@@ -1492,9 +1719,13 @@ def reconcile_literature_acquisition(
                     details={"deployment_status": status.get(field), "origin_thread_sync": origin_sync.get(field)},
                 )
 
+    for finding in findings:
+        finding["repair_suggestion"] = _reconciliation_repair_suggestion(finding)
     error_count = sum(1 for item in findings if item.get("severity") == "error")
     warning_count = sum(1 for item in findings if item.get("severity") == "warning")
     reconciliation_status = "fail" if error_count else "warnings" if warning_count else "pass"
+    repair_actions = _reconciliation_repair_actions(findings)
+    questions_for_user = _reconciliation_questions_for_user(findings)
     reconciliation = {
         "schema_version": "0.2",
         "project_id": project_id,
@@ -1512,8 +1743,11 @@ def reconcile_literature_acquisition(
         },
         "source_refs": refs,
         "findings": findings,
+        "repair_actions": repair_actions,
+        "questions_for_user": questions_for_user,
         "boundaries": [
             "This reconciliation reads local EA/Zotero-Codex status artifacts only.",
+            "Repair suggestions are advisory; EA does not automatically modify acquisition, library, cache, reference, or Zotero-Codex artifacts.",
             "No Zotero scripts, browser automation, DOI resolution, PDF download, credential handling, or full-text parsing is executed by EA.",
         ],
     }
