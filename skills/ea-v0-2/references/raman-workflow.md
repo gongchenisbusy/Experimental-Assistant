@@ -23,7 +23,7 @@ Current v0.2 preprocessing support:
 - When enabled, smoothing adds `smoothed_intensity`.
 - Metadata warnings record applied preprocessing steps, adjusted parameters, skipped steps, and spike-candidate counts.
 - Peak tables include automatic peak detection plus local Gaussian fit metrics (`fit_center_cm-1`, `fit_fwhm_cm-1`, `fit_area`, `fit_r2`) when `peak_fitting.enabled` is true.
-- For MoS2-like project IDs, EA uses the built-in material assignment library to assign E2g-like and A1g-like candidate features when fitted peak centers fall within tolerance, computes their separation, and writes possible interpretations with confidence labels.
-- Assignment metadata records `assignment_source` so later agents can inspect the rule source with `ea materials assignments mos2 --method raman`.
+- When a project ID or context matches a built-in material profile, EA uses the material assignment library to assign Raman candidate features when fitted peak centers fall within tolerance and writes confidence-labeled possible interpretations.
+- Current built-in Raman profiles include MoS2, WS2, and h-BN. Assignment metadata records `assignment_source` so later agents can inspect the rule source with commands such as `ea materials assignments ws2 --method raman`.
 
-Future Raman work should add replicate handling, batch statistics, more material records beyond MoS2, and user-confirmed memory-candidate generation from report interpretations.
+Future Raman work should add replicate handling, batch statistics, additional material records, and user-confirmed memory-candidate generation from report interpretations.

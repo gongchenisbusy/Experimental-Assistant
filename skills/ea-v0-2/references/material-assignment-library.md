@@ -5,10 +5,10 @@ Use this reference when an EA workflow needs to inspect or extend built-in mater
 Current v0.2 scope:
 
 - Built-in records live in `src/ea/materials/assignments.yml`.
-- The first profile is `mos2`, with screening records for Raman, PL, and XRD.
+- Built-in profiles include `mos2` and `ws2` with Raman, PL, and XRD screening records, plus `hbn` with Raman and XRD screening records.
 - `ea materials list` shows available material profiles.
-- `ea materials show mos2` shows the full material profile.
-- `ea materials assignments mos2 --method raman` shows method-specific assignment rules. `--method` may be `raman`, `pl`, or `xrd`; omitting it returns all method records.
+- `ea materials show mos2`, `ea materials show ws2`, or `ea materials show hbn` shows the full material profile.
+- `ea materials assignments mos2 --method raman`, `ea materials assignments ws2 --method pl`, or `ea materials assignments hbn --method xrd` shows method-specific assignment rules. `--method` may be `raman`, `pl`, or `xrd` where that method exists; omitting it returns all method records.
 
 The library is a deterministic local rule source, not a substitute for scientific review:
 
@@ -18,11 +18,16 @@ The library is a deterministic local rule source, not a substitute for scientifi
 - New material records should include aliases, caveats, method-specific `assignment_source`, feature rules, interpretation text, and regression tests.
 - Generated result metadata with `peak_analysis.assigned_features` must preserve `assignment_source` at both result and feature level; healthcheck treats missing sources as traceability errors.
 
-Current built-in MoS2 records:
+Current built-in records:
 
-- Raman: E2g-like and A1g-like candidate windows, mode-separation screening, and peak-table assignment fields.
-- PL: dominant near-band-edge emission candidate window for eV/nm data where energy can be determined.
-- XRD: low-angle layered-reflection candidate window for first-pass 2theta patterns.
+- MoS2 Raman: E2g-like and A1g-like candidate windows, mode-separation screening, and peak-table assignment fields.
+- MoS2 PL: dominant near-band-edge emission candidate window for eV/nm data where energy can be determined.
+- MoS2 XRD: low-angle layered-reflection candidate window for first-pass 2theta patterns.
+- WS2 Raman: E2g/2LA-like and A1g-like candidate windows with an explicit caveat that resonant 2LA(M), excitation wavelength, and calibration affect interpretation.
+- WS2 PL: dominant near-band-edge emission candidate window for eV/nm data where energy can be determined.
+- WS2 XRD: low-angle layered-reflection candidate window for first-pass 2theta patterns.
+- h-BN Raman: single E2g-like candidate window near bulk h-BN, with isotope/layer/strain caveats.
+- h-BN XRD: (002)-type layered-reflection candidate window for first-pass 2theta patterns.
 
 When extending the library:
 

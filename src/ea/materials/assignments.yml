@@ -1,5 +1,55 @@
-library_version: "0.2.0"
+library_version: "0.2.1"
 materials:
+  hbn:
+    material_id: hbn
+    display_name: "h-BN"
+    formula: "BN"
+    aliases:
+      - "h-BN"
+      - "hBN"
+      - "BN"
+      - "hexagonal boron nitride"
+      - "boron nitride"
+      - "六方氮化硼"
+      - "氮化硼"
+    caveats:
+      - "These ranges are screening rules for EA reports, not a phase-identification or publication-grade assignment by themselves."
+      - "The h-BN Raman E2g mode can shift with layer number, isotope composition, strain, substrate, temperature, calibration, and laser conditions."
+      - "XRD 002-like screening depends on wavelength, stacking, texture, crystallinity, and possible turbostratic disorder; formal phase claims require phase-reference review."
+      - "Formal claims should be tied to project context, user review, and registered references."
+    reference_hints:
+      - key: "gorbachev-2011-hbn-raman"
+        label: "Gorbachev et al. Small 2011"
+        doi: "10.1002/smll.201001628"
+        methods: ["raman"]
+      - key: "ahmad-2021-hbn-xrd"
+        label: "Ahmad et al. Crystals 2021"
+        doi: "10.3390/cryst11030222"
+        methods: ["xrd"]
+    methods:
+      raman:
+        assignment_source: "ea.materials.builtin:hbn:raman:v0.2"
+        axis_unit: "cm^-1"
+        feature_rules:
+          - feature: "hbn_e2g_like"
+            label: "h-BN E2g-like"
+            target_cm_minus_1: 1366.0
+            tolerance_cm_minus_1: 10.0
+            medium_delta_cm_minus_1: 4.0
+            notes: "Screening window for the characteristic h-BN E2g Raman mode near bulk h-BN; monolayers may show small blue shifts."
+        matched_text: "A Raman feature falls in an h-BN-like E2g window; this supports a possible h-BN Raman assignment when combined with project context and reference review."
+        no_match_text: "No h-BN E2g-like Raman peak was assigned by the current material-library tolerance rules."
+      xrd:
+        assignment_source: "ea.materials.builtin:hbn:xrd:v0.2"
+        axis_unit: "2theta_deg"
+        feature_rules:
+          - feature: "hbn_002_layered_reflection"
+            label: "h-BN (002)-type layered reflection candidate"
+            two_theta_deg_range: [26.0, 27.4]
+            d_spacing_angstrom_range: [3.25, 3.45]
+            notes: "First-pass Cu K-alpha style screening window for the h-BN (002)-type layered reflection."
+        in_range_text: "An XRD peak appears in an h-BN-like (002) layered-reflection window; this supports a possible h-BN layered feature when checked against phase references and sample history."
+        out_of_range_text: "XRD peaks were detected, but the h-BN-like (002) layered-reflection window in the material assignment library did not match."
   mos2:
     material_id: mos2
     display_name: "MoS2"
@@ -74,3 +124,85 @@ materials:
             notes: "Low-angle layered-reflection screening window for Cu K-alpha style first-pass XRD patterns."
         in_range_text: "A low-angle XRD peak appears in a MoS2-like layered-reflection window; this supports a possible (00l)/(002)-type layered feature when checked against phase references and sample history."
         out_of_range_text: "XRD peaks were detected, but the MoS2-like low-angle layered-reflection window in the material assignment library did not match."
+  ws2:
+    material_id: ws2
+    display_name: "WS2"
+    formula: "WS2"
+    aliases:
+      - "WS2"
+      - "ws2"
+      - "tungsten disulfide"
+      - "tungsten disulphide"
+      - "wolfram disulfide"
+      - "wolfram disulphide"
+      - "二硫化钨"
+    caveats:
+      - "These ranges are screening rules for EA reports, not a phase-identification or publication-grade assignment by themselves."
+      - "WS2 Raman spectra are excitation-dependent; the E2g-like feature can overlap with the resonant 2LA(M) contribution near 350-356 cm^-1."
+      - "PL energy and intensity depend strongly on layer number, defects, strain, substrate, temperature, excitation wavelength, and edge chemistry."
+      - "XRD 002-like screening depends on wavelength, stacking, crystallinity, texture, and substrate/background peaks."
+      - "Formal claims should be tied to project context, user review, and registered references."
+    reference_hints:
+      - key: "berkdemir-2013-ws2-raman"
+        label: "Berkdemir et al. Scientific Reports 2013"
+        doi: "10.1038/srep01755"
+        methods: ["raman"]
+      - key: "gutierrez-2013-ws2-pl"
+        label: "Gutierrez et al. Nano Letters 2013"
+        doi: "10.1021/nl3026357"
+        methods: ["pl"]
+      - key: "li-2023-wo3-ws2-xrd"
+        label: "Li et al. RSC Advances 2023"
+        doi: "10.1039/d2ra06354a"
+        methods: ["xrd"]
+    methods:
+      raman:
+        assignment_source: "ea.materials.builtin:ws2:raman:v0.2"
+        axis_unit: "cm^-1"
+        feature_rules:
+          - feature: "ws2_e2g_2la_like"
+            label: "WS2 E2g/2LA-like"
+            target_cm_minus_1: 356.0
+            tolerance_cm_minus_1: 8.0
+            medium_delta_cm_minus_1: 4.0
+            notes: "Screening window for the WS2 in-plane E2g-like mode and nearby resonant 2LA(M) contribution."
+          - feature: "ws2_a1g_like"
+            label: "WS2 A1g-like"
+            target_cm_minus_1: 418.0
+            tolerance_cm_minus_1: 8.0
+            medium_delta_cm_minus_1: 4.0
+            notes: "Screening window for the WS2 out-of-plane A1g-like mode."
+        pair_rules:
+          - rule: "ws2_e2g_2la_a1g_pair_screen"
+            required_features: ["ws2_e2g_2la_like", "ws2_a1g_like"]
+            separation_cm_minus_1:
+              thin_layer_window: [55.0, 70.0]
+              multilayer_bulk_like_window: [70.0, 85.0]
+            thin_layer_text: "Detected E2g/2LA-like and A1g-like candidate peaks form a WS2-like Raman pair; because the lower-frequency feature can include resonant 2LA(M), this supports a WS2-like Raman signature but does not by itself assign layer number."
+            multilayer_text: "Detected E2g/2LA-like and A1g-like candidate peaks form a WS2-like Raman pair with an unusually large separation for the simple EA screening window; verify calibration, fitting, excitation wavelength, and project context."
+            outside_text: "Detected E2g/2LA-like and A1g-like candidate peaks form a partial WS2-like pair, but their separation falls outside the simple expected screening range used by EA."
+        single_feature_text: "Only one WS2-like Raman feature candidate was assigned; this is insufficient for a WS2 Raman-pair interpretation."
+        no_match_text: "No WS2 E2g/2LA-like and A1g-like pair was assigned by the current material-library tolerance rules."
+      pl:
+        assignment_source: "ea.materials.builtin:ws2:pl:v0.2"
+        axis_units: ["eV", "nm"]
+        feature_rules:
+          - feature: "ws2_near_band_edge_emission"
+            label: "WS2 near-band-edge emission candidate"
+            energy_eV_range: [1.90, 2.10]
+            medium_window_eV: [1.90, 2.10]
+            notes: "Screening window for dominant near-band-edge or excitonic PL features in monolayer/few-layer WS2-like samples."
+        in_range_text: "The dominant PL feature falls in a WS2-like near-band-edge emission window; this supports a possible WS2 excitonic emission assignment when combined with project context and literature."
+        out_of_range_text: "A dominant PL feature was detected, but its energy is outside the WS2-like near-band-edge window in the material assignment library."
+        missing_energy_text: "A dominant PL feature was detected, but the current axis information is insufficient for a WS2 energy-window assignment."
+      xrd:
+        assignment_source: "ea.materials.builtin:ws2:xrd:v0.2"
+        axis_unit: "2theta_deg"
+        feature_rules:
+          - feature: "ws2_002_layered_reflection"
+            label: "WS2 (002)-type layered reflection candidate"
+            two_theta_deg_range: [13.7, 14.9]
+            d_spacing_angstrom_range: [5.9, 6.4]
+            notes: "Low-angle layered-reflection screening window for Cu K-alpha style first-pass XRD patterns."
+        in_range_text: "A low-angle XRD peak appears in a WS2-like layered-reflection window; this supports a possible (002)-type layered feature when checked against phase references and sample history."
+        out_of_range_text: "XRD peaks were detected, but the WS2-like low-angle layered-reflection window in the material assignment library did not match."

@@ -55,6 +55,8 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
+ea materials assignments ws2 --method pl
+ea materials assignments hbn --method xrd
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
 ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml

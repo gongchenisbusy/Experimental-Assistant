@@ -5,13 +5,16 @@ import math
 import re
 from functools import lru_cache
 from importlib import resources
+from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 import yaml
 
+from ea.storage import read_markdown_record
+
 
 def _normalise_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
+    return re.sub(r"[_\W]+", "", value.lower())
 
 
 @lru_cache(maxsize=1)
@@ -53,9 +56,28 @@ def infer_material_from_text(text: str) -> str | None:
     for material_id, profile in _library()["materials"].items():
         candidates = [material_id, profile.get("display_name", ""), profile.get("formula", "")]
         candidates.extend(profile.get("aliases", []))
-        if any(_normalise_key(str(candidate)) in normalized_text for candidate in candidates if candidate):
+        normalized_candidates = [_normalise_key(str(candidate)) for candidate in candidates if candidate]
+        if any(len(candidate) >= 3 and candidate in normalized_text for candidate in normalized_candidates):
             return str(material_id)
     return None
+
+
+def infer_material_from_project(root: Path, project_id: str, *extra_context: str) -> str | None:
+    parts = [project_id, *extra_context]
+    project_path = root / "EA_PROJECT.md"
+    if project_path.exists():
+        frontmatter, body = read_markdown_record(project_path)
+        for key in ["material_system", "material", "materials"]:
+            material_id = resolve_material_id(str(frontmatter.get(key, "")))
+            if material_id:
+                return material_id
+        for key in ["project_id", "name", "project_name", "direction", "experiment_type"]:
+            value = frontmatter.get(key)
+            if value:
+                parts.append(str(value))
+        if body:
+            parts.append(body[:2000])
+    return infer_material_from_text(" ".join(part for part in parts if part))
 
 
 def get_material_profile(material: str) -> dict[str, Any]:
@@ -229,6 +251,17 @@ def match_raman_peaks(material: str, peaks: Iterable[Mapping[str, Any]]) -> dict
             }
         )
     elif assigned:
+        feature_ids = [feature["peak_id"] for feature in assigned.values()]
+        if not required and method_profile.get("matched_text"):
+            analysis["possible_interpretations"].append(
+                {
+                    "text": method_profile.get("matched_text"),
+                    "confidence": method_profile.get("matched_confidence", "medium"),
+                    "evidence": feature_ids,
+                    "assignment_source": method_profile.get("assignment_source"),
+                }
+            )
+            return analysis
         feature = next(iter(assigned.values()))
         analysis["possible_interpretations"].append(
             {

@@ -21,8 +21,8 @@ Current v0.2 XRD support:
 - Default wavelength is `1.5406 A` (`Cu Kalpha`) and must be covered by the user-confirmed parameter review before processing.
 - Processed CSV files include `two_theta`, `raw_intensity`, `processed_intensity`, and `d_spacing_angstrom` when available.
 - Peak tables include `two_theta_deg`, `d_spacing_angstrom`, `height`, `prominence`, and phase-assignment fields.
-- For MoS2-like project IDs, EA uses the built-in material assignment library to mark a low-angle layered-reflection candidate when a peak appears around 13.5-15.5 deg 2theta, with medium confidence and explicit need for phase-reference review.
-- Assignment metadata records `assignment_source`; inspect the current rule with `ea materials assignments mos2 --method xrd`.
+- When a project ID or context matches a built-in material profile, EA uses the material assignment library to mark XRD candidate reflections with medium or low confidence and explicit need for phase-reference review.
+- Current built-in XRD profiles include MoS2, WS2, and h-BN. Assignment metadata records `assignment_source`; inspect a rule with commands such as `ea materials assignments hbn --method xrd`.
 - Reports include XRD peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:

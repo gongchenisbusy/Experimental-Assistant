@@ -41,6 +41,8 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
+ea materials assignments ws2 --method pl
+ea materials assignments hbn --method xrd
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
 ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml
@@ -61,7 +63,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
 BibTeX import uses an explicit user-provided `.bib` export and de-duplicates references by DOI, URL, title, or citation before creating new project records.
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
-Built-in material assignment records live in `src/ea/materials/assignments.yml`; use `ea materials list/show/assignments` to inspect the current MoS2 Raman/PL/XRD screening rules and their caveats.
+Built-in material assignment records live in `src/ea/materials/assignments.yml`; use `ea materials list/show/assignments` to inspect the current MoS2 and WS2 Raman/PL/XRD screening rules, h-BN Raman/XRD screening rules, and their caveats.
 Template helpers write editable YAML for processing parameter files and batch manifests. They do not create review records or replace user confirmation.
 Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, and XRD items without guessing columns or parameters. Batch index records, summaries, item result/report refs, review refs, and batch provenance refs are audited by healthcheck.
 

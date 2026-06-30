@@ -22,7 +22,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
-from ea.materials import infer_material_from_text, match_xrd_peaks
+from ea.materials import infer_material_from_project, match_xrd_peaks
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -307,7 +307,7 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     )
 
 
-def _analyze_xrd_peaks(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
+def _analyze_xrd_peaks(peaks: pd.DataFrame, root: Path, project_id: str) -> dict[str, Any]:
     for column in ["possible_phase", "assignment_confidence", "assignment_feature", "assignment_source"]:
         if column not in peaks.columns:
             peaks[column] = ""
@@ -337,7 +337,7 @@ def _analyze_xrd_peaks(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
         for _, row in strongest.iterrows()
     ]
 
-    material_id = infer_material_from_text(project_id)
+    material_id = infer_material_from_project(root, project_id)
     if not material_id:
         evidence = [str(strongest.iloc[0]["peak_id"])]
         text = "XRD peaks were detected, but no material-specific phase-assignment rule was applied for this project context."
@@ -406,7 +406,7 @@ def process_xrd_result(
     wavelength, wavelength_warnings = _wavelength(parameters)
     _add_d_spacing(processed, request.x_unit, wavelength)
     peaks = _detect_peaks(processed, parameters)
-    peak_analysis = _analyze_xrd_peaks(peaks, project_id)
+    peak_analysis = _analyze_xrd_peaks(peaks, root, project_id)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):

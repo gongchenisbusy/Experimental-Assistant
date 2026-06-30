@@ -26,7 +26,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
-from ea.materials import infer_material_from_text, match_raman_peaks
+from ea.materials import infer_material_from_project, match_raman_peaks
 from ea.provenance import write_provenance_entry
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -689,7 +689,7 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     return pd.DataFrame(rows, columns=columns)
 
 
-def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
+def _analyze_peak_assignments(peaks: pd.DataFrame, root: Path, project_id: str) -> dict[str, Any]:
     default_columns: dict[str, Any] = {
         "assignment": "",
         "assignment_confidence": "",
@@ -716,7 +716,7 @@ def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str,
         )
         return analysis
 
-    material_id = infer_material_from_text(project_id)
+    material_id = infer_material_from_project(root, project_id)
     if not material_id:
         analysis["possible_interpretations"].append(
             {
@@ -821,7 +821,7 @@ def process_raman_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, preprocessing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters)
-    peak_analysis = _analyze_peak_assignments(peaks, project_id)
+    peak_analysis = _analyze_peak_assignments(peaks, root, project_id)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):

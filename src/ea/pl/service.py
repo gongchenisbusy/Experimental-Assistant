@@ -22,7 +22,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
-from ea.materials import infer_material_from_text, match_pl_peaks
+from ea.materials import infer_material_from_project, match_pl_peaks
 from ea.provenance import write_provenance_entry
 from ea.raman import SpectrumInspection, inspect_spectrum_file
 from ea.raman.service import _read_spectrum
@@ -228,7 +228,7 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: s
     )
 
 
-def _analyze_pl_peaks(peaks: pd.DataFrame, project_id: str, x_unit: str) -> dict[str, Any]:
+def _analyze_pl_peaks(peaks: pd.DataFrame, root: Path, project_id: str, x_unit: str) -> dict[str, Any]:
     for column in ["assignment", "assignment_confidence", "assignment_feature", "assignment_source"]:
         if column not in peaks.columns:
             peaks[column] = ""
@@ -258,7 +258,7 @@ def _analyze_pl_peaks(peaks: pd.DataFrame, project_id: str, x_unit: str) -> dict
     }
     analysis["dominant_peak"] = dominant_peak
 
-    material_id = infer_material_from_text(project_id)
+    material_id = infer_material_from_project(root, project_id)
     if not material_id:
         text = "A dominant PL feature was detected, but no material-specific PL assignment rule was applied for this project context."
         analysis["possible_interpretations"].append(
@@ -323,7 +323,7 @@ def process_pl_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters, request.x_unit)
-    peak_analysis = _analyze_pl_peaks(peaks, project_id, request.x_unit)
+    peak_analysis = _analyze_pl_peaks(peaks, root, project_id, request.x_unit)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
