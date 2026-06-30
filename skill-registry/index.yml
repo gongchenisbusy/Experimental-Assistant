@@ -60,7 +60,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.surface_spectroscopy
     method: xps
-    notes: Minimal XPS workflow implemented for review-gated binding-energy calibration metadata, screening peak detection, traceable figures, and confidence-labeled reports; component fitting and chemical-state assignment remain future work.
+    notes: Minimal XPS workflow implemented for review-gated binding-energy calibration metadata, screening peak detection, component_quantification_screening from reviewed windows/RSF values, traceable figures, and confidence-labeled reports; formal chemical-state assignment, Shirley/Tougaard backgrounds, spin-orbit constrained fitting, and definitive composition remain future work.
   - id: ea.xrd-analysis
     manifest: skill-registry/builtins/xrd-analysis.yml
     status: builtin_v0_2_reference

@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+import pandas as pd
+
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml
 from ea.xps import default_xps_processing_parameters, inspect_xps_file
@@ -35,6 +37,50 @@ def _write_xps_fixture(path: Path) -> Path:
     return path
 
 
+def _component_quantification_parameters() -> dict:
+    parameters = default_xps_processing_parameters()
+    parameters["component_quantification"] = {
+        "enabled": True,
+        "method": "reviewed_window_integration",
+        "integration_baseline": "local_minimum",
+        "min_points": 5,
+        "source": "ea.xps.component_quantification:v0.2",
+        "components": [
+            {
+                "component_id": "xps-c1s-001",
+                "label": "C 1s reviewed window",
+                "element": "C",
+                "core_level": "1s",
+                "binding_energy_window_eV": [282.5, 287.0],
+                "sensitivity_factor": 1.0,
+                "model": "reviewed_window",
+                "background": "local_minimum",
+            },
+            {
+                "component_id": "xps-o1s-001",
+                "label": "O 1s reviewed window",
+                "element": "O",
+                "core_level": "1s",
+                "binding_energy_window_eV": [529.0, 535.0],
+                "sensitivity_factor": 2.93,
+                "model": "reviewed_window",
+                "background": "local_minimum",
+            },
+            {
+                "component_id": "xps-fe2p-001",
+                "label": "Fe 2p reviewed window",
+                "element": "Fe",
+                "core_level": "2p",
+                "binding_energy_window_eV": [706.0, 716.0],
+                "sensitivity_factor": 13.91,
+                "model": "reviewed_window",
+                "background": "local_minimum",
+            },
+        ],
+    }
+    return parameters
+
+
 def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
 
@@ -50,6 +96,7 @@ def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
 
 def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
+    parameters = _component_quantification_parameters()
     workspace = tmp_path / "cli-xps-project"
     assert main(
         [
@@ -143,7 +190,7 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
             "--user-response",
             "可以，保存",
             "--reviewed-content",
-            json.dumps(default_xps_processing_parameters(), ensure_ascii=False),
+            json.dumps(parameters, ensure_ascii=False),
         ]
     ) == 0
     parameter_review = _json_output(capsys)
@@ -176,6 +223,8 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
             calibration_review["review_id"],
             "--parameter-review-ref",
             parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(parameters, ensure_ascii=False),
         ]
     ) == 0
     process_output = _json_output(capsys)
@@ -189,14 +238,26 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert "C 1s" in xps["calibration_reference"]
     assert xps["peak_analysis"]["peak_count"] > 0
     assert xps["peak_analysis"]["calibration"]["confidence"] == "low"
+    component_summary = xps["peak_analysis"]["component_quantification"]
+    assert component_summary["enabled"] is True
+    assert component_summary["status"] == "rsf_normalized_screening"
+    assert component_summary["quantified_component_count"] == 3
+    assert component_summary["rsf_complete"] is True
     assert xps["peak_analysis"]["possible_interpretations"]
     assert (workspace / xps["outputs"]["peak_table"]).exists()
+    assert (workspace / xps["outputs"]["component_table"]).exists()
+    components = pd.read_csv(workspace / xps["outputs"]["component_table"])
+    assert set(components["component_id"]) == {"xps-c1s-001", "xps-o1s-001", "xps-fe2p-001"}
+    assert components["relative_atomic_percent_screening"].notna().all()
+    assert math.isclose(float(components["relative_atomic_percent_screening"].sum()), 100.0, rel_tol=0.01)
     assert (workspace / xps["outputs"]["figure"]).exists()
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
     assert figure_record["style_profile"] == "nature_like_clean"
     assert figure_record["generation"]["parameters"]["energy_shift_eV"] == 0.0
+    assert figure_record["generation"]["parameters"]["processing_parameters"]["component_quantification"]["enabled"] is True
     assert xps["outputs"]["processed_csv"] in figure_record["source_data_refs"]
     assert xps["outputs"]["peak_table"] in figure_record["source_data_refs"]
+    assert xps["outputs"]["component_table"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -217,6 +278,9 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "xps_analysis"
     assert "## XPS peak 参数" in report_body
+    assert "## XPS component quantification screening" in report_body
+    assert "xps-c1s-001" in report_body
+    assert "atomic % screening" in report_body
     assert "![XPS spectrum]" in report_body
     assert "processed CSV" in report_body
 
@@ -243,6 +307,9 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "ea xps process" in skill
     assert "references/xps-workflow.md" in skill
     assert xps_reference.exists()
-    assert "calibration_review_ref" in xps_reference.read_text(encoding="utf-8")
+    xps_reference_text = xps_reference.read_text(encoding="utf-8")
+    assert "calibration_review_ref" in xps_reference_text
+    assert "component_quantification" in xps_reference_text
+    assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
-    assert "Minimal XPS workflow implemented" in xps_record["notes"]
+    assert "component_quantification_screening" in xps_record["notes"]

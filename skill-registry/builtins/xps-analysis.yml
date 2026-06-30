@@ -14,6 +14,7 @@ ea_skill:
     - report_section
     - provenance_record
     - memory_candidate
+    - component_quantification_table
   review_gates:
     - confirm_method
     - confirm_binding_energy_calibration
@@ -54,10 +55,13 @@ ea_skill:
     implemented_outputs:
       - processed_csv
       - peak_table
+      - component_table
       - figure_record
       - markdown_report
       - provenance_record
+      - component_quantification_screening
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
-      - component fitting, quantitative composition, and sensitivity-factor workflows remain future work
+      - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
+      - Shirley/Tougaard backgrounds, spin-orbit constrained fitting, and formal multi-region quantification remain future work

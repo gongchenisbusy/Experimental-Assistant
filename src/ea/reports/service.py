@@ -1088,6 +1088,57 @@ def _xps_peak_table(root: Path, peak_table_ref: str) -> str:
     return "\n".join(rows)
 
 
+def _xps_component_summary(metadata: dict) -> str:
+    summary = (metadata.get("peak_analysis") or {}).get("component_quantification") or {}
+    if not summary:
+        return "当前没有记录 XPS component quantification screening。"
+    if not summary.get("enabled"):
+        return "当前未启用 XPS component quantification screening；如需组分面积/RSF 筛查，应先由用户确认 component windows、背景/模型和 sensitivity factors。"
+    status = summary.get("status", "unknown")
+    count = summary.get("quantified_component_count", 0)
+    rsf_complete = summary.get("rsf_complete", False)
+    source = summary.get("assignment_source", "ea.xps.component_quantification:v0.2")
+    return (
+        f"Reviewed component window integration 状态为 `{status}`；已积分 component 数量为 `{count}`；"
+        f"RSF complete: `{rsf_complete}`；assignment_source: `{source}`。这些结果是筛查记录，不等同于最终化学态或定量组成。"
+    )
+
+
+def _xps_component_table(root: Path, component_table_ref: str | None) -> str:
+    if not component_table_ref:
+        return "当前没有 component table 输出。"
+    components = pd.read_csv(root / component_table_ref)
+    if components.empty:
+        return "当前没有可展示的 XPS component quantification screening 结果。"
+    rows = [
+        "| component_id | label | element/core | window (eV) | centroid (eV) | area % | atomic % screening | confidence | status |",
+        "|---|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for _, component in components.head(12).iterrows():
+        element = component.get("element") if pd.notna(component.get("element")) and component.get("element") else ""
+        core = component.get("core_level") if pd.notna(component.get("core_level")) and component.get("core_level") else ""
+        element_core = "/".join(part for part in [str(element), str(core)] if part) or "n/a"
+        low = component.get("binding_energy_min_eV")
+        high = component.get("binding_energy_max_eV")
+        centroid = component.get("centroid_eV")
+        area_percent = component.get("relative_area_percent")
+        atomic_percent = component.get("relative_atomic_percent_screening")
+        rows.append(
+            "| {component_id} | {label} | {element_core} | {window} | {centroid} | {area_percent} | {atomic_percent} | {confidence} | {status} |".format(
+                component_id=component.get("component_id", ""),
+                label=component.get("label", ""),
+                element_core=element_core,
+                window=f"{float(low):.2f}-{float(high):.2f}" if pd.notna(low) and pd.notna(high) else "n/a",
+                centroid=f"{float(centroid):.2f}" if pd.notna(centroid) else "n/a",
+                area_percent=f"{float(area_percent):.2f}" if pd.notna(area_percent) else "n/a",
+                atomic_percent=f"{float(atomic_percent):.2f}" if pd.notna(atomic_percent) else "n/a",
+                confidence=component.get("confidence") if pd.notna(component.get("confidence")) else "insufficient",
+                status=component.get("status") if pd.notna(component.get("status")) else "unknown",
+            )
+        )
+    return "\n".join(rows)
+
+
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
     shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
@@ -1150,6 +1201,8 @@ def generate_xps_report(
     outputs = metadata["outputs"]
     peak_text = _xps_peak_summary(root, outputs["peak_table"])
     peak_table = _xps_peak_table(root, outputs["peak_table"])
+    component_summary = _xps_component_summary(metadata)
+    component_table = _xps_component_table(root, outputs.get("component_table"))
     calibration_text = _xps_calibration_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
@@ -1193,6 +1246,12 @@ def generate_xps_report(
 
 {peak_table}
 
+## XPS component quantification screening
+
+{component_summary}
+
+{component_table}
+
 ## 可能结论与可信度
 
 {interpretation_text}
@@ -1209,6 +1268,7 @@ def generate_xps_report(
 
 - processed CSV: `{outputs['processed_csv']}`
 - peak table: `{outputs['peak_table']}`
+- component table: `{outputs.get('component_table', '未生成')}`
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1232,7 +1292,7 @@ def generate_xps_report(
         workflow="report_generation",
         inputs={
             "records": [str(xps_metadata_path.relative_to(root))],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("component_table"), outputs["figure"]] if value],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
