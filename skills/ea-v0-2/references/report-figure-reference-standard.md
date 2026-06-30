@@ -34,9 +34,12 @@ Register reusable references before report generation when possible:
 
 ```bash
 ea references add /path/to/ea-project --citation "Author A. Title. Journal volume, pages (year)." --doi 10.xxxx/example --url https://doi.org/10.xxxx/example --local-path literature/fulltext/example.pdf
+ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib
 ea references validate-report /path/to/ea-project reports/rpt-example-20260630-001.md
 ```
 
 Reference records are stored under `literature/references/{reference_id}.yml` and indexed in `literature/references/index.yml`. Reports should store `reference_ids` and `numbered_references` in YAML frontmatter so another agent can trace each inline marker back to a local PDF, web page, DOI, or literature-library item.
+
+Use BibTeX import only for an explicit user-provided export file. The importer reuses existing reference records when DOI, URL, normalized title, or normalized citation already matches, and its JSON output reports imported, reused, and skipped entries. It must not read Zotero databases, browser profiles, institution login paths, or private cache folders by default.
 
 Confidence labels: high, medium, low, insufficient. In Chinese reports use `高`, `中`, `低`, `不足`.

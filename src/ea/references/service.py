@@ -32,6 +32,254 @@ def _relative_ref(root: Path, path: Path) -> str:
         return str(path)
 
 
+def _normalize_doi(doi: str | None) -> str:
+    if not doi:
+        return ""
+    value = doi.strip().lower()
+    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value)
+    value = re.sub(r"^doi:\s*", "", value)
+    return value.strip().rstrip(".")
+
+
+def _normalize_url(url: str | None) -> str:
+    if not url:
+        return ""
+    return url.strip().lower().rstrip("/")
+
+
+def _normalize_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _clean_bibtex_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = re.sub(r"\s+", " ", value.replace("\n", " ")).strip()
+    while cleaned.startswith("{") and cleaned.endswith("}") and len(cleaned) >= 2:
+        cleaned = cleaned[1:-1].strip()
+    cleaned = cleaned.replace("{", "").replace("}", "")
+    return cleaned or None
+
+
+def _parse_bibtex_value(text: str, start: int) -> tuple[str, int]:
+    if start >= len(text):
+        return "", start
+    opener = text[start]
+    if opener == "{":
+        depth = 1
+        index = start + 1
+        while index < len(text) and depth:
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+            index += 1
+        if depth:
+            raise ReferenceError("Unclosed BibTeX field value")
+        return text[start + 1 : index - 1], index
+    if opener == '"':
+        index = start + 1
+        escaped = False
+        while index < len(text):
+            char = text[index]
+            if char == '"' and not escaped:
+                return text[start + 1 : index], index + 1
+            escaped = char == "\\" and not escaped
+            if char != "\\":
+                escaped = False
+            index += 1
+        raise ReferenceError("Unclosed BibTeX quoted value")
+    index = start
+    while index < len(text) and text[index] != ",":
+        index += 1
+    return text[start:index], index
+
+
+def _split_bibtex_key_and_fields(body: str) -> tuple[str, str]:
+    depth = 0
+    in_quote = False
+    for index, char in enumerate(body):
+        if char == '"' and (index == 0 or body[index - 1] != "\\"):
+            in_quote = not in_quote
+        elif not in_quote and char == "{":
+            depth += 1
+        elif not in_quote and char == "}":
+            depth -= 1
+        elif not in_quote and depth == 0 and char == ",":
+            return body[:index].strip(), body[index + 1 :]
+    return body.strip(), ""
+
+
+def _parse_bibtex_fields(fields_text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    index = 0
+    while index < len(fields_text):
+        while index < len(fields_text) and fields_text[index] in " \t\r\n,":
+            index += 1
+        name_start = index
+        while index < len(fields_text) and re.match(r"[A-Za-z0-9_-]", fields_text[index]):
+            index += 1
+        name = fields_text[name_start:index].strip().lower()
+        if not name:
+            break
+        while index < len(fields_text) and fields_text[index].isspace():
+            index += 1
+        if index >= len(fields_text) or fields_text[index] != "=":
+            break
+        index += 1
+        while index < len(fields_text) and fields_text[index].isspace():
+            index += 1
+        value, index = _parse_bibtex_value(fields_text, index)
+        cleaned = _clean_bibtex_value(value)
+        if cleaned:
+            fields[name] = cleaned
+        while index < len(fields_text) and fields_text[index] != ",":
+            index += 1
+    return fields
+
+
+def parse_bibtex_references(text: str) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    index = 0
+    while True:
+        at_index = text.find("@", index)
+        if at_index == -1:
+            break
+        type_start = at_index + 1
+        bracket_index = type_start
+        while bracket_index < len(text) and text[bracket_index] not in "{(":
+            bracket_index += 1
+        if bracket_index >= len(text):
+            break
+        entry_type = text[type_start:bracket_index].strip().lower()
+        opener = text[bracket_index]
+        closer = "}" if opener == "{" else ")"
+        depth = 1
+        end_index = bracket_index + 1
+        while end_index < len(text) and depth:
+            if text[end_index] == opener:
+                depth += 1
+            elif text[end_index] == closer:
+                depth -= 1
+            end_index += 1
+        if depth:
+            raise ReferenceError(f"Unclosed BibTeX entry starting at offset {at_index}")
+        body = text[bracket_index + 1 : end_index - 1]
+        index = end_index
+        if entry_type in {"comment", "preamble", "string"}:
+            continue
+        key, fields_text = _split_bibtex_key_and_fields(body)
+        entries.append(
+            {
+                "entry_type": entry_type,
+                "entry_key": key,
+                "fields": _parse_bibtex_fields(fields_text),
+            }
+        )
+    return entries
+
+
+def _parse_bibtex_authors(author_text: str | None) -> list[str]:
+    if not author_text:
+        return []
+    authors = []
+    for raw_author in re.split(r"\s+and\s+", author_text):
+        author = _clean_bibtex_value(raw_author)
+        if not author:
+            continue
+        if "," in author:
+            last, first = [part.strip() for part in author.split(",", 1)]
+            author = f"{last} {first}".strip()
+        authors.append(author)
+    return authors
+
+
+def _bibtex_year(year_text: str | None) -> int | None:
+    if not year_text:
+        return None
+    match = re.search(r"\d{4}", year_text)
+    return int(match.group(0)) if match else None
+
+
+def _first_present(fields: dict[str, str], names: list[str]) -> str | None:
+    for name in names:
+        value = _clean_bibtex_value(fields.get(name))
+        if value:
+            return value
+    return None
+
+
+def _citation_from_bibtex(fields: dict[str, str]) -> str | None:
+    title = _clean_bibtex_value(fields.get("title"))
+    if not title:
+        return None
+    authors = _parse_bibtex_authors(fields.get("author"))
+    author_text = "Unknown authors"
+    if len(authors) == 1:
+        author_text = authors[0]
+    elif len(authors) > 1:
+        author_text = f"{authors[0]} et al."
+    venue = _first_present(fields, ["journal", "journaltitle", "booktitle", "publisher", "institution"])
+    year = _bibtex_year(fields.get("year") or fields.get("date"))
+    parts = [f"{author_text}.", f"{title}."]
+    if venue and year:
+        parts.append(f"{venue} ({year}).")
+    elif venue:
+        parts.append(f"{venue}.")
+    elif year:
+        parts.append(f"({year}).")
+    return " ".join(parts)
+
+
+def _reference_kwargs_from_bibtex(entry: dict[str, Any]) -> dict[str, Any]:
+    fields = entry.get("fields", {})
+    title = _clean_bibtex_value(fields.get("title"))
+    doi = _normalize_doi(fields.get("doi")) or None
+    url = _clean_bibtex_value(fields.get("url"))
+    return {
+        "citation": _citation_from_bibtex(fields),
+        "title": title,
+        "authors": _parse_bibtex_authors(fields.get("author")),
+        "year": _bibtex_year(fields.get("year") or fields.get("date")),
+        "venue": _first_present(fields, ["journal", "journaltitle", "booktitle", "publisher", "institution"]),
+        "doi": doi,
+        "url": url,
+        "local_path": _clean_bibtex_value(fields.get("file")),
+    }
+
+
+def find_duplicate_reference(
+    root: Path,
+    *,
+    doi: str | None = None,
+    url: str | None = None,
+    title: str | None = None,
+    citation: str | None = None,
+) -> dict[str, Any] | None:
+    index_path = _index_path(root)
+    if not index_path.exists():
+        return None
+    index = read_yaml(index_path)
+    target_doi = _normalize_doi(doi)
+    target_url = _normalize_url(url)
+    target_title = _normalize_text(title)
+    target_citation = _normalize_text(citation)
+    for reference_id, item in (index.get("references") or {}).items():
+        record_path = root / item.get("path", "")
+        record = read_yaml(record_path) if record_path.exists() else item
+        if target_doi and _normalize_doi(record.get("doi")) == target_doi:
+            return {"reference_id": reference_id, "path": str(record_path), "match": "doi"}
+        if target_url and _normalize_url(record.get("url")) == target_url:
+            return {"reference_id": reference_id, "path": str(record_path), "match": "url"}
+        if target_title and _normalize_text(record.get("title")) == target_title:
+            return {"reference_id": reference_id, "path": str(record_path), "match": "title"}
+        if target_citation and _normalize_text(record.get("citation")) == target_citation:
+            return {"reference_id": reference_id, "path": str(record_path), "match": "citation"}
+    return None
+
+
 def register_reference(
     root: Path,
     *,
@@ -83,6 +331,80 @@ def register_reference(
     }
     write_yaml(index_path, index)
     return path
+
+
+def import_bibtex_references(
+    root: Path,
+    bibtex_path: Path,
+    *,
+    project_id: str,
+    source_type: SourceType = "literature_library",
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_path = bibtex_path if bibtex_path.exists() else root / bibtex_path
+    if not source_path.exists():
+        raise ReferenceError(f"BibTeX file not found: {bibtex_path}")
+    entries = parse_bibtex_references(source_path.read_text(encoding="utf-8"))
+    imported: list[dict[str, Any]] = []
+    reused: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for entry in entries:
+        kwargs = _reference_kwargs_from_bibtex(entry)
+        citation = kwargs.pop("citation")
+        if not citation:
+            skipped.append(
+                {
+                    "entry_key": entry.get("entry_key"),
+                    "entry_type": entry.get("entry_type"),
+                    "reason": "missing_title_or_citation",
+                }
+            )
+            continue
+        duplicate = find_duplicate_reference(
+            root,
+            doi=kwargs.get("doi"),
+            url=kwargs.get("url"),
+            title=kwargs.get("title"),
+            citation=citation,
+        )
+        if duplicate:
+            reused.append(
+                {
+                    "entry_key": entry.get("entry_key"),
+                    "entry_type": entry.get("entry_type"),
+                    "reference_id": duplicate["reference_id"],
+                    "match": duplicate["match"],
+                    "path": duplicate["path"],
+                }
+            )
+            continue
+        path = register_reference(
+            root,
+            project_id=project_id,
+            citation=citation,
+            source_type=source_type,
+            notes=f"Imported from BibTeX entry `{entry.get('entry_key')}` in `{source_path.name}`.",
+            created_at=created_at,
+            **kwargs,
+        )
+        imported.append(
+            {
+                "entry_key": entry.get("entry_key"),
+                "entry_type": entry.get("entry_type"),
+                "reference_id": path.stem,
+                "path": str(path),
+            }
+        )
+    return {
+        "bibtex_path": str(source_path),
+        "entry_count": len(entries),
+        "imported_count": len(imported),
+        "reused_count": len(reused),
+        "skipped_count": len(skipped),
+        "imported": imported,
+        "reused": reused,
+        "skipped": skipped,
+    }
 
 
 def read_reference(root: Path, reference_id: str) -> dict[str, Any]:

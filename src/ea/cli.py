@@ -20,7 +20,7 @@ from ea.memory import commit_memory_candidate, propose_memory_candidate, review_
 from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
-from ea.references import register_reference, validate_report_citations
+from ea.references import import_bibtex_references, register_reference, validate_report_citations
 from ea.reports import generate_raman_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
@@ -171,6 +171,11 @@ def build_parser() -> argparse.ArgumentParser:
     ref_add.add_argument("--local-path")
     ref_add.add_argument("--source-type", choices=["manual", "literature_library", "web", "local_pdf", "report"], default="manual")
     ref_add.add_argument("--notes")
+    ref_import = references_sub.add_parser("import-bibtex", help="import references from a user-provided BibTeX export")
+    ref_import.add_argument("workspace", type=Path)
+    ref_import.add_argument("bibtex", type=Path)
+    ref_import.add_argument("--project-id")
+    ref_import.add_argument("--source-type", choices=["literature_library", "manual", "web", "local_pdf", "report"], default="literature_library")
     ref_validate = references_sub.add_parser("validate-report", help="check report inline citations against its References section")
     ref_validate.add_argument("workspace", type=Path)
     ref_validate.add_argument("report", type=Path)
@@ -454,6 +459,17 @@ def main(argv: list[str] | None = None) -> int:
                 notes=args.notes,
             )
             _print_json({"reference": str(path)})
+            return 0
+        if args.references_command == "import-bibtex":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            _print_json(
+                import_bibtex_references(
+                    args.workspace,
+                    args.bibtex,
+                    project_id=project_id,
+                    source_type=args.source_type,
+                )
+            )
             return 0
         if args.references_command == "validate-report":
             report_path = args.report if args.report.is_absolute() else args.workspace / args.report

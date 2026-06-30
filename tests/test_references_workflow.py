@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ea.cli import main
 from ea.projects import initialize_project
-from ea.references import build_report_reference_block, register_reference, validate_report_citations
+from ea.references import build_report_reference_block, import_bibtex_references, register_reference, validate_report_citations
 from ea.reports import generate_raman_report
 from ea.review import write_review_record
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
@@ -66,6 +66,59 @@ def test_reference_registry_builds_numbered_report_block(tmp_path: Path) -> None
     assert "DOI: 10.1021/nn1003937" in block["references_markdown"]
     assert "Local: literature/fulltext/lee-2010.pdf" in block["references_markdown"]
     assert index["references"][ref_a_id]["source_type"] == "literature_library"
+
+
+def test_import_bibtex_references_reuses_duplicates(tmp_path: Path) -> None:
+    project_id = _project(tmp_path)
+    bibtex = tmp_path / "references.bib"
+    bibtex.write_text(
+        """
+@article{lee2010,
+  author = {Lee, C. and Yan, H.},
+  title = {Anomalous lattice vibrations of single- and few-layer MoS2},
+  journal = {ACS Nano},
+  year = {2010},
+  doi = {https://doi.org/10.1021/nn1003937},
+  url = {https://doi.org/10.1021/nn1003937}
+}
+
+@article{lee2010copy,
+  author = {Lee, C. and Yan, H.},
+  title = {Anomalous lattice vibrations of single- and few-layer MoS2},
+  journal = {ACS Nano},
+  year = {2010},
+  doi = {10.1021/nn1003937}
+}
+
+@article{li2012,
+  author = {Li, H. and Zhang, Q.},
+  title = {From bulk to monolayer MoS2},
+  journal = {Advanced Functional Materials},
+  year = {2012},
+  doi = {10.1002/adfm.201102111}
+}
+""",
+        encoding="utf-8",
+    )
+
+    result = import_bibtex_references(
+        tmp_path,
+        bibtex,
+        project_id=project_id,
+        created_at="2026-06-30T08:30:00",
+    )
+    index = read_yaml(tmp_path / "literature" / "references" / "index.yml")
+    first_ref = read_yaml(tmp_path / "literature" / "references" / "ref-20260630-001.yml")
+
+    assert result["entry_count"] == 3
+    assert result["imported_count"] == 2
+    assert result["reused_count"] == 1
+    assert result["reused"][0]["entry_key"] == "lee2010copy"
+    assert result["reused"][0]["match"] == "doi"
+    assert sorted(index["references"]) == ["ref-20260630-001", "ref-20260630-002"]
+    assert first_ref["doi"] == "10.1021/nn1003937"
+    assert first_ref["authors"] == ["Lee C.", "Yan H."]
+    assert first_ref["source_type"] == "literature_library"
 
 
 def test_validate_report_citations_matches_inline_numbers_to_references(tmp_path: Path) -> None:
@@ -149,6 +202,34 @@ The Raman interpretation uses a registered reference{block["inline_citation"]}.
     validation = json.loads(capsys.readouterr().out)
     assert validation["ok"] is True
     assert validation["inline_numbers"] == [1]
+
+
+def test_cli_imports_bibtex_and_reuses_existing_references(tmp_path: Path, capsys) -> None:
+    project_id = _project(tmp_path)
+    bibtex = tmp_path / "cli-references.bib"
+    bibtex.write_text(
+        """
+@article{lee2010,
+  author = {Lee, C. and Yan, H.},
+  title = {Anomalous lattice vibrations of single- and few-layer MoS2},
+  journal = {ACS Nano},
+  year = {2010},
+  doi = {10.1021/nn1003937}
+}
+""",
+        encoding="utf-8",
+    )
+
+    assert main(["references", "import-bibtex", str(tmp_path), str(bibtex), "--project-id", project_id]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["imported_count"] == 1
+    assert first["reused_count"] == 0
+
+    assert main(["references", "import-bibtex", str(tmp_path), str(bibtex), "--project-id", project_id]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["imported_count"] == 0
+    assert second["reused_count"] == 1
+    assert second["reused"][0]["reference_id"] == first["imported"][0]["reference_id"]
 
 
 def test_raman_report_can_embed_registered_references(tmp_path: Path) -> None:
