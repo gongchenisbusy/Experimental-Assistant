@@ -137,13 +137,22 @@ ea_skill:
 - `AnalysisIntent`: 用户这次想回答的问题。
 - `ReviewState`: 已确认、已拒绝、待追问的内容。
 
-统一输出：
+统一输出按类别区分。表征分析类 skill 必须输出：
 
 - `ProcessedResult`: 处理后数据、参数、版本、质量检查。
 - `FigureRecord[]`: 图片文件、图片 ID、报告 ID、原始数据来源。
 - `ReportSection`: 可嵌入报告的正文和表格。
 - `MemoryCandidate[]`: 候选项目记忆，必须等待用户确认。
 - `ProvenanceRecord`: 输入、输出、脚本、参数、时间和 review 关系。
+
+非表征类 skill 不应被强行套入 Raman 式输出：
+
+| 类别 | 必需输出 |
+| --- | --- |
+| `characterization.*` | `processed_result`, `figure_record`, `report_section`, `provenance_record`, `memory_candidate` |
+| `literature.*` | `literature_status`, `reference_record`, `report_section`, `provenance_record` |
+| `visualization.*` | `figure_record`, `report_section`, `provenance_record` |
+| 其他 | `report_section`, `provenance_record` |
 
 ## 4. add-skills 子 Skill
 
@@ -188,9 +197,9 @@ v0.2 建议先实现以下最小架构能力：
 
 - `skill-registry/index.yml` 的格式。
 - `add-skills` 的静态检查和 dry-run 检查草案。
-- `scientific-plotting` 和 `analysis-report` 的输出契约。
+- 内置 manifest 目录，至少覆盖 `local-literature-library`、`scientific-figure`、`raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis`、`thermal-analysis` 和 `image-analysis`。
+- `scientific-figure` 和 `analysis-report` 的输出契约。
 - `raman-analysis` 作为第一个完整接入样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 
 PL、XRD、IR 等可先进入设计和接口测试，不必一次性完整实现。
-

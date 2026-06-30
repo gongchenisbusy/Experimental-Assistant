@@ -1,0 +1,38 @@
+ea_skill:
+  id: ea.scientific-figure
+  version: 0.2.0
+  category: visualization.figure
+  method: scientific_figure
+  input_artifacts:
+    - processed_result
+    - sample_context
+    - project_context
+    - report_context
+    - style_profile
+  output_artifacts:
+    - figure_record
+    - report_section
+    - provenance_record
+  review_gates:
+    - confirm_plot_content
+    - confirm_style_profile
+    - confirm_interpretation_before_memory_write
+  required_indices:
+    - reports/index.yml
+    - figures/index.yml
+    - provenance/index.yml
+  report_requirements:
+    inline_numeric_citations: true
+    figure_file_link_required: true
+    confidence_labels:
+      - high
+      - medium
+      - low
+      - insufficient
+  figure_requirements:
+    footer: "FigID: {figure_id} | Report: {report_id}"
+    style_profile: nature_like_clean
+    source_data_trace_required: true
+  provenance_requirements:
+    source_data_refs_required: true
+    generated_outputs_outside_raw: true

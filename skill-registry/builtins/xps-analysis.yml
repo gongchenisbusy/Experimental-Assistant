@@ -1,0 +1,44 @@
+ea_skill:
+  id: ea.xps-analysis
+  version: 0.2.0
+  category: characterization.surface_spectroscopy
+  method: xps
+  input_artifacts:
+    - raw_spectrum
+    - sample_context
+    - project_context
+    - user_review_state
+  output_artifacts:
+    - processed_result
+    - figure_record
+    - report_section
+    - provenance_record
+    - memory_candidate
+  review_gates:
+    - confirm_method
+    - confirm_binding_energy_calibration
+    - confirm_processing_parameters
+    - confirm_peak_model
+    - confirm_interpretation_before_memory_write
+  required_indices:
+    - raw/index.yml
+    - reports/index.yml
+    - figures/index.yml
+    - provenance/index.yml
+    - literature/references/index.yml
+  report_requirements:
+    inline_numeric_citations: true
+    fitted_component_table_required: true
+    confidence_labels:
+      - high
+      - medium
+      - low
+      - insufficient
+  figure_requirements:
+    footer: "FigID: {figure_id} | Report: {report_id}"
+    style_profile: nature_like_clean
+    component_labels_required: true
+  provenance_requirements:
+    raw_is_readonly: true
+    calibration_reference_required: true
+    generated_outputs_outside_raw: true

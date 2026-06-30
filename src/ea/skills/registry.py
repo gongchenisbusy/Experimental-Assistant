@@ -18,9 +18,28 @@ REQUIRED_MANIFEST_KEYS = [
     "required_indices",
 ]
 
-REQUIRED_OUTPUTS = {
+CHARACTERIZATION_REQUIRED_OUTPUTS = {
     "processed_result",
     "figure_record",
+    "report_section",
+    "provenance_record",
+    "memory_candidate",
+}
+
+LITERATURE_REQUIRED_OUTPUTS = {
+    "literature_status",
+    "reference_record",
+    "report_section",
+    "provenance_record",
+}
+
+VISUALIZATION_REQUIRED_OUTPUTS = {
+    "figure_record",
+    "report_section",
+    "provenance_record",
+}
+
+DEFAULT_REQUIRED_OUTPUTS = {
     "report_section",
     "provenance_record",
 }
@@ -28,8 +47,11 @@ REQUIRED_OUTPUTS = {
 SAMPLE_OUTPUT_REQUIRED_FIELDS = {
     "processed_result": {"result_id"},
     "figure_record": {"figure_id", "path", "raw_data_ids", "sample_ids"},
+    "literature_status": {"status_path"},
+    "reference_record": {"reference_id", "citation"},
     "report_section": set(),
     "provenance_record": {"workflow", "inputs", "outputs"},
+    "memory_candidate": {"status", "text"},
 }
 
 
@@ -66,6 +88,17 @@ class SkillDryRunResult:
         }
 
 
+def required_outputs_for_manifest(manifest: dict[str, Any]) -> set[str]:
+    category = str(manifest.get("category") or "")
+    if category == "characterization" or category.startswith("characterization."):
+        return set(CHARACTERIZATION_REQUIRED_OUTPUTS)
+    if category == "literature" or category.startswith("literature."):
+        return set(LITERATURE_REQUIRED_OUTPUTS)
+    if category == "visualization" or category.startswith("visualization."):
+        return set(VISUALIZATION_REQUIRED_OUTPUTS)
+    return set(DEFAULT_REQUIRED_OUTPUTS)
+
+
 def validate_skill_manifest(path: Path) -> SkillManifestCheck:
     raw = read_yaml(path)
     manifest = raw.get("ea_skill", raw)
@@ -75,13 +108,17 @@ def validate_skill_manifest(path: Path) -> SkillManifestCheck:
         if key not in manifest:
             errors.append(f"missing:{key}")
     outputs = set(manifest.get("output_artifacts") or [])
-    missing_outputs = sorted(REQUIRED_OUTPUTS - outputs)
+    required_outputs = required_outputs_for_manifest(manifest)
+    missing_outputs = sorted(required_outputs - outputs)
     for output in missing_outputs:
         errors.append(f"missing_output:{output}")
     if "confirm_interpretation_before_memory_write" not in (manifest.get("review_gates") or []):
         warnings.append("memory_write_review_gate_not_declared")
     indices = set(manifest.get("required_indices") or [])
-    for required in {"figures/index.yml", "reports/index.yml", "provenance/index.yml"}:
+    recommended_indices = {"reports/index.yml", "provenance/index.yml"}
+    if "figure_record" in outputs:
+        recommended_indices.add("figures/index.yml")
+    for required in recommended_indices:
         if required not in indices:
             warnings.append(f"recommended_index_missing:{required}")
     return SkillManifestCheck(ok=not errors, errors=errors, warnings=warnings, manifest=manifest)
@@ -124,7 +161,7 @@ def _check_sample_output(
     sample = _sample_outputs(read_yaml(sample_output_path))
     declared_outputs = set(manifest.get("output_artifacts") or [])
 
-    for artifact in sorted(REQUIRED_OUTPUTS & declared_outputs):
+    for artifact in sorted(required_outputs_for_manifest(manifest) & declared_outputs):
         if artifact not in sample:
             errors.append(f"sample_missing_output:{artifact}")
             continue

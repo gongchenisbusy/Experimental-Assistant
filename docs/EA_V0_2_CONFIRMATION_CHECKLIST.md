@@ -12,7 +12,7 @@
 - 当前 ID、报告、图片、reference 和可信度格式可以作为默认标准。
 - `[1][2]` 数字引用必须出现在正文中实际引用文献的位置，并与文末 `References` 序号对应。
 - 本地文献库默认 top N 分档采用：窄项目 30、普通研究项目 50、综述或大方向 100 到 200 分批。
-- v0.2 新建干净 `/Users/geecoe/Documents/EAv0.2-build`，保留 v0.1 作为历史参考。
+- v0.2 新建干净 `EAv0.2-build`，保留 v0.1 作为历史参考。
 - EA 最终面向公开用户，初始化不得默认采用开发者本机 Zotero、学校认证、Chrome profile、本地文献库文件夹或测试集路径；这些只能用于测试或由用户初始化时提供。
 
 ## 1. 模块化 Skill 架构
@@ -200,7 +200,7 @@ TEM、SEM、光学显微镜等采用 human-in-the-loop：
 
 ## 9. Git 基线
 
-推荐默认方案：新建干净 `EAv0.2-build`，同时保留 `EAv0.1-build` 为历史基线。
+推荐默认方案：新建干净 `EAv0.2-build`，同时保留 v0.1 实现仓库为历史基线。
 
 原因：
 
@@ -210,7 +210,7 @@ TEM、SEM、光学显微镜等采用 human-in-the-loop：
 
 建议流程：
 
-1. 创建 `/Users/geecoe/Documents/EAv0.2-build`。
+1. 创建干净的 `EAv0.2-build` 实现仓库。
 2. 导入 v0.1 必要源码，不导入临时输出和 demo artifact。
 3. 初始化 git。
 4. commit `v0.1.1-freeze-import`。

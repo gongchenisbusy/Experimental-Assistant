@@ -1,0 +1,39 @@
+ea_skill:
+  id: ea.local-literature-library
+  version: 0.2.0
+  category: literature.library
+  method: local_literature_library
+  input_artifacts:
+    - project_context
+    - search_scope
+    - user_confirmation
+    - access_settings
+    - optional_bibtex_export
+  output_artifacts:
+    - literature_status
+    - reference_record
+    - report_section
+    - provenance_record
+  review_gates:
+    - confirm_search_scope
+    - confirm_bulk_download_scope
+    - confirm_reference_import
+    - confirm_interpretation_before_memory_write
+  required_indices:
+    - literature/deployment_status.yml
+    - literature/references/index.yml
+    - reports/index.yml
+    - provenance/index.yml
+  requires_network: true
+  requires_credentials: true
+  user_confirmation_required: true
+  user_setup_required: true
+  report_requirements:
+    inline_numeric_citations: true
+    search_log_required: true
+    reference_links_required: true
+  provenance_requirements:
+    search_queries_logged: true
+    access_mode_logged: true
+    generated_outputs_outside_raw: true
+    no_private_account_defaults: true

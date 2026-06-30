@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from ea.cli import main
-from ea.skills import register_skill_manifest, run_skill_dry_run
+from ea.skills import register_skill_manifest, required_outputs_for_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage import read_yaml, write_yaml
 
 
@@ -165,6 +165,98 @@ def test_add_skills_register_refuses_noncompliant_manifest(tmp_path: Path) -> No
     assert result["ok"] is False
     assert result["installed"] is False
     assert not (workspace / "skill-registry" / "index.yml").exists()
+
+
+def test_category_aware_manifest_requirements_accept_non_characterization_skills(tmp_path: Path) -> None:
+    literature_manifest = {
+        "ea_skill": {
+            "id": "ea.test-literature",
+            "version": "0.2.0",
+            "category": "literature.library",
+            "method": "literature",
+            "input_artifacts": ["project_context", "user_confirmation"],
+            "output_artifacts": ["literature_status", "reference_record", "report_section", "provenance_record"],
+            "review_gates": ["confirm_search_scope", "confirm_interpretation_before_memory_write"],
+            "required_indices": ["literature/references/index.yml", "reports/index.yml", "provenance/index.yml"],
+        }
+    }
+    figure_manifest = {
+        "ea_skill": {
+            "id": "ea.test-figure",
+            "version": "0.2.0",
+            "category": "visualization.figure",
+            "method": "scientific_figure",
+            "input_artifacts": ["processed_result", "project_context"],
+            "output_artifacts": ["figure_record", "report_section", "provenance_record"],
+            "review_gates": ["confirm_plot_content", "confirm_interpretation_before_memory_write"],
+            "required_indices": ["figures/index.yml", "reports/index.yml", "provenance/index.yml"],
+        }
+    }
+    bad_literature = {
+        "ea_skill": {
+            **literature_manifest["ea_skill"],
+            "id": "ea.bad-literature",
+            "output_artifacts": ["literature_status", "report_section", "provenance_record"],
+        }
+    }
+
+    literature_path = _write_manifest(tmp_path, literature_manifest)
+    literature_check = validate_skill_manifest(literature_path)
+    assert literature_check.ok is True
+    assert "processed_result" not in required_outputs_for_manifest(literature_check.manifest)
+    assert "figures/index.yml" not in literature_check.warnings
+
+    figure_path = _write_manifest(tmp_path, figure_manifest)
+    figure_check = validate_skill_manifest(figure_path)
+    assert figure_check.ok is True
+    assert required_outputs_for_manifest(figure_check.manifest) == {
+        "figure_record",
+        "report_section",
+        "provenance_record",
+    }
+
+    bad_path = _write_manifest(tmp_path, bad_literature)
+    bad_check = validate_skill_manifest(bad_path)
+    assert bad_check.ok is False
+    assert "missing_output:reference_record" in bad_check.errors
+    assert "missing_output:processed_result" not in bad_check.errors
+
+
+def test_builtin_skill_registry_catalogue_is_valid(tmp_path: Path) -> None:
+    registry = read_yaml(Path("skill-registry/index.yml"))
+    indexed_paths = {item["manifest"] for item in registry["skills"]}
+    builtin_paths = {path.as_posix() for path in Path("skill-registry/builtins").glob("*.yml")}
+
+    assert indexed_paths == builtin_paths
+    assert len(indexed_paths) >= 10
+
+    expected_ids = {
+        "ea.local-literature-library",
+        "ea.scientific-figure",
+        "ea.raman-analysis",
+        "ea.pl-analysis",
+        "ea.xrd-analysis",
+        "ea.ftir-analysis",
+        "ea.uv-vis-analysis",
+        "ea.xps-analysis",
+        "ea.electrochemistry-analysis",
+        "ea.thermal-analysis",
+        "ea.image-analysis",
+    }
+    assert {item["id"] for item in registry["skills"]} == expected_ids
+
+    for item in registry["skills"]:
+        manifest_path = Path(item["manifest"])
+        check = validate_skill_manifest(manifest_path)
+        dry_run = run_skill_dry_run(
+            tmp_path / "project",
+            manifest_path,
+            created_at="2026-06-30T12:30:00",
+        )
+        assert check.ok is True, item["id"]
+        assert dry_run.ok is True, item["id"]
+        assert check.manifest["id"] == item["id"]
+        assert check.manifest["category"] == item["category"]
 
 
 def test_cli_add_skills_dry_run_and_register(tmp_path: Path, capsys) -> None:

@@ -2,7 +2,7 @@
 
 Use this reference when adding or validating a child skill.
 
-Minimum manifest:
+Characterization manifest:
 
 ```yaml
 ea_skill:
@@ -31,6 +31,17 @@ ea_skill:
     - provenance/index.yml
 ```
 
+Category contracts:
+
+| Category prefix | Required outputs |
+| --- | --- |
+| `characterization.*` | `processed_result`, `figure_record`, `report_section`, `provenance_record`, `memory_candidate` |
+| `literature.*` | `literature_status`, `reference_record`, `report_section`, `provenance_record` |
+| `visualization.*` | `figure_record`, `report_section`, `provenance_record` |
+| other | `report_section`, `provenance_record` |
+
+Built-in v0.2 manifest catalogue lives in `skill-registry/builtins/` and is indexed by `skill-registry/index.yml`. Current built-ins cover Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image analysis, local literature library, and scientific figure generation. Some are contract placeholders: they define how a future module must enter EA, not a promise that the full scientific algorithm already exists.
+
 Reject or request edits when a skill writes into `raw/`, omits provenance, lacks review gates for interpretation, produces unindexed figures, cites literature without references, or requires external accounts without a user-confirmed setup path.
 
 Use these commands for deterministic governance:
@@ -41,4 +52,4 @@ ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sa
 ea add-skills register /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml --status active
 ```
 
-`dry-run` and `register` do not execute external skill code. They validate the manifest and, when a sample output is supplied, check that `processed_result`, `figure_record`, `report_section`, `provenance_record`, and `memory_candidate` follow EA output rules. `register` only writes `skill-registry/index.yml` after dry-run passes.
+`dry-run` and `register` do not execute external skill code. They validate the manifest and, when a sample output is supplied, check that declared outputs follow EA output rules. `register` only writes `skill-registry/index.yml` after dry-run passes.

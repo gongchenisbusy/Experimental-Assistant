@@ -1,9 +1,69 @@
 schema_version: "0.2"
 registry_type: ea_builtin_skill_registry
 skills:
+  - id: ea.electrochemistry-analysis
+    manifest: skill-registry/builtins/electrochemistry-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.electrochemistry
+    method: electrochemistry
+    notes: Contract placeholder for CV, LSV, EIS, stability, and related electrochemical workflows.
+  - id: ea.ftir-analysis
+    manifest: skill-registry/builtins/ftir-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.spectrum
+    method: ftir
+    notes: Contract placeholder for infrared band assignment and traceable spectral reports.
+  - id: ea.image-analysis
+    manifest: skill-registry/builtins/image-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.image
+    method: image
+    notes: Generic SEM, TEM, AFM-image, and optical microscopy report workflow with explicit user-description gates.
+  - id: ea.local-literature-library
+    manifest: skill-registry/builtins/local-literature-library.yml
+    status: builtin_v0_2_reference
+    category: literature.library
+    method: local_literature_library
+    notes: Project literature-library deployment, reference import, and acquisition status contract.
+  - id: ea.pl-analysis
+    manifest: skill-registry/builtins/pl-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.spectrum
+    method: pl
+    notes: Contract placeholder for photoluminescence spectra, emission features, and confidence-labeled interpretation.
   - id: ea.raman-analysis
     manifest: skill-registry/builtins/raman-analysis.yml
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: raman
     notes: First complete characterization skill target for EA v0.2.
+  - id: ea.scientific-figure
+    manifest: skill-registry/builtins/scientific-figure.yml
+    status: builtin_v0_2_reference
+    category: visualization.figure
+    method: scientific_figure
+    notes: Nature-like scientific plotting contract with figure ID, report link, source-data trace, and provenance.
+  - id: ea.thermal-analysis
+    manifest: skill-registry/builtins/thermal-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.thermal
+    method: thermal_analysis
+    notes: Contract placeholder for TGA, DSC, and temperature-programmed materials analysis.
+  - id: ea.uv-vis-analysis
+    manifest: skill-registry/builtins/uv-vis-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.spectrum
+    method: uv_vis
+    notes: Contract placeholder for absorption, transmittance, and optical feature workflows.
+  - id: ea.xps-analysis
+    manifest: skill-registry/builtins/xps-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.surface_spectroscopy
+    method: xps
+    notes: Contract placeholder for binding-energy calibration, peak models, and fitted component reports.
+  - id: ea.xrd-analysis
+    manifest: skill-registry/builtins/xrd-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.diffraction
+    method: xrd
+    notes: Contract placeholder for diffraction peak detection, phase assignment, and reference-linked reports.

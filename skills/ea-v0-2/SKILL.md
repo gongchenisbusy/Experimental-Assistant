@@ -55,6 +55,8 @@ ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 
 The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-project` for v0.2 work.
 
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, literature-library, and scientific-figure entries as EA contract boundaries unless a concrete implementation service is present.
+
 ## References
 
 - For project structure and workflow, read `references/project-workflow.md`.

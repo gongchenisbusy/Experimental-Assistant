@@ -76,7 +76,7 @@ EA v0.2 不急于一次性支持所有材料表征方法。它应先建立能长
 
 建议做法：
 
-1. 新建干净 `/Users/geecoe/Documents/EAv0.2-build`，保留 `/Users/geecoe/Documents/EAv0.1-build` 作为历史参考。
+1. 新建干净 `EAv0.2-build`，保留 v0.1 实现仓库作为历史参考。
 2. 从 v0.1 导入必要源码、测试和设计文档，不导入临时输出、demo artifact、本机私有配置或测试缓存。
 3. 清理 `.gitignore`，排除 generated workspace、缓存、临时报告、大文件和 local-test-only 配置。
 4. 创建 `v0.1.1-freeze-import` commit。
@@ -321,7 +321,7 @@ ea config doctor
 2. 报告 ID、figure ID 和 reference 格式采用当前草案。
 3. `[1][2]` 数字标注必须出现在正文实际引用文献的位置，并与文末 References 序号对应。
 4. 本地文献库默认推荐 top N 分档采用：窄项目 30、普通项目 50、综述或大方向 100 到 200 分批。
-5. v0.2 新建干净 `/Users/geecoe/Documents/EAv0.2-build`。
+5. v0.2 新建干净 `EAv0.2-build`。
 6. EA 面向公开用户设计，初始化不得默认采用开发者本机 Zotero、学校认证、Chrome profile、本地文献库路径或测试集路径；这些信息只能作为测试 fixture 或由用户在初始化时提供。
 
 ## 6. 仍待实现时确认的细节
