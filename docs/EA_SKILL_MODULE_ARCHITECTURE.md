@@ -42,6 +42,7 @@ EA Orchestrator
 
 - `scientific-plotting`: 统一绘图风格、图片 ID、报告 ID、导出格式和索引。
 - `analysis-report`: 统一数据报告模板、结论可信度、reference 和 provenance。
+- `material-assignment-library`: Raman、PL、XRD 等表征报告可复用的材料特征峰/能量/衍射规则库；规则只提供可追溯的候选解释，不替代文献和用户确认。
 - `presentation-export`: 组会或阶段汇报材料生成。
 
 ### 2.4 材料表征数据分析
@@ -199,6 +200,7 @@ v0.2 建议先实现以下最小架构能力：
 - `add-skills` 的静态检查和 dry-run 检查草案。
 - 内置 manifest 目录，至少覆盖 `local-literature-library`、`scientific-figure`、`raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis`、`thermal-analysis` 和 `image-analysis`。
 - `scientific-figure` 的统一绘图样式基础设施和 `analysis-report` 的输出契约。
+- `material-assignment-library` 的首个 MoS2 Raman/PL/XRD 内置记录和查询命令。
 - `raman-analysis`、`pl-analysis` 和 `xrd-analysis` 作为第一批可运行表征 workflow 样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 

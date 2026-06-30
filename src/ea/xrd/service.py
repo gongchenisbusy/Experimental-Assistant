@@ -22,6 +22,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.materials import infer_material_from_text, match_xrd_peaks
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -282,6 +283,8 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
                 "method": "scipy_find_peaks",
                 "possible_phase": "",
                 "assignment_confidence": "",
+                "assignment_feature": "",
+                "assignment_source": "",
                 "notes": "requires phase-reference review",
             }
         )
@@ -297,16 +300,18 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
             "method",
             "possible_phase",
             "assignment_confidence",
+            "assignment_feature",
+            "assignment_source",
             "notes",
         ],
     )
 
 
-def _looks_like_mos2_context(project_id: str) -> bool:
-    return "mos2" in project_id.lower().replace("-", "")
-
-
 def _analyze_xrd_peaks(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
+    for column in ["possible_phase", "assignment_confidence", "assignment_feature", "assignment_source"]:
+        if column not in peaks.columns:
+            peaks[column] = ""
+
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
         "strongest_peaks": [],
@@ -331,22 +336,21 @@ def _analyze_xrd_peaks(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
         }
         for _, row in strongest.iterrows()
     ]
-    if _looks_like_mos2_context(project_id):
-        low_angle = peaks[(peaks["two_theta_deg"] >= 13.5) & (peaks["two_theta_deg"] <= 15.5)]
-        if not low_angle.empty:
-            evidence = [str(value) for value in low_angle["peak_id"].head(3)]
-            text = "A low-angle XRD peak appears in a MoS2-like layered-reflection window; this supports a possible (00l)/(002)-type layered feature when checked against phase references and sample history."
-            confidence = "medium"
-        else:
-            evidence = [str(strongest.iloc[0]["peak_id"])]
-            text = "XRD peaks were detected, but the current simple MoS2-like low-angle layered-reflection rule did not match."
-            confidence = "low"
-    else:
+
+    material_id = infer_material_from_text(project_id)
+    if not material_id:
         evidence = [str(strongest.iloc[0]["peak_id"])]
         text = "XRD peaks were detected, but no material-specific phase-assignment rule was applied for this project context."
-        confidence = "low"
-    analysis["possible_interpretations"].append({"text": text, "confidence": confidence, "evidence": evidence})
-    return analysis
+        analysis["possible_interpretations"].append({"text": text, "confidence": "low", "evidence": evidence})
+        return analysis
+
+    material_analysis = match_xrd_peaks(material_id, peaks.to_dict("records"))
+    for update in material_analysis.pop("peak_updates", []):
+        mask = peaks["peak_id"].astype(str) == str(update["peak_id"])
+        for key, value in update.items():
+            if key != "peak_id":
+                peaks.loc[mask, key] = value
+    return material_analysis
 
 
 def _created_day(created_at: str | None) -> str | None:

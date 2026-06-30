@@ -20,8 +20,9 @@ Current v0.2 XRD support:
 - Processing supports optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, and Bragg d-spacing calculation when x-axis is confirmed as `2theta_deg` and a wavelength is available.
 - Default wavelength is `1.5406 A` (`Cu Kalpha`) and must be covered by the user-confirmed parameter review before processing.
 - Processed CSV files include `two_theta`, `raw_intensity`, `processed_intensity`, and `d_spacing_angstrom` when available.
-- Peak tables include `two_theta_deg`, `d_spacing_angstrom`, `height`, `prominence`, and phase-assignment placeholder fields.
-- For MoS2-like project IDs, EA marks a low-angle layered-reflection candidate when a peak appears around 13.5-15.5 deg 2theta, with medium confidence and explicit need for phase-reference review.
+- Peak tables include `two_theta_deg`, `d_spacing_angstrom`, `height`, `prominence`, and phase-assignment fields.
+- For MoS2-like project IDs, EA uses the built-in material assignment library to mark a low-angle layered-reflection candidate when a peak appears around 13.5-15.5 deg 2theta, with medium confidence and explicit need for phase-reference review.
+- Assignment metadata records `assignment_source`; inspect the current rule with `ea materials assignments mos2 --method xrd`.
 - Reports include XRD peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:
@@ -35,4 +36,4 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
-Future XRD work should add background subtraction, K-alpha doublet handling, crystallite-size estimates with instrument broadening review, phase-reference libraries, batch/replicate comparisons, texture metrics, and user-confirmed memory-candidate generation from report interpretations.
+Future XRD work should add background subtraction, K-alpha doublet handling, crystallite-size estimates with instrument broadening review, richer phase-reference libraries, batch/replicate comparisons, texture metrics, and user-confirmed memory-candidate generation from report interpretations.

@@ -1,4 +1,4 @@
 interface:
   display_name: "EA v0.2"
-  short_description: "Modular local-first experimental assistant"
+  short_description: "Modular local-first experimental assistant with traceable analysis helpers"
   default_prompt: "Use $ea-v0-2 to initialize or continue a local experimental research project."

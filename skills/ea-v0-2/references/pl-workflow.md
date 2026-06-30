@@ -20,7 +20,8 @@ Current v0.2 PL support:
 - Processing supports optional Savitzky-Golay smoothing, max-intensity normalization, and SciPy peak detection.
 - Processed CSV files include `pl_axis`, `raw_intensity`, `processed_intensity`, and `wavelength_nm` when available.
 - Peak tables include `position`, `position_unit`, `position_eV`, `wavelength_nm`, `height`, `prominence`, and assignment fields.
-- For MoS2-like project IDs with eV data, EA marks a dominant near-band-edge PL feature as a possible MoS2-like emission assignment with medium or low confidence.
+- For MoS2-like project IDs with eV/nm data, EA uses the built-in material assignment library to mark a dominant near-band-edge PL feature as a possible MoS2-like emission assignment with medium or low confidence.
+- Assignment metadata records `assignment_source`; inspect the current rule with `ea materials assignments mos2 --method pl`.
 - Reports include PL peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:
@@ -34,4 +35,4 @@ ea pl process /path/to/ea-project --metadata raw/pl/char-20260630-001/metadata.y
 ea pl report /path/to/ea-project --metadata processed/sample-001/pl/res-project-pl-20260630-001/pl_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
-Future PL work should add replicate handling, emission deconvolution, temperature/power-dependent PL support, material-specific assignment libraries, and user-confirmed memory-candidate generation from report interpretations.
+Future PL work should add replicate handling, emission deconvolution, temperature/power-dependent PL support, more material records, and user-confirmed memory-candidate generation from report interpretations.

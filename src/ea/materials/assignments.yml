@@ -1,0 +1,76 @@
+library_version: "0.2.0"
+materials:
+  mos2:
+    material_id: mos2
+    display_name: "MoS2"
+    formula: "MoS2"
+    aliases:
+      - "MoS2"
+      - "mos2"
+      - "molybdenum disulfide"
+      - "molybdenum disulphide"
+      - "二硫化钼"
+    caveats:
+      - "These ranges are screening rules for EA reports, not a phase-identification or publication-grade assignment by themselves."
+      - "Peak positions can shift with layer number, strain, doping, substrate, temperature, excitation wavelength, calibration, and processing parameters."
+      - "Formal claims should be tied to project context, user review, and registered references."
+    reference_hints:
+      - key: "lee-2010-mos2-raman"
+        label: "Lee et al. ACS Nano 2010"
+        doi: "10.1021/nn1003937"
+        methods: ["raman"]
+      - key: "splendiani-2010-mos2-pl"
+        label: "Splendiani et al. Nano Letters 2010"
+        doi: "10.1021/nl903868w"
+        methods: ["pl"]
+    methods:
+      raman:
+        assignment_source: "ea.materials.builtin:mos2:raman:v0.2"
+        axis_unit: "cm^-1"
+        feature_rules:
+          - feature: "mos2_e2g_like"
+            label: "MoS2 E2g-like"
+            target_cm_minus_1: 383.0
+            tolerance_cm_minus_1: 8.0
+            medium_delta_cm_minus_1: 4.0
+            notes: "In-plane Raman mode candidate used for MoS2 screening."
+          - feature: "mos2_a1g_like"
+            label: "MoS2 A1g-like"
+            target_cm_minus_1: 408.0
+            tolerance_cm_minus_1: 8.0
+            medium_delta_cm_minus_1: 4.0
+            notes: "Out-of-plane Raman mode candidate used for MoS2 screening."
+        pair_rules:
+          - rule: "mos2_e2g_a1g_layer_screen"
+            required_features: ["mos2_e2g_like", "mos2_a1g_like"]
+            separation_cm_minus_1:
+              thin_layer_window: [18.0, 22.5]
+              multilayer_bulk_like_window: [22.5, 27.0]
+            thin_layer_text: "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the mode separation is more consistent with a thin-layer MoS2 signal than with a large bulk-like separation."
+            multilayer_text: "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the larger separation may be more consistent with multilayer or bulk-like MoS2."
+            outside_text: "Detected E2g-like and A1g-like candidate peaks form a MoS2-like pair, but the mode separation falls outside the simple expected screening ranges used by EA."
+        single_feature_text: "Only one MoS2-like characteristic peak candidate was assigned; this is insufficient for layer-related interpretation."
+        no_match_text: "No MoS2 E2g-like/A1g-like pair was assigned by the current material-library tolerance rules."
+      pl:
+        assignment_source: "ea.materials.builtin:mos2:pl:v0.2"
+        axis_units: ["eV", "nm"]
+        feature_rules:
+          - feature: "mos2_near_band_edge_emission"
+            label: "MoS2 near-band-edge emission candidate"
+            energy_eV_range: [1.75, 1.95]
+            medium_window_eV: [1.75, 1.95]
+            notes: "Screening window for dominant near-band-edge or excitonic PL features in MoS2-like samples."
+        in_range_text: "The dominant PL feature falls in a MoS2-like near-band-edge emission window; this supports a possible excitonic emission assignment when combined with project context and literature."
+        out_of_range_text: "A dominant PL feature was detected, but its energy is outside the MoS2-like near-band-edge window in the material assignment library."
+        missing_energy_text: "A dominant PL feature was detected, but the current axis information is insufficient for an energy-window assignment."
+      xrd:
+        assignment_source: "ea.materials.builtin:mos2:xrd:v0.2"
+        axis_unit: "2theta_deg"
+        feature_rules:
+          - feature: "mos2_002_layered_reflection"
+            label: "MoS2 (002)/(00l)-type layered reflection candidate"
+            two_theta_deg_range: [13.5, 15.5]
+            d_spacing_angstrom_range: [5.7, 6.6]
+            notes: "Low-angle layered-reflection screening window for Cu K-alpha style first-pass XRD patterns."
+        in_range_text: "A low-angle XRD peak appears in a MoS2-like layered-reflection window; this supports a possible (00l)/(002)-type layered feature when checked against phase references and sample history."
+        out_of_range_text: "XRD peaks were detected, but the MoS2-like low-angle layered-reflection window in the material assignment library did not match."

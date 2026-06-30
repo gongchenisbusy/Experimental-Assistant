@@ -19,6 +19,7 @@ from ea.literature import (
     prepare_literature_acquisition_handoff,
     sync_literature_acquisition_status,
 )
+from ea.materials import assignment_candidates, available_materials, get_material_profile
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
@@ -283,6 +284,15 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--sample-output", type=Path)
     register.add_argument("--status", choices=["active", "sandbox"], default="active")
 
+    materials = sub.add_parser("materials", help="inspect built-in material assignment records")
+    materials_sub = materials.add_subparsers(dest="materials_command", required=True)
+    materials_sub.add_parser("list", help="list materials with built-in assignment records")
+    material_show = materials_sub.add_parser("show", help="show a material assignment profile")
+    material_show.add_argument("material")
+    material_assignments = materials_sub.add_parser("assignments", help="show assignment records for one method")
+    material_assignments.add_argument("material")
+    material_assignments.add_argument("--method", choices=["raman", "pl", "xrd"])
+
     figure = sub.add_parser("lookup-figure", help="look up a figure by figure_id")
     figure.add_argument("workspace", type=Path)
     figure.add_argument("figure_id")
@@ -540,6 +550,16 @@ def main(argv: list[str] | None = None) -> int:
                 reference_ids=args.reference_id,
             )
             _print_json({"report": str(path)})
+            return 0
+    if args.command == "materials":
+        if args.materials_command == "list":
+            _print_json({"materials": available_materials()})
+            return 0
+        if args.materials_command == "show":
+            _print_json(get_material_profile(args.material))
+            return 0
+        if args.materials_command == "assignments":
+            _print_json(assignment_candidates(args.material, args.method))
             return 0
     if args.command == "literature":
         if args.literature_command == "status":

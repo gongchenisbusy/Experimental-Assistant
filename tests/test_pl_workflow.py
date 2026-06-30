@@ -139,6 +139,7 @@ def test_cli_runs_public_pl_workflow_end_to_end(tmp_path: Path, capsys) -> None:
     assert pl["pl_result_id"] == pl["result_id"]
     assert pl["peak_analysis"]["peak_count"] > 0
     assert pl["peak_analysis"]["dominant_peak"]["position_unit"] == "eV"
+    assert pl["peak_analysis"]["assignment_source"] == "ea.materials.builtin:mos2:pl:v0.2"
     assert (workspace / pl["outputs"]["peak_table"]).exists()
     assert (workspace / pl["outputs"]["figure"]).exists()
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][pl["figure_id"]]

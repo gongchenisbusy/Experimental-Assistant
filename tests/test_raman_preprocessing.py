@@ -156,9 +156,11 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(tmp_path: Path)
     assert (peaks["fit_status"] == "success").any()
     assert "peak_analysis" in metadata
     assert metadata["peak_analysis"]["peak_count"] >= 2
+    assert metadata["peak_analysis"]["assignment_source"] == "ea.materials.builtin:mos2:raman:v0.2"
     assigned_labels = {feature["label"] for feature in metadata["peak_analysis"]["assigned_features"]}
     assert "MoS2 E2g-like" in assigned_labels
     assert "MoS2 A1g-like" in assigned_labels
+    assert "assignment_source" in peaks.columns
     assert 15.0 <= metadata["peak_analysis"]["mode_separation_cm-1"] <= 25.0
 
     report_path = generate_raman_report(

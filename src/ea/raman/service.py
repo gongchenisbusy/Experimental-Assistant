@@ -26,6 +26,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.materials import infer_material_from_text, match_raman_peaks
 from ea.provenance import write_provenance_entry
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -688,35 +689,17 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     return pd.DataFrame(rows, columns=columns)
 
 
-def _peak_position(row: pd.Series) -> float:
-    fit_center = row.get("fit_center_cm-1")
-    if pd.notna(fit_center):
-        return float(fit_center)
-    return float(row["position_cm-1"])
-
-
-def _nearest_peak(peaks: pd.DataFrame, target: float, tolerance: float) -> tuple[int, pd.Series, float] | None:
-    if peaks.empty:
-        return None
-    positions = peaks.apply(_peak_position, axis=1)
-    distances = (positions - target).abs()
-    index = int(distances.idxmin())
-    delta = float(positions.loc[index] - target)
-    if abs(delta) > tolerance:
-        return None
-    return index, peaks.loc[index], delta
-
-
-def _looks_like_mos2_context(project_id: str) -> bool:
-    normalized = project_id.lower().replace("-", "")
-    return "mos2" in normalized
-
-
 def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
-    if "assignment" not in peaks.columns:
-        peaks["assignment"] = ""
-        peaks["assignment_confidence"] = ""
-        peaks["assignment_delta_cm-1"] = np.nan
+    default_columns: dict[str, Any] = {
+        "assignment": "",
+        "assignment_confidence": "",
+        "assignment_delta_cm-1": np.nan,
+        "assignment_feature": "",
+        "assignment_source": "",
+    }
+    for column, default in default_columns.items():
+        if column not in peaks.columns:
+            peaks[column] = default
 
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
@@ -733,7 +716,8 @@ def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str,
         )
         return analysis
 
-    if not _looks_like_mos2_context(project_id):
+    material_id = infer_material_from_text(project_id)
+    if not material_id:
         analysis["possible_interpretations"].append(
             {
                 "text": "Automatic peaks were fitted, but no material-specific assignment rule was applied for this project_id.",
@@ -743,73 +727,13 @@ def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str,
         )
         return analysis
 
-    feature_rules = [
-        ("mos2_e2g_like", "MoS2 E2g-like", 383.0, 8.0),
-        ("mos2_a1g_like", "MoS2 A1g-like", 408.0, 8.0),
-    ]
-    assigned: dict[str, dict[str, Any]] = {}
-    for feature_key, label, target, tolerance in feature_rules:
-        match = _nearest_peak(peaks, target, tolerance)
-        if not match:
-            continue
-        row_index, row, delta = match
-        observed = _peak_position(row)
-        confidence = "medium" if abs(delta) <= 4 else "low"
-        peaks.loc[row_index, "assignment"] = label
-        peaks.loc[row_index, "assignment_confidence"] = confidence
-        peaks.loc[row_index, "assignment_delta_cm-1"] = delta
-        feature = {
-            "feature": feature_key,
-            "label": label,
-            "target_cm-1": target,
-            "observed_cm-1": observed,
-            "delta_cm-1": delta,
-            "peak_id": str(row["peak_id"]),
-            "confidence": confidence,
-        }
-        analysis["assigned_features"].append(feature)
-        assigned[feature_key] = feature
-
-    e2g = assigned.get("mos2_e2g_like")
-    a1g = assigned.get("mos2_a1g_like")
-    if e2g and a1g:
-        separation = float(a1g["observed_cm-1"] - e2g["observed_cm-1"])
-        if 18.0 <= separation <= 22.5:
-            confidence = "medium"
-            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the mode separation is more consistent with a thin-layer MoS2 signal than with a large bulk-like separation."
-        elif 22.5 < separation <= 27.0:
-            confidence = "medium"
-            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the larger separation may be more consistent with multilayer or bulk-like MoS2."
-        else:
-            confidence = "low"
-            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like pair, but the mode separation falls outside the simple expected screening ranges used by EA."
-        analysis["mode_separation_cm-1"] = separation
-        analysis["possible_interpretations"].append(
-            {
-                "text": text,
-                "confidence": confidence,
-                "evidence": [e2g["peak_id"], a1g["peak_id"]],
-                "mode_separation_cm-1": separation,
-            }
-        )
-    elif e2g or a1g:
-        feature = e2g or a1g
-        analysis["possible_interpretations"].append(
-            {
-                "text": "Only one MoS2-like characteristic peak candidate was assigned; this is insufficient for layer-related interpretation.",
-                "confidence": "insufficient",
-                "evidence": [feature["peak_id"]],
-            }
-        )
-    else:
-        analysis["possible_interpretations"].append(
-            {
-                "text": "No MoS2 E2g-like/A1g-like pair was assigned by the current tolerance rules.",
-                "confidence": "insufficient",
-                "evidence": [],
-            }
-        )
-    return analysis
+    material_analysis = match_raman_peaks(material_id, peaks.to_dict("records"))
+    for update in material_analysis.pop("peak_updates", []):
+        mask = peaks["peak_id"].astype(str) == str(update["peak_id"])
+        for key, value in update.items():
+            if key != "peak_id":
+                peaks.loc[mask, key] = value
+    return material_analysis
 
 
 def _created_day(created_at: str | None) -> str | None:

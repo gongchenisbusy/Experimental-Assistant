@@ -22,6 +22,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.materials import infer_material_from_text, match_pl_peaks
 from ea.provenance import write_provenance_entry
 from ea.raman import SpectrumInspection, inspect_spectrum_file
 from ea.raman.service import _read_spectrum
@@ -201,6 +202,8 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: s
                 "method": "scipy_find_peaks",
                 "assignment": "",
                 "assignment_confidence": "",
+                "assignment_feature": "",
+                "assignment_source": "",
                 "notes": "requires scientific review",
             }
         )
@@ -218,16 +221,18 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: s
             "method",
             "assignment",
             "assignment_confidence",
+            "assignment_feature",
+            "assignment_source",
             "notes",
         ],
     )
 
 
-def _looks_like_mos2_context(project_id: str) -> bool:
-    return "mos2" in project_id.lower().replace("-", "")
-
-
 def _analyze_pl_peaks(peaks: pd.DataFrame, project_id: str, x_unit: str) -> dict[str, Any]:
+    for column in ["assignment", "assignment_confidence", "assignment_feature", "assignment_source"]:
+        if column not in peaks.columns:
+            peaks[column] = ""
+
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
         "dominant_peak": None,
@@ -252,26 +257,27 @@ def _analyze_pl_peaks(peaks: pd.DataFrame, project_id: str, x_unit: str) -> dict
         "wavelength_nm": float(dominant["wavelength_nm"]) if pd.notna(dominant["wavelength_nm"]) else None,
     }
     analysis["dominant_peak"] = dominant_peak
-    if _looks_like_mos2_context(project_id) and x_unit == "eV" and dominant_peak["position_eV"] is not None:
-        energy = float(dominant_peak["position_eV"])
-        if 1.75 <= energy <= 1.95:
-            text = "The dominant PL feature falls in a MoS2-like near-band-edge emission window; this supports a possible excitonic emission assignment when combined with project context and literature."
-            confidence = "medium"
-        else:
-            text = "A dominant PL feature was detected, but its energy is outside the simple MoS2-like near-band-edge window used by EA."
-            confidence = "low"
-    else:
+
+    material_id = infer_material_from_text(project_id)
+    if not material_id:
         text = "A dominant PL feature was detected, but no material-specific PL assignment rule was applied for this project context."
-        confidence = "low"
-    analysis["possible_interpretations"].append(
-        {
-            "text": text,
-            "confidence": confidence,
-            "evidence": [dominant_peak["peak_id"]],
-            "dominant_peak": dominant_peak,
-        }
-    )
-    return analysis
+        analysis["possible_interpretations"].append(
+            {
+                "text": text,
+                "confidence": "low",
+                "evidence": [dominant_peak["peak_id"]],
+                "dominant_peak": dominant_peak,
+            }
+        )
+        return analysis
+
+    material_analysis = match_pl_peaks(material_id, peaks.to_dict("records"), x_unit=x_unit)
+    for update in material_analysis.pop("peak_updates", []):
+        mask = peaks["peak_id"].astype(str) == str(update["peak_id"])
+        for key, value in update.items():
+            if key != "peak_id":
+                peaks.loc[mask, key] = value
+    return material_analysis
 
 
 def _created_day(created_at: str | None) -> str | None:

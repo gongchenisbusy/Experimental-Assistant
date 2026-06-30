@@ -140,6 +140,7 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert xrd["xrd_result_id"] == xrd["result_id"]
     assert xrd["wavelength_angstrom"] == 1.5406
     assert xrd["peak_analysis"]["peak_count"] > 0
+    assert xrd["peak_analysis"]["assignment_source"] == "ea.materials.builtin:mos2:xrd:v0.2"
     assert xrd["peak_analysis"]["possible_interpretations"][0]["confidence"] == "medium"
     assert (workspace / xrd["outputs"]["peak_table"]).exists()
     assert (workspace / xrd["outputs"]["figure"]).exists()
@@ -152,6 +153,7 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     with (workspace / xrd["outputs"]["peak_table"]).open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert any(13.5 <= float(row["two_theta_deg"]) <= 15.5 for row in rows)
+    assert any("MoS2" in row["possible_phase"] for row in rows)
     assert all("d_spacing_angstrom" in row for row in rows)
 
     assert main(
