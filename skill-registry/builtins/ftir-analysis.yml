@@ -10,6 +10,7 @@ ea_skill:
     - user_review_state
   output_artifacts:
     - processed_result
+    - context_record
     - figure_record
     - report_section
     - provenance_record
@@ -52,3 +53,18 @@ ea_skill:
       - max-absolute normalization
       - absorbance maxima or transmittance minima detection
       - broad band-family screening hints with low or insufficient confidence
+    context_records:
+      implemented: true
+      record_format: yaml
+      fields:
+        - instrument_accessory
+        - atmosphere
+        - sample_preparation
+        - background
+        - reference
+        - correction_notes
+      confidence_boundary: metadata_record_only
+    limitations:
+      - broad band-family windows are screening hints, not definitive chemical assignments
+      - context records preserve reviewed method metadata but do not apply automatic background/reference correction
+      - formal functional-group or composition conclusions require project chemistry, reference spectra or literature, and user review

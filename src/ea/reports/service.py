@@ -648,6 +648,60 @@ def _ftir_interpretation_text(metadata: dict, citation_text: str) -> str:
     return "\n".join(lines)
 
 
+def _has_ftir_context_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_ftir_context_value(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_ftir_context_value(item) for item in value)
+    return True
+
+
+def _format_ftir_context_value(value: object) -> str:
+    if isinstance(value, dict):
+        parts = [f"{key}={_format_ftir_context_value(item)}" for key, item in value.items() if _has_ftir_context_value(item)]
+        return "; ".join(parts) if parts else "未记录"
+    if isinstance(value, list | tuple):
+        parts = [_format_ftir_context_value(item) for item in value if _has_ftir_context_value(item)]
+        return "; ".join(parts) if parts else "未记录"
+    return str(value)
+
+
+def _ftir_context_record_text(metadata: dict) -> str:
+    context = (metadata.get("peak_analysis") or {}).get("context_record")
+    if not context:
+        return "当前没有启用或记录 FTIR context record。"
+    status = context.get("status", "unknown")
+    confidence = context.get("confidence", "insufficient")
+    source = context.get("assignment_source", "ea.ftir.context_record:v0.2")
+    record_ref = context.get("record_ref", "未生成")
+    fields = context.get("reviewed_context_fields") or []
+    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed context 字段"
+    labels = {
+        "instrument_accessory": "instrument/accessory",
+        "atmosphere": "atmosphere",
+        "sample_preparation": "sample preparation",
+        "background": "background",
+        "reference": "reference",
+        "correction_notes": "correction notes",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = context.get(key)
+        if _has_ftir_context_value(value):
+            rows.append(f"- {label}: `{_format_ftir_context_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- FTIR context details: `未记录`"
+    return (
+        f"FTIR context record 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该记录只保存已审核的仪器/附件、气氛、样品制备、背景或参比语境；本阶段不执行自动背景/参比数值校正，也不把这些 metadata 单独作为化学组成或功能团定论。"
+    )
+
+
 def generate_ftir_report(
     root: Path,
     *,
@@ -684,6 +738,7 @@ def generate_ftir_report(
     outputs = metadata["outputs"]
     band_text = _ftir_band_summary(root, outputs["peak_table"])
     band_table = _ftir_band_table(root, outputs["peak_table"])
+    context_text = _ftir_context_record_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -711,6 +766,10 @@ def generate_ftir_report(
 ## 数据列与处理参数
 
 用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，FTIR x 轴单位记录为 `{metadata['x_unit']}`，信号模式为 `{metadata.get('signal_mode', 'absorbance')}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## FTIR context record
+
+{context_text}
 
 ## 图谱
 
@@ -742,6 +801,7 @@ def generate_ftir_report(
 
 - processed CSV: `{outputs['processed_csv']}`
 - band table: `{outputs['peak_table']}`
+{f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -765,7 +825,7 @@ def generate_ftir_report(
         workflow="report_generation",
         inputs={
             "records": [str(ftir_metadata_path.relative_to(root))],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("context_record"), outputs["figure"]] if value],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},

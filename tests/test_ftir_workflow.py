@@ -209,6 +209,160 @@ def test_cli_runs_synthetic_ftir_workflow_end_to_end(tmp_path: Path, capsys) -> 
     assert evaluation["reports"]["report_count"] == 1
 
 
+def test_ftir_context_record_preserves_reviewed_method_metadata(tmp_path: Path, capsys) -> None:
+    fixture = _write_ftir_fixture(tmp_path / "synthetic-ftir-context-spectrum.txt")
+    workspace = tmp_path / "ftir-context-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "FTIR Context Workflow",
+            "--slug",
+            "ftir-context-workflow",
+            "--direction",
+            "FTIR context records",
+            "--material",
+            "polymer composite film",
+            "--experiment-type",
+            "materials FTIR context record",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "ftir",
+            "--sample-ref",
+            "sample-ftir-context-001",
+            "--experiment-ref",
+            "exp-ftir-context-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "ftir_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=wavenumber, y=absorbance, unit=cm^-1, signal_mode=absorbance",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    parameters = default_ftir_processing_parameters()
+    parameters["context_record"].update(
+        {
+            "enabled": True,
+            "instrument_accessory": {"instrument": "public-user FTIR", "accessory": "ATR", "crystal": "diamond", "status": "reviewed"},
+            "atmosphere": {"purge": "dry_air", "co2_h2o_status": "background_reviewed"},
+            "sample_preparation": {"sample_form": "thin_film", "contact_quality": "user_reviewed"},
+            "background": {"background_ref": "fresh ATR background", "numeric_correction": "instrument_applied", "status": "reviewed"},
+            "reference": {"reference_type": "project reference spectrum pending", "status": "not_applied"},
+            "correction_notes": ["EA records context only; no automatic FTIR correction was applied."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "ftir_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "ftir",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ftir-context-001",
+            "--x-column",
+            "wavenumber",
+            "--y-column",
+            "absorbance",
+            "--x-unit",
+            "cm^-1",
+            "--signal-mode",
+            "absorbance",
+            "--parameters-json",
+            json.dumps({"context_record": parameters["context_record"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    ftir_metadata = Path(process_output["metadata"])
+    ftir = read_yaml(ftir_metadata)
+    context_record = ftir["peak_analysis"]["context_record"]
+
+    assert context_record["status"] == "reviewed_context_recorded"
+    assert context_record["confidence"] == "low"
+    assert "instrument_accessory" in context_record["reviewed_context_fields"]
+    assert context_record["instrument_accessory"]["accessory"] == "ATR"
+    assert "metadata/provenance only" in context_record["boundary"]
+    assert ftir["outputs"]["context_record"].endswith("ftir_context.yml")
+    saved_context = read_yaml(workspace / ftir["outputs"]["context_record"])
+    assert saved_context["background"]["background_ref"] == "fresh ATR background"
+    assert saved_context["record_ref"] == ftir["outputs"]["context_record"]
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][ftir["figure_id"]]
+    assert ftir["outputs"]["context_record"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "ftir",
+            "report",
+            str(workspace),
+            "--metadata",
+            ftir_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ftir-context-001",
+            "--experiment-ref",
+            "exp-ftir-context-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## FTIR context record" in report_body
+    assert "ATR" in report_body
+    assert "context record" in report_body
+    assert "不执行自动背景/参比数值校正" in report_body
+
+
 def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -221,6 +375,9 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "ea ftir process" in skill
     assert "references/ftir-workflow.md" in skill
     assert ftir_reference.exists()
-    assert "signal_mode" in ftir_reference.read_text(encoding="utf-8")
+    reference_text = ftir_reference.read_text(encoding="utf-8")
+    assert "signal_mode" in reference_text
+    assert "context_record" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
+    assert "context_records" in ftir_record["notes"]

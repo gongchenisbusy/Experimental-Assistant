@@ -152,6 +152,17 @@ def default_ftir_processing_parameters() -> dict[str, Any]:
             "enabled": True,
             "source": "ea.ftir.builtin_band_windows:v0.2",
         },
+        "context_record": {
+            "enabled": False,
+            "method": "reviewed_metadata_record",
+            "source": "ea.ftir.context_record:v0.2",
+            "instrument_accessory": {},
+            "atmosphere": {},
+            "sample_preparation": {},
+            "background": {},
+            "reference": {},
+            "correction_notes": [],
+        },
     }
 
 
@@ -453,10 +464,104 @@ def _detect_bands(processed: pd.DataFrame, parameters: dict[str, Any], signal_mo
     )
 
 
-def _analyze_bands(bands: pd.DataFrame) -> dict[str, Any]:
+_FTIR_CONTEXT_SECTIONS = ("instrument_accessory", "atmosphere", "sample_preparation", "background", "reference")
+
+
+def _has_context_payload(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_context_payload(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_context_payload(item) for item in value)
+    return True
+
+
+def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    value = params.get(name, {})
+    if isinstance(value, dict):
+        return deepcopy(value), None
+    return (
+        {},
+        _warning(
+            "ftir_context_section_ignored",
+            "An FTIR context-record section was ignored because it was not a mapping.",
+            severity="medium",
+            section=name,
+        ),
+    )
+
+
+def _context_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+    notes = params.get("correction_notes", [])
+    if isinstance(notes, list):
+        return deepcopy(notes), None
+    if isinstance(notes, tuple):
+        return list(notes), None
+    if isinstance(notes, str) and notes.strip():
+        return [notes], None
+    return (
+        [],
+        _warning(
+            "ftir_context_notes_ignored",
+            "FTIR context notes were ignored because they were not a list or non-empty string.",
+            severity="medium",
+        ),
+    )
+
+
+def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("context_record", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    sections: dict[str, dict[str, Any]] = {}
+    for name in _FTIR_CONTEXT_SECTIONS:
+        section, warning = _context_section(params, name)
+        sections[name] = section
+        if warning:
+            warnings.append(warning)
+    notes, notes_warning = _context_notes(params)
+    if notes_warning:
+        warnings.append(notes_warning)
+
+    reviewed_fields = [name for name, section in sections.items() if _has_context_payload(section)]
+    if _has_context_payload(notes):
+        reviewed_fields.append("correction_notes")
+    has_reviewed_context = bool(reviewed_fields)
+    if not has_reviewed_context:
+        warnings.append(
+            _warning(
+                "ftir_context_record_empty",
+                "FTIR context_record was enabled, but no reviewed method/context metadata was supplied.",
+                severity="medium",
+            )
+        )
+    source = str(params.get("source") or "ea.ftir.context_record:v0.2")
+    return (
+        {
+            "enabled": True,
+            "status": "reviewed_context_recorded" if has_reviewed_context else "enabled_without_reviewed_context",
+            "method": str(params.get("method") or "reviewed_metadata_record"),
+            "assignment_source": source,
+            "confidence": "low" if has_reviewed_context else "insufficient",
+            "reviewed_context_fields": reviewed_fields,
+            **sections,
+            "correction_notes": notes,
+            "warnings": warnings,
+            "boundary": "FTIR context record is metadata/provenance only; no automatic background, reference, ATR, or atmosphere correction was applied.",
+        },
+        warnings,
+    )
+
+
+def _analyze_bands(bands: pd.DataFrame, context_record: dict[str, Any] | None = None) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "band_count": int(len(bands)),
         "strongest_bands": [],
+        "context_record": context_record,
         "possible_interpretations": [],
     }
     if bands.empty:
@@ -467,30 +572,42 @@ def _analyze_bands(bands: pd.DataFrame) -> dict[str, Any]:
                 "evidence": [],
             }
         )
-        return analysis
-
-    strongest = bands.sort_values("prominence", ascending=False).head(6)
-    analysis["strongest_bands"] = [
-        {
-            "band_id": str(row["band_id"]),
-            "wavenumber_cm-1": float(row["wavenumber_cm-1"]),
-            "possible_band_family": str(row["possible_band_family"]),
-            "assignment_confidence": str(row["assignment_confidence"]),
-            "assignment_source": str(row["assignment_source"]),
-        }
-        for _, row in strongest.iterrows()
-    ]
-    for family, family_rows in strongest.groupby("possible_band_family", sort=False):
-        evidence = [str(value) for value in family_rows["band_id"].head(3)]
-        confidence_values = [str(value) for value in family_rows["assignment_confidence"] if str(value)]
-        confidence = "low" if "low" in confidence_values else "insufficient"
-        source_values = [str(value) for value in family_rows["assignment_source"] if str(value)]
+    else:
+        strongest = bands.sort_values("prominence", ascending=False).head(6)
+        analysis["strongest_bands"] = [
+            {
+                "band_id": str(row["band_id"]),
+                "wavenumber_cm-1": float(row["wavenumber_cm-1"]),
+                "possible_band_family": str(row["possible_band_family"]),
+                "assignment_confidence": str(row["assignment_confidence"]),
+                "assignment_source": str(row["assignment_source"]),
+            }
+            for _, row in strongest.iterrows()
+        ]
+        for family, family_rows in strongest.groupby("possible_band_family", sort=False):
+            evidence = [str(value) for value in family_rows["band_id"].head(3)]
+            confidence_values = [str(value) for value in family_rows["assignment_confidence"] if str(value)]
+            confidence = "low" if "low" in confidence_values else "insufficient"
+            source_values = [str(value) for value in family_rows["assignment_source"] if str(value)]
+            analysis["possible_interpretations"].append(
+                {
+                    "text": f"Detected FTIR feature(s) fall in the broad {family} window; treat this as a screening hint, not a definitive chemical assignment.",
+                    "confidence": confidence,
+                    "evidence": evidence,
+                    "assignment_source": source_values[0] if source_values else "",
+                }
+            )
+    if context_record and context_record.get("status") == "reviewed_context_recorded":
+        fields = ", ".join(str(value) for value in context_record.get("reviewed_context_fields", [])) or "FTIR context"
         analysis["possible_interpretations"].append(
             {
-                "text": f"Detected FTIR feature(s) fall in the broad {family} window; treat this as a screening hint, not a definitive chemical assignment.",
-                "confidence": confidence,
-                "evidence": evidence,
-                "assignment_source": source_values[0] if source_values else "",
+                "text": (
+                    f"Reviewed FTIR method/context metadata was recorded for {fields}. Use it to interpret band screening hints, "
+                    "but do not treat the metadata record as an automatic correction or a standalone chemical assignment."
+                ),
+                "confidence": context_record.get("confidence", "low"),
+                "evidence": ["context_record"],
+                "assignment_source": context_record.get("assignment_source", "ea.ftir.context_record:v0.2"),
             }
         )
     return analysis
@@ -562,7 +679,8 @@ def process_ftir_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     bands = _detect_bands(processed, parameters, request.signal_mode)
-    band_analysis = _analyze_bands(bands)
+    context_record, context_warnings = _record_context(parameters)
+    band_analysis = _analyze_bands(bands, context_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -575,21 +693,38 @@ def process_ftir_result(
     output_dir = root / "processed" / sample_dir / "ftir" / result_id
     processed_csv = output_dir / "ftir_processed.csv"
     bands_csv = output_dir / "ftir_bands.csv"
+    context_yml = output_dir / "ftir_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "ftir_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "ftir_metadata.yml"
-    for output in [processed_csv, bands_csv, figure, result_metadata]:
+    for output in [processed_csv, bands_csv, context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     bands.to_csv(bands_csv, index=False)
+    context_ref: str | None = None
+    if context_record is not None:
+        context_ref = str(context_yml.relative_to(root))
+        context_record["record_ref"] = context_ref
+        write_yaml(context_yml, context_record)
+        if band_analysis.get("context_record"):
+            band_analysis["context_record"]["record_ref"] = context_ref
     _plot_ftir(processed, bands, figure, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
         warnings.append(_warning("ftir_x_unit_unknown", "FTIR x unit remains unknown after confirmation.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(context_warnings)
+    outputs = {
+        "figure": str(figure.relative_to(root)),
+        "peak_table": str(bands_csv.relative_to(root)),
+        "processed_csv": str(processed_csv.relative_to(root)),
+        "metadata": str(result_metadata.relative_to(root)),
+    }
+    if context_ref:
+        outputs["context_record"] = context_ref
     result = FTIRProcessingResult(
         ftir_result_id=result_id,
         result_id=result_id,
@@ -602,12 +737,7 @@ def process_ftir_result(
         x_unit=request.x_unit,  # type: ignore[arg-type]
         signal_mode=request.signal_mode,  # type: ignore[arg-type]
         processing_parameters=parameters,
-        outputs={
-            "figure": str(figure.relative_to(root)),
-            "peak_table": str(bands_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
-        },
+        outputs=outputs,
         peak_analysis=band_analysis,
         figure_id=figure_id,
         warnings=warnings,
@@ -616,6 +746,13 @@ def process_ftir_result(
         updated_at=created_at or EARecord.now_iso(),
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
+    provenance_files = [
+        str(processed_csv.relative_to(root)),
+        str(bands_csv.relative_to(root)),
+        str(figure.relative_to(root)),
+    ]
+    if context_ref:
+        provenance_files.append(context_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="ftir_processing",
@@ -625,11 +762,7 @@ def process_ftir_result(
         },
         outputs={
             "records": [str(result_metadata.relative_to(root))],
-            "files": [
-                str(processed_csv.relative_to(root)),
-                str(bands_csv.relative_to(root)),
-                str(figure.relative_to(root)),
-            ],
+            "files": provenance_files,
         },
         parameters={
             "x_column": request.x_column,
@@ -673,6 +806,7 @@ def process_ftir_result(
             source_data_refs=[
                 str(processed_csv.relative_to(root)),
                 str(bands_csv.relative_to(root)),
-            ],
+            ]
+            + ([context_ref] if context_ref else []),
         )
     return result_metadata
