@@ -43,6 +43,7 @@ Repository release gate:
 - The smoke gate is broader than `ea eval project`: it runs the test suite, validates the EA v0.2 skill package, checks core CLI help commands, and scans product files for accidental developer-machine defaults.
 - After the smoke gate passes, run `ea-release-manifest` to write package metadata, git state, console scripts, release-input checksums, smoke-gate requirements, and public-user boundary notes under `dist/`.
 - Run `ea-release-package` when the handoff should include a portable repository archive and `.zip.sha256` sidecar.
+- Run `ea-verify-release-package ARCHIVE.zip` after copying or before handoff to verify the sidecar, embedded manifest, and manifest-listed payload checksums.
 - The smoke gate should remain local and deterministic; it must not require Zotero, browser profiles, institution login, live web search, or private literature caches.
 
 Recommended use:
@@ -53,5 +54,6 @@ Recommended use:
 4. Run `ea-public-release-smoke` when the repository is being prepared for public release or broad handoff.
 5. Run `ea-release-manifest` after release checks pass.
 6. Run `ea-release-package` if a zip archive should be handed off.
-7. Fix `fail` items before handoff.
-8. Either fix `warning` items or record why the warning is acceptable for the current stage.
+7. Run `ea-verify-release-package ARCHIVE.zip` before handoff or after copying.
+8. Fix `fail` items before handoff.
+9. Either fix `warning` items or record why the warning is acceptable for the current stage.

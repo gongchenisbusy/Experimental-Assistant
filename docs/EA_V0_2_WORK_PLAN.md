@@ -133,6 +133,7 @@ ea export verify-archive
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
+ea-verify-release-package
 ea templates parameters
 ea templates batch-manifest
 ea literature status
@@ -147,6 +148,7 @@ ea config doctor
 - 仓库发布前可通过 `ea-public-release-smoke` 一次性运行测试、EA skill validation、核心 CLI help 检查和公开用户 portability scan。
 - 仓库发布时可通过 `ea-release-manifest` 生成 release manifest，记录 package metadata、git state、entry points、核心发布输入 checksum 和公开用户边界说明。
 - 仓库转交时可通过 `ea-release-package` 生成包含 release manifest 和发布输入的 zip archive，并提供 `.zip.sha256` sidecar 用于传输完整性检查。
+- 仓库转交前或复制后可通过 `ea-verify-release-package` 验证 sidecar、内嵌 manifest 和 manifest 列出的 payload checksum。
 - 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。

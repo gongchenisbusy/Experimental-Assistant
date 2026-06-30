@@ -100,9 +100,10 @@ ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
+ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
 ```
 
-Use the smoke check before publishing or handing off the EA v0.2 repository itself, then generate the release manifest and package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, and scans for portability without relying on Zotero, browser profiles, institution access, or developer-machine paths.
+Use the smoke check before publishing or handing off the EA v0.2 repository itself, then generate and verify the release manifest/package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, verifies package payload integrity, and scans for portability without relying on Zotero, browser profiles, institution access, or developer-machine paths.
 
 Report bundle export:
 

@@ -60,6 +60,10 @@ def _checksum_sidecar_path(archive_path: Path) -> Path:
     return archive_path.with_name(f"{archive_path.name}.sha256")
 
 
+def _archive_sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def write_release_package(
     root: Path,
     *,
@@ -109,12 +113,125 @@ def write_release_package(
     }
 
 
+def verify_release_package(archive_path: Path, *, checksum_path: Path | None = None) -> dict[str, Any]:
+    archive_path = archive_path.resolve()
+    checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
+    result: dict[str, Any] = {
+        "schema_version": "0.2",
+        "check_type": "ea_v0_2_release_package",
+        "status": "pass",
+        "archive_path": str(archive_path),
+        "archive_checksum_path": str(checksum_path),
+        "algorithm": "sha256",
+        "expected_sha256": None,
+        "actual_sha256": None,
+        "manifest_archive_ref": None,
+        "archive_root": None,
+        "checked_count": 0,
+        "failures": [],
+    }
+    if not archive_path.exists():
+        result["status"] = "fail"
+        result["failures"].append({"path": str(archive_path), "reason": "missing_archive"})
+        return result
+    if not checksum_path.exists():
+        result["status"] = "fail"
+        result["failures"].append({"path": str(checksum_path), "reason": "missing_checksum_sidecar"})
+    else:
+        sidecar = checksum_path.read_text(encoding="utf-8").strip().split()
+        if not sidecar:
+            result["status"] = "fail"
+            result["failures"].append({"path": str(checksum_path), "reason": "empty_checksum_sidecar"})
+        else:
+            expected_sha = sidecar[0]
+            actual_sha = _sha256_file(archive_path)
+            result["expected_sha256"] = expected_sha
+            result["actual_sha256"] = actual_sha
+            if expected_sha != actual_sha:
+                result["status"] = "fail"
+                result["failures"].append(
+                    {
+                        "path": archive_path.name,
+                        "reason": "sha256_mismatch",
+                        "expected_sha256": expected_sha,
+                        "actual_sha256": actual_sha,
+                    }
+                )
+
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            manifest_names = [name for name in archive.namelist() if name.endswith(f"/{MANIFEST_ARCHIVE_NAME}") or name == MANIFEST_ARCHIVE_NAME]
+            if not manifest_names:
+                result["status"] = "fail"
+                result["failures"].append({"path": MANIFEST_ARCHIVE_NAME, "reason": "missing_embedded_manifest"})
+                return result
+            if len(manifest_names) > 1:
+                result["status"] = "fail"
+                result["failures"].append({"path": MANIFEST_ARCHIVE_NAME, "reason": "multiple_embedded_manifests", "matches": sorted(manifest_names)})
+                return result
+            manifest_ref = manifest_names[0]
+            result["manifest_archive_ref"] = manifest_ref
+            archive_root = manifest_ref[: -len(f"/{MANIFEST_ARCHIVE_NAME}")] if "/" in manifest_ref else ""
+            result["archive_root"] = archive_root
+            manifest = yaml.safe_load(archive.read(manifest_ref)) or {}
+            infos = {info.filename: info for info in archive.infolist()}
+            for entry in manifest.get("release_inputs", {}).get("files") or []:
+                rel = str(entry.get("path") or "")
+                if not rel:
+                    result["status"] = "fail"
+                    result["failures"].append({"path": rel, "reason": "empty_manifest_path"})
+                    continue
+                archive_ref = f"{archive_root}/{rel}" if archive_root else rel
+                info = infos.get(archive_ref)
+                if info is None:
+                    result["status"] = "fail"
+                    result["failures"].append({"path": archive_ref, "reason": "missing_release_input"})
+                    continue
+                expected_size = entry.get("size_bytes")
+                expected_sha = str(entry.get("sha256") or "")
+                data = archive.read(archive_ref)
+                actual_size = len(data)
+                actual_sha = _archive_sha256_bytes(data)
+                result["checked_count"] += 1
+                if expected_size != actual_size:
+                    result["status"] = "fail"
+                    result["failures"].append(
+                        {
+                            "path": archive_ref,
+                            "reason": "size_mismatch",
+                            "expected_size_bytes": expected_size,
+                            "actual_size_bytes": actual_size,
+                        }
+                    )
+                if expected_sha != actual_sha:
+                    result["status"] = "fail"
+                    result["failures"].append(
+                        {
+                            "path": archive_ref,
+                            "reason": "sha256_mismatch",
+                            "expected_sha256": expected_sha,
+                            "actual_sha256": actual_sha,
+                        }
+                    )
+    except zipfile.BadZipFile:
+        result["status"] = "fail"
+        result["failures"].append({"path": str(archive_path), "reason": "invalid_zip"})
+    return result
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build an EA v0.2 repository release zip archive.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
     parser.add_argument("--include-root", action="append", default=[])
     parser.add_argument("--archive-root")
+    return parser
+
+
+def build_verify_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Verify an EA v0.2 repository release zip archive.")
+    parser.add_argument("archive", type=Path)
+    parser.add_argument("--checksum", type=Path)
     return parser
 
 
@@ -129,6 +246,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
+
+
+def verify_main(argv: list[str] | None = None) -> int:
+    args = build_verify_parser().parse_args(argv)
+    result = verify_release_package(args.archive, checksum_path=args.checksum)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "pass" else 2
 
 
 if __name__ == "__main__":

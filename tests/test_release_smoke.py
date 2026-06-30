@@ -23,6 +23,11 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
     assert "main(['eval', '--help'])" in commands["cli_eval_help"][2]
     assert commands["release_manifest_help"] == ["python", "-m", "ea.release_manifest", "--help"]
     assert commands["release_package_help"] == ["python", "-m", "ea.release_package", "--help"]
+    assert commands["release_package_verify_help"] == [
+        "python",
+        "-c",
+        "from ea.release_package import verify_main; verify_main(['--help'])",
+    ]
 
 
 def test_public_release_smoke_env_prefers_repo_src(tmp_path: Path, monkeypatch) -> None:

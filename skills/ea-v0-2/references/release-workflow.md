@@ -8,6 +8,7 @@ Commands:
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
+ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
 ```
 
 Script equivalents:
@@ -16,6 +17,7 @@ Script equivalents:
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
 ```
 
 Release smoke gate:
@@ -25,6 +27,7 @@ Release smoke gate:
 - Checks core CLI help paths.
 - Checks the release manifest entry point.
 - Checks the release package entry point.
+- Checks the release package verifier entry point.
 - Runs the public-user portability scan.
 
 Release manifest:
@@ -45,6 +48,15 @@ Release package:
 - Includes `ea-v0.2-release-manifest.yml` inside the archive.
 - Includes the same selected release inputs covered by the manifest.
 - Uses fixed zip timestamps and sorted input order for deterministic archive metadata.
+
+Release package verification:
+
+- Verifies the `.zip.sha256` sidecar.
+- Verifies that the zip opens successfully.
+- Finds the embedded `ea-v0.2-release-manifest.yml`.
+- Verifies every release input listed by the manifest exists in the archive.
+- Verifies each listed payload file size and SHA-256.
+- Returns JSON with `status: pass` or `status: fail` and concrete failure records.
 
 Scope limits:
 

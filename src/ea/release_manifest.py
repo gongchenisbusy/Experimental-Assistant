@@ -45,6 +45,7 @@ SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
     "ea-public-release-smoke",
     "ea-release-package",
+    "ea-verify-release-package",
 ]
 
 
@@ -179,6 +180,7 @@ def build_release_manifest(
                 "cli_eval_help",
                 "release_manifest_help",
                 "release_package_help",
+                "release_package_verify_help",
                 "portability_scan",
             ],
             "skill_validation_target": "skills/ea-v0-2",
