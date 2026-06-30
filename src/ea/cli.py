@@ -17,11 +17,12 @@ from ea.literature import (
     sync_literature_acquisition_status,
 )
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
+from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_raman_report
+from ea.reports import generate_pl_report, generate_raman_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
@@ -110,6 +111,31 @@ def build_parser() -> argparse.ArgumentParser:
     raman_report.add_argument("--experiment-ref", action="append", default=[])
     raman_report.add_argument("--sample-ref", action="append", default=[])
     raman_report.add_argument("--reference-id", action="append", default=[])
+
+    pl = sub.add_parser("pl", help="PL inspection, processing, and report helpers")
+    pl_sub = pl.add_subparsers(dest="pl_command", required=True)
+    pl_inspect = pl_sub.add_parser("inspect", help="inspect a spectrum file and suggest PL columns/unit")
+    pl_inspect.add_argument("workspace", type=Path)
+    pl_inspect.add_argument("spectrum", type=Path)
+    pl_process = pl_sub.add_parser("process", help="run review-gated PL processing")
+    pl_process.add_argument("workspace", type=Path)
+    pl_process.add_argument("--metadata", required=True, type=Path)
+    pl_process.add_argument("--project-id")
+    pl_process.add_argument("--sample-ref", action="append", default=[])
+    pl_process.add_argument("--x-column", required=True)
+    pl_process.add_argument("--y-column", required=True)
+    pl_process.add_argument("--x-unit", choices=["eV", "nm", "unknown"], required=True)
+    pl_process.add_argument("--column-review-ref", required=True)
+    pl_process.add_argument("--parameter-review-ref", required=True)
+    pl_process.add_argument("--parameters-file", type=Path)
+    pl_process.add_argument("--parameters-json")
+    pl_report = pl_sub.add_parser("report", help="generate a PL analysis report from PL metadata")
+    pl_report.add_argument("workspace", type=Path)
+    pl_report.add_argument("--metadata", required=True, type=Path)
+    pl_report.add_argument("--project-id")
+    pl_report.add_argument("--experiment-ref", action="append", default=[])
+    pl_report.add_argument("--sample-ref", action="append", default=[])
+    pl_report.add_argument("--reference-id", action="append", default=[])
 
     literature = sub.add_parser("literature", help="local literature-library helpers")
     literature_sub = literature.add_subparsers(dest="literature_command", required=True)
@@ -247,6 +273,15 @@ def _processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     return parameters
 
 
+def _pl_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_pl_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "init":
@@ -363,6 +398,44 @@ def main(argv: list[str] | None = None) -> int:
                 args.workspace,
                 project_id=project_id,
                 raman_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
+    if args.command == "pl":
+        project_id = getattr(args, "project_id", None)
+        if args.pl_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.pl_command == "inspect":
+            inspection = asdict(inspect_pl_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.pl_command == "process":
+            parameters = _pl_processing_parameters(args, args.workspace)
+            path = process_pl_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=PLProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.pl_command == "report":
+            path = generate_pl_report(
+                args.workspace,
+                project_id=project_id,
+                pl_metadata_path=_project_path(args.workspace, args.metadata),
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,

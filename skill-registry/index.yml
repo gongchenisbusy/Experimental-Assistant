@@ -30,7 +30,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: pl
-    notes: Contract placeholder for photoluminescence spectra, emission features, and confidence-labeled interpretation.
+    notes: Minimal PL workflow implemented for spectra, peak tables, traceable figures, and confidence-labeled reports.
   - id: ea.raman-analysis
     manifest: skill-registry/builtins/raman-analysis.yml
     status: builtin_v0_2_reference

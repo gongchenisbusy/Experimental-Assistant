@@ -211,6 +211,198 @@ def generate_raman_report(
     return report_path
 
 
+def _pl_peak_summary(root: Path, peak_table_ref: str) -> str:
+    peak_table = root / peak_table_ref
+    peaks = pd.read_csv(peak_table)
+    if peaks.empty:
+        return "当前自动检峰未得到稳定 PL 发光峰，需结合人工检查。"
+    positions = []
+    for _, peak in peaks.sort_values("prominence", ascending=False).head(5).iterrows():
+        position = f"{float(peak['position']):.3f} {peak['position_unit']}"
+        wavelength = peak.get("wavelength_nm")
+        if pd.notna(wavelength):
+            position += f" / {float(wavelength):.1f} nm"
+        positions.append(position)
+    return "自动检峰给出的主要 PL 峰位包括：" + "、".join(positions) + "。"
+
+
+def _pl_peak_table(root: Path, peak_table_ref: str) -> str:
+    peaks = pd.read_csv(root / peak_table_ref)
+    if peaks.empty:
+        return "当前没有可展示的自动 PL 检峰结果。"
+    rows = [
+        "| peak_id | position | wavelength (nm) | prominence | assignment |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for _, peak in peaks.sort_values("prominence", ascending=False).head(8).iterrows():
+        wavelength = peak.get("wavelength_nm")
+        rows.append(
+            "| {peak_id} | {position:.4g} {unit} | {wavelength} | {prominence:.3g} | {assignment} |".format(
+                peak_id=peak["peak_id"],
+                position=float(peak["position"]),
+                unit=peak["position_unit"],
+                wavelength=f"{float(wavelength):.1f}" if pd.notna(wavelength) else "n/a",
+                prominence=float(peak.get("prominence", 0.0)),
+                assignment=peak.get("assignment") if pd.notna(peak.get("assignment")) and peak.get("assignment") else "unassigned",
+            )
+        )
+    return "\n".join(rows)
+
+
+def _pl_interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的 PL 自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        cite = citation_text if citation_text else ""
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`")
+    if not citation_text:
+        lines.append("- 上述 PL 自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
+def generate_pl_report(
+    root: Path,
+    *,
+    project_id: str,
+    pl_metadata_path: Path,
+    related_experiments: list[str] | None = None,
+    related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    metadata = read_yaml(pl_metadata_path)
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
+    report_path = root / "reports" / f"{report_id}.md"
+    related_experiments = related_experiments or []
+    related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="pl_analysis",
+        related_experiments=related_experiments,
+        related_samples=related_samples,
+        related_results=[metadata["pl_result_id"]],
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    outputs = metadata["outputs"]
+    peak_text = _pl_peak_summary(root, outputs["peak_table"])
+    peak_table = _pl_peak_table(root, outputs["peak_table"])
+    warnings = metadata.get("warnings") or []
+    warning_text = "；".join(
+        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+        for warning in warnings
+    ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献引用。"
+    interpretation_text = _pl_interpretation_text(metadata, citation_text)
+    body = f"""# PL 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['pl_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+
+## 数据来源
+
+本报告基于 PL processing result `{metadata['pl_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+
+## 数据列与处理参数
+
+用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，PL x 轴单位记录为 `{metadata['x_unit']}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## 主要观察
+
+{peak_text}这些峰位来自自动处理结果，仍需要结合样品背景、激发条件、Raman/XRD/显微结果和用户审核进行解释。
+
+## PL 峰参数
+
+{peak_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
+## 谨慎解释
+
+在当前数据范围内，自动 PL 峰位只能支持“可能解释”，不能仅凭本次 PL 数据直接确认缺陷类型、能带结构变化或发光机制。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+
+## 不确定性与限制
+
+{warning_text}
+
+## 输出文件
+
+- processed CSV: `{outputs['processed_csv']}`
+- peak table: `{outputs['peak_table']}`
+- plot: `{outputs['figure']}`
+- metadata: `{outputs['metadata']}`
+
+## References
+
+{reference_block['references_markdown']}
+
+## 溯源
+
+本报告草稿引用 PL result `{metadata['pl_result_id']}`，对应 provenance 将在报告生成后写入。
+"""
+    for forbidden in FORBIDDEN_STRONG_CLAIMS:
+        body = body.replace(forbidden, "")
+
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="report_generation",
+        inputs={
+            "records": [str(pl_metadata_path.relative_to(root))],
+            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+        },
+        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        review_refs=[],
+        warnings=warnings,
+        created_at=created_at,
+    )
+    frontmatter = read_yaml_from_markdown_frontmatter(report_path)
+    frontmatter["provenance_refs"] = [provenance_path.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["pl_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
+    )
+    return report_path
+
+
 def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
     from ea.storage.files import read_markdown_record
 
