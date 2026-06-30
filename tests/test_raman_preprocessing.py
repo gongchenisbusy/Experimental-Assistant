@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from ea.projects import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
 from ea.raw_import import import_raw_file
+from ea.reports import generate_raman_report
 from ea.review import write_review_record
-from ea.storage import read_yaml
+from ea.storage import read_markdown_record, read_yaml
 
 
 PUBLIC_RAW = Path("tests/fixtures/public/test-case-001/raw_data")
@@ -115,3 +117,61 @@ def test_raman_spike_candidates_are_traceable(tmp_path: Path) -> None:
     warning_codes = {warning["code"] for warning in metadata["warnings"]}
     assert "spike_detection_applied" in warning_codes
     assert "spike_candidates_detected" in warning_codes
+
+
+def test_raman_peak_fitting_assignment_and_report_interpretation(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outputs = initialize_project(
+        project,
+        project_name="MoS2 peak fitting",
+        project_slug="mos2-peak-fitting",
+        research_direction="Raman peak fitting workflow",
+        material_system="MoS2",
+        experiment_type="CVD and Raman",
+        created_at="2026-06-30T13:00:00",
+    )
+    project_frontmatter, _ = read_markdown_record(outputs["project"])
+    project_id = project_frontmatter["project_id"]
+    raw = import_raw_file(
+        project,
+        PUBLIC_RAW / "MoS-2(1).txt",
+        project_id=project_id,
+        sample_refs=["sample-fit-001"],
+        experiment_refs=["exp-fit-001"],
+        imported_at="2026-06-30T13:05:00",
+    )
+
+    result_path = process_raman_result(
+        project,
+        characterization_metadata_path=raw.metadata_path,
+        project_id=project_id,
+        sample_refs=["sample-fit-001"],
+        request=_confirmed_request(project, raw.metadata_path, default_processing_parameters()),
+        created_at="2026-06-30T13:10:00",
+    )
+    metadata = read_yaml(result_path)
+    peaks = pd.read_csv(project / metadata["outputs"]["peak_table"])
+
+    assert {"fit_center_cm-1", "fit_fwhm_cm-1", "fit_r2", "assignment", "assignment_confidence"}.issubset(peaks.columns)
+    assert (peaks["fit_status"] == "success").any()
+    assert "peak_analysis" in metadata
+    assert metadata["peak_analysis"]["peak_count"] >= 2
+    assigned_labels = {feature["label"] for feature in metadata["peak_analysis"]["assigned_features"]}
+    assert "MoS2 E2g-like" in assigned_labels
+    assert "MoS2 A1g-like" in assigned_labels
+    assert 15.0 <= metadata["peak_analysis"]["mode_separation_cm-1"] <= 25.0
+
+    report_path = generate_raman_report(
+        project,
+        project_id=project_id,
+        raman_metadata_path=result_path,
+        related_experiments=["exp-fit-001"],
+        related_samples=["sample-fit-001"],
+        created_at="2026-06-30T13:20:00",
+    )
+    _, body = read_markdown_record(report_path)
+
+    assert "## 拟合峰参数" in body
+    assert "## 可能结论与可信度" in body
+    assert "MoS2-like Raman pair" in body
+    assert "confidence: `medium`" in body

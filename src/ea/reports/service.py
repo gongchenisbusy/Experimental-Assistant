@@ -28,6 +28,52 @@ def _peak_summary(root: Path, peak_table_ref: str) -> str:
     return "自动检峰给出的主要峰位包括：" + "、".join(positions) + "。"
 
 
+def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
+    peak_table = root / peak_table_ref
+    peaks = pd.read_csv(peak_table)
+    if peaks.empty:
+        return "当前没有可展示的自动检峰/拟合结果。"
+    rows = [
+        "| peak_id | position (cm^-1) | fit center (cm^-1) | FWHM (cm^-1) | prominence | assignment |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    sort_column = "prominence" if "prominence" in peaks.columns else "height"
+    for _, peak in peaks.sort_values(sort_column, ascending=False).head(8).iterrows():
+        fit_center = peak.get("fit_center_cm-1")
+        fwhm = peak.get("fit_fwhm_cm-1")
+        assignment = peak.get("assignment") if pd.notna(peak.get("assignment")) else ""
+        rows.append(
+            "| {peak_id} | {position:.1f} | {fit_center} | {fwhm} | {prominence:.3g} | {assignment} |".format(
+                peak_id=peak["peak_id"],
+                position=float(peak["position_cm-1"]),
+                fit_center=f"{float(fit_center):.2f}" if pd.notna(fit_center) else "n/a",
+                fwhm=f"{float(fwhm):.2f}" if pd.notna(fwhm) else "n/a",
+                prominence=float(peak.get("prominence", 0.0)),
+                assignment=assignment or "unassigned",
+            )
+        )
+    return "\n".join(rows)
+
+
+def _interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        separation = item.get("mode_separation_cm-1")
+        suffix = f"；mode separation: `{float(separation):.2f} cm^-1`" if separation is not None else ""
+        cite = citation_text if citation_text else ""
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`{suffix}")
+    if not citation_text:
+        lines.append("- 上述自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
 def generate_raman_report(
     root: Path,
     *,
@@ -63,6 +109,7 @@ def generate_raman_report(
     )
     outputs = metadata["outputs"]
     peak_text = _peak_summary(root, outputs["peak_table"])
+    peak_fit_table = _peak_fit_table(root, outputs["peak_table"])
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -71,6 +118,7 @@ def generate_raman_report(
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
     literature_note = f"相关解释应与已登记文献对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献引用。"
+    interpretation_text = _interpretation_text(metadata, citation_text)
     body = f"""# Raman 分析报告
 
 ## 报告 ID 信息
@@ -92,9 +140,17 @@ def generate_raman_report(
 
 {peak_text}这些峰位是脚本处理得到的 processed result，仍需要结合样品形貌、实验记录和用户审核进行解释。
 
+## 拟合峰参数
+
+{peak_fit_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
 ## 谨慎解释
 
-在当前数据范围内，图谱特征可能与 MoS2 Raman 响应相一致，但不能仅凭本次 Raman 数据直接确认层数、缺陷机制或生长机理。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+在当前数据范围内，自动峰位与拟合结果只能支持“可能解释”，不能仅凭本次 Raman 数据直接确认层数、缺陷机制或生长机理。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
 
 ## 不确定性与限制
 

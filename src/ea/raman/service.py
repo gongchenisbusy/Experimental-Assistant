@@ -13,6 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.optimize import curve_fit
 from scipy import sparse
 from scipy.signal import find_peaks, peak_widths, savgol_filter
 from scipy.sparse.linalg import spsolve
@@ -82,6 +83,12 @@ def default_processing_parameters() -> dict[str, Any]:
             "method": "scipy_find_peaks",
             "prominence": "auto",
             "distance": "auto",
+        },
+        "peak_fitting": {
+            "enabled": True,
+            "method": "local_gaussian",
+            "window_cm-1": "auto",
+            "min_points": 7,
         },
     }
 
@@ -498,8 +505,123 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
     return processed, warnings
 
 
+def _gaussian_with_offset(x: np.ndarray, offset: float, amplitude: float, center: float, sigma: float) -> np.ndarray:
+    return offset + amplitude * np.exp(-((x - center) ** 2) / (2 * sigma**2))
+
+
+def _axis_step(x_values: np.ndarray) -> float:
+    diffs = np.diff(np.sort(x_values.astype(float)))
+    positive = diffs[diffs > 0]
+    if positive.size == 0:
+        return 1.0
+    return float(np.median(positive))
+
+
+def _interpolated_x(x_values: np.ndarray, fractional_index: float) -> float:
+    indices = np.arange(x_values.size, dtype=float)
+    return float(np.interp(fractional_index, indices, x_values.astype(float)))
+
+
+def _fit_peak(
+    processed: pd.DataFrame,
+    *,
+    peak_index: int,
+    width_cm: float,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    fitting_params = parameters.get("peak_fitting", {})
+    if not fitting_params.get("enabled", True):
+        return {
+            "fit_method": "none",
+            "fit_status": "disabled",
+            "fit_center_cm-1": np.nan,
+            "fit_height": np.nan,
+            "fit_sigma_cm-1": np.nan,
+            "fit_fwhm_cm-1": np.nan,
+            "fit_area": np.nan,
+            "fit_r2": np.nan,
+        }
+
+    x = processed["raman_shift"].to_numpy(dtype=float)
+    y = processed["processed_intensity"].to_numpy(dtype=float)
+    center_guess = float(x[peak_index])
+    step = _axis_step(x)
+    requested_window = fitting_params.get("window_cm-1", "auto")
+    if requested_window == "auto":
+        half_window = max(float(width_cm) * 1.5 if np.isfinite(width_cm) else 0.0, step * 5, 4.0)
+    else:
+        half_window, _ = _coerce_float(requested_window, max(step * 5, 4.0), minimum=step)
+    min_points, _ = _coerce_int(fitting_params.get("min_points"), 7, minimum=4)
+    mask = np.abs(x - center_guess) <= half_window
+    local = processed.loc[mask, ["raman_shift", "processed_intensity"]]
+    if len(local) < min_points:
+        left = max(0, peak_index - min_points // 2)
+        right = min(len(processed), left + min_points)
+        left = max(0, right - min_points)
+        local = processed.iloc[left:right][["raman_shift", "processed_intensity"]]
+    if len(local) < 4:
+        return {
+            "fit_method": "local_gaussian",
+            "fit_status": "skipped_insufficient_points",
+            "fit_center_cm-1": np.nan,
+            "fit_height": np.nan,
+            "fit_sigma_cm-1": np.nan,
+            "fit_fwhm_cm-1": np.nan,
+            "fit_area": np.nan,
+            "fit_r2": np.nan,
+        }
+
+    local_x = local["raman_shift"].to_numpy(dtype=float)
+    local_y = local["processed_intensity"].to_numpy(dtype=float)
+    y_min = float(np.min(local_y))
+    y_max = float(np.max(local_y))
+    y_range = max(float(np.ptp(local_y)), 1e-9)
+    offset0 = float(np.percentile(local_y, 10))
+    amplitude0 = max(float(y[peak_index] - offset0), y_range * 0.2, 1e-6)
+    sigma0 = max((float(width_cm) / 2.354820045) if np.isfinite(width_cm) and width_cm > 0 else step * 2, step / 2, 1e-6)
+    lower = [y_min - y_range * 2, 0.0, float(local_x.min()), max(step / 10, 1e-6)]
+    upper = [y_max + y_range * 2, max(y_max + y_range * 2, amplitude0 * 4, 1.0), float(local_x.max()), max(float(np.ptp(local_x)) * 2, step)]
+    try:
+        popt, _ = curve_fit(
+            _gaussian_with_offset,
+            local_x,
+            local_y,
+            p0=[offset0, amplitude0, center_guess, sigma0],
+            bounds=(lower, upper),
+            maxfev=5000,
+        )
+        fitted = _gaussian_with_offset(local_x, *popt)
+        ss_res = float(np.sum((local_y - fitted) ** 2))
+        ss_tot = float(np.sum((local_y - np.mean(local_y)) ** 2))
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+        _, amplitude, center, sigma = [float(value) for value in popt]
+        sigma = abs(sigma)
+        return {
+            "fit_method": "local_gaussian",
+            "fit_status": "success",
+            "fit_center_cm-1": center,
+            "fit_height": amplitude,
+            "fit_sigma_cm-1": sigma,
+            "fit_fwhm_cm-1": 2.354820045 * sigma,
+            "fit_area": amplitude * sigma * float(np.sqrt(2 * np.pi)),
+            "fit_r2": r2,
+        }
+    except Exception as exc:  # pragma: no cover - fit failures depend on scipy internals
+        return {
+            "fit_method": "local_gaussian",
+            "fit_status": f"failed:{type(exc).__name__}",
+            "fit_center_cm-1": np.nan,
+            "fit_height": np.nan,
+            "fit_sigma_cm-1": np.nan,
+            "fit_fwhm_cm-1": np.nan,
+            "fit_area": np.nan,
+            "fit_r2": np.nan,
+        }
+
+
 def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
     y = processed["processed_intensity"].to_numpy(dtype=float)
+    x = processed["raman_shift"].to_numpy(dtype=float)
     peak_params = parameters.get("peak_detection", {})
     prominence = peak_params.get("prominence", "auto")
     distance = peak_params.get("distance", "auto")
@@ -508,9 +630,17 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     if distance == "auto":
         distance = max(len(y) // 40, 1)
     peaks, properties = find_peaks(y, prominence=prominence, distance=distance)
-    widths = peak_widths(y, peaks, rel_height=0.5)[0] if len(peaks) else []
+    width_result = peak_widths(y, peaks, rel_height=0.5) if len(peaks) else ([], [], [], [])
+    widths = width_result[0]
+    left_ips = width_result[2]
+    right_ips = width_result[3]
     rows = []
     for index, peak_index in enumerate(peaks, start=1):
+        width = float(widths[index - 1]) if len(widths) else np.nan
+        left_x = _interpolated_x(x, float(left_ips[index - 1])) if len(left_ips) else np.nan
+        right_x = _interpolated_x(x, float(right_ips[index - 1])) if len(right_ips) else np.nan
+        width_cm = float(right_x - left_x) if np.isfinite(left_x) and np.isfinite(right_x) else np.nan
+        fit = _fit_peak(processed, peak_index=int(peak_index), width_cm=width_cm, parameters=parameters)
         rows.append(
             {
                 "peak_id": f"peak-{index:03d}",
@@ -518,12 +648,161 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
                 "intensity": processed.iloc[int(peak_index)]["raw_intensity"],
                 "height": y[int(peak_index)],
                 "prominence": properties["prominences"][index - 1],
-                "width": widths[index - 1] if len(widths) else np.nan,
+                "width": width,
                 "method": "scipy_find_peaks",
                 "notes": "requires scientific review",
+                "width_cm-1": width_cm,
+                "left_base_cm-1": left_x,
+                "right_base_cm-1": right_x,
+                **fit,
             }
         )
-    return pd.DataFrame(rows)
+    columns = [
+        "peak_id",
+        "position_cm-1",
+        "intensity",
+        "height",
+        "prominence",
+        "width",
+        "method",
+        "notes",
+        "width_cm-1",
+        "left_base_cm-1",
+        "right_base_cm-1",
+        "fit_method",
+        "fit_status",
+        "fit_center_cm-1",
+        "fit_height",
+        "fit_sigma_cm-1",
+        "fit_fwhm_cm-1",
+        "fit_area",
+        "fit_r2",
+    ]
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _peak_position(row: pd.Series) -> float:
+    fit_center = row.get("fit_center_cm-1")
+    if pd.notna(fit_center):
+        return float(fit_center)
+    return float(row["position_cm-1"])
+
+
+def _nearest_peak(peaks: pd.DataFrame, target: float, tolerance: float) -> tuple[int, pd.Series, float] | None:
+    if peaks.empty:
+        return None
+    positions = peaks.apply(_peak_position, axis=1)
+    distances = (positions - target).abs()
+    index = int(distances.idxmin())
+    delta = float(positions.loc[index] - target)
+    if abs(delta) > tolerance:
+        return None
+    return index, peaks.loc[index], delta
+
+
+def _looks_like_mos2_context(project_id: str) -> bool:
+    normalized = project_id.lower().replace("-", "")
+    return "mos2" in normalized
+
+
+def _analyze_peak_assignments(peaks: pd.DataFrame, project_id: str) -> dict[str, Any]:
+    if "assignment" not in peaks.columns:
+        peaks["assignment"] = ""
+        peaks["assignment_confidence"] = ""
+        peaks["assignment_delta_cm-1"] = np.nan
+
+    analysis: dict[str, Any] = {
+        "peak_count": int(len(peaks)),
+        "assigned_features": [],
+        "possible_interpretations": [],
+    }
+    if peaks.empty:
+        analysis["possible_interpretations"].append(
+            {
+                "text": "No stable Raman peaks were detected by the current automatic settings.",
+                "confidence": "insufficient",
+                "evidence": [],
+            }
+        )
+        return analysis
+
+    if not _looks_like_mos2_context(project_id):
+        analysis["possible_interpretations"].append(
+            {
+                "text": "Automatic peaks were fitted, but no material-specific assignment rule was applied for this project_id.",
+                "confidence": "low",
+                "evidence": [str(peaks.iloc[0]["peak_id"])],
+            }
+        )
+        return analysis
+
+    feature_rules = [
+        ("mos2_e2g_like", "MoS2 E2g-like", 383.0, 8.0),
+        ("mos2_a1g_like", "MoS2 A1g-like", 408.0, 8.0),
+    ]
+    assigned: dict[str, dict[str, Any]] = {}
+    for feature_key, label, target, tolerance in feature_rules:
+        match = _nearest_peak(peaks, target, tolerance)
+        if not match:
+            continue
+        row_index, row, delta = match
+        observed = _peak_position(row)
+        confidence = "medium" if abs(delta) <= 4 else "low"
+        peaks.loc[row_index, "assignment"] = label
+        peaks.loc[row_index, "assignment_confidence"] = confidence
+        peaks.loc[row_index, "assignment_delta_cm-1"] = delta
+        feature = {
+            "feature": feature_key,
+            "label": label,
+            "target_cm-1": target,
+            "observed_cm-1": observed,
+            "delta_cm-1": delta,
+            "peak_id": str(row["peak_id"]),
+            "confidence": confidence,
+        }
+        analysis["assigned_features"].append(feature)
+        assigned[feature_key] = feature
+
+    e2g = assigned.get("mos2_e2g_like")
+    a1g = assigned.get("mos2_a1g_like")
+    if e2g and a1g:
+        separation = float(a1g["observed_cm-1"] - e2g["observed_cm-1"])
+        if 18.0 <= separation <= 22.5:
+            confidence = "medium"
+            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the mode separation is more consistent with a thin-layer MoS2 signal than with a large bulk-like separation."
+        elif 22.5 < separation <= 27.0:
+            confidence = "medium"
+            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the larger separation may be more consistent with multilayer or bulk-like MoS2."
+        else:
+            confidence = "low"
+            text = "Detected E2g-like and A1g-like candidate peaks form a MoS2-like pair, but the mode separation falls outside the simple expected screening ranges used by EA."
+        analysis["mode_separation_cm-1"] = separation
+        analysis["possible_interpretations"].append(
+            {
+                "text": text,
+                "confidence": confidence,
+                "evidence": [e2g["peak_id"], a1g["peak_id"]],
+                "mode_separation_cm-1": separation,
+            }
+        )
+    elif e2g or a1g:
+        feature = e2g or a1g
+        analysis["possible_interpretations"].append(
+            {
+                "text": "Only one MoS2-like characteristic peak candidate was assigned; this is insufficient for layer-related interpretation.",
+                "confidence": "insufficient",
+                "evidence": [feature["peak_id"]],
+            }
+        )
+    else:
+        analysis["possible_interpretations"].append(
+            {
+                "text": "No MoS2 E2g-like/A1g-like pair was assigned by the current tolerance rules.",
+                "confidence": "insufficient",
+                "evidence": [],
+            }
+        )
+    return analysis
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -619,6 +898,7 @@ def process_raman_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, preprocessing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters)
+    peak_analysis = _analyze_peak_assignments(peaks, project_id)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -671,6 +951,7 @@ def process_raman_result(
             "processed_csv": str(processed_csv.relative_to(root)),
             "metadata": str(result_metadata.relative_to(root)),
         },
+        peak_analysis=peak_analysis,
         figure_id=figure_id,
         result_id=result_id,
         warnings=warnings,

@@ -22,5 +22,7 @@ Current v0.2 preprocessing support:
 - When enabled, baseline correction adds `baseline` and `baseline_corrected_intensity`.
 - When enabled, smoothing adds `smoothed_intensity`.
 - Metadata warnings record applied preprocessing steps, adjusted parameters, skipped steps, and spike-candidate counts.
+- Peak tables include automatic peak detection plus local Gaussian fit metrics (`fit_center_cm-1`, `fit_fwhm_cm-1`, `fit_area`, `fit_r2`) when `peak_fitting.enabled` is true.
+- For MoS2-like project IDs, EA assigns simple E2g-like and A1g-like candidate features when fitted peak centers fall within tolerance, computes their separation, and writes possible interpretations with confidence labels.
 
-Future Raman work should add peak fitting, replicate handling, batch statistics, and stronger report-level interpretation.
+Future Raman work should add replicate handling, batch statistics, material-specific assignment libraries beyond MoS2, and user-confirmed memory-candidate generation from report interpretations.
