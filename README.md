@@ -15,6 +15,8 @@ ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
+ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
+ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001.zip
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -61,7 +63,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
-`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar.
+`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify local handoff integrity after copying.
 
 ## Developer Setup
 

@@ -45,6 +45,15 @@ ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip-output exports/batch-bundles/custom-name.zip
 ```
 
+Verification command:
+
+```bash
+ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-20260630-001
+ea export verify-bundle /path/to/ea-project/exports/batch-bundles/batch-20260630-001
+ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-20260630-001.zip
+ea export verify-archive /path/to/custom.zip --checksum /path/to/custom.zip.sha256
+```
+
 Batch bundle default output:
 
 ```text
@@ -68,6 +77,9 @@ Checksum files:
 - The checksum manifest excludes itself to avoid self-referential hashes.
 - If a zip archive is written, the sidecar `*.zip.sha256` records the archive SHA-256.
 - These files prove file integrity for handoff; they are not cryptographic signatures and do not prove user identity or authorship.
+- `verify-bundle` recomputes the listed bundle file sizes and SHA-256 hashes from `bundle_checksums.yml`.
+- `verify-archive` recomputes a zip archive SHA-256 and compares it with the `.sha256` sidecar.
+- Verification commands return JSON with `status: pass` or `status: fail`; failed checks return exit code 2 and concrete failure reasons such as `missing_file`, `size_mismatch`, or `sha256_mismatch`.
 
 What the bundle includes:
 
@@ -96,4 +108,5 @@ Boundaries:
 - Export and optional archive creation do not rerun processing, rerun batches, regenerate reports or figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
 - Export skips files outside the project root and records the skip in `bundle_manifest.yml` or `batch_bundle_manifest.yml`.
 - Checksum manifests are integrity records, not signatures; signed release artifacts are future work and require user-managed keys.
+- Verification commands are read-only and local-only; they do not repair files, fetch missing artifacts, or trust absolute paths from another machine.
 - A bundle with missing linked project refs returns status `warning`; fix the source project links and re-export before handoff when possible.

@@ -207,6 +207,114 @@ def _write_bundle_checksums(
     return checksum_path
 
 
+def verify_bundle_checksums(bundle_dir: Path) -> dict[str, Any]:
+    bundle_dir = bundle_dir.resolve()
+    checksum_path = bundle_dir / "bundle_checksums.yml"
+    result: dict[str, Any] = {
+        "schema_version": "0.2",
+        "check_type": "bundle",
+        "status": "pass",
+        "bundle_path": str(bundle_dir),
+        "checksum_manifest_path": str(checksum_path),
+        "algorithm": "sha256",
+        "checked_count": 0,
+        "failures": [],
+    }
+    if not bundle_dir.is_dir():
+        result["status"] = "fail"
+        result["failures"].append({"path": str(bundle_dir), "reason": "missing_bundle_dir"})
+        return result
+    if not checksum_path.exists():
+        result["status"] = "fail"
+        result["failures"].append({"path": "bundle_checksums.yml", "reason": "missing_checksum_manifest"})
+        return result
+
+    checksum_manifest = read_yaml(checksum_path)
+    algorithm = str(checksum_manifest.get("algorithm") or "")
+    result["algorithm"] = algorithm
+    if algorithm != "sha256":
+        result["status"] = "fail"
+        result["failures"].append({"path": "bundle_checksums.yml", "reason": "unsupported_algorithm", "algorithm": algorithm})
+        return result
+
+    for entry in checksum_manifest.get("files") or []:
+        ref = str(entry.get("path") or "")
+        file_path = bundle_dir / ref
+        expected_size = entry.get("size_bytes")
+        expected_sha = str(entry.get("sha256") or "")
+        if not ref or not _is_inside(bundle_dir, file_path):
+            result["failures"].append({"path": ref, "reason": "outside_bundle"})
+            continue
+        if not file_path.exists():
+            result["failures"].append({"path": ref, "reason": "missing_file"})
+            continue
+        result["checked_count"] += 1
+        actual_size = file_path.stat().st_size
+        actual_sha = _sha256_file(file_path)
+        if expected_size != actual_size:
+            result["failures"].append(
+                {
+                    "path": ref,
+                    "reason": "size_mismatch",
+                    "expected_size_bytes": expected_size,
+                    "actual_size_bytes": actual_size,
+                }
+            )
+        if expected_sha != actual_sha:
+            result["failures"].append(
+                {
+                    "path": ref,
+                    "reason": "sha256_mismatch",
+                    "expected_sha256": expected_sha,
+                    "actual_sha256": actual_sha,
+                }
+            )
+    result["status"] = "pass" if not result["failures"] else "fail"
+    return result
+
+
+def verify_archive_checksum(archive_path: Path, checksum_path: Path | None = None) -> dict[str, Any]:
+    archive_path = archive_path.resolve()
+    checksum_path = (checksum_path or _archive_checksum_path(archive_path)).resolve()
+    result: dict[str, Any] = {
+        "schema_version": "0.2",
+        "check_type": "archive",
+        "status": "pass",
+        "archive_path": str(archive_path),
+        "checksum_path": str(checksum_path),
+        "algorithm": "sha256",
+        "failures": [],
+    }
+    if not archive_path.exists():
+        result["status"] = "fail"
+        result["failures"].append({"path": str(archive_path), "reason": "missing_archive"})
+        return result
+    if not checksum_path.exists():
+        result["status"] = "fail"
+        result["failures"].append({"path": str(checksum_path), "reason": "missing_archive_checksum"})
+        return result
+    sidecar = checksum_path.read_text(encoding="utf-8").strip().split()
+    if not sidecar:
+        result["status"] = "fail"
+        result["failures"].append({"path": str(checksum_path), "reason": "empty_archive_checksum"})
+        return result
+    expected_sha = sidecar[0]
+    actual_sha = _sha256_file(archive_path)
+    result["expected_sha256"] = expected_sha
+    result["actual_sha256"] = actual_sha
+    if expected_sha != actual_sha:
+        result["status"] = "fail"
+        result["failures"].append(
+            {
+                "path": str(archive_path),
+                "reason": "sha256_mismatch",
+                "expected_sha256": expected_sha,
+                "actual_sha256": actual_sha,
+            }
+        )
+    return result
+
+
 def _copy_provenance(
     root: Path,
     bundle_dir: Path,

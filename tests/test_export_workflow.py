@@ -245,6 +245,70 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     assert any(name.startswith("provenance/") for name in names)
 
 
+def test_cli_verifies_report_bundle_and_archive_checksums(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    output = _json_output(capsys)
+    bundle_dir = Path(output["bundle_path"])
+    archive_path = Path(output["archive_path"])
+
+    assert main(["export", "verify-bundle", str(bundle_dir)]) == 0
+    bundle_check = _json_output(capsys)
+    assert bundle_check["status"] == "pass"
+    assert bundle_check["checked_count"] > 0
+    assert bundle_check["failures"] == []
+
+    assert main(["export", "verify-archive", str(archive_path)]) == 0
+    archive_check = _json_output(capsys)
+    assert archive_check["status"] == "pass"
+    assert archive_check["actual_sha256"] == _sha256(archive_path)
+
+
+def test_cli_verify_bundle_reports_hash_mismatch(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    output = _json_output(capsys)
+    bundle_dir = Path(output["bundle_path"])
+    report_file = next((bundle_dir / "reports").iterdir())
+    report_file.write_text(report_file.read_text(encoding="utf-8") + "\nchanged after export\n", encoding="utf-8")
+
+    assert main(["export", "verify-bundle", str(bundle_dir)]) == 2
+    check = _json_output(capsys)
+    reasons = {failure["reason"] for failure in check["failures"]}
+
+    assert check["status"] == "fail"
+    assert "sha256_mismatch" in reasons
+    assert "size_mismatch" in reasons
+
+
+def test_cli_verify_bundle_reports_missing_file(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    output = _json_output(capsys)
+    bundle_dir = Path(output["bundle_path"])
+    next((bundle_dir / "figures").iterdir()).unlink()
+
+    assert main(["export", "verify-bundle", str(bundle_dir)]) == 2
+    check = _json_output(capsys)
+
+    assert check["status"] == "fail"
+    assert "missing_file" in {failure["reason"] for failure in check["failures"]}
+
+
+def test_cli_verify_archive_reports_hash_mismatch(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    output = _json_output(capsys)
+    archive_path = Path(output["archive_path"])
+    archive_path.write_bytes(archive_path.read_bytes() + b"changed after export")
+
+    assert main(["export", "verify-archive", str(archive_path)]) == 2
+    check = _json_output(capsys)
+
+    assert check["status"] == "fail"
+    assert check["failures"][0]["reason"] == "sha256_mismatch"
+
+
 def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, capsys) -> None:
     built = _build_batch_project(tmp_path)
 
