@@ -51,6 +51,20 @@ def register_figure(
     return record
 
 
+def update_figure_report_ref(root: Path, figure_id: str, report_id: str) -> dict[str, Any]:
+    index_path = _index_path(root)
+    if not index_path.exists():
+        raise FigureLookupError(f"Figure index is missing: {index_path}")
+    index = read_yaml(index_path)
+    try:
+        record = index["figures"][figure_id]
+    except KeyError as exc:
+        raise FigureLookupError(f"Unknown figure_id: {figure_id}") from exc
+    record["report_id"] = report_id
+    write_yaml(index_path, index)
+    return record
+
+
 def lookup_figure(root: Path, figure_id: str) -> dict[str, Any]:
     index_path = _index_path(root)
     if not index_path.exists():

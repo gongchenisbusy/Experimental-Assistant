@@ -14,13 +14,15 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks, peak_widths
 
+from ea.figures import figure_footer, register_figure
 from ea.provenance import write_provenance_entry
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
 from ea.schema import RamanProcessingResult
 from ea.schema.models import EARecord
+from ea.standards import infer_project_slug
 from ea.storage.files import read_yaml, write_yaml
-from ea.storage.ids import next_id
+from ea.storage.ids import next_id, next_standard_id
 
 
 class RamanProcessingError(RuntimeError):
@@ -223,7 +225,24 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     return pd.DataFrame(rows)
 
 
-def _plot_raman(processed: pd.DataFrame, peaks: pd.DataFrame, output: Path, x_unit: str) -> None:
+def _created_day(created_at: str | None) -> str | None:
+    if not created_at:
+        return None
+    return created_at[:10]
+
+
+def _uses_v0_2_project_ids(project_id: str) -> bool:
+    return project_id.startswith("prj-")
+
+
+def _plot_raman(
+    processed: pd.DataFrame,
+    peaks: pd.DataFrame,
+    output: Path,
+    x_unit: str,
+    *,
+    footer: str | None = None,
+) -> None:
     fig, ax = plt.subplots(figsize=(6.0, 4.0))
     ax.plot(
         processed["raman_shift"],
@@ -257,7 +276,11 @@ def _plot_raman(processed: pd.DataFrame, peaks: pd.DataFrame, output: Path, x_un
     ax.grid(True, alpha=0.2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    fig.tight_layout()
+    if footer:
+        fig.text(0.99, 0.01, footer, ha="right", va="bottom", fontsize=5.5, color="#888888")
+        fig.tight_layout(rect=(0, 0.045, 1, 1))
+    else:
+        fig.tight_layout()
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight")
     plt.close(fig)
@@ -283,12 +306,20 @@ def process_raman_result(
     parameters = request.processing_parameters or default_processing_parameters()
     processed = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters)
-    result_id = next_id(root, "raman_result")
+    day = _created_day(created_at)
+    project_slug = infer_project_slug(project_id)
+    if _uses_v0_2_project_ids(project_id):
+        result_id = next_standard_id(root, "result", project_slug, method="raman", day=day)
+        figure_id = next_standard_id(root, "figure", project_slug, method="raman", day=day)
+    else:
+        result_id = next_id(root, "raman_result", day)
+        figure_id = None
     sample_dir = sample_refs[0] if sample_refs else "unmapped-sample"
     output_dir = root / "processed" / sample_dir / "raman" / result_id
     processed_csv = output_dir / "raman_processed.csv"
     peaks_csv = output_dir / "raman_peaks.csv"
-    figure = output_dir / "raman_plot.png"
+    figure_name = f"{figure_id}.png" if figure_id else "raman_plot.png"
+    figure = output_dir / figure_name
     result_metadata = output_dir / "raman_metadata.yml"
     for output in [processed_csv, peaks_csv, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
@@ -296,7 +327,13 @@ def process_raman_result(
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     peaks.to_csv(peaks_csv, index=False)
-    _plot_raman(processed, peaks, figure, request.x_unit)
+    _plot_raman(
+        processed,
+        peaks,
+        figure,
+        request.x_unit,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
@@ -322,6 +359,8 @@ def process_raman_result(
             "processed_csv": str(processed_csv.relative_to(root)),
             "metadata": str(result_metadata.relative_to(root)),
         },
+        figure_id=figure_id,
+        result_id=result_id,
         warnings=warnings,
         review_refs=[request.column_review_ref, request.parameter_review_ref],
         created_at=created_at or EARecord.now_iso(),
@@ -351,10 +390,32 @@ def process_raman_result(
         },
         review_refs=[request.column_review_ref, request.parameter_review_ref],
         warnings=warnings,
-        scripts=[{"path": "src/ea/raman/service.py", "version": "0.1.0"}],
+        scripts=[{"path": "src/ea/raman/service.py", "version": "0.2.0"}],
         created_at=created_at,
     )
     result_data = read_yaml(result_metadata)
     result_data["provenance_refs"] = [provenance_path.stem]
     write_yaml(result_metadata, result_data)
+    if figure_id:
+        register_figure(
+            root,
+            figure_id=figure_id,
+            path=str(figure.relative_to(root)),
+            report_id=None,
+            result_id=result_id,
+            raw_data_ids=[metadata["characterization_id"]],
+            sample_ids=sample_refs,
+            experiment_ids=metadata.get("experiment_refs", []),
+            generation={
+                "script": "src/ea/raman/service.py",
+                "parameters": {
+                    "x_column": request.x_column,
+                    "y_column": request.y_column,
+                    "x_unit": request.x_unit,
+                    "processing_parameters": parameters,
+                },
+            },
+            caption="Raman spectrum with processed intensity and detected peaks.",
+            purpose="raman_analysis_report",
+        )
     return result_metadata

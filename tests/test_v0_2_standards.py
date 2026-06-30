@@ -8,6 +8,10 @@ from ea.config import doctor_project_config
 from ea.figures import figure_footer, lookup_figure, register_figure
 from ea.literature import ensure_literature_status, recommended_top_n
 from ea.projects import initialize_project
+from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
+from ea.raw_import import import_raw_file
+from ea.reports import generate_raman_report
+from ea.review import write_review_record
 from ea.skills import validate_skill_manifest
 from ea.standards import format_standard_id, standard_project_id
 from ea.storage import read_markdown_record, read_yaml
@@ -156,3 +160,77 @@ def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
     assert main(["config", "doctor", str(workspace)]) == 0
     doctor = json.loads(capsys.readouterr().out)
     assert doctor["status"] == "pass"
+
+
+def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(tmp_path: Path) -> None:
+    outputs = initialize_project(
+        tmp_path,
+        project_name="MoS2 Raman v02",
+        project_slug="mos2-raman-v02",
+        research_direction="Raman workflow",
+        material_system="MoS2",
+        experiment_type="CVD and Raman",
+        created_at="2026-06-30T10:00:00",
+    )
+    project_frontmatter, _ = read_markdown_record(outputs["project"])
+    project_id = project_frontmatter["project_id"]
+    raw = import_raw_file(
+        tmp_path,
+        Path("tests/fixtures/public/test-case-001/raw_data/MoS-2(1).txt"),
+        project_id=project_id,
+        sample_refs=["sample-001"],
+        experiment_refs=["exp-20260630-001"],
+        imported_at="2026-06-30T10:05:00",
+    )
+    column_review = write_review_record(
+        tmp_path,
+        target_type="raman_columns",
+        target_ref=raw.metadata_path.relative_to(tmp_path).as_posix(),
+        user_response="可以，保存",
+        reviewed_content="x=col_0, y=col_1, unit=cm^-1",
+    )
+    parameter_review = write_review_record(
+        tmp_path,
+        target_type="raman_parameters",
+        target_ref=raw.metadata_path.relative_to(tmp_path).as_posix(),
+        user_response="可以，保存",
+        reviewed_content=str(default_processing_parameters()),
+    )
+
+    result_path = process_raman_result(
+        tmp_path,
+        characterization_metadata_path=raw.metadata_path,
+        project_id=project_id,
+        sample_refs=["sample-001"],
+        request=RamanProcessingRequest(
+            x_column="col_0",
+            y_column="col_1",
+            x_unit="cm^-1",
+            processing_parameters=default_processing_parameters(),
+            column_review_ref=column_review.stem,
+            parameter_review_ref=parameter_review.stem,
+        ),
+        created_at="2026-06-30T10:10:00",
+    )
+    result = read_yaml(result_path)
+    assert result["raman_result_id"] == "res-mos2-raman-v02-raman-20260630-001"
+    assert result["figure_id"] == "fig-mos2-raman-v02-raman-20260630-001"
+    assert (tmp_path / result["outputs"]["figure"]).exists()
+
+    report_path = generate_raman_report(
+        tmp_path,
+        project_id=project_id,
+        raman_metadata_path=result_path,
+        related_experiments=["exp-20260630-001"],
+        related_samples=["sample-001"],
+        created_at="2026-06-30T10:20:00",
+    )
+    report_frontmatter, report_body = read_markdown_record(report_path)
+    figures_index = read_yaml(tmp_path / "figures" / "index.yml")
+    reports_index = read_yaml(tmp_path / "reports" / "index.yml")
+
+    assert report_frontmatter["report_id"] == "rpt-mos2-raman-v02-20260630-001"
+    assert report_frontmatter["figure_ids"] == ["fig-mos2-raman-v02-raman-20260630-001"]
+    assert "## References" in report_body
+    assert figures_index["figures"][result["figure_id"]]["report_id"] == report_frontmatter["report_id"]
+    assert reports_index["reports"][report_frontmatter["report_id"]]["figure_ids"] == [result["figure_id"]]

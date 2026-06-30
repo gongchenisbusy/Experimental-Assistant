@@ -3,6 +3,7 @@ from ea.figures.service import (
     figure_footer,
     lookup_figure,
     register_figure,
+    update_figure_report_ref,
 )
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "figure_footer",
     "lookup_figure",
     "register_figure",
+    "update_figure_report_ref",
 ]

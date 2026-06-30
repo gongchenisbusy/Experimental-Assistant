@@ -4,11 +4,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from ea.figures import update_figure_report_ref
 from ea.provenance import write_provenance_entry
 from ea.schema import ReportRecord
 from ea.schema.models import EARecord
-from ea.storage.files import read_yaml, write_markdown_record
-from ea.storage.ids import next_id
+from ea.standards import infer_project_slug
+from ea.storage.files import read_yaml, write_markdown_record, write_yaml
+from ea.storage.ids import next_id, next_standard_id
 
 
 FORBIDDEN_STRONG_CLAIMS = ["证明了", "毫无疑问", "机制已经确定", "完全说明"]
@@ -35,10 +37,15 @@ def generate_raman_report(
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(raman_metadata_path)
-    report_id = next_id(root, "report")
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
     related_experiments = related_experiments or []
     related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
     report = ReportRecord(
         report_id=report_id,
         project_id=project_id,
@@ -46,6 +53,7 @@ def generate_raman_report(
         related_experiments=related_experiments,
         related_samples=related_samples,
         related_results=[metadata["raman_result_id"]],
+        figure_ids=figure_ids,
         include_next_step_suggestions=False,
         status="draft",
         created_at=created_at or EARecord.now_iso(),
@@ -59,6 +67,13 @@ def generate_raman_report(
         for warning in warnings
     ) or "未记录高风险 warning。"
     body = f"""# Raman 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['raman_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
 
 ## 数据来源
 
@@ -87,6 +102,10 @@ def generate_raman_report(
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
+## References
+
+本报告当前未引用外部文献。若后续加入文献解释，正文对应位置必须使用 `[1]` 形式标注，并在本节列出 DOI、本地 PDF 或网页链接。
+
 ## 溯源
 
 本报告草稿引用 Raman result `{metadata['raman_result_id']}`，对应 provenance 将在报告生成后写入。
@@ -111,6 +130,19 @@ def generate_raman_report(
     frontmatter = read_yaml_from_markdown_frontmatter(report_path)
     frontmatter["provenance_refs"] = [provenance_path.stem]
     write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["raman_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+    )
     return report_path
 
 
@@ -119,3 +151,30 @@ def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
 
     frontmatter, _ = read_markdown_record(path)
     return frontmatter
+
+
+def register_report(
+    root: Path,
+    *,
+    report_id: str,
+    path: str,
+    project_id: str,
+    result_ids: list[str],
+    figure_ids: list[str],
+    sample_ids: list[str],
+    experiment_ids: list[str],
+) -> dict:
+    index_path = root / "reports" / "index.yml"
+    index = read_yaml(index_path) if index_path.exists() else {"schema_version": "0.2", "reports": {}}
+    record = {
+        "report_id": report_id,
+        "path": path,
+        "project_id": project_id,
+        "result_ids": result_ids,
+        "figure_ids": figure_ids,
+        "sample_ids": sample_ids,
+        "experiment_ids": experiment_ids,
+    }
+    index.setdefault("reports", {})[report_id] = record
+    write_yaml(index_path, index)
+    return record

@@ -6,13 +6,14 @@ from ea.storage.files import (
     write_markdown_record,
     write_yaml,
 )
-from ea.storage.ids import format_id, next_id
+from ea.storage.ids import format_id, next_id, next_standard_id
 
 __all__ = [
     "EA_PROJECT_DIRS",
     "ensure_project_dirs",
     "format_id",
     "next_id",
+    "next_standard_id",
     "read_markdown_record",
     "read_yaml",
     "write_markdown_record",

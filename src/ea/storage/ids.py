@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 from ea.storage.files import read_yaml, write_yaml
+from ea.standards import format_standard_id
 
 KIND_PREFIX = {
     "project": "project",
@@ -45,3 +46,30 @@ def next_id(root: Path, kind: str, day: date | str | None = None) -> str:
     counters[key] = sequence
     write_yaml(counter_path, counters)
     return format_id(kind, day_key, sequence)
+
+
+def next_standard_id(
+    root: Path,
+    kind: str,
+    project_slug: str,
+    *,
+    day: date | str | None = None,
+    method: str | None = None,
+    hash8: str | None = None,
+) -> str:
+    day_key = today_key(day)
+    method_key = method or "none"
+    counter_path = root / ".ea" / "id_counters.yml"
+    counters = read_yaml(counter_path) if counter_path.exists() else {}
+    key = f"standard:{kind}:{project_slug}:{method_key}:{day_key}"
+    sequence = int(counters.get(key, 0)) + 1
+    counters[key] = sequence
+    write_yaml(counter_path, counters)
+    return format_standard_id(
+        kind,
+        project_slug,
+        day=day_key,
+        sequence=sequence,
+        method=method,
+        hash8=hash8,
+    )

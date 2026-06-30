@@ -125,11 +125,12 @@ class ReportRecord(EARecord):
     report_id: str
     project_id: str
     report_type: Literal["raman_analysis"]
-    language: Literal["zh"] = "zh"
+    language: Literal["zh", "en"] = "zh"
     audience: Literal["self"] = "self"
     related_experiments: list[str] = Field(default_factory=list)
     related_samples: list[str] = Field(default_factory=list)
     related_results: list[str] = Field(default_factory=list)
+    figure_ids: list[str] = Field(default_factory=list)
     include_next_step_suggestions: bool = False
     status: Literal["draft", "user_reviewed"] = "draft"
 
