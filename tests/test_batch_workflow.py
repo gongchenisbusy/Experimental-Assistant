@@ -13,6 +13,7 @@ from ea.raw_import import import_raw_file
 from ea.review import write_review_record
 from ea.storage import read_markdown_record, read_yaml, write_yaml
 from ea.uv_vis import default_uv_vis_processing_parameters
+from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
@@ -59,6 +60,27 @@ def _write_uv_vis_fixture(path: Path) -> Path:
         ]:
             signal += amplitude * math.exp(-((wavelength - center) ** 2) / (2.0 * width**2))
         lines.append(f"{wavelength:.2f} {signal:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_xps_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = eV",
+        "# x_label = binding energy",
+        "# y_label = counts",
+        "binding_energy_eV intensity",
+    ]
+    for index in range(1800):
+        energy = 1000.0 - index * 0.5
+        signal = 0.03 + 0.00002 * energy
+        for center, amplitude, width in [
+            (284.8, 0.30, 1.6),
+            (532.1, 0.24, 1.9),
+            (711.0, 0.20, 2.3),
+        ]:
+            signal += amplitude * math.exp(-((energy - center) ** 2) / (2.0 * width**2))
+        lines.append(f"{energy:.2f} {signal:.8f}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
@@ -121,6 +143,9 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
     elif method == "uv_vis":
         x_column, y_column, x_unit = "wavelength_nm", "absorbance", "nm"
         parameters = default_uv_vis_processing_parameters()
+    elif method == "xps":
+        x_column, y_column, x_unit = "binding_energy_eV", "intensity", "eV"
+        parameters = default_xps_processing_parameters()
     else:
         x_column, y_column, x_unit = "col_0", "col_1", "cm^-1"
         parameters = default_processing_parameters()
@@ -147,6 +172,18 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
         result["signal_mode"] = "absorbance"
     if method == "uv_vis":
         result["signal_mode"] = "absorbance"
+    if method == "xps":
+        calibration_review = write_review_record(
+            workspace,
+            target_type="xps_calibration",
+            target_ref=metadata_ref,
+            user_response="可以，保存",
+            reviewed_content="C 1s reference at 284.8 eV; no additional shift needed",
+            reviewed_at="2026-06-30T09:12:00",
+        )
+        result["calibration_review_ref"] = calibration_review.stem
+        result["calibration_reference"] = "C 1s 284.8 eV user-confirmed reference"
+        result["energy_shift_eV"] = 0.0
     return result
 
 
@@ -154,6 +191,7 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     workspace, project_id = _project(tmp_path)
     ftir_fixture = _write_ftir_fixture(tmp_path / "batch-ftir-spectrum.txt")
     uv_vis_fixture = _write_uv_vis_fixture(tmp_path / "batch-uv-vis-spectrum.txt")
+    xps_fixture = _write_xps_fixture(tmp_path / "batch-xps-spectrum.txt")
     items = [
         {
             "item_id": "raman-001",
@@ -175,6 +213,10 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
             "item_id": "uv-vis-001",
             **_import_with_reviews(workspace, project_id, "uv_vis", uv_vis_fixture, "sample-batch-001", "exp-batch-001"),
         },
+        {
+            "item_id": "xps-001",
+            **_import_with_reviews(workspace, project_id, "xps", xps_fixture, "sample-batch-001", "exp-batch-001"),
+        },
     ]
     manifest = workspace / "batch_manifest.yml"
     write_yaml(
@@ -192,12 +234,12 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     assert main(["batch", "validate", str(workspace), "batch_manifest.yml"]) == 0
     validation = _json_output(capsys)
     assert validation["status"] == "pass"
-    assert validation["item_count"] == 5
+    assert validation["item_count"] == 6
 
     assert main(["batch", "run", str(workspace), "batch_manifest.yml"]) == 0
     output = _json_output(capsys)
     assert output["status"] == "success"
-    assert output["succeeded"] == 5
+    assert output["succeeded"] == 6
     assert output["failed"] == 0
 
     record = read_yaml(Path(output["record"]))

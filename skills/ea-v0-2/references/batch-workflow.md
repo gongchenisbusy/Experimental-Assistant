@@ -1,6 +1,6 @@
 # Batch Characterization Workflow
 
-Use this reference when running multiple already-reviewed Raman, PL, XRD, FTIR, or UV-Vis analyses from one manifest.
+Use this reference when running multiple already-reviewed Raman, PL, XRD, FTIR, UV-Vis, or XPS analyses from one manifest.
 
 Scope:
 
@@ -20,7 +20,7 @@ ea batch run /path/to/ea-project batch_manifest.yml
 Generate an editable skeleton:
 
 ```bash
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --output batch_manifest.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
 ```
 
 The generated skeleton uses placeholders for raw metadata and review refs. Fill those with real project values before running `ea batch validate`.
@@ -78,14 +78,29 @@ batch:
       column_review_ref: review-20260630-007
       parameter_review_ref: review-20260630-008
       processing_parameters: {}
+    - item_id: xps-001
+      method: xps
+      metadata: raw/xps/char-20260630-005/metadata.yml
+      sample_refs: [sample-001]
+      experiment_refs: [exp-001]
+      x_column: binding_energy_eV
+      y_column: intensity
+      x_unit: eV
+      energy_shift_eV: 0.0
+      calibration_reference: C 1s 284.8 eV user-confirmed reference
+      column_review_ref: review-20260630-009
+      calibration_review_ref: review-20260630-010
+      parameter_review_ref: review-20260630-011
+      processing_parameters: {}
 ```
 
 Notes:
 
-- `method` must be `raman`, `pl`, `xrd`, `ftir`, or `uv_vis`; `uv-vis` is accepted and normalized by the CLI/batch runner where relevant.
+- `method` must be `raman`, `pl`, `xrd`, `ftir`, `uv_vis`, or `xps`; `uv-vis` is accepted and normalized by the CLI/batch runner where relevant.
 - `x_unit` must match the method's allowed units.
 - FTIR items also require `signal_mode` as `absorbance` or `transmittance`.
 - UV-Vis items require `signal_mode` as `absorbance`, `transmittance`, or `reflectance`.
+- XPS items require `calibration_review_ref`; use `energy_shift_eV` and `calibration_reference` to record reviewed binding-energy calibration metadata.
 - `processing_parameters` are merged over each method's default parameters.
 - `parameters_file` or `processing_parameters_file` may point to a project-local YAML parameter override.
 - Set `create_reports: false` for processing-only batches.

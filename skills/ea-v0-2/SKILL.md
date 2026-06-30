@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, XRD, FTIR, or UV-Vis analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, optionally sign repository release manifests/packages, produce distribution checklists with user-managed keys when supplied, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, or XPS analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, optionally sign repository release manifests/packages, produce distribution checklists with user-managed keys when supplied, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -65,6 +65,13 @@ ea review add /path/to/ea-project --target-type uv_vis_columns --target-ref raw/
 ea review add /path/to/ea-project --target-type uv_vis_parameters --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default UV-Vis parameters confirmed"
 ea uv-vis process /path/to/ea-project --metadata raw/uv_vis/char-20260630-001/metadata.yml --x-column wavelength_nm --y-column absorbance --x-unit nm --signal-mode absorbance --column-review-ref review-20260630-009 --parameter-review-ref review-20260630-010 --sample-ref sample-001
 ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea raw import /path/to/ea-project /path/to/raw-xps.txt --characterization-type xps --sample-ref sample-001 --experiment-ref exp-001
+ea xps inspect /path/to/ea-project raw/xps/char-20260630-001/raw-xps.txt
+ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=binding_energy_eV, y=intensity, unit=eV"
+ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
+ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
+ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-011 --calibration-review-ref review-20260630-012 --parameter-review-ref review-20260630-013 --sample-ref sample-001
+ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
 ea materials assignments ws2 --method pl
@@ -72,7 +79,8 @@ ea materials assignments hbn --method xrd
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
 ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --output batch_manifest.yml
+ea templates parameters xps --output /path/to/ea-project/templates/xps_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ea literature status /path/to/ea-project
@@ -114,7 +122,7 @@ ea-release-checklist
 
 The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. The verifier checks the sidecar, embedded manifest, and manifest-listed payload checksums. Optional release signing writes a detached `.sig.yml` sidecar using an explicit user-managed Ed25519 keypair. The distribution checklist writes JSON/Markdown summaries of required release commands, artifacts, verification state, optional signature state, and public boundaries. These release checks do not use Zotero, browser profiles, institution login, local literature caches, or implicit developer-machine key paths.
 
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, image-data, and scientific-figure style entries as concrete initial workflows; treat XPS, electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, XPS, image-data, and scientific-figure style entries as concrete initial workflows; treat electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
 
 Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level.
 
@@ -134,13 +142,14 @@ Report bundle export is read-only for analysis state. It copies one indexed repo
 - For report bundle export, read `references/export-workflow.md`.
 - For editable YAML template generation, read `references/template-workflow.md`.
 - For built-in material assignment records, read `references/material-assignment-library.md`.
-- For batch Raman/PL/XRD/FTIR/UV-Vis execution, read `references/batch-workflow.md`.
+- For batch Raman/PL/XRD/FTIR/UV-Vis/XPS execution, read `references/batch-workflow.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
 - For PL v0.2 behavior, read `references/pl-workflow.md`.
 - For XRD v0.2 behavior, read `references/xrd-workflow.md`.
 - For FTIR v0.2 behavior, read `references/ftir-workflow.md`.
 - For UV-Vis v0.2 behavior, read `references/uv-vis-workflow.md`.
+- For XPS v0.2 behavior, read `references/xps-workflow.md`.
 - For SEM/TEM/optical microscopy image data, read `references/image-data-workflow.md`.
 - For review-gated durable project memory, read `references/memory-workflow.md`.
 

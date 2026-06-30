@@ -7,22 +7,24 @@ from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, p
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, process_pl_result
 from ea.provenance import write_provenance_entry
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xps_report, generate_xrd_report
 from ea.review import require_confirmed_review
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.storage.ids import next_id
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, process_uv_vis_result
+from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, process_xps_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, process_xrd_result
 
 
-SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis"}
+SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis", "xps"}
 METHOD_UNITS = {
     "raman": {"cm^-1", "unknown"},
     "pl": {"eV", "nm", "unknown"},
     "xrd": {"2theta_deg", "unknown"},
     "ftir": {"cm^-1", "unknown"},
     "uv_vis": {"nm", "eV", "unknown"},
+    "xps": {"eV", "unknown"},
 }
 
 
@@ -86,6 +88,8 @@ def _default_parameters(method: str) -> dict[str, Any]:
         return default_ftir_processing_parameters()
     if method == "uv_vis":
         return default_uv_vis_processing_parameters()
+    if method == "xps":
+        return default_xps_processing_parameters()
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -103,6 +107,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
     item_id = str(item.get("item_id") or f"item-{index:03d}")
     method = _normalize_method(str(item.get("method", "")))
     required = ["method", "metadata", "x_column", "y_column", "x_unit", "column_review_ref", "parameter_review_ref"]
+    if method == "xps":
+        required.append("calibration_review_ref")
     for field in required:
         if field not in item or item.get(field) in [None, ""]:
             errors.append({"item_id": item_id, "field": field, "message": "Required field is missing."})
@@ -225,6 +231,20 @@ def _run_method(root: Path, method: str, project_id: str, item: dict[str, Any], 
             ),
             created_at=created_at,
         )
+    if method == "xps":
+        return process_xps_result(
+            root,
+            characterization_metadata_path=metadata_path,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            request=XPSProcessingRequest(
+                **common,
+                energy_shift_eV=float(item.get("energy_shift_eV", item.get("energy_shift_ev", 0.0)) or 0.0),
+                calibration_reference=str(item.get("calibration_reference") or ""),
+                calibration_review_ref=str(item["calibration_review_ref"]),
+            ),
+            created_at=created_at,
+        )
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -239,6 +259,8 @@ def _report_generator(method: str) -> Callable[..., Path]:
         return generate_ftir_report
     if method == "uv_vis":
         return generate_uv_vis_report
+    if method == "xps":
+        return generate_xps_report
     raise BatchManifestError(f"Unsupported report method: {method}")
 
 
@@ -262,6 +284,7 @@ def _generate_report(
         "xrd": "xrd_metadata_path",
         "ftir": "ftir_metadata_path",
         "uv_vis": "uv_vis_metadata_path",
+        "xps": "xps_metadata_path",
     }[method]
     return generator(
         root,
@@ -354,9 +377,13 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
             "y_column": str(item["y_column"]),
             "x_unit": str(item["x_unit"]),
             "signal_mode": item.get("signal_mode"),
+            "energy_shift_eV": item.get("energy_shift_eV", item.get("energy_shift_ev")),
+            "calibration_reference": item.get("calibration_reference"),
             "review_refs": [str(item["column_review_ref"]), str(item["parameter_review_ref"])],
             "status": "pending",
         }
+        if method == "xps":
+            item_record["review_refs"].append(str(item["calibration_review_ref"]))
         try:
             result_path = _run_method(root, method, item_project_id, item, timestamp)
             item_record["result_metadata_ref"] = _path_ref(root, result_path)

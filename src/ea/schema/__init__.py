@@ -16,6 +16,7 @@ from ea.schema.models import (
     SampleRecord,
     SuggestionRecord,
     UVVisProcessingResult,
+    XPSProcessingResult,
     XRDProcessingResult,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "SampleRecord",
     "SuggestionRecord",
     "UVVisProcessingResult",
+    "XPSProcessingResult",
     "XRDProcessingResult",
 ]

@@ -42,3 +42,22 @@ ea_skill:
     raw_is_readonly: true
     calibration_reference_required: true
     generated_outputs_outside_raw: true
+  current_v0_2_support:
+    implemented: true
+    commands:
+      - ea xps inspect
+      - ea xps process
+      - ea xps report
+    supported_x_units:
+      - eV
+      - unknown
+    implemented_outputs:
+      - processed_csv
+      - peak_table
+      - figure_record
+      - markdown_report
+      - provenance_record
+    limitations:
+      - automatic peaks are screening evidence, not chemical-state assignments
+      - first-pass workflow records calibration metadata but does not prove charge correction validity
+      - component fitting, quantitative composition, and sensitivity-factor workflows remain future work

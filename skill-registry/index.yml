@@ -60,7 +60,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.surface_spectroscopy
     method: xps
-    notes: Contract placeholder for binding-energy calibration, peak models, and fitted component reports.
+    notes: Minimal XPS workflow implemented for review-gated binding-energy calibration metadata, screening peak detection, traceable figures, and confidence-labeled reports; component fitting and chemical-state assignment remain future work.
   - id: ea.xrd-analysis
     manifest: skill-registry/builtins/xrd-analysis.yml
     status: builtin_v0_2_reference

@@ -9,10 +9,11 @@ from ea.pl import default_pl_processing_parameters
 from ea.raman import default_processing_parameters
 from ea.storage.files import write_yaml
 from ea.uv_vis import default_uv_vis_processing_parameters
+from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
-SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis")
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis", "xps")
 
 
 def _normalise_method(method: str) -> str:
@@ -33,7 +34,9 @@ def processing_parameters_template(method: str) -> dict[str, Any]:
         return deepcopy(default_xrd_processing_parameters())
     if normalized == "ftir":
         return deepcopy(default_ftir_processing_parameters())
-    return deepcopy(default_uv_vis_processing_parameters())
+    if normalized == "uv_vis":
+        return deepcopy(default_uv_vis_processing_parameters())
+    return deepcopy(default_xps_processing_parameters())
 
 
 def write_processing_parameters_template(path: Path, method: str) -> Path:
@@ -61,6 +64,11 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         x_column = "wavelength_nm"
         y_column = "absorbance"
         x_unit = "nm"
+    elif method == "xps":
+        metadata = "raw/xps/char-YYYYMMDD-001/metadata.yml"
+        x_column = "binding_energy_eV"
+        y_column = "intensity"
+        x_unit = "eV"
     else:
         metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
         x_column = "col_0"
@@ -83,6 +91,10 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         item["signal_mode"] = "absorbance"
     if method == "uv_vis":
         item["signal_mode"] = "absorbance"
+    if method == "xps":
+        item["energy_shift_eV"] = 0.0
+        item["calibration_reference"] = "user-confirmed calibration reference or not applicable"
+        item["calibration_review_ref"] = "review-YYYYMMDD-003"
     return item
 
 

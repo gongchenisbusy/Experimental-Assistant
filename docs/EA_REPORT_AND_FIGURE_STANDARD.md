@@ -114,6 +114,14 @@ UV-Vis：
 - 标注主要 optical features；threshold edge、Tauc、derivative、Kubelka-Munk 等分析必须写清模型和参数。
 - 对 band gap、跃迁类型、缺陷态或膜厚效应的解释必须给出可信度和文献/项目依据。
 
+XPS：
+
+- x 轴为 binding energy，单位 `eV`，按 XPS 习惯可从高到低显示。
+- 必须记录 binding-energy calibration 或 charge correction 的用户确认信息，例如参考峰、能量位移和确认来源。
+- y 轴说明 counts、normalized intensity 或 background-subtracted intensity。
+- 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰直接推出。
+- 若有 peak fitting，报告中必须写明背景模型、峰形、约束、参考依据和可信度。
+
 SEM/TEM/光学显微镜：
 
 - 必须保留原图路径和处理图路径。
@@ -211,7 +219,7 @@ v0.2 建议先完成：
 - `figures/index.yml` 和 `reports/index.yml`。
 - Markdown 报告模板。
 - Matplotlib 默认样式和 footer 标注。
-- Raman、PL、XRD、FTIR、UV-Vis 报告的第一版完整模板。
+- Raman、PL、XRD、FTIR、UV-Vis、XPS 报告的第一版完整模板。
 - 对话回答中的 reference 输出约定。
 
 ## 10. 外部依据

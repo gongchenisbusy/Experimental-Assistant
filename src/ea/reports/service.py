@@ -1019,6 +1019,213 @@ def generate_uv_vis_report(
     return report_path
 
 
+def _xps_peak_summary(root: Path, peak_table_ref: str) -> str:
+    peaks = pd.read_csv(root / peak_table_ref)
+    if peaks.empty:
+        return "当前自动检测未得到稳定 XPS peak，需结合人工检查。"
+    positions = []
+    for _, peak in peaks.sort_values("prominence", ascending=False).head(8).iterrows():
+        positions.append(f"{float(peak['binding_energy_eV']):.2f} eV")
+    return "自动检测给出的主要 XPS peak binding energy 包括：" + "、".join(positions) + "。"
+
+
+def _xps_peak_table(root: Path, peak_table_ref: str) -> str:
+    peaks = pd.read_csv(root / peak_table_ref)
+    if peaks.empty:
+        return "当前没有可展示的自动 XPS peak 检测结果。"
+    rows = [
+        "| peak_id | binding energy (eV) | raw energy | prominence | component model | assignment | confidence |",
+        "|---|---:|---:|---:|---|---|---|",
+    ]
+    for _, peak in peaks.sort_values("prominence", ascending=False).head(12).iterrows():
+        assignment = peak.get("possible_assignment") if pd.notna(peak.get("possible_assignment")) and peak.get("possible_assignment") else "unassigned"
+        confidence = peak.get("assignment_confidence") if pd.notna(peak.get("assignment_confidence")) and peak.get("assignment_confidence") else "insufficient"
+        rows.append(
+            "| {peak_id} | {energy:.2f} | {raw_energy:.2f} | {prominence:.3g} | {model} | {assignment} | {confidence} |".format(
+                peak_id=peak["peak_id"],
+                energy=float(peak["binding_energy_eV"]),
+                raw_energy=float(peak["raw_binding_energy"]),
+                prominence=float(peak.get("prominence", 0.0)),
+                model=peak.get("component_model") if pd.notna(peak.get("component_model")) and peak.get("component_model") else "not_fitted",
+                assignment=assignment,
+                confidence=confidence,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _xps_calibration_text(metadata: dict) -> str:
+    calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
+    shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
+    reference = metadata.get("calibration_reference") or calibration.get("calibration_reference") or "未记录"
+    confidence = calibration.get("confidence", "insufficient")
+    return f"本次处理记录的 binding-energy shift 为 `{shift:.3f} eV`；calibration reference 为 `{reference}`；confidence: `{confidence}`。"
+
+
+def _xps_interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的 XPS 自动解释结果；建议先复核能量校准、背景模型、峰模型和样品背景。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        cite = citation_text if citation_text else ""
+        source = str(item.get("assignment_source", "") or "未记录")
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`；assignment_source: `{source}`")
+    if not citation_text:
+        lines.append("- 上述 XPS 自动解释尚未绑定外部文献、标准谱库或项目参考谱；若用于正式化学态判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
+def generate_xps_report(
+    root: Path,
+    *,
+    project_id: str,
+    xps_metadata_path: Path,
+    related_experiments: list[str] | None = None,
+    related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    metadata = read_yaml(xps_metadata_path)
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
+    report_path = root / "reports" / f"{report_id}.md"
+    related_experiments = related_experiments or []
+    related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="xps_analysis",
+        related_experiments=related_experiments,
+        related_samples=related_samples,
+        related_results=[metadata["xps_result_id"]],
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    outputs = metadata["outputs"]
+    peak_text = _xps_peak_summary(root, outputs["peak_table"])
+    peak_table = _xps_peak_table(root, outputs["peak_table"])
+    calibration_text = _xps_calibration_text(metadata)
+    warnings = metadata.get("warnings") or []
+    warning_text = "；".join(
+        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+        for warning in warnings
+    ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献、标准谱库或项目参考谱对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准谱库或项目参考谱引用。"
+    interpretation_text = _xps_interpretation_text(metadata, citation_text)
+    figure_rel = outputs["figure"]
+    figure_embed = f"![XPS spectrum](../{figure_rel})"
+    body = f"""# XPS 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['xps_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+
+## 数据来源
+
+本报告基于 XPS processing result `{metadata['xps_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+
+## 数据列、校准与处理参数
+
+用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，XPS x 轴单位记录为 `{metadata['x_unit']}`。{calibration_text}处理参数为 `{metadata['processing_parameters']}`。
+
+## 图谱
+
+{figure_embed}
+
+原图文件：`{figure_rel}`
+
+## 主要观察
+
+{peak_text}这些 peak 来自自动处理结果，仍需要结合能量校准、背景扣除、拟合模型、元素窗口、样品制备、仪器设置和用户审核进行解释。
+
+## XPS peak 参数
+
+{peak_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
+## 谨慎解释
+
+在当前数据范围内，自动 XPS peak 只能支持“谱图结构筛查”。不能仅凭本次自动检峰直接确认化学态、价态、元素组成、表面污染、充电校正正确性或拟合组分；正式 XPS 结论需要用户确认校准参考、背景模型、spin-orbit/峰形/约束、灵敏度因子和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+
+## 不确定性与限制
+
+{warning_text}
+
+## 输出文件
+
+- processed CSV: `{outputs['processed_csv']}`
+- peak table: `{outputs['peak_table']}`
+- plot: `{outputs['figure']}`
+- metadata: `{outputs['metadata']}`
+
+## References
+
+{reference_block['references_markdown']}
+
+## 溯源
+
+本报告草稿引用 XPS result `{metadata['xps_result_id']}`，对应 provenance 将在报告生成后写入。
+"""
+    for forbidden in FORBIDDEN_STRONG_CLAIMS:
+        body = body.replace(forbidden, "")
+
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="report_generation",
+        inputs={
+            "records": [str(xps_metadata_path.relative_to(root))],
+            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+        },
+        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        review_refs=[],
+        warnings=warnings,
+        created_at=created_at,
+    )
+    frontmatter = read_yaml_from_markdown_frontmatter(report_path)
+    frontmatter["provenance_refs"] = [provenance_path.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["xps_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
+    )
+    return report_path
+
+
 def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
     from ea.storage.files import read_markdown_record
 

@@ -35,7 +35,7 @@ from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xps_report, generate_xrd_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
@@ -47,6 +47,7 @@ from ea.templates import (
     write_processing_parameters_template,
 )
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
+from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, inspect_xps_file, process_xps_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
 
@@ -264,6 +265,34 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_report.add_argument("--sample-ref", action="append", default=[])
     uv_vis_report.add_argument("--reference-id", action="append", default=[])
 
+    xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
+    xps_sub = xps.add_subparsers(dest="xps_command", required=True)
+    xps_inspect = xps_sub.add_parser("inspect", help="inspect a surface spectroscopy file and suggest XPS columns/unit")
+    xps_inspect.add_argument("workspace", type=Path)
+    xps_inspect.add_argument("spectrum", type=Path)
+    xps_process = xps_sub.add_parser("process", help="run review-gated XPS processing")
+    xps_process.add_argument("workspace", type=Path)
+    xps_process.add_argument("--metadata", required=True, type=Path)
+    xps_process.add_argument("--project-id")
+    xps_process.add_argument("--sample-ref", action="append", default=[])
+    xps_process.add_argument("--x-column", required=True)
+    xps_process.add_argument("--y-column", required=True)
+    xps_process.add_argument("--x-unit", choices=["eV", "unknown"], required=True)
+    xps_process.add_argument("--energy-shift-ev", type=float, default=0.0)
+    xps_process.add_argument("--calibration-reference", default="")
+    xps_process.add_argument("--column-review-ref", required=True)
+    xps_process.add_argument("--calibration-review-ref", required=True)
+    xps_process.add_argument("--parameter-review-ref", required=True)
+    xps_process.add_argument("--parameters-file", type=Path)
+    xps_process.add_argument("--parameters-json")
+    xps_report = xps_sub.add_parser("report", help="generate an XPS analysis report from XPS metadata")
+    xps_report.add_argument("workspace", type=Path)
+    xps_report.add_argument("--metadata", required=True, type=Path)
+    xps_report.add_argument("--project-id")
+    xps_report.add_argument("--experiment-ref", action="append", default=[])
+    xps_report.add_argument("--sample-ref", action="append", default=[])
+    xps_report.add_argument("--reference-id", action="append", default=[])
+
     batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
     batch_sub = batch.add_subparsers(dest="batch_command", required=True)
     batch_validate = batch_sub.add_parser("validate", help="validate a batch characterization manifest")
@@ -468,6 +497,15 @@ def _ftir_processing_parameters(args: argparse.Namespace, workspace: Path) -> di
 
 def _uv_vis_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_uv_vis_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _xps_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_xps_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -806,6 +844,47 @@ def main(argv: list[str] | None = None) -> int:
                 args.workspace,
                 project_id=project_id,
                 uv_vis_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
+    if args.command == "xps":
+        project_id = getattr(args, "project_id", None)
+        if args.xps_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.xps_command == "inspect":
+            inspection = asdict(inspect_xps_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.xps_command == "process":
+            parameters = _xps_processing_parameters(args, args.workspace)
+            path = process_xps_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=XPSProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    energy_shift_eV=args.energy_shift_ev,
+                    calibration_reference=args.calibration_reference,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    calibration_review_ref=args.calibration_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.xps_command == "report":
+            path = generate_xps_report(
+                args.workspace,
+                project_id=project_id,
+                xps_metadata_path=_project_path(args.workspace, args.metadata),
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,
