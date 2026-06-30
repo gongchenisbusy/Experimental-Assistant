@@ -14,6 +14,7 @@ ea-project/
 ├── samples/
 ├── raw/
 ├── processed/
+│   └── batches/
 ├── figures/
 ├── reports/
 ├── literature/
@@ -78,3 +79,12 @@ ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea eval project /path/to/ea-project --no-write
 ```
+
+Batch characterization after individual item review gates exist:
+
+```bash
+ea batch validate /path/to/ea-project batch_manifest.yml
+ea batch run /path/to/ea-project batch_manifest.yml
+```
+
+Batch manifests can coordinate Raman, PL, and XRD items. They do not replace column, unit, or parameter confirmation; each item must reference confirmed review records.

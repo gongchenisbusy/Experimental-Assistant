@@ -94,7 +94,7 @@ EA Orchestrator
 
 材料研究还常需要跨数据综合：
 
-- `batch-comparison`: 多样品、多批次统计比较。
+- `batch-comparison`: 多样品、多批次统计比较；v0.2 先提供 Raman/PL/XRD 已确认条目的批处理协调和汇总，不替代每个表征方法的 review gates。
 - `structure-property-linking`: 结构、成分、工艺和性能之间的证据化关联。
 - `doe-analysis`: 实验设计、变量筛选和响应面分析。
 

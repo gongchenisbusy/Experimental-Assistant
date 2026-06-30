@@ -33,6 +33,8 @@ ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
+ea batch validate /path/to/ea-project batch_manifest.yml
+ea batch run /path/to/ea-project batch_manifest.yml
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
@@ -50,6 +52,7 @@ Enable Zotero, browser assist, literature cache, or institution access only when
 BibTeX import uses an explicit user-provided `.bib` export and de-duplicates references by DOI, URL, title, or citation before creating new project records.
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
 Built-in material assignment records live in `src/ea/materials/assignments.yml`; use `ea materials list/show/assignments` to inspect the current MoS2 Raman/PL/XRD screening rules and their caveats.
+Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, and XRD items without guessing columns or parameters.
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, and review-gated memory indices.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness checks for figure style/source-data traces, report citations, and persisted evaluation records under `evaluation/`.

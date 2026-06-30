@@ -13,6 +13,7 @@ EA_PROJECT_DIRS = [
     "samples",
     "raw",
     "processed",
+    "processed/batches",
     "figures",
     "reports",
     "literature",

@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.config import doctor_project_config
 from ea.evaluation import run_project_evaluation
 from ea.figures import lookup_figure
@@ -174,6 +175,15 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_report.add_argument("--experiment-ref", action="append", default=[])
     xrd_report.add_argument("--sample-ref", action="append", default=[])
     xrd_report.add_argument("--reference-id", action="append", default=[])
+
+    batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
+    batch_sub = batch.add_subparsers(dest="batch_command", required=True)
+    batch_validate = batch_sub.add_parser("validate", help="validate a batch characterization manifest")
+    batch_validate.add_argument("workspace", type=Path)
+    batch_validate.add_argument("manifest", type=Path)
+    batch_run = batch_sub.add_parser("run", help="run a review-gated batch characterization manifest")
+    batch_run.add_argument("workspace", type=Path)
+    batch_run.add_argument("manifest", type=Path)
 
     literature = sub.add_parser("literature", help="local literature-library helpers")
     literature_sub = literature.add_subparsers(dest="literature_command", required=True)
@@ -551,6 +561,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_json({"report": str(path)})
             return 0
+    if args.command == "batch":
+        if args.batch_command == "validate":
+            result = validate_batch_manifest(args.workspace, args.manifest)
+            _print_json(result)
+            return 0 if result["status"] == "pass" else 2
+        if args.batch_command == "run":
+            try:
+                result = run_batch_manifest(args.workspace, args.manifest)
+            except BatchManifestError as exc:
+                _print_json({"status": "fail", "error": str(exc)})
+                return 2
+            _print_json(result)
+            return 0 if result["status"] == "success" else 2
     if args.command == "materials":
         if args.materials_command == "list":
             _print_json({"materials": available_materials()})
