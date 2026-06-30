@@ -1,6 +1,6 @@
 # Export Workflow
 
-Use this reference when a user needs a local handoff package for one EA report or one EA batch run.
+Use this reference when a user needs a local handoff package for one EA report or one EA batch run. For a recipient-facing verification and provenance-audit guide, read `docs/PROJECT_BUNDLE_VERIFICATION.md` from the repository root.
 
 Report bundle command:
 
@@ -107,6 +107,6 @@ Boundaries:
 - Export is read-only for analysis state.
 - Export and optional archive creation do not rerun processing, rerun batches, regenerate reports or figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
 - Export skips files outside the project root and records the skip in `bundle_manifest.yml` or `batch_bundle_manifest.yml`.
-- Checksum manifests are integrity records, not signatures; signed release artifacts are future work and require user-managed keys.
+- Checksum manifests are integrity records, not signatures. EA's built-in detached signing currently applies to repository release packages, not project export bundles; signed project bundles require an external or user-managed signing workflow.
 - Verification commands are read-only and local-only; they do not repair files, fetch missing artifacts, or trust absolute paths from another machine.
 - A bundle with missing linked project refs returns status `warning`; fix the source project links and re-export before handoff when possible.

@@ -10,31 +10,35 @@
    - 面向 release 接收者、维护者和后续 agent 的本地验证路径。
    - 说明 manifest、release zip、`.sha256`、可选签名和 distribution checklist 的验证顺序与边界。
 
-3. `EA_PROJECT_DESIGN.md`
+3. `PROJECT_BUNDLE_VERIFICATION.md`
+   - 面向报告/批处理项目导出包接收者和后续 agent 的交接验证路径。
+   - 说明 `bundle_manifest.yml`、`batch_bundle_manifest.yml`、`bundle_checksums.yml`、archive checksum、provenance 审计和项目导出包签名边界。
+
+4. `EA_PROJECT_DESIGN.md`
    - EA 的项目级设计文档。
    - 描述长期目标、核心价值、架构原则、数据/记忆/证据模型。
    - 不把任何单一版本、单一测试样本或单一表征方法写成项目整体目标。
 
-4. `EA_V0_2_WORK_PLAN.md`
+5. `EA_V0_2_WORK_PLAN.md`
    - EA v0.2 工作计划草案。
    - 用于承接 v0.1 已完成纵向切片，并收集后续用户提出的新版本改进建议。
 
-5. `EA_SKILL_MODULE_ARCHITECTURE.md`
+6. `EA_SKILL_MODULE_ARCHITECTURE.md`
    - EA 父级 skill、子 skill 清单、`add-skills` 接入治理和模块契约。
 
-6. `EA_REPORT_AND_FIGURE_STANDARD.md`
+7. `EA_REPORT_AND_FIGURE_STANDARD.md`
    - 数据分析报告、图片 ID、报告 ID、图片 footer、引用格式和可信度表达。
 
-7. `EA_LOCAL_LITERATURE_LIBRARY_SKILL.md`
+8. `EA_LOCAL_LITERATURE_LIBRARY_SKILL.md`
    - 本地文献库部署流程、Zotero 集成、候选文献评分和专用文献线程同步。
 
-8. `EA_PUBLIC_RELEASE_INITIALIZATION.md`
+9. `EA_PUBLIC_RELEASE_INITIALIZATION.md`
    - 公开发布场景下的初始化、配置、路径、账号和测试隔离要求。
 
-9. `EA_V0_2_CONFIRMATION_CHECKLIST.md`
+10. `EA_V0_2_CONFIRMATION_CHECKLIST.md`
    - v0.2 开始实现前需要用户确认或修改的标准清单。
 
-10. `ea-brief-agent-native-zh.md`
+11. `ea-brief-agent-native-zh.md`
    - 当前简版 agent 入口。
    - 给后续 agent 快速理解 EA 当前方向和应该先读哪些文件。
 

@@ -136,6 +136,8 @@ ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-
 
 For batch work, use `ea export batch-bundle` and the same verification helpers.
 
+For project-bundle provenance audit, checksum interpretation, and the boundary between bundle checksums and external signatures, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
+
 ## 7. Repository Release Checks
 
 Before sharing an EA v0.2 repository package:
