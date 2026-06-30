@@ -25,7 +25,7 @@ name = "ea-v0-2"
 version = "0.2.0"
 description = "Release test"
 requires-python = ">=3.11"
-dependencies = ["pyyaml>=6.0"]
+dependencies = ["cryptography>=42", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.2"]
@@ -36,6 +36,9 @@ ea-public-release-smoke = "ea.release_smoke:main"
 ea-release-manifest = "ea.release_manifest:main"
 ea-release-package = "ea.release_package:main"
 ea-verify-release-package = "ea.release_package:verify_main"
+ea-release-keygen = "ea.release_signature:keygen_main"
+ea-sign-release-package = "ea.release_signature:sign_main"
+ea-verify-release-signature = "ea.release_signature:verify_main"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -63,6 +66,9 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert manifest["package"]["console_scripts"]["ea-release-manifest"] == "ea.release_manifest:main"
     assert manifest["package"]["console_scripts"]["ea-release-package"] == "ea.release_package:main"
     assert manifest["package"]["console_scripts"]["ea-verify-release-package"] == "ea.release_package:verify_main"
+    assert manifest["package"]["console_scripts"]["ea-release-keygen"] == "ea.release_signature:keygen_main"
+    assert manifest["package"]["console_scripts"]["ea-sign-release-package"] == "ea.release_signature:sign_main"
+    assert manifest["package"]["console_scripts"]["ea-verify-release-signature"] == "ea.release_signature:verify_main"
     assert "pyproject.toml" in paths
     assert "src/ea/__init__.py" in paths
     assert "src/ea/__pycache__/ignored.pyc" not in paths
@@ -72,6 +78,9 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert "release_manifest_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_package_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_package_verify_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "release_signature_keygen_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "release_signature_sign_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "release_signature_verify_help" in manifest["validation_contract"]["required_smoke_steps"]
 
 
 def test_write_release_manifest_creates_yaml_manifest(tmp_path: Path) -> None:
@@ -107,3 +116,4 @@ def test_release_manifest_cli_no_write_can_print_manifest(tmp_path: Path, capsys
     assert exit_code == 0
     assert summary["manifest"] is None
     assert summary["release_manifest"]["signature"]["status"] == "not_signed"
+    assert summary["release_manifest"]["signature"]["supported_workflow"] == "detached_ed25519_user_managed_key"

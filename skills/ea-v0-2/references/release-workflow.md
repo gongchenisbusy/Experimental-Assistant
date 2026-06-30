@@ -9,6 +9,9 @@ ea-public-release-smoke
 ea-release-manifest
 ea-release-package
 ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
+ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ```
 
 Script equivalents:
@@ -18,6 +21,9 @@ python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
 python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
+python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ```
 
 Release smoke gate:
@@ -28,6 +34,7 @@ Release smoke gate:
 - Checks the release manifest entry point.
 - Checks the release package entry point.
 - Checks the release package verifier entry point.
+- Checks the release signature keygen/sign/verify help entry points without requiring real user keys.
 - Runs the public-user portability scan.
 
 Release manifest:
@@ -39,6 +46,7 @@ Release manifest:
 - Records SHA-256 checksums for selected release inputs: README, pyproject, `src/ea`, `skills/ea-v0-2`, `skill-registry`, `docs`, `tests`, and `scripts`.
 - Excludes generated or local-only directories such as `.git`, `.venv`, `dist`, `build`, caches, and `__pycache__`.
 - Records the smoke-gate command contract and public-user boundary notes.
+- Records that detached Ed25519 signing is supported as an optional user-managed workflow while the generated manifest itself remains unsigned unless separately signed.
 
 Release package:
 
@@ -58,9 +66,18 @@ Release package verification:
 - Verifies each listed payload file size and SHA-256.
 - Returns JSON with `status: pass` or `status: fail` and concrete failure records.
 
+Optional release package signing:
+
+- Generates a user-controlled Ed25519 keypair only when the user explicitly supplies private/public key output paths.
+- Signs an existing release zip into a detached `.sig.yml` sidecar.
+- Includes archive filename, archive size, archive SHA-256, optional checksum-sidecar hash, public-key fingerprint, key id, timestamp, and signed-payload hash in the sidecar.
+- Verifies the `.sha256` package integrity gate and then verifies the detached signature with the user-supplied public key.
+- Returns JSON with `status: pass` or `status: fail` and concrete failure records.
+- Supports encrypted private-key PEM files when the passphrase is supplied through `--passphrase-env`.
+
 Scope limits:
 
 - Do not treat the manifest, package, or sidecar checksum as a cryptographic signature.
 - Do not use it to verify scientific correctness.
 - Do not add developer-machine Zotero paths, browser profiles, institution login settings, live web search, PDF downloads, or private literature caches.
-- If a signed release is needed, add a separate user-managed key/signature workflow.
+- Do not assume developer-machine release key paths. Ask the user for key paths or use paths the user explicitly provides.

@@ -17,6 +17,9 @@ ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-2026063
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001.zip
+ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -76,12 +79,16 @@ python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
 python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
+python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ```
 
 `scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The installed console entry point is `ea-public-release-smoke`.
 `scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.
+`scripts/generate_release_keypair.py`, `scripts/sign_release_package.py`, and `scripts/verify_release_signature.py` implement an optional detached Ed25519 signature workflow for release packages. Private/public key paths must be supplied explicitly by the user; EA does not assume or search developer-machine key locations. The installed console entry points are `ea-release-keygen`, `ea-sign-release-package`, and `ea-verify-release-signature`.
 
 ## Local Test Fixtures
 

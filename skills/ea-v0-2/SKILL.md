@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate or verify repository release manifests/packages, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, or optionally sign repository release manifests/packages with user-managed keys, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -90,9 +90,12 @@ ea-public-release-smoke
 ea-release-manifest
 ea-release-package
 ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
+ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ```
 
-The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. The verifier checks the sidecar, embedded manifest, and manifest-listed payload checksums. These release checks do not use Zotero, browser profiles, institution login, or local literature caches.
+The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. The verifier checks the sidecar, embedded manifest, and manifest-listed payload checksums. Optional release signing writes a detached `.sig.yml` sidecar using an explicit user-managed Ed25519 keypair. These release checks do not use Zotero, browser profiles, institution login, local literature caches, or implicit developer-machine key paths.
 
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, image-data, and scientific-figure style entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
 
@@ -124,4 +127,4 @@ Report bundle export is read-only for analysis state. It copies one indexed repo
 
 ## Scripts
 
-Repository scripts live outside the skill folder. Use `scripts/public_release_smoke.py` for release checks, `scripts/build_release_manifest.py` for release metadata, `scripts/build_release_package.py` for the portable release zip, and `scripts/verify_release_package.py` for zip verification. They are local-only and should not require user-specific Zotero, browser, institution, or cache settings.
+Repository scripts live outside the skill folder. Use `scripts/public_release_smoke.py` for release checks, `scripts/build_release_manifest.py` for release metadata, `scripts/build_release_package.py` for the portable release zip, `scripts/verify_release_package.py` for zip verification, and the release-signature scripts for optional user-managed detached signatures. They are local-only and should not require user-specific Zotero, browser, institution, cache, or key settings unless the user explicitly supplies them.

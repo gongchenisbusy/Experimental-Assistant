@@ -46,6 +46,9 @@ SMOKE_GATE_COMMANDS = [
     "ea-public-release-smoke",
     "ea-release-package",
     "ea-verify-release-package",
+    "ea-release-keygen",
+    "ea-sign-release-package",
+    "ea-verify-release-signature",
 ]
 
 
@@ -181,6 +184,9 @@ def build_release_manifest(
                 "release_manifest_help",
                 "release_package_help",
                 "release_package_verify_help",
+                "release_signature_keygen_help",
+                "release_signature_sign_help",
+                "release_signature_verify_help",
                 "portability_scan",
             ],
             "skill_validation_target": "skills/ea-v0-2",
@@ -189,7 +195,9 @@ def build_release_manifest(
         "public_boundaries": PUBLIC_BOUNDARY_NOTES,
         "signature": {
             "status": "not_signed",
-            "note": "This manifest records local file integrity only. User-managed cryptographic signing is a future release slice.",
+            "supported_workflow": "detached_ed25519_user_managed_key",
+            "sidecar_suffix": ".sig.yml",
+            "note": "This manifest records local file integrity only. Use ea-sign-release-package with an explicit user-managed key to create a detached signature sidecar.",
         },
     }
 

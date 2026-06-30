@@ -28,6 +28,21 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
         "-c",
         "from ea.release_package import verify_main; verify_main(['--help'])",
     ]
+    assert commands["release_signature_keygen_help"] == [
+        "python",
+        "-c",
+        "from ea.release_signature import keygen_main; keygen_main(['--help'])",
+    ]
+    assert commands["release_signature_sign_help"] == [
+        "python",
+        "-c",
+        "from ea.release_signature import sign_main; sign_main(['--help'])",
+    ]
+    assert commands["release_signature_verify_help"] == [
+        "python",
+        "-c",
+        "from ea.release_signature import verify_main; verify_main(['--help'])",
+    ]
 
 
 def test_public_release_smoke_env_prefers_repo_src(tmp_path: Path, monkeypatch) -> None:

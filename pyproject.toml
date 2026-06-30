@@ -9,6 +9,7 @@ description = "Modular local-first Experimental Assistant core"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=42",
   "pydantic>=2.7",
   "pyyaml>=6.0",
   "pandas>=2.2",
@@ -29,6 +30,9 @@ ea-public-release-smoke = "ea.release_smoke:main"
 ea-release-manifest = "ea.release_manifest:main"
 ea-release-package = "ea.release_package:main"
 ea-verify-release-package = "ea.release_package:verify_main"
+ea-release-keygen = "ea.release_signature:keygen_main"
+ea-sign-release-package = "ea.release_signature:sign_main"
+ea-verify-release-signature = "ea.release_signature:verify_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
