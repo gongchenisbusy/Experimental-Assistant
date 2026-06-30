@@ -28,6 +28,7 @@ Generated analysis figures should use the shared Python/matplotlib profile `natu
 
 Figure index records should include `style_profile` and `source_data_refs` when generated from processed data. Raman, PL, and XRD workflows write these fields so another agent can trace a plotted figure back to processed CSV and peak-table sources.
 Run `ea eval project` before handoff to check that generated analysis figures keep this style/source-data metadata.
+Use `ea export report-bundle /path/to/ea-project --report-id <report_id>` when a user or later agent needs the report, figure files, source data, result metadata, references, and provenance gathered into one local handoff folder.
 
 References use inline numeric citations at the exact supported text location, then matching entries. Adjacent references use `[1][2]`, not `[1,2]`, so the report validator can map each marker directly.
 

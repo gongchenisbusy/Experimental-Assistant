@@ -8,6 +8,7 @@ from pathlib import Path
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.config import doctor_project_config
 from ea.evaluation import run_project_evaluation
+from ea.exports import ReportBundleError, export_report_bundle
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
@@ -80,6 +81,13 @@ def build_parser() -> argparse.ArgumentParser:
     eval_project.add_argument("--suite", choices=["public-release", "public_release"], default="public-release")
     eval_project.add_argument("--no-write", action="store_true")
     eval_project.add_argument("--output", type=Path)
+
+    export_parser = sub.add_parser("export", help="export local EA handoff bundles")
+    export_sub = export_parser.add_subparsers(dest="export_command", required=True)
+    report_bundle = export_sub.add_parser("report-bundle", help="bundle one report with figures, source data, and traceability records")
+    report_bundle.add_argument("workspace", type=Path)
+    report_bundle.add_argument("--report-id", required=True)
+    report_bundle.add_argument("--output", type=Path)
 
     healthcheck = sub.add_parser("healthcheck", help="audit EA project config, provenance, raw files, reports, and figures")
     healthcheck.add_argument("workspace", type=Path)
@@ -427,6 +435,18 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_json(result)
             return 0 if result["status"] != "fail" else 2
+    if args.command == "export":
+        if args.export_command == "report-bundle":
+            output_dir = args.output
+            if output_dir and not output_dir.is_absolute():
+                output_dir = args.workspace / output_dir
+            try:
+                result = export_report_bundle(args.workspace, report_id=args.report_id, output_dir=output_dir)
+            except ReportBundleError as exc:
+                _print_json({"status": "fail", "error": str(exc)})
+                return 2
+            _print_json(result)
+            return 0 if result["status"] == "complete" else 1
     if args.command == "healthcheck":
         result = run_healthcheck(args.workspace)
         _print_json(result)

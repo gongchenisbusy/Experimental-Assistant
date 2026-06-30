@@ -12,6 +12,7 @@ Current v0.2 support:
 - The default style profile is `nature_like_clean`.
 - Raman, PL, and XRD workflows register generated figures with `style_profile` and `source_data_refs`.
 - Figure records remain traceable through `figures/index.yml`, report backlinks, result IDs, raw data IDs, sample IDs, and provenance records.
+- `ea export report-bundle` can gather report-linked figure files and source-data refs into one local handoff folder.
 
 Required gates:
 
@@ -29,4 +30,4 @@ Current limitations:
 - It does not handle journal-specific figure-size submission packages.
 - It does not replace manual review for microscopy integrity, statistical annotation, or panel legends.
 
-Future work should add report-to-figure export bundles, multi-panel templates, SVG/PDF/TIFF export helpers, panel-letter helpers, Source Data package generation, and visual QA checks.
+Future work should add multi-panel templates, SVG/PDF/TIFF export helpers, panel-letter helpers, richer Source Data packages, and visual QA checks.

@@ -11,6 +11,8 @@ ea-project/
 ├── .ea/project_config.yml
 ├── experiments/
 ├── evaluation/
+├── exports/
+│   └── report-bundles/
 ├── samples/
 ├── raw/
 ├── templates/
@@ -89,6 +91,14 @@ ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea eval project /path/to/ea-project --no-write
 ```
+
+Report bundle export:
+
+```bash
+ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001
+```
+
+Report bundles are written under `exports/report-bundles/{report_id}` by default and copy linked report, figure, source-data, result, reference, and provenance artifacts for handoff.
 
 Batch characterization after individual item review gates exist:
 

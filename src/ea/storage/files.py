@@ -10,6 +10,8 @@ EA_PROJECT_DIRS = [
     ".ea",
     "experiments",
     "evaluation",
+    "exports",
+    "exports/report-bundles",
     "samples",
     "raw",
     "templates",
