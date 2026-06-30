@@ -111,6 +111,13 @@ def default_thermal_processing_parameters() -> dict[str, Any]:
             "fractions": [0.05, 0.10],
             "source": "ea.thermal.threshold_summary:v0.2",
         },
+        "baseline_correction": {
+            "enabled": False,
+            "method": "linear_two_point",
+            "source": "ea.thermal.baseline_correction:v0.2",
+            "anchor_strategy": "trace_edges",
+            "anchor_temperatures_C": [],
+        },
         "context_record": {
             "enabled": False,
             "method": "reviewed_metadata_record",
@@ -267,7 +274,162 @@ def _confirmed_frame(path: Path, request: ThermalAnalysisProcessingRequest) -> p
     return data
 
 
-def _apply_processing(data: pd.DataFrame, request: ThermalAnalysisProcessingRequest, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _nearest_signal_anchor(temperature: np.ndarray, signal: np.ndarray, requested_temperature: float | None) -> dict[str, Any]:
+    if requested_temperature is None:
+        index = 0
+    else:
+        index = int(np.nanargmin(np.abs(temperature - requested_temperature)))
+    return {
+        "requested_temperature_C": requested_temperature,
+        "actual_temperature_C": float(temperature[index]),
+        "signal_value": float(signal[index]),
+        "row_index": index,
+    }
+
+
+def _baseline_anchors(processed: pd.DataFrame, signal: np.ndarray, params: dict[str, Any]) -> tuple[list[dict[str, Any]], str, list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    temperature = processed["temperature_C"].to_numpy(dtype=float)
+    raw_anchors = params.get("anchor_temperatures_C", [])
+    anchors: list[dict[str, Any]]
+    strategy = str(params.get("anchor_strategy") or "trace_edges")
+    if isinstance(raw_anchors, list | tuple) and len(raw_anchors) >= 2:
+        numeric: list[float] = []
+        for value in raw_anchors:
+            coerced = _as_float(value)
+            if coerced is not None:
+                numeric.append(coerced)
+        if len(numeric) >= 2:
+            numeric = sorted(numeric)
+            if len(numeric) > 2:
+                warnings.append(
+                    _warning(
+                        "thermal_baseline_extra_anchors_ignored",
+                        "Thermal linear baseline correction used the first and last reviewed anchor temperatures.",
+                        severity="low",
+                        anchor_count=len(numeric),
+                    )
+                )
+            anchors = [_nearest_signal_anchor(temperature, signal, numeric[0]), _nearest_signal_anchor(temperature, signal, numeric[-1])]
+            return anchors, "reviewed_anchor_temperatures_C", warnings
+        warnings.append(
+            _warning(
+                "thermal_baseline_anchor_temperatures_invalid",
+                "Thermal baseline anchor temperatures were invalid; trace-edge anchors were used instead.",
+                severity="medium",
+            )
+        )
+    elif raw_anchors:
+        warnings.append(
+            _warning(
+                "thermal_baseline_anchor_temperatures_ignored",
+                "Thermal baseline anchor temperatures were ignored because at least two numeric values are required.",
+                severity="medium",
+            )
+        )
+    anchors = [
+        _nearest_signal_anchor(temperature, signal, None),
+        {
+            "requested_temperature_C": None,
+            "actual_temperature_C": float(temperature[-1]),
+            "signal_value": float(signal[-1]),
+            "row_index": int(len(signal) - 1),
+        },
+    ]
+    return anchors, strategy, warnings
+
+
+def _apply_baseline_correction(
+    processed: pd.DataFrame,
+    signal: np.ndarray,
+    request: ThermalAnalysisProcessingRequest,
+    parameters: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("baseline_correction", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return signal, None, []
+    source = str(params.get("source") or "ea.thermal.baseline_correction:v0.2")
+    method = str(params.get("method") or "linear_two_point")
+    warnings: list[dict[str, Any]] = []
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "applied": False,
+        "measurement_mode": request.measurement_mode,
+        "confidence": "insufficient",
+        "boundary": (
+            "Thermal baseline correction is a numeric processing step only; it does not assign Tg/Tm/Tc, "
+            "fit kinetic models, rank thermal stability, or prove decomposition, melting, crystallization, or mechanism claims."
+        ),
+    }
+    if method != "linear_two_point":
+        warning = _warning(
+            "thermal_baseline_method_unsupported",
+            "Thermal baseline correction method is not supported by EA v0.2.",
+            severity="medium",
+            method=method,
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_method", "warnings": warnings})
+        return signal, record, warnings
+    if request.measurement_mode not in {"dsc", "dtg"}:
+        warning = _warning(
+            "thermal_baseline_mode_unsupported",
+            "Thermal baseline correction was skipped because it is currently supported only for reviewed DSC/DTG traces.",
+            severity="medium",
+            measurement_mode=request.measurement_mode,
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_mode", "warnings": warnings})
+        return signal, record, warnings
+    if len(signal) < 2:
+        warning = _warning(
+            "thermal_baseline_insufficient_points",
+            "Thermal baseline correction requires at least two numeric data points.",
+            severity="medium",
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_insufficient_points", "warnings": warnings})
+        return signal, record, warnings
+
+    anchors, anchor_strategy, anchor_warnings = _baseline_anchors(processed, signal, params)
+    warnings.extend(anchor_warnings)
+    left, right = anchors[0], anchors[-1]
+    x1 = float(left["actual_temperature_C"])
+    x2 = float(right["actual_temperature_C"])
+    if abs(x2 - x1) < 1e-12:
+        warning = _warning(
+            "thermal_baseline_degenerate_anchors",
+            "Thermal baseline correction was skipped because reviewed anchors collapse to the same temperature.",
+            severity="medium",
+            anchor_temperature_C=x1,
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_degenerate_anchors", "anchor_points": anchors, "warnings": warnings})
+        return signal, record, warnings
+
+    temperature = processed["temperature_C"].to_numpy(dtype=float)
+    baseline = np.interp(temperature, [x1, x2], [float(left["signal_value"]), float(right["signal_value"])])
+    corrected = signal - baseline
+    processed["baseline_estimate"] = baseline
+    processed["baseline_corrected_signal"] = corrected
+    record.update(
+        {
+            "status": "applied_linear_baseline",
+            "applied": True,
+            "confidence": "medium",
+            "anchor_strategy": anchor_strategy,
+            "anchor_points": anchors,
+            "baseline_column": "baseline_estimate",
+            "corrected_column": "baseline_corrected_signal",
+            "warnings": warnings,
+        }
+    )
+    return corrected, record, warnings
+
+
+def _apply_processing(data: pd.DataFrame, request: ThermalAnalysisProcessingRequest, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any] | None]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     signal = processed["signal_raw"].to_numpy(dtype=float)
@@ -293,6 +455,8 @@ def _apply_processing(data: pd.DataFrame, request: ThermalAnalysisProcessingRequ
             warnings.append(_warning("thermal_smoothing_applied", "Savitzky-Golay smoothing was applied before thermal feature detection.", window_length=window_length, polyorder=polyorder))
         if adjusted:
             warnings.append(_warning("thermal_smoothing_parameter_adjusted", "Invalid Savitzky-Golay parameters were adjusted for thermal processing.", severity="medium", window_length=window_length, polyorder=polyorder))
+    signal, baseline_record, baseline_warnings = _apply_baseline_correction(processed, signal, request, parameters)
+    warnings.extend(baseline_warnings)
     processed["processed_signal"] = signal
     if request.measurement_mode == "tga" or (request.measurement_mode == "unknown" and request.signal_unit in {"%", "mg"}):
         if request.signal_unit == "%":
@@ -309,7 +473,7 @@ def _apply_processing(data: pd.DataFrame, request: ThermalAnalysisProcessingRequ
         processed["processed_dtg_signal"] = signal
     else:
         processed["processed_heat_flow"] = signal
-    return processed, warnings
+    return processed, warnings, baseline_record
 
 
 def _feature_row(
@@ -530,7 +694,35 @@ def _append_context_interpretation(analysis: dict[str, Any], context_record: dic
     return analysis
 
 
-def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ThermalAnalysisProcessingRequest, context_record: dict[str, Any] | None = None) -> dict[str, Any]:
+def _append_baseline_interpretation(analysis: dict[str, Any], baseline_record: dict[str, Any] | None) -> dict[str, Any]:
+    if not baseline_record:
+        return analysis
+    analysis["baseline_correction"] = baseline_record
+    if baseline_record.get("status") == "applied_linear_baseline":
+        anchors = baseline_record.get("anchor_points") or []
+        evidence = ["baseline_correction"]
+        evidence.extend(f"{float(anchor['actual_temperature_C']):.1f}C" for anchor in anchors if isinstance(anchor, dict) and "actual_temperature_C" in anchor)
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    "Reviewed linear thermal baseline correction was applied before feature detection. Use the corrected trace for screening-event review, "
+                    "but do not treat baseline correction as a standalone transition assignment, kinetic fit, stability ranking, or mechanism conclusion."
+                ),
+                "confidence": baseline_record.get("confidence", "medium"),
+                "evidence": evidence,
+                "assignment_source": baseline_record.get("assignment_source", "ea.thermal.baseline_correction:v0.2"),
+            }
+        )
+    return analysis
+
+
+def _summary(
+    processed: pd.DataFrame,
+    features: pd.DataFrame,
+    request: ThermalAnalysisProcessingRequest,
+    context_record: dict[str, Any] | None = None,
+    baseline_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     temperature = processed["temperature_C"].to_numpy(dtype=float)
     signal = processed["processed_signal"].to_numpy(dtype=float)
     analysis: dict[str, Any] = {
@@ -576,7 +768,8 @@ def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ThermalAn
                 "evidence": [],
             }
         )
-    return _append_context_interpretation(analysis, context_record)
+    analysis = _append_context_interpretation(analysis, context_record)
+    return _append_baseline_interpretation(analysis, baseline_record)
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -643,10 +836,10 @@ def process_thermal_result(
         raise ThermalAnalysisProcessingError(f"File is {inspection.file_kind}, not thermal_analysis")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), request, parameters)
+    processed, processing_warnings, baseline_record = _apply_processing(_confirmed_frame(raw_path, request), request, parameters)
     features = _detect_features(processed, parameters, request)
     context_record, context_warnings = _record_context(parameters)
-    analysis = _summary(processed, features, request, context_record)
+    analysis = _summary(processed, features, request, context_record, baseline_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -659,16 +852,24 @@ def process_thermal_result(
     output_dir = root / "processed" / sample_dir / "thermal_analysis" / result_id
     processed_csv = output_dir / "thermal_processed.csv"
     features_csv = output_dir / "thermal_features.csv"
+    baseline_yml = output_dir / "thermal_baseline.yml"
     context_yml = output_dir / "thermal_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "thermal_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "thermal_metadata.yml"
-    for output in [processed_csv, features_csv, context_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, baseline_yml, context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     features.to_csv(features_csv, index=False)
+    baseline_ref: str | None = None
+    if baseline_record is not None:
+        baseline_ref = str(baseline_yml.relative_to(root))
+        baseline_record["record_ref"] = baseline_ref
+        write_yaml(baseline_yml, baseline_record)
+        if analysis.get("baseline_correction"):
+            analysis["baseline_correction"]["record_ref"] = baseline_ref
     context_ref: str | None = None
     if context_record is not None:
         context_ref = str(context_yml.relative_to(root))
@@ -694,6 +895,8 @@ def process_thermal_result(
         "processed_csv": str(processed_csv.relative_to(root)),
         "metadata": str(result_metadata.relative_to(root)),
     }
+    if baseline_ref:
+        outputs["baseline_correction"] = baseline_ref
     if context_ref:
         outputs["context_record"] = context_ref
     result = ThermalAnalysisProcessingResult(
@@ -726,6 +929,8 @@ def process_thermal_result(
     ]
     if context_ref:
         provenance_files.append(context_ref)
+    if baseline_ref:
+        provenance_files.append(baseline_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="thermal_analysis_processing",
@@ -785,6 +990,7 @@ def process_thermal_result(
                 for value in [
                     str(processed_csv.relative_to(root)),
                     str(features_csv.relative_to(root)),
+                    baseline_ref,
                     context_ref,
                 ]
                 if value

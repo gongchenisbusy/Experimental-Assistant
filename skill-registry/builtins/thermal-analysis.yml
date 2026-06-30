@@ -10,6 +10,7 @@ ea_skill:
     - user_review_state
   output_artifacts:
     - processed_result
+    - baseline_correction
     - context_record
     - figure_record
     - report_section
@@ -74,9 +75,21 @@ ea_skill:
         - atmosphere_program
         - correction_notes
       boundary: metadata_provenance_only_no_sign_inversion_baseline_correction_transition_assignment_kinetics_or_mechanism_claim
+    baseline_corrections:
+      source: ea.thermal.baseline_correction:v0.2
+      default_enabled: false
+      supported_methods:
+        - linear_two_point
+      supported_modes:
+        - dsc
+        - dtg
+      output_columns:
+        - baseline_estimate
+        - baseline_corrected_signal
+      boundary: numeric_processing_only_no_transition_assignment_kinetics_stability_ranking_or_mechanism_claim
     limitations:
       - no_glass_transition_or_melting_assignment_without_future_protocol_model
       - no_kinetic_model_fitting
-      - no_numeric_baseline_or_reference_correction_from_context_record
+      - no_reference_correction_or_nonlinear_baseline_model
       - no_formal_thermal_stability_ranking_without_replicates_and_user_review
       - no_memory_write_without_user_confirmation

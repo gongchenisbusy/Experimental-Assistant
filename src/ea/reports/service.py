@@ -1959,6 +1959,36 @@ def _thermal_context_record_text(metadata: dict) -> str:
     )
 
 
+def _thermal_baseline_correction_text(metadata: dict) -> str:
+    correction = (metadata.get("peak_analysis") or {}).get("baseline_correction")
+    if not correction:
+        return "当前没有启用或记录 thermal baseline correction。"
+    status = correction.get("status", "unknown")
+    applied = correction.get("applied", False)
+    confidence = correction.get("confidence", "insufficient")
+    source = correction.get("assignment_source", "ea.thermal.baseline_correction:v0.2")
+    record_ref = correction.get("record_ref", "未生成")
+    method = correction.get("method", "未记录")
+    anchors = correction.get("anchor_points") or []
+    anchor_parts = []
+    for anchor in anchors:
+        if isinstance(anchor, dict):
+            temp = anchor.get("actual_temperature_C", "n/a")
+            signal = anchor.get("signal_value", "n/a")
+            anchor_parts.append(f"T={temp} C, signal={signal}")
+    anchor_text = "；".join(anchor_parts) if anchor_parts else "未记录"
+    baseline_column = correction.get("baseline_column", "未生成")
+    corrected_column = correction.get("corrected_column", "未生成")
+    return (
+        f"Thermal baseline correction 状态为 `{status}`；applied: `{applied}`；method: `{method}`；record: `{record_ref}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"- anchor points: `{anchor_text}`\n"
+        f"- baseline column: `{baseline_column}`\n"
+        f"- corrected signal column: `{corrected_column}`\n\n"
+        "该 baseline correction 是已审核参数触发的数值处理步骤，用于改善 DSC/DTG-style trace 的筛查；它本身不自动给出 Tg/Tm/Tc、动力学、热稳定性排名或分解/熔融/结晶机制结论。"
+    )
+
+
 def generate_thermal_report(
     root: Path,
     *,
@@ -1998,6 +2028,7 @@ def generate_thermal_report(
     feature_table = _thermal_feature_table(root, feature_table_ref)
     summary_text = _thermal_summary_text(metadata)
     context_text = _thermal_context_record_text(metadata)
+    baseline_text = _thermal_baseline_correction_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -2029,6 +2060,10 @@ def generate_thermal_report(
 ## Thermal context record
 
 {context_text}
+
+## Thermal baseline correction
+
+{baseline_text}
 
 ## 图谱
 
@@ -2064,6 +2099,7 @@ def generate_thermal_report(
 
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{feature_table_ref}`
+{f"- baseline correction: `{outputs['baseline_correction']}`" if outputs.get('baseline_correction') else "- baseline correction: `未生成`"}
 {f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
@@ -2088,7 +2124,17 @@ def generate_thermal_report(
         workflow="report_generation",
         inputs={
             "records": [str(thermal_metadata_path.relative_to(root))],
-            "files": [value for value in [outputs["processed_csv"], feature_table_ref, outputs.get("context_record"), outputs["figure"]] if value],
+            "files": [
+                value
+                for value in [
+                    outputs["processed_csv"],
+                    feature_table_ref,
+                    outputs.get("baseline_correction"),
+                    outputs.get("context_record"),
+                    outputs["figure"],
+                ]
+                if value
+            ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},

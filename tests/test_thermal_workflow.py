@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+import pandas as pd
+
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml
 from ea.thermal import default_thermal_processing_parameters, inspect_thermal_file
@@ -454,6 +456,190 @@ def test_thermal_context_record_preserves_reviewed_sign_and_baseline_metadata(tm
     assert thermal["outputs"]["context_record"] in report_body
 
 
+def test_thermal_baseline_correction_applies_reviewed_linear_model(tmp_path: Path, capsys) -> None:
+    fixture = _write_dsc_fixture(tmp_path / "synthetic-thermal-dsc-baseline.txt")
+    workspace = tmp_path / "thermal-baseline-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Thermal Baseline Correction",
+            "--slug",
+            "thermal-baseline-correction",
+            "--direction",
+            "thermal baseline correction workflow",
+            "--material",
+            "polymer film",
+            "--experiment-type",
+            "materials DSC baseline correction",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "thermal_analysis",
+            "--sample-ref",
+            "sample-dsc-baseline-001",
+            "--experiment-ref",
+            "exp-dsc-baseline-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "temperature=temperature_C, signal=heat_flow_mW_mg, temperature_unit=C, signal_unit=mW/mg, mode=dsc",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "DSC nitrogen; reviewed linear baseline anchors at trace edges; no transition assignment requested"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_thermal_processing_parameters()
+    parameters["baseline_correction"].update(
+        {
+            "enabled": True,
+            "method": "linear_two_point",
+            "anchor_strategy": "reviewed_trace_edges",
+            "anchor_temperatures_C": [25.0, 300.0],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "thermal",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-baseline-001",
+            "--temperature-column",
+            "temperature_C",
+            "--signal-column",
+            "heat_flow_mW_mg",
+            "--temperature-unit",
+            "C",
+            "--signal-unit",
+            "mW/mg",
+            "--measurement-mode",
+            "dsc",
+            "--context-summary",
+            context_text,
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps({"baseline_correction": parameters["baseline_correction"]}, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    thermal_metadata = Path(process_output["metadata"])
+    thermal = read_yaml(thermal_metadata)
+
+    baseline = thermal["peak_analysis"]["baseline_correction"]
+    assert baseline["status"] == "applied_linear_baseline"
+    assert baseline["applied"] is True
+    assert baseline["confidence"] == "medium"
+    assert baseline["corrected_column"] == "baseline_corrected_signal"
+    assert "does not assign Tg/Tm/Tc" in baseline["boundary"]
+    assert thermal["outputs"]["baseline_correction"].endswith("thermal_baseline.yml")
+    saved_baseline = read_yaml(workspace / thermal["outputs"]["baseline_correction"])
+    assert saved_baseline["record_ref"] == thermal["outputs"]["baseline_correction"]
+    assert len(saved_baseline["anchor_points"]) == 2
+    assert saved_baseline["anchor_points"][0]["actual_temperature_C"] == 25.0
+
+    processed = pd.read_csv(workspace / thermal["outputs"]["processed_csv"])
+    assert "baseline_estimate" in processed.columns
+    assert "baseline_corrected_signal" in processed.columns
+    assert abs(float(processed["baseline_corrected_signal"].iloc[0])) < 1e-8
+    assert abs(float(processed["baseline_corrected_signal"].iloc[-1])) < 1e-8
+    assert thermal["peak_analysis"]["signal_summary"]["start_signal"] == 0.0
+    assert thermal["peak_analysis"]["possible_interpretations"][-1]["evidence"][0] == "baseline_correction"
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][thermal["figure_id"]]
+    assert thermal["outputs"]["baseline_correction"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "thermal",
+            "report",
+            str(workspace),
+            "--metadata",
+            thermal_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-baseline-001",
+            "--experiment-ref",
+            "exp-dsc-baseline-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Thermal baseline correction" in report_body
+    assert "linear_two_point" in report_body
+    assert "数值处理步骤" in report_body
+    assert thermal["outputs"]["baseline_correction"] in report_body
+
+
 def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -469,7 +655,9 @@ def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     reference_text = thermal_reference.read_text(encoding="utf-8")
     assert "context_review_ref" in reference_text
     assert "context_record" in reference_text
+    assert "baseline_correction" in reference_text
     assert "kinetic" in reference_text
     thermal_record = next(item for item in registry["skills"] if item["id"] == "ea.thermal-analysis")
     assert "Minimal thermal analysis workflow implemented" in thermal_record["notes"]
     assert "context_records" in thermal_record["notes"]
+    assert "baseline_corrections" in thermal_record["notes"]
