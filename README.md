@@ -4,7 +4,7 @@ EA v0.2 is the clean implementation workspace for the local-first Experimental A
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths.
+New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Release recipients should use `docs/RELEASE_VERIFICATION.md` before installing or redistributing a release package.
 
 ## Public Setup
 

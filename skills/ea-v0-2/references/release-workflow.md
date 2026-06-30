@@ -2,6 +2,8 @@
 
 Use this reference when preparing the EA v0.2 repository for public handoff or a release checkpoint.
 
+For recipient-side artifact verification details in the repository docs, read `docs/RELEASE_VERIFICATION.md`.
+
 Commands:
 
 ```bash
@@ -46,7 +48,7 @@ Release manifest:
 - Records package metadata from `pyproject.toml`.
 - Records git commit, branch, tags at `HEAD`, and dirty files.
 - Records console script entry points.
-- Records SHA-256 checksums for selected release inputs: README, pyproject, `src/ea`, `skills/ea-v0-2`, `skill-registry`, `docs` including `docs/PUBLIC_ONBOARDING.md`, `tests`, and `scripts`.
+- Records SHA-256 checksums for selected release inputs: README, pyproject, `src/ea`, `skills/ea-v0-2`, `skill-registry`, `docs` including `docs/PUBLIC_ONBOARDING.md` and `docs/RELEASE_VERIFICATION.md`, `tests`, and `scripts`.
 - Excludes generated or local-only directories such as `.git`, `.venv`, `dist`, `build`, caches, and `__pycache__`.
 - Records the smoke-gate command contract and public-user boundary notes.
 - Records that detached Ed25519 signing is supported as an optional user-managed workflow while the generated manifest itself remains unsigned unless separately signed.

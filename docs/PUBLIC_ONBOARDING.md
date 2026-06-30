@@ -148,6 +148,8 @@ ea-verify-release-package dist/ea-v0-2-0.2.0-COMMIT-release.zip
 ea-release-checklist
 ```
 
+For recipient-side artifact verification details, read `docs/RELEASE_VERIFICATION.md`.
+
 Optional signing uses explicit user-managed keys:
 
 ```bash
