@@ -905,6 +905,60 @@ def _uv_vis_derivative_text(metadata: dict) -> str:
     )
 
 
+def _has_uv_vis_context_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_uv_vis_context_value(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_uv_vis_context_value(item) for item in value)
+    return True
+
+
+def _format_uv_vis_context_value(value: object) -> str:
+    if isinstance(value, dict):
+        parts = [f"{key}={_format_uv_vis_context_value(item)}" for key, item in value.items() if _has_uv_vis_context_value(item)]
+        return "; ".join(parts) if parts else "未记录"
+    if isinstance(value, list | tuple):
+        parts = [_format_uv_vis_context_value(item) for item in value if _has_uv_vis_context_value(item)]
+        return "; ".join(parts) if parts else "未记录"
+    return str(value)
+
+
+def _uv_vis_correction_context_text(metadata: dict) -> str:
+    context = (metadata.get("peak_analysis") or {}).get("correction_context")
+    if not context:
+        return "当前没有启用或记录 UV-Vis correction context。"
+    status = context.get("status", "unknown")
+    confidence = context.get("confidence", "insufficient")
+    source = context.get("assignment_source", "ea.uv_vis.correction_context:v0.2")
+    record_ref = context.get("record_ref", "未生成")
+    fields = context.get("reviewed_context_fields") or []
+    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed context 字段"
+    labels = {
+        "sample_geometry": "sample geometry",
+        "substrate": "substrate",
+        "reference": "reference",
+        "background": "background",
+        "diffuse_reflectance": "diffuse reflectance",
+        "correction_notes": "correction notes",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = context.get(key)
+        if _has_uv_vis_context_value(value):
+            rows.append(f"- {label}: `{_format_uv_vis_context_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- correction context details: `未记录`"
+    return (
+        f"Correction context 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该记录只保存已审核的基底、参比、背景、样品几何或漫反射语境；本阶段不执行自动数值校正，也不把这些 metadata 单独作为 optical mechanism 或 band gap 结论。"
+    )
+
+
 def _uv_vis_interpretation_text(metadata: dict, citation_text: str) -> str:
     peak_analysis = metadata.get("peak_analysis") or {}
     interpretations = peak_analysis.get("possible_interpretations") or []
@@ -962,6 +1016,7 @@ def generate_uv_vis_report(
     edge_text = _uv_vis_edge_text(metadata)
     tauc_text = _uv_vis_tauc_text(metadata)
     derivative_text = _uv_vis_derivative_text(metadata)
+    correction_context_text = _uv_vis_correction_context_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -989,6 +1044,10 @@ def generate_uv_vis_report(
 ## 数据列与处理参数
 
 用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，UV-Vis x 轴单位记录为 `{metadata['x_unit']}`，信号模式为 `{metadata.get('signal_mode', 'absorbance')}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## Correction context 记录
+
+{correction_context_text}
 
 ## 图谱
 
@@ -1034,6 +1093,7 @@ def generate_uv_vis_report(
 - feature table: `{outputs['peak_table']}`
 {f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get('tauc_table') else "- Tauc/Kubelka-Munk table: `未生成`"}
 {f"- derivative table: `{outputs['derivative_table']}`" if outputs.get('derivative_table') else "- derivative table: `未生成`"}
+{f"- correction context: `{outputs['correction_context']}`" if outputs.get('correction_context') else "- correction context: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1064,6 +1124,7 @@ def generate_uv_vis_report(
                     outputs["peak_table"],
                     outputs.get("tauc_table"),
                     outputs.get("derivative_table"),
+                    outputs.get("correction_context"),
                     outputs["figure"],
                 ]
                 if value

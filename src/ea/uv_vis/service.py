@@ -106,6 +106,17 @@ def default_uv_vis_processing_parameters() -> dict[str, Any]:
             "min_points": 8,
             "source": "ea.uv_vis.derivative_screening:v0.2",
         },
+        "correction_context": {
+            "enabled": False,
+            "method": "reviewed_metadata_record",
+            "source": "ea.uv_vis.correction_context:v0.2",
+            "sample_geometry": {},
+            "substrate": {},
+            "reference": {},
+            "background": {},
+            "diffuse_reflectance": {},
+            "correction_notes": [],
+        },
     }
 
 
@@ -778,11 +789,105 @@ def _run_derivative_analysis(
     return table, summary, warnings
 
 
+_CORRECTION_CONTEXT_SECTIONS = ("sample_geometry", "substrate", "reference", "background", "diffuse_reflectance")
+
+
+def _has_context_payload(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_context_payload(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_context_payload(item) for item in value)
+    return True
+
+
+def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    value = params.get(name, {})
+    if isinstance(value, dict):
+        return deepcopy(value), None
+    return (
+        {},
+        _warning(
+            "uv_vis_correction_context_section_ignored",
+            "A UV-Vis correction-context section was ignored because it was not a mapping.",
+            severity="medium",
+            section=name,
+        ),
+    )
+
+
+def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+    notes = params.get("correction_notes", [])
+    if isinstance(notes, list):
+        return deepcopy(notes), None
+    if isinstance(notes, tuple):
+        return list(notes), None
+    if isinstance(notes, str) and notes.strip():
+        return [notes], None
+    return (
+        [],
+        _warning(
+            "uv_vis_correction_notes_ignored",
+            "UV-Vis correction notes were ignored because they were not a list or non-empty string.",
+            severity="medium",
+        ),
+    )
+
+
+def _record_correction_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("correction_context", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    sections: dict[str, dict[str, Any]] = {}
+    for name in _CORRECTION_CONTEXT_SECTIONS:
+        section, warning = _context_section(params, name)
+        sections[name] = section
+        if warning:
+            warnings.append(warning)
+    notes, notes_warning = _correction_notes(params)
+    if notes_warning:
+        warnings.append(notes_warning)
+
+    reviewed_fields = [name for name, section in sections.items() if _has_context_payload(section)]
+    if _has_context_payload(notes):
+        reviewed_fields.append("correction_notes")
+    has_reviewed_context = bool(reviewed_fields)
+    if not has_reviewed_context:
+        warnings.append(
+            _warning(
+                "uv_vis_correction_context_empty",
+                "UV-Vis correction_context was enabled, but no reviewed correction metadata was supplied.",
+                severity="medium",
+            )
+        )
+    source = str(params.get("source") or "ea.uv_vis.correction_context:v0.2")
+    return (
+        {
+            "enabled": True,
+            "status": "reviewed_correction_context_recorded" if has_reviewed_context else "enabled_without_reviewed_context",
+            "method": str(params.get("method") or "reviewed_metadata_record"),
+            "assignment_source": source,
+            "confidence": "low" if has_reviewed_context else "insufficient",
+            "reviewed_context_fields": reviewed_fields,
+            **sections,
+            "correction_notes": notes,
+            "warnings": warnings,
+            "boundary": "UV-Vis correction context is a metadata/provenance record only; no automatic substrate, reference, background, or diffuse-reflectance numeric correction was applied.",
+        },
+        warnings,
+    )
+
+
 def _analyze_features(
     features: pd.DataFrame,
     edge: dict[str, Any] | None,
     tauc: dict[str, Any] | None = None,
     derivative: dict[str, Any] | None = None,
+    correction_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "feature_count": int(len(features)),
@@ -790,6 +895,7 @@ def _analyze_features(
         "edge_estimate": edge,
         "tauc_analysis": tauc,
         "derivative_analysis": derivative,
+        "correction_context": correction_context,
         "possible_interpretations": [],
     }
     if features.empty:
@@ -862,6 +968,19 @@ def _analyze_features(
                 "assignment_source": derivative.get("assignment_source", "ea.uv_vis.derivative_screening:v0.2"),
             }
         )
+    if correction_context and correction_context.get("status") == "reviewed_correction_context_recorded":
+        fields = ", ".join(str(value) for value in correction_context.get("reviewed_context_fields", [])) or "correction context"
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"Reviewed UV-Vis correction context was recorded for {fields}. Use it to interpret optical features and "
+                    "screening fits, but do not treat the metadata record as a numeric correction or a standalone mechanism claim."
+                ),
+                "confidence": correction_context.get("confidence", "low"),
+                "evidence": ["correction_context"],
+                "assignment_source": correction_context.get("assignment_source", "ea.uv_vis.correction_context:v0.2"),
+            }
+        )
     return analysis
 
 
@@ -923,7 +1042,8 @@ def process_uv_vis_result(
     edge = _estimate_edge(processed, parameters, request.signal_mode)
     tauc_analysis, tauc_warnings = _run_tauc_analysis(processed, parameters, request.signal_mode)
     derivative_table, derivative_analysis, derivative_warnings = _run_derivative_analysis(processed, parameters)
-    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis)
+    correction_context, correction_warnings = _record_correction_context(parameters)
+    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis, correction_context)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -938,10 +1058,11 @@ def process_uv_vis_result(
     features_csv = output_dir / "uv_vis_features.csv"
     tauc_csv = output_dir / "uv_vis_tauc.csv"
     derivative_csv = output_dir / "uv_vis_derivative.csv"
+    correction_context_yml = output_dir / "uv_vis_correction_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "uv_vis_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "uv_vis_metadata.yml"
-    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, figure, result_metadata]:
+    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, correction_context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -959,6 +1080,13 @@ def process_uv_vis_result(
         derivative_output_ref = str(derivative_csv.relative_to(root))
         if feature_analysis.get("derivative_analysis"):
             feature_analysis["derivative_analysis"]["table_ref"] = derivative_output_ref
+    correction_context_ref: str | None = None
+    if correction_context is not None:
+        correction_context_ref = str(correction_context_yml.relative_to(root))
+        correction_context["record_ref"] = correction_context_ref
+        write_yaml(correction_context_yml, correction_context)
+        if feature_analysis.get("correction_context"):
+            feature_analysis["correction_context"]["record_ref"] = correction_context_ref
     _plot_uv_vis(processed, features, figure, request.x_unit, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -967,6 +1095,7 @@ def process_uv_vis_result(
     warnings.extend(processing_warnings)
     warnings.extend(tauc_warnings)
     warnings.extend(derivative_warnings)
+    warnings.extend(correction_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "peak_table": str(features_csv.relative_to(root)),
@@ -977,6 +1106,8 @@ def process_uv_vis_result(
         outputs["tauc_table"] = tauc_output_ref
     if derivative_output_ref:
         outputs["derivative_table"] = derivative_output_ref
+    if correction_context_ref:
+        outputs["correction_context"] = correction_context_ref
     provenance_files = [
         str(processed_csv.relative_to(root)),
         str(features_csv.relative_to(root)),
@@ -986,6 +1117,8 @@ def process_uv_vis_result(
         provenance_files.append(tauc_output_ref)
     if derivative_output_ref:
         provenance_files.append(derivative_output_ref)
+    if correction_context_ref:
+        provenance_files.append(correction_context_ref)
     result = UVVisProcessingResult(
         uv_vis_result_id=result_id,
         result_id=result_id,
@@ -1062,6 +1195,7 @@ def process_uv_vis_result(
                 str(features_csv.relative_to(root)),
             ]
             + ([tauc_output_ref] if tauc_output_ref else [])
-            + ([derivative_output_ref] if derivative_output_ref else []),
+            + ([derivative_output_ref] if derivative_output_ref else [])
+            + ([correction_context_ref] if correction_context_ref else []),
         )
     return result_metadata
