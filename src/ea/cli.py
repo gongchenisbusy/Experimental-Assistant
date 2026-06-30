@@ -31,6 +31,7 @@ from ea.literature import (
     import_literature_acquisition_manifest,
     import_zotero_codex_batch_status,
     plan_literature_deployment,
+    prepare_institution_access_guidance,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     prepare_zotero_codex_acquisition_bridge,
@@ -436,6 +437,19 @@ def build_parser() -> argparse.ArgumentParser:
     lit_handoff.add_argument("--literature-thread-id")
     lit_request = literature_sub.add_parser("acquisition-request", help="prepare confirmed acquisition request and Zotero-Codex target manifests")
     lit_request.add_argument("workspace", type=Path)
+    lit_access = literature_sub.add_parser("institution-access-guide", help="prepare public-safe institution access guidance")
+    lit_access.add_argument("workspace", type=Path)
+    lit_access.add_argument("--institution-name")
+    lit_access.add_argument("--access-method")
+    lit_access.add_argument("--access-url")
+    lit_access.add_argument("--access-instructions")
+    lit_access.add_argument("--browser-name")
+    lit_access.add_argument("--browser-profile", type=Path)
+    lit_access.add_argument("--zotero-config", type=Path)
+    lit_access.add_argument("--cache-root", type=Path)
+    lit_access.add_argument("--project-collection")
+    lit_access.add_argument("--authorization-status")
+    lit_access.add_argument("--note", action="append", default=[])
     lit_bridge = literature_sub.add_parser("zotero-bridge", help="prepare a Zotero-Codex acquisition bridge runbook")
     lit_bridge.add_argument("workspace", type=Path)
     lit_bridge.add_argument("--zotero-config", type=Path)
@@ -1249,6 +1263,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.literature_command == "acquisition-request":
             _print_json(prepare_literature_acquisition_request(args.workspace))
+            return 0
+        if args.literature_command == "institution-access-guide":
+            _print_json(
+                prepare_institution_access_guidance(
+                    args.workspace,
+                    institution_name=args.institution_name,
+                    access_method=args.access_method,
+                    access_url=args.access_url,
+                    access_instructions=args.access_instructions,
+                    browser_name=args.browser_name,
+                    browser_profile=args.browser_profile,
+                    zotero_config=args.zotero_config,
+                    cache_root=args.cache_root,
+                    project_collection=args.project_collection,
+                    authorization_status=args.authorization_status,
+                    note=args.note,
+                )
+            )
             return 0
         if args.literature_command == "zotero-bridge":
             _print_json(

@@ -12,6 +12,7 @@ from ea.literature import (
     import_literature_acquisition_manifest,
     import_zotero_codex_batch_status,
     plan_literature_deployment,
+    prepare_institution_access_guidance,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     prepare_zotero_codex_acquisition_bridge,
@@ -324,6 +325,129 @@ def test_literature_zotero_bridge_missing_settings_requests_public_user_inputs(t
     assert {"zotero_codex_config", "project_collection", "institution_access", "browser_assist"}.issubset(fields)
     assert result["settings_request"]["status"] == "needs_user_input"
     assert "did not run Zotero" in result["status"]["summary_for_origin_thread"]
+
+
+def test_literature_institution_access_guidance_records_user_settings(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Institution Access",
+        project_slug="mos2-institution-access",
+        research_direction="MoS2 authenticated acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="user_authenticated")
+
+    result = prepare_institution_access_guidance(
+        tmp_path,
+        institution_name="Example University Library",
+        access_method="library_proxy",
+        access_url="https://library.example.edu/login",
+        access_instructions="User completes SSO and MFA in the visible browser.",
+        browser_name="Chrome",
+        browser_profile=Path("browser-profiles/mos2"),
+        zotero_config=Path("config/zotero-codex.json"),
+        cache_root=Path("knowledge/project/fulltext"),
+        project_collection="MoS2 Institution Access",
+        authorization_status="needs_user_login",
+        note=["No credentials are stored in EA.", "password=secret"],
+        created_at="2026-07-01T15:00:00",
+    )
+    guidance = read_yaml(tmp_path / "literature" / "institution_access_guidance.yml")
+    guidance_text = (tmp_path / "literature" / "institution_access_guidance.yml").read_text(encoding="utf-8")
+    runbook = (tmp_path / "literature" / "institution_access_guidance.md").read_text(encoding="utf-8")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert result["guidance"]["guide_id"] == "lit-institution-access-20260701T150000"
+    assert guidance["status"] == "ready_for_user_managed_authorization"
+    assert guidance["required_user_inputs"] == []
+    assert guidance["settings"]["institution_name"] == "Example University Library"
+    assert guidance["settings"]["browser_profile_ref"] == "browser-profiles/mos2"
+    assert "[redacted-sensitive-access-detail]" in guidance["settings"]["notes"]
+    assert "secret" not in guidance_text
+    assert "--institution-access" in guidance["safe_commands"]["prepare_zotero_bridge"]
+    assert "library.example.edu/login" in guidance["safe_commands"]["prepare_zotero_bridge"]
+    assert "EA does not store passwords" in " ".join(guidance["boundaries"])
+    assert "User Actions" in runbook
+    assert status["institution_access_guidance_status"] == "ready_for_user_managed_authorization"
+    assert status["institution_access_guidance_ref"] == "literature/institution_access_guidance.yml"
+
+
+def test_literature_institution_access_guidance_requests_missing_settings(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Institution Missing",
+        project_slug="mos2-institution-missing",
+        research_direction="MoS2 authenticated acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="user_authenticated")
+
+    result = prepare_institution_access_guidance(tmp_path, created_at="2026-07-01T15:05:00")
+    fields = {item["field"] for item in result["guidance"]["required_user_inputs"]}
+
+    assert result["guidance"]["status"] == "needs_user_settings"
+    assert {"institution_name", "access_method", "access_url_or_instructions", "browser_name", "browser_profile"}.issubset(fields)
+    assert "authorization_status" in fields
+    assert any(question["field"] == "institution_name" for question in result["guidance"]["questions_for_user"])
+    assert "did not open browsers" in result["status"]["summary_for_origin_thread"]
+
+
+def test_cli_literature_institution_access_guidance_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_prepare_institution_access_guidance(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["institution_name"] == "Example University"
+        assert kwargs["access_method"] == "vpn"
+        assert kwargs["access_url"] == "https://vpn.example.edu"
+        assert kwargs["access_instructions"] == "manual SSO"
+        assert kwargs["browser_name"] == "Chrome"
+        assert kwargs["browser_profile"] == Path("profiles/mos2")
+        assert kwargs["zotero_config"] == Path("config/zotero-codex.json")
+        assert kwargs["cache_root"] == Path("knowledge/fulltext")
+        assert kwargs["project_collection"] == "MoS2 Project"
+        assert kwargs["authorization_status"] == "manual_login_ready"
+        assert kwargs["note"] == ["visible browser only"]
+        return {"guidance": {"status": "ready_for_user_managed_authorization"}}
+
+    monkeypatch.setattr("ea.cli.prepare_institution_access_guidance", fake_prepare_institution_access_guidance)
+
+    assert (
+        main(
+            [
+                "literature",
+                "institution-access-guide",
+                str(tmp_path),
+                "--institution-name",
+                "Example University",
+                "--access-method",
+                "vpn",
+                "--access-url",
+                "https://vpn.example.edu",
+                "--access-instructions",
+                "manual SSO",
+                "--browser-name",
+                "Chrome",
+                "--browser-profile",
+                "profiles/mos2",
+                "--zotero-config",
+                "config/zotero-codex.json",
+                "--cache-root",
+                "knowledge/fulltext",
+                "--project-collection",
+                "MoS2 Project",
+                "--authorization-status",
+                "manual_login_ready",
+                "--note",
+                "visible browser only",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["guidance"]["status"] == "ready_for_user_managed_authorization"
 
 
 def test_cli_literature_zotero_bridge_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -1385,6 +1509,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "rank-candidates" in readme
     assert "search-public" in readme
     assert "public_search_state.yml" in readme
+    assert "institution-access-guide" in readme
     assert "zotero-bridge" in readme
     assert "import-zotero-status" in readme
     assert "reconcile-acquisition" in readme
@@ -1392,6 +1517,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
+    assert "institution_access_guidance.yml" in reference
     assert "zotero_codex_bridge.yml" in reference
     assert "zotero_codex_status_import.yml" in reference
     assert "acquisition_reconciliation.yml" in reference
@@ -1411,9 +1537,11 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "acquisition_reconciliation" in manifest["output_artifacts"]
     assert "acquisition_reconciliation_repair_guidance" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
+    assert "institution_access_guidance" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
+    assert "institution_access_guidance_packet" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_checks" in manifest["current_v0_2_support"]["implemented"]

@@ -95,6 +95,7 @@ ea literature search-public /path/to/ea-project --source crossref --source opena
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
+ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
 ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
 ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
@@ -109,6 +110,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 ```
 
 Use `ea literature search-public --page-limit N --delay-seconds S --resume` for longer public metadata runs that should write and reuse `literature/public_search_state.yml`.
+Use `ea literature institution-access-guide` before authenticated acquisition to write `literature/institution_access_guidance.yml` and `.md` with user-supplied institution route, browser/profile, authorization status, safe manual-login steps, and no stored credentials.
 Use `ea literature zotero-bridge` after `acquisition-request` to write `literature/zotero_codex_bridge.yml`, `literature/zotero_codex_bridge.md`, and `literature/zotero_codex_settings_request.yml` for a dedicated Zotero-Codex workflow. The bridge emits commands and required user settings; it does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts.
 Use `ea literature import-zotero-status` after a dedicated Zotero-Codex workflow writes batch status artifacts; it converts status JSON and optional sidecar verification into `literature/acquisition_status_update.yml` and syncs EA project status without running Zotero or downloading files.
 Use `ea literature reconcile-acquisition` to write `literature/acquisition_reconciliation.yml`, check whether acquisition/status/library/cache/reference records agree, and include advisory `repair_actions` plus `questions_for_user` for mismatches.

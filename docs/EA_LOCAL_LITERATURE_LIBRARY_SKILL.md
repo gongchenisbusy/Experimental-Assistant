@@ -59,6 +59,8 @@ literature/
 ├── acquisition_request.yml
 ├── zotero_codex_queries.jsonl
 ├── zotero_codex_targets.jsonl
+├── institution_access_guidance.yml
+├── institution_access_guidance.md
 ├── zotero_codex_bridge.yml
 ├── zotero_codex_bridge.md
 ├── zotero_codex_settings_request.yml

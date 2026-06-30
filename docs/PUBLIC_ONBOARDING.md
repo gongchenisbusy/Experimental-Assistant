@@ -138,6 +138,12 @@ ea literature rank-candidates /path/to/ea-project \
   --candidates literature/candidate_results.yml \
   --reference-year 2026
 ea literature acquisition-request /path/to/ea-project
+ea literature institution-access-guide /path/to/ea-project \
+  --institution-name "Institution" \
+  --access-method library_proxy \
+  --access-url https://library.example.edu/login \
+  --browser-name Chrome \
+  --browser-profile browser-profiles/project
 ea literature zotero-bridge /path/to/ea-project \
   --zotero-config config/zotero-codex.json \
   --project-collection "Project collection"
@@ -147,7 +153,7 @@ ea literature import-zotero-status /path/to/ea-project \
 ea literature reconcile-acquisition /path/to/ea-project
 ```
 
-`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes an audit report with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
+`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `institution-access-guide` writes a public-safe guidance packet for user-managed institution access; it records user-supplied route/browser/profile status but does not open browsers, store credentials, probe URLs, or fetch papers. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes an audit report with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
 
 ## 6. Traceability And Handoff Checks
 

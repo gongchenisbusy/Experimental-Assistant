@@ -19,6 +19,7 @@ ea_skill:
     - public_search_state_record
     - ranked_candidate_table
     - selected_literature_items
+    - institution_access_guidance
     - zotero_codex_bridge_runbook
     - zotero_codex_settings_request
     - zotero_codex_status_import
@@ -63,6 +64,7 @@ ea_skill:
       - supplied_candidate_ranking_and_selection_export
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
+      - institution_access_guidance_packet
       - zotero_codex_acquisition_bridge_runbook
       - zotero_codex_status_import_and_sync
       - acquisition_reconciliation_checks

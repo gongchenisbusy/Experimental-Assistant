@@ -1043,6 +1043,264 @@ def prepare_zotero_codex_acquisition_bridge(
     }
 
 
+def _quote_cli_value(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+SENSITIVE_ACCESS_DETAIL_RE = re.compile(r"\b(pass(word)?|pwd|token|cookie|session|otp|samlresponse)\b\s*[:=]", re.IGNORECASE)
+
+
+def _redact_sensitive_access_text(value: str | None) -> tuple[str | None, bool]:
+    if not value:
+        return value, False
+    if SENSITIVE_ACCESS_DETAIL_RE.search(value):
+        return "[redacted-sensitive-access-detail]", True
+    return value, False
+
+
+def _redact_sensitive_access_notes(notes: list[str] | None) -> tuple[list[str], bool]:
+    redacted = []
+    any_redacted = False
+    for item in notes or []:
+        value, was_redacted = _redact_sensitive_access_text(item)
+        if value:
+            redacted.append(value)
+        any_redacted = any_redacted or was_redacted
+    return redacted, any_redacted
+
+
+def _institution_access_required_inputs(
+    *,
+    access_mode: str,
+    institution_name: str | None,
+    access_method: str | None,
+    access_url: str | None,
+    access_instructions: str | None,
+    browser_name: str | None,
+    browser_profile_ref: str | None,
+    authorization_status: str | None,
+) -> list[dict[str, str]]:
+    if access_mode != "user_authenticated":
+        return []
+    inputs: list[dict[str, str]] = []
+    if not institution_name:
+        inputs.append({"field": "institution_name", "reason": "Name the institution or library access provider the user will use."})
+    if not access_method:
+        inputs.append(
+            {
+                "field": "access_method",
+                "reason": "Confirm whether access uses VPN, library proxy, campus network, publisher SSO, or another user-managed route.",
+            }
+        )
+    if not access_url and not access_instructions:
+        inputs.append(
+            {
+                "field": "access_url_or_instructions",
+                "reason": "Record the user-supplied login/start URL or manual access instructions without credentials.",
+            }
+        )
+    if not browser_name:
+        inputs.append({"field": "browser_name", "reason": "Confirm the user-managed browser for visible authorization."})
+    if not browser_profile_ref:
+        inputs.append(
+            {
+                "field": "browser_profile",
+                "reason": "Confirm the user-managed browser profile path or profile name; do not assume a developer-machine profile.",
+            }
+        )
+    if not authorization_status:
+        inputs.append(
+            {
+                "field": "authorization_status",
+                "reason": "Record whether manual authorization is not checked, needs user login, ready, or blocked.",
+            }
+        )
+    return inputs
+
+
+def prepare_institution_access_guidance(
+    root: Path,
+    *,
+    institution_name: str | None = None,
+    access_method: str | None = None,
+    access_url: str | None = None,
+    access_instructions: str | None = None,
+    browser_name: str | None = None,
+    browser_profile: Path | None = None,
+    zotero_config: Path | None = None,
+    cache_root: Path | None = None,
+    project_collection: str | None = None,
+    authorization_status: str | None = None,
+    note: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    created_at = created_at or EARecord.now_iso()
+    project = _project_context(root)
+    status = read_yaml(status_path)
+    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    access_mode = str(status.get("access_mode") or "open_access_only")
+    access_url, access_url_redacted = _redact_sensitive_access_text(access_url)
+    access_instructions, access_instructions_redacted = _redact_sensitive_access_text(access_instructions)
+    notes, notes_redacted = _redact_sensitive_access_notes(note)
+    browser_profile_ref = _optional_path_ref(root, browser_profile)
+    zotero_config_ref = _optional_path_ref(root, zotero_config)
+    cache_root_ref = _optional_path_ref(root, cache_root)
+    required_inputs = _institution_access_required_inputs(
+        access_mode=access_mode,
+        institution_name=institution_name,
+        access_method=access_method,
+        access_url=access_url,
+        access_instructions=access_instructions,
+        browser_name=browser_name,
+        browser_profile_ref=browser_profile_ref,
+        authorization_status=authorization_status,
+    )
+    if access_mode != "user_authenticated":
+        guidance_status = "not_required_for_current_access_mode"
+    else:
+        guidance_status = "needs_user_settings" if required_inputs else "ready_for_user_managed_authorization"
+    guide_id = f"lit-institution-access-{_timestamp_key(created_at)}"
+    settings = _compact_dict(
+        {
+            "institution_name": institution_name,
+            "access_method": access_method,
+            "access_url": access_url,
+            "access_instructions": access_instructions,
+            "browser_name": browser_name,
+            "browser_profile_ref": browser_profile_ref,
+            "zotero_codex_config_ref": zotero_config_ref,
+            "cache_root_ref": cache_root_ref,
+            "project_collection": project_collection,
+            "authorization_status": authorization_status,
+            "notes": notes,
+            "redaction_notes": ["Sensitive access details were redacted before writing this project artifact."]
+            if access_url_redacted or access_instructions_redacted or notes_redacted
+            else [],
+        }
+    )
+    institution_access_summary = "; ".join(
+        item
+        for item in [institution_name, access_method, access_url, access_instructions]
+        if item
+    )
+    bridge_parts = ["ea literature zotero-bridge /path/to/ea-project"]
+    if zotero_config_ref:
+        bridge_parts.extend(["--zotero-config", zotero_config_ref])
+    if cache_root_ref:
+        bridge_parts.extend(["--cache-root", cache_root_ref])
+    if project_collection:
+        bridge_parts.extend(["--project-collection", _quote_cli_value(project_collection)])
+    if browser_name or browser_profile_ref:
+        bridge_parts.append("--enable-browser-assist")
+    if browser_name:
+        bridge_parts.extend(["--browser-name", _quote_cli_value(browser_name)])
+    if browser_profile_ref:
+        bridge_parts.extend(["--browser-profile", browser_profile_ref])
+    if institution_access_summary:
+        bridge_parts.extend(["--institution-access", _quote_cli_value(institution_access_summary)])
+
+    safe_commands = {
+        "prepare_zotero_bridge": " ".join(bridge_parts),
+        "import_zotero_status": (
+            "ea literature import-zotero-status /path/to/ea-project "
+            "--batch-status literature/zotero_codex_batch_status.json "
+            "--sidecar-verification literature/zotero_codex_sidecars_verify.json"
+        ),
+        "reconcile_acquisition": "ea literature reconcile-acquisition /path/to/ea-project",
+    }
+    user_actions = [
+        "Confirm that the institution route is lawful for this project and belongs to the user or organization.",
+        "Open the user-managed browser/profile outside EA and complete SSO, MFA, CAPTCHA, proxy, or publisher authorization manually.",
+        "Do not paste passwords, one-time codes, cookies, or session tokens into chat or project files.",
+        "After user-managed authorization, run the dedicated Zotero-Codex acquisition workflow and import status back into EA.",
+    ]
+    boundaries = [
+        "This guidance records user-supplied institution-access settings only.",
+        "EA does not store passwords, one-time codes, cookies, session tokens, or school credentials.",
+        "EA does not open browsers, operate Zotero, run Zotero-Codex scripts, probe institution URLs, resolve DOI pages, download PDFs, or parse full text.",
+        "EA must not bypass access controls or assume developer-machine Zotero, browser, profile, cache, or institution settings.",
+    ]
+    guidance_path = literature_root / "institution_access_guidance.yml"
+    runbook_path = literature_root / "institution_access_guidance.md"
+    guidance = {
+        "schema_version": "0.2",
+        "guide_id": guide_id,
+        "project_id": project_id,
+        "created_at": created_at,
+        "status": guidance_status,
+        "access_mode": access_mode,
+        "settings": settings,
+        "required_user_inputs": required_inputs,
+        "questions_for_user": [{"field": item["field"], "question": item["reason"]} for item in required_inputs],
+        "user_actions": user_actions,
+        "safe_commands": safe_commands,
+        "boundaries": boundaries,
+        "next_action": (
+            "Institution access is not required for the current access mode; keep this guide only if future gated acquisition is planned."
+            if access_mode != "user_authenticated"
+            else "Ask the user for missing settings before preparing the Zotero-Codex bridge."
+            if required_inputs
+            else "Use the user-managed browser authorization route, then prepare or rerun the Zotero-Codex bridge."
+        ),
+    }
+    runbook_lines = [
+        "# Institution Access Guidance",
+        "",
+        f"- guide_id: `{guide_id}`",
+        f"- project_id: `{project_id}`",
+        f"- status: `{guidance_status}`",
+        f"- access_mode: `{access_mode}`",
+        "",
+        "## Required User Inputs",
+        "",
+    ]
+    if required_inputs:
+        runbook_lines.extend(f"- `{item['field']}`: {item['reason']}" for item in required_inputs)
+    else:
+        runbook_lines.append("- No missing institution-access settings for the current access mode.")
+    runbook_lines.extend(
+        [
+            "",
+            "## User Actions",
+            "",
+            *[f"- {item}" for item in user_actions],
+            "",
+            "## Safe Commands",
+            "",
+            *[f"- `{name}`: `{command}`" for name, command in safe_commands.items()],
+            "",
+            "## Boundaries",
+            "",
+            *[f"- {item}" for item in boundaries],
+        ]
+    )
+    write_yaml(guidance_path, guidance)
+    runbook_path.write_text("\n".join(runbook_lines) + "\n", encoding="utf-8")
+    status.update(
+        {
+            "institution_access_guidance_ref": _project_relative(root, guidance_path),
+            "institution_access_guidance_runbook_ref": _project_relative(root, runbook_path),
+            "institution_access_guidance_status": guidance_status,
+            "summary_for_origin_thread": (
+                f"Institution access guidance prepared with status {guidance_status}. "
+                "EA did not open browsers, operate Zotero, store credentials, or access publisher content."
+            ),
+        }
+    )
+    write_yaml(status_path, status)
+    return {
+        "guidance_path": str(guidance_path),
+        "runbook_path": str(runbook_path),
+        "status_path": str(status_path),
+        "guidance": guidance,
+        "status": status,
+    }
+
+
 ZOTERO_CODEX_SUCCESS_STATUSES = {
     "cached",
     "reused-cache",
