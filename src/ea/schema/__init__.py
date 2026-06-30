@@ -1,6 +1,7 @@
 from ea.schema.models import (
     CharacterizationFile,
     ExperimentRecord,
+    ImageAnalysisResult,
     OpenItem,
     ProgressEvent,
     Project,
@@ -16,6 +17,7 @@ from ea.schema.models import (
 __all__ = [
     "CharacterizationFile",
     "ExperimentRecord",
+    "ImageAnalysisResult",
     "OpenItem",
     "ProgressEvent",
     "Project",

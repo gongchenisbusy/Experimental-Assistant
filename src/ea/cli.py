@@ -7,6 +7,7 @@ from pathlib import Path
 from ea.config import doctor_project_config
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
+from ea.image_data import create_image_analysis_record, generate_image_analysis_report
 from ea.literature import confirm_literature_selection, ensure_literature_status, plan_literature_deployment
 from ea.projects.service import initialize_project
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
@@ -67,6 +68,28 @@ def build_parser() -> argparse.ArgumentParser:
     lit_confirm.add_argument("workspace", type=Path)
     lit_confirm.add_argument("--selected-top-n", required=True, type=int)
     lit_confirm.add_argument("--user-response", required=True)
+
+    image_data = sub.add_parser("image-data", help="image characterization helpers for SEM, TEM, and microscopy data")
+    image_sub = image_data.add_subparsers(dest="image_command", required=True)
+    image_record = image_sub.add_parser("record", help="create a traceable image analysis result from a raw image metadata file")
+    image_record.add_argument("workspace", type=Path)
+    image_record.add_argument("--metadata", required=True, type=Path)
+    image_record.add_argument("--project-id")
+    image_record.add_argument("--method", required=True)
+    image_record.add_argument("--description", required=True)
+    image_record.add_argument("--description-review-ref", required=True)
+    image_record.add_argument("--sample-ref", action="append", default=[])
+    image_record.add_argument("--analysis-mode", choices=["user_described", "agent_visual_review", "mixed"], default="user_described")
+    image_record.add_argument("--ea-observation", action="append", default=[])
+    image_record.add_argument("--interpretation")
+    image_record.add_argument("--confidence", choices=["high", "medium", "low", "insufficient"], default="insufficient")
+    image_record.add_argument("--scale-bar")
+    image_report = image_sub.add_parser("report", help="generate a Markdown image analysis report from an image result metadata file")
+    image_report.add_argument("workspace", type=Path)
+    image_report.add_argument("--metadata", required=True, type=Path)
+    image_report.add_argument("--project-id")
+    image_report.add_argument("--experiment-ref", action="append", default=[])
+    image_report.add_argument("--sample-ref", action="append", default=[])
 
     add_skills = sub.add_parser("add-skills", help="validate EA child-skill manifests")
     add_skills_sub = add_skills.add_subparsers(dest="add_skills_command", required=True)
@@ -175,6 +198,35 @@ def main(argv: list[str] | None = None) -> int:
                     user_response=args.user_response,
                 )
             )
+            return 0
+    if args.command == "image-data":
+        project_id = args.project_id or _project_id_from_workspace(args.workspace)
+        if args.image_command == "record":
+            path = create_image_analysis_record(
+                args.workspace,
+                characterization_metadata_path=args.metadata,
+                project_id=project_id,
+                method=args.method,
+                user_description=args.description,
+                description_review_ref=args.description_review_ref,
+                sample_refs=args.sample_ref,
+                analysis_mode=args.analysis_mode,
+                ea_observations=args.ea_observation,
+                interpretation=args.interpretation,
+                confidence=args.confidence,
+                scale_bar=args.scale_bar,
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.image_command == "report":
+            path = generate_image_analysis_report(
+                args.workspace,
+                project_id=project_id,
+                image_metadata_path=args.metadata,
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+            )
+            _print_json({"report": str(path)})
             return 0
     if args.command == "add-skills":
         if args.add_skills_command == "check":

@@ -121,10 +121,30 @@ class RamanProcessingResult(EARecord):
     warnings: list[Any] = Field(default_factory=list)
 
 
+class ImageAnalysisResult(EARecord):
+    image_result_id: str
+    result_id: str
+    project_id: str
+    characterization_file_ref: str
+    sample_refs: list[str] = Field(default_factory=list)
+    method: str
+    analysis_mode: Literal["user_described", "agent_visual_review", "mixed"] = "user_described"
+    user_description: str
+    ea_observations: list[str] = Field(default_factory=list)
+    interpretation: str | None = None
+    confidence: Literal["high", "medium", "low", "insufficient"] = "insufficient"
+    scale_bar: str | None = None
+    imaging_conditions: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, str] = Field(default_factory=dict)
+    figure_id: str | None = None
+    warnings: list[Any] = Field(default_factory=list)
+    references: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class ReportRecord(EARecord):
     report_id: str
     project_id: str
-    report_type: Literal["raman_analysis"]
+    report_type: Literal["raman_analysis", "image_analysis"]
     language: Literal["zh", "en"] = "zh"
     audience: Literal["self"] = "self"
     related_experiments: list[str] = Field(default_factory=list)

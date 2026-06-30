@@ -34,6 +34,8 @@ ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "U
 ea add-skills check /path/to/child-skill-manifest.yml
 ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea add-skills register /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
+ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
+ea image-data report /path/to/ea-project --metadata processed/sample-001/sem/res-project-sem-20260630-001/image_metadata.yml
 ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 ```
 
@@ -47,6 +49,7 @@ The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-p
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
+- For SEM/TEM/optical microscopy image data, read `references/image-data-workflow.md`.
 
 ## Scripts
 

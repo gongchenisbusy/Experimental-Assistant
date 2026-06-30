@@ -11,6 +11,7 @@ KIND_PREFIX = {
     "experiment": "exp",
     "characterization": "char",
     "raman_result": "raman-result",
+    "image_result": "image-result",
     "report": "report",
     "review": "review",
     "provenance": "prov",
