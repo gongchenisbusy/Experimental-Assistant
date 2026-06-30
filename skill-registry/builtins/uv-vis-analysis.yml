@@ -39,3 +39,21 @@ ea_skill:
     raw_is_readonly: true
     processing_parameters_required: true
     generated_outputs_outside_raw: true
+  current_v0_2_support:
+    implemented: true
+    commands:
+      - ea uv-vis inspect
+      - ea uv-vis process
+      - ea uv-vis report
+    supported_signal_modes:
+      - absorbance
+      - transmittance
+      - reflectance
+    supported_x_units:
+      - nm
+      - eV
+      - unknown
+    limitations:
+      - automatic features are screening evidence, not standalone material assignments
+      - threshold optical-edge estimates are low-confidence orientation values
+      - formal band-gap analysis requires user-confirmed model context and references

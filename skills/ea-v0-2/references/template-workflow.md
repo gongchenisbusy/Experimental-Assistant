@@ -9,13 +9,14 @@ ea templates parameters raman --output /path/to/ea-project/templates/raman_param
 ea templates parameters pl --output /path/to/ea-project/templates/pl_parameters.yml
 ea templates parameters xrd --output /path/to/ea-project/templates/xrd_parameters.yml
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --output batch_manifest.yml
+ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --output batch_manifest.yml
 ```
 
 Processing-parameter templates:
 
 - The written YAML file is the method's parameter dictionary directly.
-- It can be passed to `ea raman process`, `ea pl process`, `ea xrd process`, or `ea ftir process` with `--parameters-file`.
+- It can be passed to `ea raman process`, `ea pl process`, `ea xrd process`, `ea ftir process`, or `ea uv-vis process` with `--parameters-file`.
 - The user still needs a confirmed `{method}_parameters` review record before processing.
 - Editing the YAML changes processing behavior only after the user confirms those edited parameters.
 

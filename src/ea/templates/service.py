@@ -8,14 +8,15 @@ from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.raman import default_processing_parameters
 from ea.storage.files import write_yaml
+from ea.uv_vis import default_uv_vis_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
-SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir")
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis")
 
 
 def _normalise_method(method: str) -> str:
-    normalized = method.lower().strip()
+    normalized = method.lower().strip().replace("-", "_")
     if normalized not in SUPPORTED_TEMPLATE_METHODS:
         supported = ", ".join(SUPPORTED_TEMPLATE_METHODS)
         raise ValueError(f"Unsupported template method: {method}. Supported methods: {supported}")
@@ -30,7 +31,9 @@ def processing_parameters_template(method: str) -> dict[str, Any]:
         return deepcopy(default_pl_processing_parameters())
     if normalized == "xrd":
         return deepcopy(default_xrd_processing_parameters())
-    return deepcopy(default_ftir_processing_parameters())
+    if normalized == "ftir":
+        return deepcopy(default_ftir_processing_parameters())
+    return deepcopy(default_uv_vis_processing_parameters())
 
 
 def write_processing_parameters_template(path: Path, method: str) -> Path:
@@ -53,6 +56,11 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         x_column = "wavenumber"
         y_column = "absorbance"
         x_unit = "cm^-1"
+    elif method == "uv_vis":
+        metadata = "raw/uv_vis/char-YYYYMMDD-001/metadata.yml"
+        x_column = "wavelength_nm"
+        y_column = "absorbance"
+        x_unit = "nm"
     else:
         metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
         x_column = "col_0"
@@ -72,6 +80,8 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         "processing_parameters": {},
     }
     if method == "ftir":
+        item["signal_mode"] = "absorbance"
+    if method == "uv_vis":
         item["signal_mode"] = "absorbance"
     return item
 

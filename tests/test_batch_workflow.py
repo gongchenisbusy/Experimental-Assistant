@@ -12,6 +12,7 @@ from ea.raman import default_processing_parameters
 from ea.raw_import import import_raw_file
 from ea.review import write_review_record
 from ea.storage import read_markdown_record, read_yaml, write_yaml
+from ea.uv_vis import default_uv_vis_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
@@ -38,6 +39,26 @@ def _write_ftir_fixture(path: Path) -> Path:
         ]:
             signal += amplitude * math.exp(-((wavenumber - center) ** 2) / (2.0 * width**2))
         lines.append(f"{wavenumber:.2f} {signal:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_uv_vis_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = nm",
+        "# y_label = absorbance",
+        "wavelength_nm absorbance",
+    ]
+    for index in range(900):
+        wavelength = 260.0 + index * 0.75
+        edge = 0.42 / (1.0 + math.exp((wavelength - 610.0) / 20.0))
+        signal = 0.035 + edge
+        for center, amplitude, width in [
+            (335.0, 0.16, 20.0),
+            (515.0, 0.12, 30.0),
+        ]:
+            signal += amplitude * math.exp(-((wavelength - center) ** 2) / (2.0 * width**2))
+        lines.append(f"{wavelength:.2f} {signal:.8f}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
@@ -97,6 +118,9 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
     elif method == "ftir":
         x_column, y_column, x_unit = "wavenumber", "absorbance", "cm^-1"
         parameters = default_ftir_processing_parameters()
+    elif method == "uv_vis":
+        x_column, y_column, x_unit = "wavelength_nm", "absorbance", "nm"
+        parameters = default_uv_vis_processing_parameters()
     else:
         x_column, y_column, x_unit = "col_0", "col_1", "cm^-1"
         parameters = default_processing_parameters()
@@ -121,12 +145,15 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
     }
     if method == "ftir":
         result["signal_mode"] = "absorbance"
+    if method == "uv_vis":
+        result["signal_mode"] = "absorbance"
     return result
 
 
 def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     workspace, project_id = _project(tmp_path)
     ftir_fixture = _write_ftir_fixture(tmp_path / "batch-ftir-spectrum.txt")
+    uv_vis_fixture = _write_uv_vis_fixture(tmp_path / "batch-uv-vis-spectrum.txt")
     items = [
         {
             "item_id": "raman-001",
@@ -143,6 +170,10 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
         {
             "item_id": "ftir-001",
             **_import_with_reviews(workspace, project_id, "ftir", ftir_fixture, "sample-batch-001", "exp-batch-001"),
+        },
+        {
+            "item_id": "uv-vis-001",
+            **_import_with_reviews(workspace, project_id, "uv_vis", uv_vis_fixture, "sample-batch-001", "exp-batch-001"),
         },
     ]
     manifest = workspace / "batch_manifest.yml"
@@ -161,12 +192,12 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     assert main(["batch", "validate", str(workspace), "batch_manifest.yml"]) == 0
     validation = _json_output(capsys)
     assert validation["status"] == "pass"
-    assert validation["item_count"] == 4
+    assert validation["item_count"] == 5
 
     assert main(["batch", "run", str(workspace), "batch_manifest.yml"]) == 0
     output = _json_output(capsys)
     assert output["status"] == "success"
-    assert output["succeeded"] == 4
+    assert output["succeeded"] == 5
     assert output["failed"] == 0
 
     record = read_yaml(Path(output["record"]))

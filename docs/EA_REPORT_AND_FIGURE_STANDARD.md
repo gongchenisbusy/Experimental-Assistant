@@ -107,6 +107,13 @@ FTIR/IR：
 - y 轴说明 absorbance、transmittance 或 normalized intensity。
 - 标注主要吸收带和归属；不确定归属进入替代解释。
 
+UV-Vis：
+
+- x 轴为 wavelength (`nm`) 或 energy (`eV`)；若进行了换算，表格中保留原始单位和换算值。
+- y 轴说明 absorbance、transmittance、reflectance 或 processed signal。
+- 标注主要 optical features；threshold edge、Tauc、derivative、Kubelka-Munk 等分析必须写清模型和参数。
+- 对 band gap、跃迁类型、缺陷态或膜厚效应的解释必须给出可信度和文献/项目依据。
+
 SEM/TEM/光学显微镜：
 
 - 必须保留原图路径和处理图路径。
@@ -204,7 +211,7 @@ v0.2 建议先完成：
 - `figures/index.yml` 和 `reports/index.yml`。
 - Markdown 报告模板。
 - Matplotlib 默认样式和 footer 标注。
-- Raman、PL、XRD、FTIR 报告的第一版完整模板。
+- Raman、PL、XRD、FTIR、UV-Vis 报告的第一版完整模板。
 - 对话回答中的 reference 输出约定。
 
 ## 10. 外部依据

@@ -53,7 +53,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. EA v0.2 currently has concrete workflows for Raman, PL, XRD, FTIR, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. EA v0.2 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, and image-style characterization records.
 
 Minimal Raman path:
 
@@ -92,7 +92,7 @@ ea raman report /path/to/ea-project \
   --experiment-ref exp-001
 ```
 
-Use the matching `pl`, `xrd`, or `ftir` commands for PL, XRD, and FTIR data. FTIR processing requires a user-confirmed `signal_mode` (`absorbance` or `transmittance`) so the workflow detects peaks or valleys correctly. Use `ea image-data record` and `ea image-data report` for SEM, TEM, optical microscopy, and related image-style data where user description and confidence labels are part of the record.
+Use the matching `pl`, `xrd`, `ftir`, or `uv-vis` commands for PL, XRD, FTIR, and UV-Vis data. FTIR processing requires a user-confirmed `signal_mode` (`absorbance` or `transmittance`) so the workflow detects peaks or valleys correctly. UV-Vis processing requires a user-confirmed `signal_mode` (`absorbance`, `transmittance`, or `reflectance`) and treats optical features/edge estimates as screening evidence until a method model and references are reviewed. Use `ea image-data record` and `ea image-data report` for SEM, TEM, optical microscopy, and related image-style data where user description and confidence labels are part of the record.
 
 ## 4. Review Gates And Reports
 

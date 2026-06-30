@@ -26,7 +26,7 @@ Generated analysis figures should use the shared Python/matplotlib profile `natu
 - `style_axis`: apply title, labels, legend, light grid, and hidden top/right spines.
 - `save_styled_figure`: place the lower-right canvas footer, save deterministic PNG output, and close the figure.
 
-Figure index records should include `style_profile` and `source_data_refs` when generated from processed data. Raman, PL, XRD, and FTIR workflows write these fields so another agent can trace a plotted figure back to processed CSV and peak-table sources.
+Figure index records should include `style_profile` and `source_data_refs` when generated from processed data. Raman, PL, XRD, FTIR, and UV-Vis workflows write these fields so another agent can trace a plotted figure back to processed CSV and peak/feature-table sources.
 Run `ea eval project` before handoff to check that generated analysis figures keep this style/source-data metadata.
 Use `ea export report-bundle /path/to/ea-project --report-id <report_id>` when a user or later agent needs the report, figure files, source data, result metadata, references, and provenance gathered into one local handoff folder. Use `ea export batch-bundle /path/to/ea-project --batch-id <batch_id>` when a whole batch run and its nested report bundles should travel together. Add `--zip` when the same handoff bundle should also be packaged as an archive with a `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify copied handoff artifacts.
 

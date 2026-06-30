@@ -7,20 +7,22 @@ from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, p
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, process_pl_result
 from ea.provenance import write_provenance_entry
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xrd_report
 from ea.review import require_confirmed_review
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.storage.ids import next_id
+from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, process_uv_vis_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, process_xrd_result
 
 
-SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir"}
+SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis"}
 METHOD_UNITS = {
     "raman": {"cm^-1", "unknown"},
     "pl": {"eV", "nm", "unknown"},
     "xrd": {"2theta_deg", "unknown"},
     "ftir": {"cm^-1", "unknown"},
+    "uv_vis": {"nm", "eV", "unknown"},
 }
 
 
@@ -39,6 +41,10 @@ def _project_id_from_root(root: Path) -> str:
 def _project_path(root: Path, path_value: str | Path) -> Path:
     path = Path(path_value)
     return path if path.is_absolute() else root / path
+
+
+def _normalize_method(method: str) -> str:
+    return method.lower().strip().replace("-", "_")
 
 
 def _path_ref(root: Path, path: Path) -> str:
@@ -78,6 +84,8 @@ def _default_parameters(method: str) -> dict[str, Any]:
         return default_xrd_processing_parameters()
     if method == "ftir":
         return default_ftir_processing_parameters()
+    if method == "uv_vis":
+        return default_uv_vis_processing_parameters()
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -93,7 +101,7 @@ def _processing_parameters(root: Path, method: str, item: dict[str, Any]) -> dic
 def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
     item_id = str(item.get("item_id") or f"item-{index:03d}")
-    method = str(item.get("method", "")).lower()
+    method = _normalize_method(str(item.get("method", "")))
     required = ["method", "metadata", "x_column", "y_column", "x_unit", "column_review_ref", "parameter_review_ref"]
     for field in required:
         if field not in item or item.get(field) in [None, ""]:
@@ -105,6 +113,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
         errors.append({"item_id": item_id, "field": "x_unit", "message": f"Unsupported x_unit for {method}: {x_unit}"})
     if method == "ftir" and item.get("signal_mode") not in {"absorbance", "transmittance"}:
         errors.append({"item_id": item_id, "field": "signal_mode", "message": "FTIR signal_mode must be absorbance or transmittance."})
+    if method == "uv_vis" and item.get("signal_mode") not in {"absorbance", "transmittance", "reflectance"}:
+        errors.append({"item_id": item_id, "field": "signal_mode", "message": "UV-Vis signal_mode must be absorbance, transmittance, or reflectance."})
     metadata = item.get("metadata")
     if metadata and not _project_path(root, metadata).exists():
         errors.append({"item_id": item_id, "field": "metadata", "message": f"Metadata file does not exist: {metadata}"})
@@ -128,7 +138,7 @@ def validate_batch_manifest(root: Path, manifest_path: Path) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
     for index, item in enumerate(items, start=1):
         item_id = str(item.get("item_id") or f"item-{index:03d}")
-        method = str(item.get("method", "")).lower()
+        method = _normalize_method(str(item.get("method", "")))
         item_errors = _validate_item(root, item, index)
         errors.extend(item_errors)
         item_summaries.append(
@@ -203,6 +213,18 @@ def _run_method(root: Path, method: str, project_id: str, item: dict[str, Any], 
             ),
             created_at=created_at,
         )
+    if method == "uv_vis":
+        return process_uv_vis_result(
+            root,
+            characterization_metadata_path=metadata_path,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            request=UVVisProcessingRequest(
+                **common,
+                signal_mode=str(item.get("signal_mode") or "absorbance"),
+            ),
+            created_at=created_at,
+        )
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -215,6 +237,8 @@ def _report_generator(method: str) -> Callable[..., Path]:
         return generate_xrd_report
     if method == "ftir":
         return generate_ftir_report
+    if method == "uv_vis":
+        return generate_uv_vis_report
     raise BatchManifestError(f"Unsupported report method: {method}")
 
 
@@ -237,6 +261,7 @@ def _generate_report(
         "pl": "pl_metadata_path",
         "xrd": "xrd_metadata_path",
         "ftir": "ftir_metadata_path",
+        "uv_vis": "uv_vis_metadata_path",
     }[method]
     return generator(
         root,
@@ -317,7 +342,7 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
     warnings: list[dict[str, str]] = []
     for index, item in enumerate(items, start=1):
         item_id = str(item.get("item_id") or f"item-{index:03d}")
-        method = str(item["method"]).lower()
+        method = _normalize_method(str(item["method"]))
         item_project_id = str(item.get("project_id") or project_id)
         item_record: dict[str, Any] = {
             "item_id": item_id,

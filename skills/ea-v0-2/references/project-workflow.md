@@ -87,12 +87,24 @@ ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metada
 ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
+CLI path for the first UV-Vis workflow:
+
+```bash
+ea raw import /path/to/ea-project /path/to/raw-uv-vis.txt --characterization-type uv_vis --sample-ref sample-001 --experiment-ref exp-001
+ea uv-vis inspect /path/to/ea-project raw/uv_vis/char-20260630-001/raw-uv-vis.txt
+ea review add /path/to/ea-project --target-type uv_vis_columns --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavelength_nm, y=absorbance, unit=nm, signal_mode=absorbance"
+ea review add /path/to/ea-project --target-type uv_vis_parameters --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default UV-Vis parameters confirmed"
+ea uv-vis process /path/to/ea-project --metadata raw/uv_vis/char-20260630-001/metadata.yml --x-column wavelength_nm --y-column absorbance --x-unit nm --signal-mode absorbance --column-review-ref review-20260630-009 --parameter-review-ref review-20260630-010 --sample-ref sample-001
+ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+```
+
 Editable templates:
 
 ```bash
 ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --output batch_manifest.yml
+ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --output batch_manifest.yml
 ```
 
 Parameter templates are directly usable with `--parameters-file` after the user confirms the parameter content. Batch manifest templates still need real metadata and confirmed review refs before validation.
@@ -135,4 +147,4 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ```
 
-Batch manifests can coordinate Raman, PL, XRD, and FTIR items. They do not replace column, unit, signal-mode, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.
+Batch manifests can coordinate Raman, PL, XRD, FTIR, and UV-Vis items. They do not replace column, unit, signal-mode, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.

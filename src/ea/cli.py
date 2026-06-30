@@ -35,7 +35,7 @@ from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_xrd_report
+from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xrd_report
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
@@ -46,6 +46,7 @@ from ea.templates import (
     write_batch_manifest_template,
     write_processing_parameters_template,
 )
+from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
 
@@ -237,6 +238,32 @@ def build_parser() -> argparse.ArgumentParser:
     ftir_report.add_argument("--sample-ref", action="append", default=[])
     ftir_report.add_argument("--reference-id", action="append", default=[])
 
+    uv_vis = sub.add_parser("uv-vis", help="UV-Vis inspection, processing, and report helpers")
+    uv_vis_sub = uv_vis.add_subparsers(dest="uv_vis_command", required=True)
+    uv_vis_inspect = uv_vis_sub.add_parser("inspect", help="inspect an optical spectrum file and suggest UV-Vis columns/unit")
+    uv_vis_inspect.add_argument("workspace", type=Path)
+    uv_vis_inspect.add_argument("spectrum", type=Path)
+    uv_vis_process = uv_vis_sub.add_parser("process", help="run review-gated UV-Vis processing")
+    uv_vis_process.add_argument("workspace", type=Path)
+    uv_vis_process.add_argument("--metadata", required=True, type=Path)
+    uv_vis_process.add_argument("--project-id")
+    uv_vis_process.add_argument("--sample-ref", action="append", default=[])
+    uv_vis_process.add_argument("--x-column", required=True)
+    uv_vis_process.add_argument("--y-column", required=True)
+    uv_vis_process.add_argument("--x-unit", choices=["nm", "eV", "unknown"], required=True)
+    uv_vis_process.add_argument("--signal-mode", choices=["absorbance", "transmittance", "reflectance"], required=True)
+    uv_vis_process.add_argument("--column-review-ref", required=True)
+    uv_vis_process.add_argument("--parameter-review-ref", required=True)
+    uv_vis_process.add_argument("--parameters-file", type=Path)
+    uv_vis_process.add_argument("--parameters-json")
+    uv_vis_report = uv_vis_sub.add_parser("report", help="generate a UV-Vis analysis report from UV-Vis metadata")
+    uv_vis_report.add_argument("workspace", type=Path)
+    uv_vis_report.add_argument("--metadata", required=True, type=Path)
+    uv_vis_report.add_argument("--project-id")
+    uv_vis_report.add_argument("--experiment-ref", action="append", default=[])
+    uv_vis_report.add_argument("--sample-ref", action="append", default=[])
+    uv_vis_report.add_argument("--reference-id", action="append", default=[])
+
     batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
     batch_sub = batch.add_subparsers(dest="batch_command", required=True)
     batch_validate = batch_sub.add_parser("validate", help="validate a batch characterization manifest")
@@ -249,12 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
     templates = sub.add_parser("templates", help="write editable EA YAML templates")
     templates_sub = templates.add_subparsers(dest="templates_command", required=True)
     parameter_template = templates_sub.add_parser("parameters", help="show or write method processing parameters")
-    parameter_template.add_argument("method", choices=list(SUPPORTED_TEMPLATE_METHODS))
+    template_method_choices = list(SUPPORTED_TEMPLATE_METHODS) + ["uv-vis"]
+    parameter_template.add_argument("method", choices=template_method_choices)
     parameter_template.add_argument("--output", type=Path)
     batch_template = templates_sub.add_parser("batch-manifest", help="show or write a batch manifest skeleton")
     batch_template.add_argument("workspace", type=Path)
     batch_template.add_argument("--output", type=Path)
-    batch_template.add_argument("--method", choices=list(SUPPORTED_TEMPLATE_METHODS), action="append", default=[])
+    batch_template.add_argument("--method", choices=template_method_choices, action="append", default=[])
     batch_template.add_argument("--project-id")
     batch_template.add_argument("--sample-ref", default="sample-001")
     batch_template.add_argument("--experiment-ref", default="exp-001")
@@ -431,6 +459,15 @@ def _xrd_processing_parameters(args: argparse.Namespace, workspace: Path) -> dic
 
 def _ftir_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_ftir_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _uv_vis_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_uv_vis_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -736,6 +773,45 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_json({"report": str(path)})
             return 0
+    if args.command == "uv-vis":
+        project_id = getattr(args, "project_id", None)
+        if args.uv_vis_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.uv_vis_command == "inspect":
+            inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.uv_vis_command == "process":
+            parameters = _uv_vis_processing_parameters(args, args.workspace)
+            path = process_uv_vis_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=UVVisProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    signal_mode=args.signal_mode,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.uv_vis_command == "report":
+            path = generate_uv_vis_report(
+                args.workspace,
+                project_id=project_id,
+                uv_vis_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
     if args.command == "batch":
         if args.batch_command == "validate":
             result = validate_batch_manifest(args.workspace, args.manifest)
@@ -751,22 +827,23 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result["status"] == "success" else 2
     if args.command == "templates":
         if args.templates_command == "parameters":
+            method = args.method.lower().strip().replace("-", "_")
             written = None
             if args.output:
-                written = write_processing_parameters_template(args.output, args.method)
+                written = write_processing_parameters_template(args.output, method)
             _print_json(
                 {
                     "template_type": "processing_parameters",
-                    "method": args.method,
-                    "review_target_type": f"{args.method}_parameters",
-                    "parameters": processing_parameters_template(args.method),
+                    "method": method,
+                    "review_target_type": f"{method}_parameters",
+                    "parameters": processing_parameters_template(method),
                     "written": str(written) if written else None,
                 }
             )
             return 0
         if args.templates_command == "batch-manifest":
             project_id = args.project_id or _project_id_from_workspace(args.workspace)
-            methods = args.method or list(SUPPORTED_TEMPLATE_METHODS)
+            methods = [method.lower().strip().replace("-", "_") for method in (args.method or list(SUPPORTED_TEMPLATE_METHODS))]
             output_path = None
             if args.output:
                 output_path = args.output if args.output.is_absolute() else args.workspace / args.output
