@@ -102,7 +102,7 @@ ea batch run /path/to/ea-project batch_manifest.yml
 ea literature status /path/to/ea-project
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
-ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20
+ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project

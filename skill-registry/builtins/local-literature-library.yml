@@ -16,6 +16,7 @@ ea_skill:
     - literature_status
     - public_search_candidate_manifest
     - search_coverage_record
+    - public_search_state_record
     - ranked_candidate_table
     - selected_literature_items
     - reference_record
@@ -52,6 +53,7 @@ ea_skill:
       - search_query_and_confirmation_package_generation
       - top_n_confirmation_record
       - explicit_public_metadata_search_connectors
+      - public_metadata_search_resume_state
       - supplied_candidate_ranking_and_selection_export
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation

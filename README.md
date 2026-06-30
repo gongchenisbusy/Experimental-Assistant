@@ -91,7 +91,7 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
-ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20
+ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
@@ -104,6 +104,8 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 ea references validate-report /path/to/ea-project reports/rpt-example.md
 ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
 ```
+
+Use `ea literature search-public --page-limit N --delay-seconds S --resume` for longer public metadata runs that should write and reuse `literature/public_search_state.yml`.
 
 `ea init-project` writes an `open-items/` literature-library decision record unless `--enable-literature` is supplied. Use `--enable-literature` only when the user explicitly wants a project literature status record created during initialization; all Zotero, browser, cache, proxy/VPN, and institution settings still remain user-supplied.
 

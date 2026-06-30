@@ -421,6 +421,9 @@ def build_parser() -> argparse.ArgumentParser:
     lit_search.add_argument("--source", action="append", choices=["crossref", "openalex", "arxiv"], default=[])
     lit_search.add_argument("--max-results", type=int, default=20)
     lit_search.add_argument("--query-limit", type=int, default=3)
+    lit_search.add_argument("--page-limit", type=int, default=1)
+    lit_search.add_argument("--delay-seconds", type=float, default=0.0)
+    lit_search.add_argument("--resume", action="store_true")
     lit_search.add_argument("--top-n", type=int)
     lit_search.add_argument("--reference-year", type=int)
     lit_search.add_argument("--keyword", action="append", default=[])
@@ -1205,6 +1208,9 @@ def main(argv: list[str] | None = None) -> int:
                     sources=args.source or None,
                     max_results=args.max_results,
                     query_limit=args.query_limit,
+                    page_limit=args.page_limit,
+                    delay_seconds=args.delay_seconds,
+                    resume=args.resume,
                     top_n=args.top_n,
                     reference_year=args.reference_year,
                     extra_keywords=args.keyword,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import urllib.parse
 from pathlib import Path
 
 from ea.cli import main
@@ -476,12 +477,153 @@ def test_literature_search_public_normalizes_coverage_and_ranks_candidates(tmp_p
     assert "Public Metadata Search" in search_log
 
 
+def test_literature_search_public_resume_state_and_pagination(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Public Search Resume",
+        project_slug="mos2-public-search-resume",
+        research_direction="MoS2 Raman public metadata pagination",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=6, user_response="确认 top 6。")
+
+    seen: list[tuple[str, str]] = []
+
+    def arxiv_feed(start: int) -> str:
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/2601.0000{start + 1}v1</id>
+    <published>2026-01-0{start + 1}T00:00:00Z</published>
+    <title>MoS2 arXiv page {start + 1}</title>
+    <summary>MoS2 paged arXiv candidate.</summary>
+    <author><name>ArXiv Author {start + 1}</name></author>
+  </entry>
+</feed>
+"""
+
+    def fake_fetcher(url: str, source: str) -> str:
+        seen.append((source, url))
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        if source == "crossref":
+            cursor = params["cursor"][0]
+            if cursor == "*":
+                return json.dumps(
+                    {
+                        "message": {
+                            "next-cursor": "crossref-next",
+                            "items": [
+                                {
+                                    "title": ["MoS2 Crossref page 1"],
+                                    "issued": {"date-parts": [[2026]]},
+                                    "DOI": "10.1000/crossref-page-1",
+                                    "URL": "https://doi.org/10.1000/crossref-page-1",
+                                }
+                            ],
+                        }
+                    }
+                )
+            assert cursor == "crossref-next"
+            return json.dumps(
+                {
+                    "message": {
+                        "items": [
+                            {
+                                "title": ["MoS2 Crossref page 2"],
+                                "issued": {"date-parts": [[2025]]},
+                                "DOI": "10.1000/crossref-page-2",
+                                "URL": "https://doi.org/10.1000/crossref-page-2",
+                            }
+                        ]
+                    }
+                }
+            )
+        if source == "openalex":
+            cursor = params["cursor"][0]
+            if cursor == "*":
+                return json.dumps(
+                    {
+                        "meta": {"next_cursor": "openalex-next"},
+                        "results": [
+                            {
+                                "display_name": "MoS2 OpenAlex page 1",
+                                "publication_year": 2026,
+                                "doi": "https://doi.org/10.1000/openalex-page-1",
+                                "primary_location": {"landing_page_url": "https://example.org/openalex-page-1"},
+                            }
+                        ],
+                    }
+                )
+            assert cursor == "openalex-next"
+            return json.dumps(
+                {
+                    "meta": {},
+                    "results": [
+                        {
+                            "display_name": "MoS2 OpenAlex page 2",
+                            "publication_year": 2025,
+                            "doi": "https://doi.org/10.1000/openalex-page-2",
+                            "primary_location": {"landing_page_url": "https://example.org/openalex-page-2"},
+                        }
+                    ],
+                }
+            )
+        if source == "arxiv":
+            return arxiv_feed(int(params["start"][0]))
+        raise AssertionError(f"unexpected source {source}")
+
+    first = search_public_literature_metadata(
+        tmp_path,
+        sources=["crossref", "openalex", "arxiv"],
+        max_results=1,
+        query_limit=1,
+        page_limit=1,
+        searched_at="2026-07-01T10:00:00",
+        fetcher=fake_fetcher,
+    )
+    assert first["candidate_count"] == 3
+    assert first["search_state"]["status"] == "in_progress"
+    assert len(first["search_state"]["next_tasks"]) == 3
+
+    second = search_public_literature_metadata(
+        tmp_path,
+        sources=["crossref", "openalex", "arxiv"],
+        max_results=1,
+        query_limit=1,
+        page_limit=1,
+        resume=True,
+        searched_at="2026-07-01T10:05:00",
+        fetcher=fake_fetcher,
+    )
+    state = read_yaml(tmp_path / "literature" / "public_search_state.yml")
+    coverage = read_yaml(tmp_path / "literature" / "search_coverage.yml")
+    manifest = read_yaml(tmp_path / "literature" / "public_search_candidates.yml")
+
+    assert second["candidate_count"] == 6
+    assert state["status"] == "complete"
+    assert state["request_count"] == 6
+    assert len(state["state_entries"]) == 6
+    assert len(coverage["coverage_entries"]) == 6
+    assert coverage["search_state_ref"] == "literature/public_search_state.yml"
+    assert manifest["search_state_ref"] == "literature/public_search_state.yml"
+    assert any("crossref-next" in url for source, url in seen if source == "crossref")
+    assert any("openalex-next" in url for source, url in seen if source == "openalex")
+    assert any("start=1" in url for source, url in seen if source == "arxiv")
+
+
 def test_cli_literature_search_public_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
     def fake_search_public_literature_metadata(workspace: Path, **kwargs):
         assert workspace == tmp_path
         assert kwargs["sources"] == ["crossref"]
         assert kwargs["max_results"] == 3
         assert kwargs["query_limit"] == 1
+        assert kwargs["page_limit"] == 2
+        assert kwargs["delay_seconds"] == 0.25
+        assert kwargs["resume"] is True
         assert kwargs["extra_keywords"] == ["strain"]
         return {"status": {"status": "public_metadata_ranked_ready"}, "candidate_count": 1}
 
@@ -499,6 +641,11 @@ def test_cli_literature_search_public_wires_arguments(tmp_path: Path, capsys, mo
                 "3",
                 "--query-limit",
                 "1",
+                "--page-limit",
+                "2",
+                "--delay-seconds",
+                "0.25",
+                "--resume",
                 "--keyword",
                 "strain",
             ]
@@ -751,16 +898,20 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "literature-library decision record" in readme
     assert "rank-candidates" in readme
     assert "search-public" in readme
+    assert "public_search_state.yml" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
+    assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
     assert "public_search_candidate_manifest" in manifest["output_artifacts"]
+    assert "public_search_state_record" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
+    assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

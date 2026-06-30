@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -1212,18 +1213,117 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
-def _public_search_url(source: PublicMetadataSource, query: str, max_results: int) -> str:
+def _public_search_url(
+    source: PublicMetadataSource,
+    query: str,
+    max_results: int,
+    *,
+    cursor: str | None = None,
+    offset: int = 0,
+) -> str:
     if source == "crossref":
         return "https://api.crossref.org/works?" + urllib.parse.urlencode(
-            {"query.bibliographic": query, "rows": max_results}
+            {"query.bibliographic": query, "rows": max_results, "cursor": cursor or "*"}
         )
     if source == "openalex":
-        return "https://api.openalex.org/works?" + urllib.parse.urlencode({"search": query, "per-page": max_results})
+        return "https://api.openalex.org/works?" + urllib.parse.urlencode(
+            {"search": query, "per-page": max_results, "cursor": cursor or "*"}
+        )
     if source == "arxiv":
         return "https://export.arxiv.org/api/query?" + urllib.parse.urlencode(
-            {"search_query": f'all:"{query}"', "start": 0, "max_results": max_results}
+            {"search_query": f'all:"{query}"', "start": offset, "max_results": max_results}
         )
     raise ValueError(f"Unsupported public metadata source: {source}")
+
+
+def _public_search_state_path(root: Path) -> Path:
+    return root / "literature" / "public_search_state.yml"
+
+
+def _public_search_task_key(source: str, query: str) -> str:
+    return f"{source}::{query}"
+
+
+def _public_search_run_id(searched_at: str) -> str:
+    token = re.sub(r"[^0-9A-Za-z]+", "", searched_at)
+    return f"public-search-{token[:20] or 'run'}"
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _arxiv_total_results(payload: str) -> int | None:
+    root = ET.fromstring(payload)
+    ns = {"opensearch": "http://a9.com/-/spec/opensearch/1.1/"}
+    total = root.findtext("opensearch:totalResults", default="", namespaces=ns) or ""
+    return int(total) if total.isdigit() else None
+
+
+def _public_next_page(
+    source: PublicMetadataSource,
+    response_text: str,
+    *,
+    current_cursor: str | None,
+    current_offset: int,
+    normalized_count: int,
+    max_results: int,
+) -> dict[str, Any]:
+    if source == "crossref":
+        payload = json.loads(response_text)
+        next_cursor = payload.get("message", {}).get("next-cursor")
+        has_next = bool(next_cursor and next_cursor != current_cursor and normalized_count > 0)
+        return {"has_next_page": has_next, "next_cursor": str(next_cursor) if has_next else None, "next_offset": None}
+    if source == "openalex":
+        payload = json.loads(response_text)
+        next_cursor = payload.get("meta", {}).get("next_cursor")
+        has_next = bool(next_cursor and next_cursor != current_cursor and normalized_count > 0)
+        return {"has_next_page": has_next, "next_cursor": str(next_cursor) if has_next else None, "next_offset": None}
+    if source == "arxiv":
+        next_offset = current_offset + max_results
+        total_results = _arxiv_total_results(response_text)
+        has_next = normalized_count > 0 and total_results is not None and next_offset < total_results
+        return {
+            "has_next_page": has_next,
+            "next_cursor": None,
+            "next_offset": next_offset if has_next else None,
+            "total_results": total_results,
+        }
+    raise ValueError(f"Unsupported public metadata source: {source}")
+
+
+def _public_search_state_status(progress: dict[str, Any]) -> str:
+    if not progress:
+        return "complete"
+    statuses = [str(item.get("status", "")) for item in progress.values() if isinstance(item, dict)]
+    if any(status == "error" for status in statuses):
+        return "partial_with_errors"
+    if all(status == "complete" for status in statuses):
+        return "complete"
+    return "in_progress"
+
+
+def _public_search_next_tasks(progress: dict[str, Any]) -> list[dict[str, Any]]:
+    tasks = []
+    for item in progress.values():
+        if not isinstance(item, dict) or item.get("status") == "complete":
+            continue
+        tasks.append(
+            _compact_dict(
+                {
+                    "source": item.get("source"),
+                    "query": item.get("query"),
+                    "next_cursor": item.get("next_cursor"),
+                    "next_offset": item.get("next_offset"),
+                    "next_page_index": item.get("next_page_index"),
+                    "status": item.get("status"),
+                }
+            )
+        )
+    return tasks
 
 
 def _first(value: Any) -> Any:
@@ -1397,11 +1497,18 @@ def search_public_literature_metadata(
     extra_keywords: list[str] | None = None,
     searched_at: str | None = None,
     fetcher: Callable[[str, str], str] | None = None,
+    page_limit: int = 1,
+    delay_seconds: float = 0.0,
+    resume: bool = False,
 ) -> dict[str, Any]:
     if max_results <= 0:
         raise ValueError("max_results must be positive")
     if query_limit is not None and query_limit <= 0:
         raise ValueError("query_limit must be positive when supplied")
+    if page_limit <= 0:
+        raise ValueError("page_limit must be positive")
+    if delay_seconds < 0:
+        raise ValueError("delay_seconds must be non-negative")
     selected_sources = sources or PUBLIC_METADATA_SOURCES
     unsupported = [source for source in selected_sources if source not in PUBLIC_METADATA_SOURCES]
     if unsupported:
@@ -1418,62 +1525,236 @@ def search_public_literature_metadata(
         queries = queries[:query_limit]
     fetch = fetcher or (lambda url, source: _public_fetch_text(url, source=source))
 
-    candidates: list[dict[str, Any]] = []
-    coverage_entries: list[dict[str, Any]] = []
-    for source in selected_sources:
-        for query in queries:
-            url = _public_search_url(source, query, max_results)
-            entry: dict[str, Any] = {
-                "source": source,
-                "query": query,
-                "url": url,
-                "status": "not_started",
-                "candidate_count": 0,
-            }
-            try:
-                response_text = fetch(url, source)
-                normalized = _normalize_public_response(source, response_text, query=query)
-            except Exception as exc:  # noqa: BLE001 - coverage records should preserve source-level failures
-                entry.update({"status": "error", "error": str(exc)})
-                coverage_entries.append(entry)
-                continue
-            entry.update({"status": "ok", "candidate_count": len(normalized)})
-            coverage_entries.append(entry)
-            candidates.extend(normalized)
-
     candidate_manifest_path = literature_root / "public_search_candidates.yml"
     coverage_path = literature_root / "search_coverage.yml"
-    candidate_manifest = {
-        "schema_version": "0.2",
-        "project_id": project_id,
-        "created_at": searched_at,
-        "source_type": "public_metadata_search",
-        "sources": selected_sources,
-        "query_count": len(queries),
-        "candidate_count": len(candidates),
-        "boundaries": [
-            "Public metadata APIs only; no Zotero, browser profile, institution login, credentials, paywall access, DOI full-text resolution, or PDF download.",
-            "Coverage is source-limited and query-limited; do not claim exhaustive web coverage.",
-        ],
-        "candidates": candidates,
-    }
-    coverage = {
-        "schema_version": "0.2",
-        "project_id": project_id,
-        "created_at": searched_at,
-        "sources": selected_sources,
-        "query_count": len(queries),
-        "max_results_per_query": max_results,
-        "candidate_count": len(candidates),
-        "coverage_entries": coverage_entries,
-        "known_limits": [
-            "Source API availability, query syntax, indexing lag, and API rate limits can omit relevant literature.",
-            "No source proves exhaustive web coverage.",
-            "Full-text acquisition, Zotero use, browser assistance, and institution access remain separate user-confirmed workflows.",
-        ],
-    }
-    write_yaml(candidate_manifest_path, candidate_manifest)
-    write_yaml(coverage_path, coverage)
+    state_path = _public_search_state_path(root)
+    previous_state = read_yaml(state_path) if resume and state_path.exists() else {}
+    progress: dict[str, Any] = dict(previous_state.get("progress") or {})
+    state_entries: list[dict[str, Any]] = list(previous_state.get("state_entries") or [])
+    request_count = _safe_int(previous_state.get("request_count"), len(state_entries))
+
+    candidates: list[dict[str, Any]] = []
+    coverage_entries: list[dict[str, Any]] = []
+    if resume and candidate_manifest_path.exists():
+        previous_manifest = read_yaml(candidate_manifest_path)
+        candidates.extend(
+            item for item in previous_manifest.get("candidates") or [] if isinstance(item, dict)
+        )
+    if resume and coverage_path.exists():
+        previous_coverage = read_yaml(coverage_path)
+        coverage_entries.extend(
+            item for item in previous_coverage.get("coverage_entries") or [] if isinstance(item, dict)
+        )
+    if not state_entries and coverage_entries:
+        state_entries.extend(coverage_entries)
+
+    task_keys = []
+    for source in selected_sources:
+        for query in queries:
+            task_key = _public_search_task_key(source, query)
+            task_keys.append(task_key)
+            progress.setdefault(
+                task_key,
+                {
+                    "source": source,
+                    "query": query,
+                    "status": "not_started",
+                    "next_cursor": None,
+                    "next_offset": 0,
+                    "next_page_index": 0,
+                    "page_count": 0,
+                    "candidate_count": 0,
+                },
+            )
+
+    def active_progress() -> dict[str, Any]:
+        return {key: progress[key] for key in task_keys if key in progress}
+
+    def candidate_manifest() -> dict[str, Any]:
+        return {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "created_at": searched_at,
+            "source_type": "public_metadata_search",
+            "sources": selected_sources,
+            "query_count": len(queries),
+            "candidate_count": len(candidates),
+            "search_state_ref": "literature/public_search_state.yml",
+            "boundaries": [
+                "Public metadata APIs only; no Zotero, browser profile, institution login, credentials, paywall access, DOI full-text resolution, or PDF download.",
+                "Coverage is source-limited and query-limited; do not claim exhaustive web coverage.",
+            ],
+            "candidates": candidates,
+        }
+
+    def coverage_record() -> dict[str, Any]:
+        return {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "created_at": searched_at,
+            "sources": selected_sources,
+            "query_count": len(queries),
+            "max_results_per_request": max_results,
+            "page_limit_per_source_query": page_limit,
+            "delay_seconds_between_requests": delay_seconds,
+            "resume_enabled": resume,
+            "request_count": request_count,
+            "candidate_count": len(candidates),
+            "search_state_ref": "literature/public_search_state.yml",
+            "coverage_entries": coverage_entries,
+            "known_limits": [
+                "Source API availability, query syntax, indexing lag, and API rate limits can omit relevant literature.",
+                "No source proves exhaustive web coverage.",
+                "Full-text acquisition, Zotero use, browser assistance, and institution access remain separate user-confirmed workflows.",
+            ],
+        }
+
+    def write_search_outputs() -> None:
+        write_yaml(candidate_manifest_path, candidate_manifest())
+        write_yaml(coverage_path, coverage_record())
+
+    def write_state_snapshot() -> dict[str, Any]:
+        current_progress = active_progress()
+        snapshot = {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "run_id": previous_state.get("run_id") or _public_search_run_id(searched_at),
+            "created_at": previous_state.get("created_at") or searched_at,
+            "updated_at": searched_at,
+            "status": _public_search_state_status(current_progress),
+            "sources": selected_sources,
+            "query_count": len(queries),
+            "max_results_per_request": max_results,
+            "page_limit_per_source_query": page_limit,
+            "delay_seconds_between_requests": delay_seconds,
+            "resume_enabled": resume,
+            "request_count": request_count,
+            "candidate_count": len(candidates),
+            "coverage_entry_count": len(coverage_entries),
+            "output_artifacts": {
+                "candidate_manifest": "literature/public_search_candidates.yml",
+                "search_coverage": "literature/search_coverage.yml",
+                "ranking": "literature/ranking.csv",
+                "selected_items": "literature/selected_items.yml",
+            },
+            "progress": progress,
+            "next_tasks": _public_search_next_tasks(current_progress),
+            "state_entries": state_entries,
+            "boundaries": [
+                "Public metadata state tracks metadata search progress only.",
+                "No Zotero, browser profile, institution login, credentials, paywall access, DOI full-text resolution, or PDF download is stored or executed here.",
+            ],
+        }
+        write_yaml(state_path, snapshot)
+        write_search_outputs()
+        return snapshot
+
+    request_count_this_run = 0
+    for source in selected_sources:
+        for query in queries:
+            task_key = _public_search_task_key(source, query)
+            task_state = progress[task_key]
+            if resume and task_state.get("status") == "complete":
+                continue
+            cursor = str(task_state.get("next_cursor")) if resume and task_state.get("next_cursor") else None
+            offset = _safe_int(task_state.get("next_offset"), 0) if resume else 0
+            page_index = _safe_int(task_state.get("next_page_index"), 0) if resume else 0
+            pages_requested = 0
+            while pages_requested < page_limit:
+                if delay_seconds and request_count_this_run:
+                    time.sleep(delay_seconds)
+                url = _public_search_url(source, query, max_results, cursor=cursor, offset=offset)
+                entry: dict[str, Any] = _compact_dict(
+                    {
+                        "source": source,
+                        "query": query,
+                        "url": url,
+                        "status": "not_started",
+                        "page_index": page_index + 1,
+                        "cursor": cursor if source in {"crossref", "openalex"} else None,
+                        "offset": offset if source == "arxiv" else None,
+                        "candidate_count": 0,
+                    }
+                )
+                request_count_this_run += 1
+                try:
+                    response_text = fetch(url, source)
+                    normalized = _normalize_public_response(source, response_text, query=query)
+                    page_state = _public_next_page(
+                        source,
+                        response_text,
+                        current_cursor=cursor,
+                        current_offset=offset,
+                        normalized_count=len(normalized),
+                        max_results=max_results,
+                    )
+                except Exception as exc:  # noqa: BLE001 - coverage records should preserve source-level failures
+                    request_count += 1
+                    entry.update({"status": "error", "error": str(exc)})
+                    coverage_entries.append(entry)
+                    state_entries.append(entry.copy())
+                    task_state.update(
+                        {
+                            "status": "error",
+                            "last_error": str(exc),
+                            "last_url": url,
+                            "next_cursor": cursor,
+                            "next_offset": offset,
+                            "next_page_index": page_index,
+                        }
+                    )
+                    write_state_snapshot()
+                    break
+                request_count += 1
+                next_cursor = page_state.get("next_cursor")
+                next_offset = page_state.get("next_offset")
+                entry.update(
+                    _compact_dict(
+                        {
+                            "status": "ok",
+                            "candidate_count": len(normalized),
+                            "next_cursor": next_cursor,
+                            "next_offset": next_offset,
+                            "has_next_page": page_state.get("has_next_page"),
+                            "total_results": page_state.get("total_results"),
+                        }
+                    )
+                )
+                coverage_entries.append(entry)
+                state_entries.append(entry.copy())
+                candidates.extend(normalized)
+                pages_requested += 1
+                task_state["page_count"] = _safe_int(task_state.get("page_count"), 0) + 1
+                task_state["candidate_count"] = _safe_int(task_state.get("candidate_count"), 0) + len(normalized)
+                task_state["last_url"] = url
+                task_state["last_candidate_count"] = len(normalized)
+                if page_state.get("has_next_page"):
+                    cursor = str(next_cursor) if next_cursor else None
+                    offset = _safe_int(next_offset, offset)
+                    page_index += 1
+                    task_state.update(
+                        {
+                            "status": "in_progress",
+                            "next_cursor": cursor,
+                            "next_offset": offset,
+                            "next_page_index": page_index,
+                        }
+                    )
+                else:
+                    task_state.update(
+                        {
+                            "status": "complete",
+                            "next_cursor": None,
+                            "next_offset": None,
+                            "next_page_index": page_index + 1,
+                        }
+                    )
+                write_state_snapshot()
+                if not page_state.get("has_next_page"):
+                    break
+
+    search_state = write_state_snapshot()
+    coverage = coverage_record()
 
     ranking = rank_literature_candidates(
         root,
@@ -1486,22 +1767,32 @@ def search_public_literature_metadata(
         ranked_at=searched_at,
     )
     status = read_yaml(status_path)
-    status.update(
-        {
-            "status": "public_metadata_ranked_ready"
-            if status.get("selected_top_n")
-            else "public_metadata_ranked_awaiting_user_confirmation",
-            "public_metadata_search_ref": "literature/public_search_candidates.yml",
-            "search_coverage_ref": "literature/search_coverage.yml",
-            "public_metadata_sources": selected_sources,
-            "public_metadata_search_completed_at": searched_at,
-            "summary_for_origin_thread": (
-                f"Public metadata search collected {len(candidates)} candidate record(s) from "
-                f"{len(selected_sources)} source(s) and {len(queries)} query/queries. "
-                "No full-text acquisition, Zotero, browser, institution login, or PDF download was executed."
-            ),
-        }
-    )
+    search_status = str(search_state.get("status", "unknown"))
+    status_update = {
+        "status": "public_metadata_ranked_ready"
+        if status.get("selected_top_n")
+        else "public_metadata_ranked_awaiting_user_confirmation",
+        "public_metadata_search_ref": "literature/public_search_candidates.yml",
+        "search_coverage_ref": "literature/search_coverage.yml",
+        "public_metadata_search_state_ref": "literature/public_search_state.yml",
+        "public_metadata_search_status": search_status,
+        "public_metadata_sources": selected_sources,
+        "public_metadata_search_updated_at": searched_at,
+        "public_metadata_search_request_count": request_count,
+        "public_metadata_search_page_limit": page_limit,
+        "public_metadata_search_resume_enabled": resume,
+        "summary_for_origin_thread": (
+            f"Public metadata search collected {len(candidates)} candidate record(s) from "
+            f"{len(selected_sources)} source(s), {len(queries)} query/queries, and "
+            f"{request_count} request(s); search state is {search_status}. "
+            "No full-text acquisition, Zotero, browser, institution login, or PDF download was executed."
+        ),
+    }
+    if search_status == "complete":
+        status_update["public_metadata_search_completed_at"] = searched_at
+    else:
+        status.pop("public_metadata_search_completed_at", None)
+    status.update(status_update)
     write_yaml(status_path, status)
 
     search_log = literature_root / "search_log.md"
@@ -1514,6 +1805,9 @@ def search_public_literature_metadata(
         f"- searched_at: {searched_at}",
         f"- sources: {', '.join(selected_sources)}",
         f"- query_count: {len(queries)}",
+        f"- request_count: {request_count}",
+        f"- page_limit_per_source_query: {page_limit}",
+        f"- resume_enabled: {resume}",
         f"- candidate_count: {len(candidates)}",
         "- boundary: public metadata only; no full-text acquisition, Zotero, browser, institution login, or PDF download.",
         "- coverage: source-limited and query-limited; no exhaustive web coverage claim.",
@@ -1523,10 +1817,12 @@ def search_public_literature_metadata(
     return {
         "candidate_manifest_path": str(candidate_manifest_path),
         "coverage_path": str(coverage_path),
+        "state_path": str(state_path),
         "ranking_path": ranking["ranking_path"],
         "selected_items_path": ranking["selected_items_path"],
         "candidate_count": len(candidates),
         "coverage": coverage,
+        "search_state": search_state,
         "ranking": ranking,
         "status": status,
     }
