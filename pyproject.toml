@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ea-v0-1"
+version = "0.1.0"
+description = "Local-first EA v0.1 agent-native scientific assistant core"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7",
+  "pyyaml>=6.0",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "scipy>=1.12",
+  "matplotlib>=3.8",
+  "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+]
+
+[project.scripts]
+ea = "ea.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

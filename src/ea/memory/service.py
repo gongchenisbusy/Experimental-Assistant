@@ -1,0 +1,241 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from ea.provenance import write_provenance_entry
+from ea.review import classify_user_response, require_confirmed_review, write_review_record
+from ea.schema import OpenItem, ProgressEvent, SuggestionRecord
+from ea.schema.models import EARecord
+from ea.storage.files import read_markdown_record, write_markdown_record, write_yaml
+from ea.storage.ids import next_id
+
+
+class MemoryBoundaryError(RuntimeError):
+    """Raised when a write would blur suggestion, decision, progress, or finding."""
+
+
+DECISION_PHRASES = ["我采用", "我下一步计划", "接下来我决定", "这条路线先暂停", "我们改成"]
+
+
+def _append_markdown(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        existing = path.read_text(encoding="utf-8")
+    else:
+        existing = ""
+    path.write_text(existing.rstrip() + "\n\n" + text.strip() + "\n", encoding="utf-8")
+
+
+def record_suggestion(
+    root: Path,
+    *,
+    project_id: str,
+    trigger: str,
+    suggestion_text: str,
+    related_records: list[str] | None = None,
+    source_refs: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    suggestion_id = next_id(root, "suggestion")
+    suggestion = SuggestionRecord(
+        suggestion_id=suggestion_id,
+        project_id=project_id,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        trigger=trigger,
+        suggestion_text=suggestion_text,
+        related_records=related_records or [],
+        source_refs=source_refs or [],
+    )
+    path = root / "suggestions" / f"{suggestion_id}.md"
+    write_markdown_record(path, suggestion.model_dump(exclude_none=True), suggestion_text)
+    write_provenance_entry(
+        root,
+        workflow="suggestion_generation",
+        inputs={"records": related_records or [], "files": []},
+        outputs={"records": [str(path.relative_to(root))], "files": []},
+        parameters={"status": "draft"},
+        source_refs=source_refs or [],
+        created_at=created_at,
+    )
+    return path
+
+
+def update_suggestion_status(
+    suggestion_path: Path,
+    *,
+    status: str,
+    user_response: str,
+) -> Path:
+    if status not in {"accepted", "modified", "rejected"}:
+        raise ValueError(status)
+    frontmatter, body = read_markdown_record(suggestion_path)
+    frontmatter["status"] = status
+    frontmatter["user_response"] = user_response
+    write_markdown_record(suggestion_path, frontmatter, body)
+    return suggestion_path
+
+
+def write_decision_log_entry(
+    root: Path,
+    *,
+    user_original_text: str,
+    ea_summary: str,
+    related_suggestion_ref: str | None = None,
+    source_refs: list[str] | None = None,
+    review_refs: list[str] | None = None,
+    decided_at: str | None = None,
+) -> Path:
+    if not any(phrase in user_original_text for phrase in DECISION_PHRASES):
+        raise MemoryBoundaryError("Decision log requires explicit user decision language")
+    if not review_refs:
+        raise MemoryBoundaryError("Decision log requires confirmed review_refs")
+    for review_ref in review_refs:
+        require_confirmed_review(root, review_ref)
+    decision_id = next_id(root, "decision")
+    entry = {
+        "decision_id": decision_id,
+        "decided_at": decided_at or EARecord.now_iso(),
+        "user_original_text": user_original_text,
+        "ea_summary": ea_summary,
+        "related_suggestion_ref": related_suggestion_ref,
+        "source_refs": source_refs or [],
+        "review_refs": review_refs or [],
+    }
+    path = root / "memory" / "decision-log.md"
+    _append_markdown(path, "```yaml\n" + _simple_yaml(entry) + "```")
+    write_provenance_entry(
+        root,
+        workflow="memory_write",
+        inputs={"records": source_refs or [], "files": []},
+        outputs={"records": ["memory/decision-log.md"], "files": []},
+        parameters={"target": "decision-log"},
+        review_refs=review_refs,
+        source_refs=source_refs or [],
+        created_at=decided_at,
+    )
+    return path
+
+
+def write_progress_event(
+    root: Path,
+    *,
+    user_original_text: str,
+    ea_summary: str,
+    event_type: str,
+    source_kind: str,
+    source_refs: list[str] | None = None,
+    review_refs: list[str] | None = None,
+    recorded_at: str | None = None,
+) -> Path:
+    if source_kind == "suggestion":
+        raise MemoryBoundaryError("EA suggestions cannot become progress events")
+    if not review_refs:
+        raise MemoryBoundaryError("Progress event requires confirmed review_refs")
+    for review_ref in review_refs:
+        require_confirmed_review(root, review_ref)
+    progress_id = next_id(root, "progress")
+    event = ProgressEvent(
+        progress_id=progress_id,
+        recorded_at=recorded_at or EARecord.now_iso(),
+        user_original_text=user_original_text,
+        ea_summary=ea_summary,
+        event_type=event_type,  # type: ignore[arg-type]
+        source_refs=source_refs or [],
+        review_refs=review_refs or [],
+    )
+    path = root / "progress" / f"{progress_id}.yml"
+    write_yaml(path, event.model_dump(exclude_none=True))
+    write_provenance_entry(
+        root,
+        workflow="progress_event_write",
+        inputs={"records": source_refs or [], "files": []},
+        outputs={"records": [str(path.relative_to(root))], "files": []},
+        parameters={"event_type": event_type, "source_kind": source_kind},
+        review_refs=review_refs,
+        source_refs=source_refs or [],
+        created_at=recorded_at,
+    )
+    return path
+
+
+def write_confirmed_finding(
+    root: Path,
+    *,
+    finding_text: str,
+    source_refs: list[str],
+    user_response: str,
+    reviewed_content: str,
+    provenance_refs: list[str],
+    reviewed_at: str | None = None,
+    finding_type: str = "interpretation",
+) -> Path:
+    if finding_type == "hypothesis":
+        raise MemoryBoundaryError("Hypotheses must be written to open questions, not confirmed findings")
+    if not source_refs:
+        raise MemoryBoundaryError("Confirmed finding requires source_refs")
+    if not provenance_refs:
+        raise MemoryBoundaryError("Confirmed finding requires provenance_refs")
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        raise MemoryBoundaryError("Confirmed finding requires clear user confirmation")
+    review_path = write_review_record(
+        root,
+        target_type="confirmed_finding",
+        target_ref="memory/confirmed-findings.md",
+        user_response=user_response,
+        reviewed_content=reviewed_content,
+        reviewed_at=reviewed_at,
+    )
+    path = root / "memory" / "confirmed-findings.md"
+    block = f"""## Confirmed Finding
+
+{finding_text}
+
+source_refs: {source_refs}
+review_refs: [{review_path.stem}]
+provenance_refs: {provenance_refs}
+"""
+    _append_markdown(path, block)
+    write_provenance_entry(
+        root,
+        workflow="memory_write",
+        inputs={"records": source_refs, "files": []},
+        outputs={"records": ["memory/confirmed-findings.md"], "files": []},
+        parameters={"target": "confirmed-findings"},
+        review_refs=[review_path.stem],
+        source_refs=source_refs,
+        created_at=reviewed_at,
+    )
+    return path
+
+
+def write_open_item(
+    root: Path,
+    *,
+    item_type: str,
+    description: str,
+    related_records: list[str] | None = None,
+    priority: str = "medium",
+    source_refs: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    open_item_id = next_id(root, "open_item")
+    item = OpenItem(
+        open_item_id=open_item_id,
+        created_at=created_at or EARecord.now_iso(),
+        item_type=item_type,
+        description=description,
+        related_records=related_records or [],
+        priority=priority,  # type: ignore[arg-type]
+        source_refs=source_refs or [],
+    )
+    path = root / "open-items" / f"{open_item_id}.yml"
+    write_yaml(path, item.model_dump(exclude_none=True))
+    return path
+
+
+def _simple_yaml(entry: dict) -> str:
+    import yaml
+
+    return yaml.safe_dump(entry, allow_unicode=True, sort_keys=False)

@@ -1,0 +1,30 @@
+# evaluator-only material
+test_cases/**/hidden_truth/
+test_cases/**/evaluation.md
+
+# user/private research material
+private/
+secrets/
+credentials/
+*.token
+*.key
+.env
+.env.*
+
+# runtime caches
+.venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+# generated outputs
+outputs/
+reports/generated/
+processed/
+figures/generated/
+
+# live project raw data, not public test fixtures
+raw/
