@@ -63,6 +63,7 @@ def build_command_steps(
                 SmokeStep("cli_help", [python, "-c", _cli_snippet(["--help"])]),
                 SmokeStep("cli_export_help", [python, "-c", _cli_snippet(["export", "--help"])]),
                 SmokeStep("cli_eval_help", [python, "-c", _cli_snippet(["eval", "--help"])]),
+                SmokeStep("release_manifest_help", [python, "-m", "ea.release_manifest", "--help"]),
             ]
         )
     return steps

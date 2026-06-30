@@ -73,9 +73,11 @@ python3 -m pytest
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
 python3 scripts/public_release_smoke.py --dry-run
 python3 scripts/public_release_smoke.py
+python3 scripts/build_release_manifest.py
 ```
 
 `scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The installed console entry point is `ea-public-release-smoke`.
+`scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 
 ## Local Test Fixtures
 
