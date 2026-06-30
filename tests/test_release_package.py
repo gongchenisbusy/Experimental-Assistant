@@ -48,6 +48,7 @@ def test_release_package_writes_zip_manifest_and_checksum_sidecar(tmp_path: Path
         names = set(archive.namelist())
         assert "ea-release/ea-v0.2-release-manifest.yml" in names
         assert "ea-release/README.md" in names
+        assert "ea-release/docs/PUBLIC_ONBOARDING.md" in names
         assert "ea-release/pyproject.toml" in names
         assert "ea-release/src/ea/__init__.py" in names
         assert "ea-release/src/ea/__pycache__/ignored.pyc" not in names

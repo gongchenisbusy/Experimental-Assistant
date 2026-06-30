@@ -4,6 +4,8 @@ Use this reference whenever project setup, literature setup, browser access, Zot
 
 EA must default to an unknown public user environment. Do not hardcode developer paths, accounts, browser profiles, institution login routes, Zotero collections, local literature cache folders, or test datasets.
 
+For a first-project public-user walkthrough in the repository docs, read `docs/PUBLIC_ONBOARDING.md`.
+
 Ask for or explicitly disable:
 
 - Project root, project name, and project slug.

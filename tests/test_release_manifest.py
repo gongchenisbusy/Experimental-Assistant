@@ -50,6 +50,7 @@ ea-release-checklist = "ea.release_distribution:main"
     (root / "skills" / "ea-v0-2" / "SKILL.md").write_text("---\nname: ea-v0-2\ndescription: test\n---\n", encoding="utf-8")
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
+    (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# EA v0.2 Public Onboarding\n", encoding="utf-8")
     (root / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
     (root / "scripts" / "demo.py").write_text("print('demo')\n", encoding="utf-8")
     (root / "dist" / "ignored.yml").write_text("ignored: true\n", encoding="utf-8")
@@ -72,6 +73,7 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert manifest["package"]["console_scripts"]["ea-verify-release-signature"] == "ea.release_signature:verify_main"
     assert manifest["package"]["console_scripts"]["ea-release-checklist"] == "ea.release_distribution:main"
     assert "pyproject.toml" in paths
+    assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "src/ea/__init__.py" in paths
     assert "src/ea/__pycache__/ignored.pyc" not in paths
     assert "dist/ignored.yml" not in paths
