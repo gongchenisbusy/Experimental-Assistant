@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from ea.electrochemistry import default_electrochemistry_processing_parameters
 from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.raman import default_processing_parameters
@@ -13,7 +14,7 @@ from ea.xps import default_xps_processing_parameters
 from ea.xrd import default_xrd_processing_parameters
 
 
-SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis", "xps")
+SUPPORTED_TEMPLATE_METHODS = ("raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry")
 
 
 def _normalise_method(method: str) -> str:
@@ -36,7 +37,9 @@ def processing_parameters_template(method: str) -> dict[str, Any]:
         return deepcopy(default_ftir_processing_parameters())
     if normalized == "uv_vis":
         return deepcopy(default_uv_vis_processing_parameters())
-    return deepcopy(default_xps_processing_parameters())
+    if normalized == "xps":
+        return deepcopy(default_xps_processing_parameters())
+    return deepcopy(default_electrochemistry_processing_parameters())
 
 
 def write_processing_parameters_template(path: Path, method: str) -> Path:
@@ -69,6 +72,11 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         x_column = "binding_energy_eV"
         y_column = "intensity"
         x_unit = "eV"
+    elif method == "electrochemistry":
+        metadata = "raw/electrochemistry/char-YYYYMMDD-001/metadata.yml"
+        x_column = "potential_V"
+        y_column = "current_mA"
+        x_unit = "V"
     else:
         metadata = "raw/raman/char-YYYYMMDD-001/metadata.yml"
         x_column = "col_0"
@@ -95,6 +103,12 @@ def _item_defaults(method: str, index: int, *, sample_ref: str, experiment_ref: 
         item["energy_shift_eV"] = 0.0
         item["calibration_reference"] = "user-confirmed calibration reference or not applicable"
         item["calibration_review_ref"] = "review-YYYYMMDD-003"
+    if method == "electrochemistry":
+        item["current_unit"] = "mA"
+        item["measurement_mode"] = "cv"
+        item["context_summary"] = "user-confirmed electrode/electrolyte/reference-electrode context"
+        item["electrode_area_cm2"] = None
+        item["context_review_ref"] = "review-YYYYMMDD-003"
     return item
 
 

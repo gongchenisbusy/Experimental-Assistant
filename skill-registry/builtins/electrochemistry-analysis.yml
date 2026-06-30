@@ -39,3 +39,33 @@ ea_skill:
     raw_is_readonly: true
     processing_parameters_required: true
     generated_outputs_outside_raw: true
+  current_v0_2_support:
+    commands:
+      - ea electrochemistry inspect
+      - ea electrochemistry process
+      - ea electrochemistry report
+      - ea templates parameters electrochemistry
+      - ea batch validate/run with method: electrochemistry
+    supported_modes:
+      - cv
+      - lsv
+      - chrono
+      - gcd
+      - unknown
+    supported_units:
+      x_unit:
+        - V
+        - mV
+        - s
+        - unknown
+      current_unit:
+        - A
+        - mA
+        - uA
+        - µA
+        - unknown
+    limitations:
+      - no_eis_impedance_fitting
+      - no_tafel_or_overpotential_extraction
+      - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
+      - no_memory_write_without_user_confirmation

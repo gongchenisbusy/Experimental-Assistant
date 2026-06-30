@@ -94,7 +94,7 @@ EA Orchestrator
 
 材料研究还常需要跨数据综合：
 
-- `batch-comparison`: 多样品、多批次统计比较；v0.2 先提供 Raman/PL/XRD/FTIR/UV-Vis/XPS 已确认条目的批处理协调和汇总，不替代每个表征方法的 review gates。
+- `batch-comparison`: 多样品、多批次统计比较；v0.2 先提供 Raman/PL/XRD/FTIR/UV-Vis/XPS/electrochemistry 已确认条目的批处理协调和汇总，不替代每个表征方法的 review gates。
 - `structure-property-linking`: 结构、成分、工艺和性能之间的证据化关联。
 - `doe-analysis`: 实验设计、变量筛选和响应面分析。
 
@@ -201,7 +201,7 @@ v0.2 建议先实现以下最小架构能力：
 - 内置 manifest 目录，至少覆盖 `local-literature-library`、`scientific-figure`、`raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis`、`thermal-analysis` 和 `image-analysis`。
 - `scientific-figure` 的统一绘图样式基础设施和 `analysis-report` 的输出契约。
 - `material-assignment-library` 的首个 MoS2 Raman/PL/XRD 内置记录和查询命令。
-- `raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis` 和 `xps-analysis` 作为第一批可运行表征 workflow 样例。
+- `raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis` 和 `electrochemistry-analysis` 作为第一批可运行表征 workflow 样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 
-电化学、热分析和更复杂的显微/散射模块可先进入设计和接口测试，不必一次性完整实现。
+热分析和更复杂的显微/散射模块可先进入设计和接口测试，不必一次性完整实现。Electrochemistry 当前只覆盖 CV/LSV/chrono/GCD 风格表格数据的 review-gated first-pass workflow，EIS、Tafel、容量/电容和正式性能指标仍应由后续协议化模块实现。

@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 from ea.cli import main
+from ea.electrochemistry import default_electrochemistry_processing_parameters
 from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.projects import initialize_project
@@ -85,6 +86,25 @@ def _write_xps_fixture(path: Path) -> Path:
     return path
 
 
+def _write_electrochemistry_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = V",
+        "# current_unit = mA",
+        "# measurement_mode = cv",
+        "# technique = cyclic voltammetry",
+        "potential_V current_mA",
+    ]
+    for index in range(700):
+        potential = -0.2 + index * (1.1 / 699.0)
+        baseline = 0.035 * potential
+        anodic = 0.72 * math.exp(-((potential - 0.55) ** 2) / (2.0 * 0.04**2))
+        cathodic = -0.50 * math.exp(-((potential - 0.16) ** 2) / (2.0 * 0.05**2))
+        current = baseline + anodic + cathodic
+        lines.append(f"{potential:.6f} {current:.9f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def _project(tmp_path: Path) -> tuple[Path, str]:
     workspace = tmp_path / "batch-project"
     outputs = initialize_project(
@@ -146,6 +166,9 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
     elif method == "xps":
         x_column, y_column, x_unit = "binding_energy_eV", "intensity", "eV"
         parameters = default_xps_processing_parameters()
+    elif method == "electrochemistry":
+        x_column, y_column, x_unit = "potential_V", "current_mA", "V"
+        parameters = default_electrochemistry_processing_parameters()
     else:
         x_column, y_column, x_unit = "col_0", "col_1", "cm^-1"
         parameters = default_processing_parameters()
@@ -184,6 +207,20 @@ def _import_with_reviews(workspace: Path, project_id: str, method: str, source: 
         result["calibration_review_ref"] = calibration_review.stem
         result["calibration_reference"] = "C 1s 284.8 eV user-confirmed reference"
         result["energy_shift_eV"] = 0.0
+    if method == "electrochemistry":
+        context_review = write_review_record(
+            workspace,
+            target_type="electrochemistry_context",
+            target_ref=metadata_ref,
+            user_response="可以，保存",
+            reviewed_content="0.196 cm2 working electrode; electrolyte/reference/protocol reviewed",
+            reviewed_at="2026-06-30T09:12:00",
+        )
+        result["current_unit"] = "mA"
+        result["measurement_mode"] = "cv"
+        result["context_summary"] = "0.196 cm2 working electrode; electrolyte/reference/protocol reviewed"
+        result["electrode_area_cm2"] = 0.196
+        result["context_review_ref"] = context_review.stem
     return result
 
 
@@ -192,6 +229,7 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     ftir_fixture = _write_ftir_fixture(tmp_path / "batch-ftir-spectrum.txt")
     uv_vis_fixture = _write_uv_vis_fixture(tmp_path / "batch-uv-vis-spectrum.txt")
     xps_fixture = _write_xps_fixture(tmp_path / "batch-xps-spectrum.txt")
+    electrochemistry_fixture = _write_electrochemistry_fixture(tmp_path / "batch-electrochemistry-cv.txt")
     items = [
         {
             "item_id": "raman-001",
@@ -217,6 +255,17 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
             "item_id": "xps-001",
             **_import_with_reviews(workspace, project_id, "xps", xps_fixture, "sample-batch-001", "exp-batch-001"),
         },
+        {
+            "item_id": "electrochemistry-001",
+            **_import_with_reviews(
+                workspace,
+                project_id,
+                "electrochemistry",
+                electrochemistry_fixture,
+                "sample-batch-001",
+                "exp-batch-001",
+            ),
+        },
     ]
     manifest = workspace / "batch_manifest.yml"
     write_yaml(
@@ -234,12 +283,12 @@ def test_cli_runs_mixed_characterization_batch(tmp_path: Path, capsys) -> None:
     assert main(["batch", "validate", str(workspace), "batch_manifest.yml"]) == 0
     validation = _json_output(capsys)
     assert validation["status"] == "pass"
-    assert validation["item_count"] == 6
+    assert validation["item_count"] == 7
 
     assert main(["batch", "run", str(workspace), "batch_manifest.yml"]) == 0
     output = _json_output(capsys)
     assert output["status"] == "success"
-    assert output["succeeded"] == 6
+    assert output["succeeded"] == 7
     assert output["failed"] == 0
 
     record = read_yaml(Path(output["record"]))

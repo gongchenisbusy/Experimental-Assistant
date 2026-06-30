@@ -211,6 +211,27 @@ class XPSProcessingResult(EARecord):
     warnings: list[Any] = Field(default_factory=list)
 
 
+class ElectrochemistryProcessingResult(EARecord):
+    electrochemistry_result_id: str
+    result_id: str
+    project_id: str
+    characterization_file_ref: str
+    sample_refs: list[str] = Field(default_factory=list)
+    status: Literal["success", "warning", "failed"]
+    x_column: str
+    y_column: str
+    x_unit: Literal["V", "mV", "s", "unknown"] = "unknown"
+    current_unit: Literal["A", "mA", "uA", "µA", "unknown"] = "unknown"
+    measurement_mode: Literal["cv", "lsv", "chrono", "gcd", "unknown"] = "unknown"
+    context_summary: str | None = None
+    electrode_area_cm2: float | None = None
+    processing_parameters: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, str] = Field(default_factory=dict)
+    peak_analysis: dict[str, Any] = Field(default_factory=dict)
+    figure_id: str | None = None
+    warnings: list[Any] = Field(default_factory=list)
+
+
 class ImageAnalysisResult(EARecord):
     image_result_id: str
     result_id: str
@@ -235,7 +256,16 @@ class ImageAnalysisResult(EARecord):
 class ReportRecord(EARecord):
     report_id: str
     project_id: str
-    report_type: Literal["raman_analysis", "pl_analysis", "xrd_analysis", "ftir_analysis", "uv_vis_analysis", "xps_analysis", "image_analysis"]
+    report_type: Literal[
+        "raman_analysis",
+        "pl_analysis",
+        "xrd_analysis",
+        "ftir_analysis",
+        "uv_vis_analysis",
+        "xps_analysis",
+        "electrochemistry_analysis",
+        "image_analysis",
+    ]
     language: Literal["zh", "en"] = "zh"
     audience: Literal["self"] = "self"
     related_experiments: list[str] = Field(default_factory=list)

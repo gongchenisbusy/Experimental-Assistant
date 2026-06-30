@@ -11,13 +11,14 @@ ea templates parameters xrd --output /path/to/ea-project/templates/xrd_parameter
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
 ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
 ea templates parameters xps --output /path/to/ea-project/templates/xps_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
+ea templates parameters electrochemistry --output /path/to/ea-project/templates/electrochemistry_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --method electrochemistry --output batch_manifest.yml
 ```
 
 Processing-parameter templates:
 
 - The written YAML file is the method's parameter dictionary directly.
-- It can be passed to `ea raman process`, `ea pl process`, `ea xrd process`, `ea ftir process`, `ea uv-vis process`, or `ea xps process` with `--parameters-file`.
+- It can be passed to `ea raman process`, `ea pl process`, `ea xrd process`, `ea ftir process`, `ea uv-vis process`, `ea xps process`, or `ea electrochemistry process` with `--parameters-file`.
 - The user still needs a confirmed `{method}_parameters` review record before processing.
 - Editing the YAML changes processing behavior only after the user confirms those edited parameters.
 
@@ -27,6 +28,7 @@ Batch manifest templates:
 - Generated items contain placeholders for `metadata`, `column_review_ref`, and `parameter_review_ref`.
 - Replace placeholders with real project metadata and confirmed review refs before validation or execution.
 - XPS skeleton items include `calibration_review_ref`; replace it with a real confirmed calibration review before validation.
+- Electrochemistry skeleton items include `current_unit`, `measurement_mode`, `context_summary`, optional `electrode_area_cm2`, and `context_review_ref`; replace them with real user-confirmed context before validation.
 - `processing_parameters: {}` means the batch runner will use each method's current defaults. Add item-level overrides only after user review.
 
 Boundaries:

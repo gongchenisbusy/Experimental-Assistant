@@ -1226,6 +1226,227 @@ def generate_xps_report(
     return report_path
 
 
+def _electrochemistry_feature_summary(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前自动检测未得到稳定 electrochemistry feature，需结合人工检查。"
+    positions = []
+    for _, feature in features.head(8).iterrows():
+        unit = str(feature.get("axis_unit") or "unknown")
+        positions.append(f"{feature['feature_id']}@{float(feature['axis_value']):.4g} {unit}")
+    return "自动检测给出的主要 electrochemistry feature 包括：" + "、".join(positions) + "。"
+
+
+def _electrochemistry_feature_table(root: Path, feature_table_ref: str) -> str:
+    features = pd.read_csv(root / feature_table_ref)
+    if features.empty:
+        return "当前没有可展示的自动 electrochemistry feature 检测结果。"
+    rows = [
+        "| feature_id | type | axis | current (mA) | current density (mA cm^-2) | confidence | source |",
+        "|---|---|---:|---:|---:|---|---|",
+    ]
+    for _, feature in features.head(12).iterrows():
+        density = feature.get("current_density_mA_cm-2")
+        density_text = f"{float(density):.4g}" if pd.notna(density) else "n/a"
+        rows.append(
+            "| {feature_id} | {feature_type} | {axis:.4g} {unit} | {current:.4g} | {density} | {confidence} | {source} |".format(
+                feature_id=feature["feature_id"],
+                feature_type=feature["feature_type"],
+                axis=float(feature["axis_value"]),
+                unit=feature.get("axis_unit") or "unknown",
+                current=float(feature["current_mA"]),
+                density=density_text,
+                confidence=feature.get("assignment_confidence") or "low",
+                source=feature.get("assignment_source") or "未记录",
+            )
+        )
+    return "\n".join(rows)
+
+
+def _electrochemistry_current_summary(metadata: dict) -> str:
+    summary = ((metadata.get("peak_analysis") or {}).get("current_summary") or {})
+    if not summary:
+        return "当前 metadata 中没有可复用的 current summary。"
+    retention = summary.get("retention_percent")
+    retention_text = f"{float(retention):.2f}%" if retention is not None else "n/a"
+    return (
+        f"start current `{float(summary.get('start_current_mA', 0.0)):.4g} mA`；"
+        f"end current `{float(summary.get('end_current_mA', 0.0)):.4g} mA`；"
+        f"min/max current `{float(summary.get('min_current_mA', 0.0)):.4g}` / "
+        f"`{float(summary.get('max_current_mA', 0.0)):.4g} mA`；"
+        f"retention `{retention_text}`。"
+    )
+
+
+def _electrochemistry_interpretation_text(metadata: dict, citation_text: str) -> str:
+    peak_analysis = metadata.get("peak_analysis") or {}
+    interpretations = peak_analysis.get("possible_interpretations") or []
+    if not interpretations:
+        return "- 当前 metadata 中没有可复用的 electrochemistry 自动解释结果；建议先复核电极、电解液、参比电极、扫描/计时协议和归一化方式。\n  - confidence: `insufficient`"
+    lines: list[str] = []
+    for item in interpretations:
+        text = str(item.get("text", "No interpretation text recorded."))
+        confidence = str(item.get("confidence", "insufficient"))
+        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        cite = citation_text if citation_text else ""
+        source = str(item.get("assignment_source", "") or "未记录")
+        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`")
+    if not citation_text:
+        lines.append("- 上述 electrochemistry 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式性能/机制判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+    return "\n".join(lines)
+
+
+def generate_electrochemistry_report(
+    root: Path,
+    *,
+    project_id: str,
+    electrochemistry_metadata_path: Path,
+    related_experiments: list[str] | None = None,
+    related_samples: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> Path:
+    metadata = read_yaml(electrochemistry_metadata_path)
+    day = created_at[:10] if created_at else None
+    if project_id.startswith("prj-"):
+        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+    else:
+        report_id = next_id(root, "report", day)
+    report_path = root / "reports" / f"{report_id}.md"
+    related_experiments = related_experiments or []
+    related_samples = related_samples or metadata.get("sample_refs", [])
+    figure_ids = [metadata["figure_id"]] if metadata.get("figure_id") else []
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="electrochemistry_analysis",
+        related_experiments=related_experiments,
+        related_samples=related_samples,
+        related_results=[metadata["electrochemistry_result_id"]],
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="draft",
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    outputs = metadata["outputs"]
+    feature_table_ref = outputs.get("feature_table", outputs.get("peak_table"))
+    feature_text = _electrochemistry_feature_summary(root, feature_table_ref)
+    feature_table = _electrochemistry_feature_table(root, feature_table_ref)
+    current_summary = _electrochemistry_current_summary(metadata)
+    warnings = metadata.get("warnings") or []
+    warning_text = "；".join(
+        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+        for warning in warnings
+    ) or "未记录高风险 warning。"
+    reference_block = build_report_reference_block(root, reference_ids)
+    citation_text = reference_block["inline_citation"]
+    literature_note = f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    interpretation_text = _electrochemistry_interpretation_text(metadata, citation_text)
+    figure_rel = outputs["figure"]
+    figure_embed = f"![Electrochemistry trace](../{figure_rel})"
+    body = f"""# Electrochemistry 分析报告
+
+## 报告 ID 信息
+
+- report_id: `{report_id}`
+- project_id: `{project_id}`
+- result_ids: `{metadata['electrochemistry_result_id']}`
+- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+
+## 数据来源
+
+本报告基于 electrochemistry processing result `{metadata['electrochemistry_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+
+## 数据列、实验上下文与处理参数
+
+用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，x 轴单位记录为 `{metadata['x_unit']}`，current 单位记录为 `{metadata['current_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。电极面积记录为 `{metadata.get('electrode_area_cm2', '未记录')}` cm^2。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+
+## 图谱
+
+{figure_embed}
+
+原图文件：`{figure_rel}`
+
+## 主要观察
+
+{feature_text}这些 feature 来自自动处理结果，仍需要结合电极几何面积、电解液、参比电极、扫描速率/计时协议、仪器设置和用户审核进行解释。
+
+## 电流摘要
+
+{current_summary}
+
+## Electrochemistry feature 参数
+
+{feature_table}
+
+## 可能结论与可信度
+
+{interpretation_text}
+
+## 谨慎解释
+
+在当前数据范围内，自动 electrochemistry feature 只能支持“电流响应摘要/筛查”。不能仅凭本次自动处理直接确认催化机制、过电位、Tafel slope、电容、稳定性、容量、倍率性能或器件性能；正式结论需要用户确认实验协议、归一化方式、参比校正、重复性和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
+
+## 不确定性与限制
+
+{warning_text}
+
+## 输出文件
+
+- processed CSV: `{outputs['processed_csv']}`
+- feature table: `{feature_table_ref}`
+- plot: `{outputs['figure']}`
+- metadata: `{outputs['metadata']}`
+
+## References
+
+{reference_block['references_markdown']}
+
+## 溯源
+
+本报告草稿引用 electrochemistry result `{metadata['electrochemistry_result_id']}`，对应 provenance 将在报告生成后写入。
+"""
+    for forbidden in FORBIDDEN_STRONG_CLAIMS:
+        body = body.replace(forbidden, "")
+
+    report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["reference_ids"] = reference_block["reference_ids"]
+    report_frontmatter["numbered_references"] = reference_block["numbered_references"]
+    write_markdown_record(report_path, report_frontmatter, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="report_generation",
+        inputs={
+            "records": [str(electrochemistry_metadata_path.relative_to(root))],
+            "files": [outputs["processed_csv"], feature_table_ref, outputs["figure"]],
+        },
+        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        review_refs=[],
+        warnings=warnings,
+        created_at=created_at,
+    )
+    frontmatter = read_yaml_from_markdown_frontmatter(report_path)
+    frontmatter["provenance_refs"] = [provenance_path.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    if figure_ids:
+        for figure_id in figure_ids:
+            update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=str(report_path.relative_to(root)),
+        project_id=project_id,
+        result_ids=[metadata["electrochemistry_result_id"]],
+        figure_ids=figure_ids,
+        sample_ids=related_samples,
+        experiment_ids=related_experiments,
+        reference_ids=reference_block["reference_ids"],
+    )
+    return report_path
+
+
 def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
     from ea.storage.files import read_markdown_record
 

@@ -1,5 +1,6 @@
 from ea.schema.models import (
     CharacterizationFile,
+    ElectrochemistryProcessingResult,
     ExperimentRecord,
     FTIRProcessingResult,
     ImageAnalysisResult,
@@ -22,6 +23,7 @@ from ea.schema.models import (
 
 __all__ = [
     "CharacterizationFile",
+    "ElectrochemistryProcessingResult",
     "ExperimentRecord",
     "FTIRProcessingResult",
     "ImageAnalysisResult",

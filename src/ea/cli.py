@@ -7,6 +7,12 @@ from pathlib import Path
 
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.config import doctor_project_config
+from ea.electrochemistry import (
+    ElectrochemistryProcessingRequest,
+    default_electrochemistry_processing_parameters,
+    inspect_electrochemistry_file,
+    process_electrochemistry_result,
+)
 from ea.evaluation import run_project_evaluation
 from ea.exports import (
     ReportBundleError,
@@ -35,7 +41,15 @@ from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
 from ea.references import import_bibtex_references, register_reference, validate_report_citations
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xps_report, generate_xrd_report
+from ea.reports import (
+    generate_electrochemistry_report,
+    generate_ftir_report,
+    generate_pl_report,
+    generate_raman_report,
+    generate_uv_vis_report,
+    generate_xps_report,
+    generate_xrd_report,
+)
 from ea.review import write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
@@ -293,6 +307,36 @@ def build_parser() -> argparse.ArgumentParser:
     xps_report.add_argument("--sample-ref", action="append", default=[])
     xps_report.add_argument("--reference-id", action="append", default=[])
 
+    electrochemistry = sub.add_parser("electrochemistry", help="Electrochemistry inspection, processing, and report helpers")
+    electrochemistry_sub = electrochemistry.add_subparsers(dest="electrochemistry_command", required=True)
+    electrochemistry_inspect = electrochemistry_sub.add_parser("inspect", help="inspect tabular electrochemistry data and suggest columns/units/mode")
+    electrochemistry_inspect.add_argument("workspace", type=Path)
+    electrochemistry_inspect.add_argument("spectrum", type=Path)
+    electrochemistry_process = electrochemistry_sub.add_parser("process", help="run review-gated electrochemistry processing")
+    electrochemistry_process.add_argument("workspace", type=Path)
+    electrochemistry_process.add_argument("--metadata", required=True, type=Path)
+    electrochemistry_process.add_argument("--project-id")
+    electrochemistry_process.add_argument("--sample-ref", action="append", default=[])
+    electrochemistry_process.add_argument("--x-column", required=True)
+    electrochemistry_process.add_argument("--y-column", required=True)
+    electrochemistry_process.add_argument("--x-unit", choices=["V", "mV", "s", "unknown"], required=True)
+    electrochemistry_process.add_argument("--current-unit", choices=["A", "mA", "uA", "µA", "unknown"], required=True)
+    electrochemistry_process.add_argument("--measurement-mode", choices=["cv", "lsv", "chrono", "gcd", "unknown"], required=True)
+    electrochemistry_process.add_argument("--context-summary", default="")
+    electrochemistry_process.add_argument("--electrode-area-cm2", type=float)
+    electrochemistry_process.add_argument("--column-review-ref", required=True)
+    electrochemistry_process.add_argument("--context-review-ref", required=True)
+    electrochemistry_process.add_argument("--parameter-review-ref", required=True)
+    electrochemistry_process.add_argument("--parameters-file", type=Path)
+    electrochemistry_process.add_argument("--parameters-json")
+    electrochemistry_report = electrochemistry_sub.add_parser("report", help="generate an electrochemistry analysis report from electrochemistry metadata")
+    electrochemistry_report.add_argument("workspace", type=Path)
+    electrochemistry_report.add_argument("--metadata", required=True, type=Path)
+    electrochemistry_report.add_argument("--project-id")
+    electrochemistry_report.add_argument("--experiment-ref", action="append", default=[])
+    electrochemistry_report.add_argument("--sample-ref", action="append", default=[])
+    electrochemistry_report.add_argument("--reference-id", action="append", default=[])
+
     batch = sub.add_parser("batch", help="validate and run batch characterization manifests")
     batch_sub = batch.add_subparsers(dest="batch_command", required=True)
     batch_validate = batch_sub.add_parser("validate", help="validate a batch characterization manifest")
@@ -506,6 +550,15 @@ def _uv_vis_processing_parameters(args: argparse.Namespace, workspace: Path) -> 
 
 def _xps_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
     parameters = default_xps_processing_parameters()
+    if args.parameters_file:
+        parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
+    if args.parameters_json:
+        parameters.update(json.loads(args.parameters_json))
+    return parameters
+
+
+def _electrochemistry_processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
+    parameters = default_electrochemistry_processing_parameters()
     if args.parameters_file:
         parameters.update(read_yaml(_project_path(workspace, args.parameters_file)))
     if args.parameters_json:
@@ -885,6 +938,49 @@ def main(argv: list[str] | None = None) -> int:
                 args.workspace,
                 project_id=project_id,
                 xps_metadata_path=_project_path(args.workspace, args.metadata),
+                related_experiments=args.experiment_ref,
+                related_samples=args.sample_ref,
+                reference_ids=args.reference_id,
+            )
+            _print_json({"report": str(path)})
+            return 0
+    if args.command == "electrochemistry":
+        project_id = getattr(args, "project_id", None)
+        if args.electrochemistry_command in {"process", "report"} and not project_id:
+            project_id = _project_id_from_workspace(args.workspace)
+        if args.electrochemistry_command == "inspect":
+            inspection = asdict(inspect_electrochemistry_file(_project_path(args.workspace, args.spectrum)))
+            inspection["path"] = str(inspection["path"])
+            _print_json(inspection)
+            return 0
+        if args.electrochemistry_command == "process":
+            parameters = _electrochemistry_processing_parameters(args, args.workspace)
+            path = process_electrochemistry_result(
+                args.workspace,
+                characterization_metadata_path=_project_path(args.workspace, args.metadata),
+                project_id=project_id,
+                sample_refs=args.sample_ref,
+                request=ElectrochemistryProcessingRequest(
+                    x_column=args.x_column,
+                    y_column=args.y_column,
+                    x_unit=args.x_unit,
+                    current_unit=args.current_unit,
+                    measurement_mode=args.measurement_mode,
+                    context_summary=args.context_summary,
+                    electrode_area_cm2=args.electrode_area_cm2,
+                    processing_parameters=parameters,
+                    column_review_ref=args.column_review_ref,
+                    context_review_ref=args.context_review_ref,
+                    parameter_review_ref=args.parameter_review_ref,
+                ),
+            )
+            _print_json({"metadata": str(path)})
+            return 0
+        if args.electrochemistry_command == "report":
+            path = generate_electrochemistry_report(
+                args.workspace,
+                project_id=project_id,
+                electrochemistry_metadata_path=_project_path(args.workspace, args.metadata),
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,

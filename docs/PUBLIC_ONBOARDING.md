@@ -53,7 +53,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. EA v0.2 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. EA v0.2 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, and image-style characterization records.
 
 Minimal Raman path:
 
@@ -92,7 +92,7 @@ ea raman report /path/to/ea-project \
   --experiment-ref exp-001
 ```
 
-Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, or `xps` commands for PL, XRD, FTIR, UV-Vis, and XPS data. FTIR processing requires a user-confirmed `signal_mode` (`absorbance` or `transmittance`) so the workflow detects peaks or valleys correctly. UV-Vis processing requires a user-confirmed `signal_mode` (`absorbance`, `transmittance`, or `reflectance`) and treats optical features/edge estimates as screening evidence until a method model and references are reviewed. XPS processing requires user-confirmed binding-energy calibration metadata and treats automatic peaks as screening evidence until background, component model, references, and chemical-state interpretation are reviewed. Use `ea image-data record` and `ea image-data report` for SEM, TEM, optical microscopy, and related image-style data where user description and confidence labels are part of the record.
+Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, `xps`, or `electrochemistry` commands for PL, XRD, FTIR, UV-Vis, XPS, and electrochemical data. FTIR processing requires a user-confirmed `signal_mode` (`absorbance` or `transmittance`) so the workflow detects peaks or valleys correctly. UV-Vis processing requires a user-confirmed `signal_mode` (`absorbance`, `transmittance`, or `reflectance`) and treats optical features/edge estimates as screening evidence until a method model and references are reviewed. XPS processing requires user-confirmed binding-energy calibration metadata and treats automatic peaks as screening evidence until background, component model, references, and chemical-state interpretation are reviewed. Electrochemistry processing requires user-confirmed current unit, measurement mode, electrode/electrolyte/reference-electrode/protocol context, and optional electrode area before current-density normalization; automatic features are summaries, not standalone performance or mechanism claims. Use `ea image-data record` and `ea image-data report` for SEM, TEM, optical microscopy, and related image-style data where user description and confidence labels are part of the record.
 
 ## 4. Review Gates And Reports
 

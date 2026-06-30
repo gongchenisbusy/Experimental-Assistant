@@ -122,6 +122,14 @@ XPS：
 - 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰直接推出。
 - 若有 peak fitting，报告中必须写明背景模型、峰形、约束、参考依据和可信度。
 
+Electrochemistry：
+
+- x 轴为 potential (`V`/`mV`) 或 time (`s`)；y 轴为 current 或 current density，并明确单位。
+- 必须记录 measurement mode、current unit、electrode/electrolyte/reference-electrode/protocol context 和用户确认来源。
+- 若使用 current density，必须记录电极面积及其 review 来源。
+- 标注 peak-like/threshold/current-summary feature；过电位、Tafel slope、电容、容量、稳定性、倍率或机制解释不能由简单自动 feature 直接推出。
+- EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度。
+
 SEM/TEM/光学显微镜：
 
 - 必须保留原图路径和处理图路径。
@@ -219,7 +227,7 @@ v0.2 建议先完成：
 - `figures/index.yml` 和 `reports/index.yml`。
 - Markdown 报告模板。
 - Matplotlib 默认样式和 footer 标注。
-- Raman、PL、XRD、FTIR、UV-Vis、XPS 报告的第一版完整模板。
+- Raman、PL、XRD、FTIR、UV-Vis、XPS、electrochemistry 报告的第一版完整模板。
 - 对话回答中的 reference 输出约定。
 
 ## 10. 外部依据

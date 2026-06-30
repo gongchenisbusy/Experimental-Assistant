@@ -62,6 +62,13 @@ ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw
 ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
 ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-011 --calibration-review-ref review-20260630-012 --parameter-review-ref review-20260630-013 --sample-ref sample-001
 ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea raw import /path/to/ea-project /path/to/raw-electrochemistry.txt --characterization-type electrochemistry --sample-ref sample-001 --experiment-ref exp-001
+ea electrochemistry inspect /path/to/ea-project raw/electrochemistry/char-20260630-001/raw-electrochemistry.txt
+ea review add /path/to/ea-project --target-type electrochemistry_columns --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=potential_V, y=current_mA, x_unit=V, current_unit=mA, mode=cv"
+ea review add /path/to/ea-project --target-type electrochemistry_context --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "electrode/electrolyte/reference-electrode/protocol confirmed"
+ea review add /path/to/ea-project --target-type electrochemistry_parameters --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default electrochemistry parameters confirmed"
+ea electrochemistry process /path/to/ea-project --metadata raw/electrochemistry/char-20260630-001/metadata.yml --x-column potential_V --y-column current_mA --x-unit V --current-unit mA --measurement-mode cv --context-summary "user-confirmed electrode/electrolyte/reference/protocol" --electrode-area-cm2 0.196 --column-review-ref review-20260630-014 --context-review-ref review-20260630-015 --parameter-review-ref review-20260630-016 --sample-ref sample-001
+ea electrochemistry report /path/to/ea-project --metadata processed/sample-001/electrochemistry/res-project-electrochemistry-20260630-001/electrochemistry_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ea materials list
 ea materials assignments mos2 --method raman
 ea materials assignments ws2 --method pl
@@ -70,7 +77,8 @@ ea templates parameters raman --output /path/to/ea-project/templates/raman_param
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
 ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
 ea templates parameters xps --output /path/to/ea-project/templates/xps_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
+ea templates parameters electrochemistry --output /path/to/ea-project/templates/electrochemistry_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --method electrochemistry --output batch_manifest.yml
 ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
@@ -88,10 +96,10 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
 BibTeX import uses an explicit user-provided `.bib` export and de-duplicates references by DOI, URL, title, or citation before creating new project records.
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, FTIR, UV-Vis, XPS, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
+Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`; Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, image-data, and scientific-figure style infrastructure have concrete initial workflows, while other contract placeholders define future module boundaries without claiming full algorithm support.
 Built-in material assignment records live in `src/ea/materials/assignments.yml`; use `ea materials list/show/assignments` to inspect the current MoS2 and WS2 Raman/PL/XRD screening rules, h-BN Raman/XRD screening rules, and their caveats.
 Template helpers write editable YAML for processing parameter files and batch manifests. They do not create review records or replace user confirmation.
-Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, XRD, FTIR, UV-Vis, and XPS items without guessing columns, calibration, or parameters. Batch index records, summaries, item result/report refs, review refs, and batch provenance refs are audited by healthcheck.
+Batch characterization records live under `processed/batches/`; `ea batch validate/run` coordinates already-reviewed Raman, PL, XRD, FTIR, UV-Vis, XPS, and electrochemistry items without guessing columns, calibration, context, mode, or parameters. Batch index records, summaries, item result/report refs, review refs, and batch provenance refs are audited by healthcheck.
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.

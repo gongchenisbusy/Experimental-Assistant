@@ -110,6 +110,18 @@ ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata
 ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
+CLI path for the first electrochemistry workflow:
+
+```bash
+ea raw import /path/to/ea-project /path/to/raw-electrochemistry.txt --characterization-type electrochemistry --sample-ref sample-001 --experiment-ref exp-001
+ea electrochemistry inspect /path/to/ea-project raw/electrochemistry/char-20260630-001/raw-electrochemistry.txt
+ea review add /path/to/ea-project --target-type electrochemistry_columns --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=potential_V, y=current_mA, x_unit=V, current_unit=mA, mode=cv"
+ea review add /path/to/ea-project --target-type electrochemistry_context --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "electrode/electrolyte/reference-electrode/protocol confirmed"
+ea review add /path/to/ea-project --target-type electrochemistry_parameters --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default electrochemistry parameters confirmed"
+ea electrochemistry process /path/to/ea-project --metadata raw/electrochemistry/char-20260630-001/metadata.yml --x-column potential_V --y-column current_mA --x-unit V --current-unit mA --measurement-mode cv --context-summary "user-confirmed electrode/electrolyte/reference/protocol" --electrode-area-cm2 0.196 --column-review-ref review-20260630-014 --context-review-ref review-20260630-015 --parameter-review-ref review-20260630-016 --sample-ref sample-001
+ea electrochemistry report /path/to/ea-project --metadata processed/sample-001/electrochemistry/res-project-electrochemistry-20260630-001/electrochemistry_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+```
+
 Editable templates:
 
 ```bash
@@ -117,7 +129,8 @@ ea templates parameters raman --output /path/to/ea-project/templates/raman_param
 ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
 ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
 ea templates parameters xps --output /path/to/ea-project/templates/xps_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
+ea templates parameters electrochemistry --output /path/to/ea-project/templates/electrochemistry_parameters.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --method electrochemistry --output batch_manifest.yml
 ```
 
 Parameter templates are directly usable with `--parameters-file` after the user confirms the parameter content. Batch manifest templates still need real metadata and confirmed review refs before validation.
@@ -160,4 +173,4 @@ ea batch validate /path/to/ea-project batch_manifest.yml
 ea batch run /path/to/ea-project batch_manifest.yml
 ```
 
-Batch manifests can coordinate Raman, PL, XRD, FTIR, UV-Vis, and XPS items. They do not replace column, unit, signal-mode, calibration, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.
+Batch manifests can coordinate Raman, PL, XRD, FTIR, UV-Vis, XPS, and electrochemistry items. They do not replace column, unit, signal-mode, calibration, electrochemistry context, mode, or parameter confirmation; each item must reference confirmed review records. Healthcheck/evaluator treat `processed/batches/index.yml`, each `batch_run.yml`, batch summaries, item result/report refs, and batch provenance refs as handoff-critical project state.

@@ -3,11 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from ea.electrochemistry import (
+    ElectrochemistryProcessingRequest,
+    default_electrochemistry_processing_parameters,
+    process_electrochemistry_result,
+)
 from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, process_ftir_result
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, process_pl_result
 from ea.provenance import write_provenance_entry
 from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
-from ea.reports import generate_ftir_report, generate_pl_report, generate_raman_report, generate_uv_vis_report, generate_xps_report, generate_xrd_report
+from ea.reports import (
+    generate_electrochemistry_report,
+    generate_ftir_report,
+    generate_pl_report,
+    generate_raman_report,
+    generate_uv_vis_report,
+    generate_xps_report,
+    generate_xrd_report,
+)
 from ea.review import require_confirmed_review
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
@@ -17,7 +30,7 @@ from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, proc
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, process_xrd_result
 
 
-SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis", "xps"}
+SUPPORTED_METHODS = {"raman", "pl", "xrd", "ftir", "uv_vis", "xps", "electrochemistry"}
 METHOD_UNITS = {
     "raman": {"cm^-1", "unknown"},
     "pl": {"eV", "nm", "unknown"},
@@ -25,6 +38,7 @@ METHOD_UNITS = {
     "ftir": {"cm^-1", "unknown"},
     "uv_vis": {"nm", "eV", "unknown"},
     "xps": {"eV", "unknown"},
+    "electrochemistry": {"V", "mV", "s", "unknown"},
 }
 
 
@@ -90,6 +104,8 @@ def _default_parameters(method: str) -> dict[str, Any]:
         return default_uv_vis_processing_parameters()
     if method == "xps":
         return default_xps_processing_parameters()
+    if method == "electrochemistry":
+        return default_electrochemistry_processing_parameters()
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -102,6 +118,12 @@ def _processing_parameters(root: Path, method: str, item: dict[str, Any]) -> dic
     return parameters
 
 
+def _optional_float(value: Any) -> float | None:
+    if value in [None, ""]:
+        return None
+    return float(value)
+
+
 def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
     item_id = str(item.get("item_id") or f"item-{index:03d}")
@@ -109,6 +131,8 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
     required = ["method", "metadata", "x_column", "y_column", "x_unit", "column_review_ref", "parameter_review_ref"]
     if method == "xps":
         required.append("calibration_review_ref")
+    if method == "electrochemistry":
+        required.append("context_review_ref")
     for field in required:
         if field not in item or item.get(field) in [None, ""]:
             errors.append({"item_id": item_id, "field": field, "message": "Required field is missing."})
@@ -121,13 +145,22 @@ def _validate_item(root: Path, item: dict[str, Any], index: int) -> list[dict[st
         errors.append({"item_id": item_id, "field": "signal_mode", "message": "FTIR signal_mode must be absorbance or transmittance."})
     if method == "uv_vis" and item.get("signal_mode") not in {"absorbance", "transmittance", "reflectance"}:
         errors.append({"item_id": item_id, "field": "signal_mode", "message": "UV-Vis signal_mode must be absorbance, transmittance, or reflectance."})
+    if method == "electrochemistry" and item.get("current_unit") not in {"A", "mA", "uA", "µA", "unknown"}:
+        errors.append({"item_id": item_id, "field": "current_unit", "message": "Electrochemistry current_unit must be A, mA, uA, µA, or unknown."})
+    if method == "electrochemistry" and item.get("measurement_mode") not in {"cv", "lsv", "chrono", "gcd", "unknown"}:
+        errors.append({"item_id": item_id, "field": "measurement_mode", "message": "Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, or unknown."})
     metadata = item.get("metadata")
     if metadata and not _project_path(root, metadata).exists():
         errors.append({"item_id": item_id, "field": "metadata", "message": f"Metadata file does not exist: {metadata}"})
     parameters_path = item.get("parameters_file") or item.get("processing_parameters_file")
     if parameters_path and not _project_path(root, parameters_path).exists():
         errors.append({"item_id": item_id, "field": "parameters_file", "message": f"Parameters file does not exist: {parameters_path}"})
-    for review_field in ["column_review_ref", "parameter_review_ref"]:
+    review_fields = ["column_review_ref", "parameter_review_ref"]
+    if method == "xps":
+        review_fields.append("calibration_review_ref")
+    if method == "electrochemistry":
+        review_fields.append("context_review_ref")
+    for review_field in review_fields:
         review_ref = item.get(review_field)
         if not review_ref:
             continue
@@ -245,6 +278,22 @@ def _run_method(root: Path, method: str, project_id: str, item: dict[str, Any], 
             ),
             created_at=created_at,
         )
+    if method == "electrochemistry":
+        return process_electrochemistry_result(
+            root,
+            characterization_metadata_path=metadata_path,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            request=ElectrochemistryProcessingRequest(
+                **common,
+                current_unit=str(item["current_unit"]),
+                measurement_mode=str(item["measurement_mode"]),
+                context_summary=str(item.get("context_summary") or ""),
+                electrode_area_cm2=_optional_float(item.get("electrode_area_cm2")),
+                context_review_ref=str(item["context_review_ref"]),
+            ),
+            created_at=created_at,
+        )
     raise BatchManifestError(f"Unsupported batch method: {method}")
 
 
@@ -261,6 +310,8 @@ def _report_generator(method: str) -> Callable[..., Path]:
         return generate_uv_vis_report
     if method == "xps":
         return generate_xps_report
+    if method == "electrochemistry":
+        return generate_electrochemistry_report
     raise BatchManifestError(f"Unsupported report method: {method}")
 
 
@@ -285,6 +336,7 @@ def _generate_report(
         "ftir": "ftir_metadata_path",
         "uv_vis": "uv_vis_metadata_path",
         "xps": "xps_metadata_path",
+        "electrochemistry": "electrochemistry_metadata_path",
     }[method]
     return generator(
         root,
@@ -376,6 +428,10 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
             "x_column": str(item["x_column"]),
             "y_column": str(item["y_column"]),
             "x_unit": str(item["x_unit"]),
+            "current_unit": item.get("current_unit"),
+            "measurement_mode": item.get("measurement_mode"),
+            "context_summary": item.get("context_summary"),
+            "electrode_area_cm2": item.get("electrode_area_cm2"),
             "signal_mode": item.get("signal_mode"),
             "energy_shift_eV": item.get("energy_shift_eV", item.get("energy_shift_ev")),
             "calibration_reference": item.get("calibration_reference"),
@@ -384,6 +440,8 @@ def run_batch_manifest(root: Path, manifest_path: Path, *, created_at: str | Non
         }
         if method == "xps":
             item_record["review_refs"].append(str(item["calibration_review_ref"]))
+        if method == "electrochemistry":
+            item_record["review_refs"].append(str(item["context_review_ref"]))
         try:
             result_path = _run_method(root, method, item_project_id, item, timestamp)
             item_record["result_metadata_ref"] = _path_ref(root, result_path)

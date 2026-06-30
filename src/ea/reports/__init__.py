@@ -1,4 +1,5 @@
 from ea.reports.service import (
+    generate_electrochemistry_report,
     generate_ftir_report,
     generate_pl_report,
     generate_raman_report,
@@ -8,6 +9,7 @@ from ea.reports.service import (
 )
 
 __all__ = [
+    "generate_electrochemistry_report",
     "generate_ftir_report",
     "generate_pl_report",
     "generate_raman_report",

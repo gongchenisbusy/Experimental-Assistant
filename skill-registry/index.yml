@@ -6,7 +6,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.electrochemistry
     method: electrochemistry
-    notes: Contract placeholder for CV, LSV, EIS, stability, and related electrochemical workflows.
+    notes: Minimal electrochemistry workflow implemented for review-gated CV/LSV/chrono/GCD-style tabular data, current conversion, optional current-density normalization, screening features, traceable figures, and confidence-labeled reports; EIS fitting and formal performance metrics remain future work.
   - id: ea.ftir-analysis
     manifest: skill-registry/builtins/ftir-analysis.yml
     status: builtin_v0_2_reference

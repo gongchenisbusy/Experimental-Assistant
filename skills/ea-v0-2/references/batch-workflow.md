@@ -1,6 +1,6 @@
 # Batch Characterization Workflow
 
-Use this reference when running multiple already-reviewed Raman, PL, XRD, FTIR, UV-Vis, or XPS analyses from one manifest.
+Use this reference when running multiple already-reviewed Raman, PL, XRD, FTIR, UV-Vis, XPS, or electrochemistry analyses from one manifest.
 
 Scope:
 
@@ -20,7 +20,7 @@ ea batch run /path/to/ea-project batch_manifest.yml
 Generate an editable skeleton:
 
 ```bash
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --output batch_manifest.yml
+ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --method electrochemistry --output batch_manifest.yml
 ```
 
 The generated skeleton uses placeholders for raw metadata and review refs. Fill those with real project values before running `ea batch validate`.
@@ -92,15 +92,32 @@ batch:
       calibration_review_ref: review-20260630-010
       parameter_review_ref: review-20260630-011
       processing_parameters: {}
+    - item_id: electrochemistry-001
+      method: electrochemistry
+      metadata: raw/electrochemistry/char-20260630-006/metadata.yml
+      sample_refs: [sample-001]
+      experiment_refs: [exp-001]
+      x_column: potential_V
+      y_column: current_mA
+      x_unit: V
+      current_unit: mA
+      measurement_mode: cv
+      context_summary: 0.196 cm2 working electrode; electrolyte/reference/protocol user-confirmed
+      electrode_area_cm2: 0.196
+      column_review_ref: review-20260630-012
+      context_review_ref: review-20260630-013
+      parameter_review_ref: review-20260630-014
+      processing_parameters: {}
 ```
 
 Notes:
 
-- `method` must be `raman`, `pl`, `xrd`, `ftir`, `uv_vis`, or `xps`; `uv-vis` is accepted and normalized by the CLI/batch runner where relevant.
+- `method` must be `raman`, `pl`, `xrd`, `ftir`, `uv_vis`, `xps`, or `electrochemistry`; `uv-vis` is accepted and normalized by the CLI/batch runner where relevant.
 - `x_unit` must match the method's allowed units.
 - FTIR items also require `signal_mode` as `absorbance` or `transmittance`.
 - UV-Vis items require `signal_mode` as `absorbance`, `transmittance`, or `reflectance`.
 - XPS items require `calibration_review_ref`; use `energy_shift_eV` and `calibration_reference` to record reviewed binding-energy calibration metadata.
+- Electrochemistry items require `current_unit`, `measurement_mode`, and `context_review_ref`; use `context_summary` and optional `electrode_area_cm2` to record reviewed electrode/electrolyte/reference/protocol context.
 - `processing_parameters` are merged over each method's default parameters.
 - `parameters_file` or `processing_parameters_file` may point to a project-local YAML parameter override.
 - Set `create_reports: false` for processing-only batches.

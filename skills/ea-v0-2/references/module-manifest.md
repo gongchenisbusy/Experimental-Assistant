@@ -40,7 +40,7 @@ Category contracts:
 | `visualization.*` | `figure_record`, `report_section`, `provenance_record` |
 | other | `report_section`, `provenance_record` |
 
-Built-in v0.2 manifest catalogue lives in `skill-registry/builtins/` and is indexed by `skill-registry/index.yml`. Current built-ins cover Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image analysis, local literature library, and scientific figure generation. Raman, PL, XRD, FTIR, UV-Vis, XPS, image-data, and scientific-figure style infrastructure have concrete initial workflows; the others are contract placeholders that define how a future module must enter EA, not a promise that the full scientific algorithm already exists.
+Built-in v0.2 manifest catalogue lives in `skill-registry/builtins/` and is indexed by `skill-registry/index.yml`. Current built-ins cover Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image analysis, local literature library, and scientific figure generation. Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, image-data, and scientific-figure style infrastructure have concrete initial workflows; the others are contract placeholders that define how a future module must enter EA, not a promise that the full scientific algorithm already exists.
 
 Reject or request edits when a skill writes into `raw/`, omits provenance, lacks review gates for interpretation, produces unindexed figures, cites literature without references, or requires external accounts without a user-confirmed setup path.
 

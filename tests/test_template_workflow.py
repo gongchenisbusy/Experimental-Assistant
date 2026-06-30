@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from ea.cli import main
+from ea.electrochemistry import default_electrochemistry_processing_parameters
 from ea.ftir import default_ftir_processing_parameters
 from ea.pl import default_pl_processing_parameters
 from ea.projects import initialize_project
@@ -80,6 +81,7 @@ def test_cli_writes_processing_parameter_templates(capsys, tmp_path: Path) -> No
         "ftir": default_ftir_processing_parameters(),
         "uv_vis": default_uv_vis_processing_parameters(),
         "xps": default_xps_processing_parameters(),
+        "electrochemistry": default_electrochemistry_processing_parameters(),
     }
     for method, defaults in expected.items():
         output_path = tmp_path / f"{method}_parameters.yml"
