@@ -62,6 +62,11 @@ STATUS_UPDATE_FIELDS = [
     "library_manifest_ref",
     "cache_index_ref",
     "reference_import",
+    "zotero_codex_batch_status_ref",
+    "zotero_codex_status_markdown_ref",
+    "zotero_codex_sidecar_verification_ref",
+    "zotero_codex_status_import_ref",
+    "sidecar_verification",
 ]
 
 
@@ -1035,6 +1040,259 @@ def prepare_zotero_codex_acquisition_bridge(
         "bridge": bridge,
         "settings_request": settings_request,
         "status": status,
+    }
+
+
+ZOTERO_CODEX_SUCCESS_STATUSES = {
+    "cached",
+    "reused-cache",
+    "reused_cache",
+    "cache-ok",
+    "cache_ok",
+    "pdf-ok",
+    "pdf_ok",
+    "acquired",
+    "downloaded",
+    "completed",
+    "complete",
+    "success",
+    "ok",
+    "imported",
+    "ingested",
+}
+ZOTERO_CODEX_CACHE_STATUSES = {"cached", "reused-cache", "reused_cache", "cache-ok", "cache_ok"}
+ZOTERO_CODEX_LOGIN_STATUSES = {
+    "needs-login",
+    "needs_login",
+    "needs-browser-authorization",
+    "needs_browser_authorization",
+    "login-required",
+    "login_required",
+    "auth-required",
+    "auth_required",
+    "authorization-required",
+    "authorization_required",
+}
+ZOTERO_CODEX_BLOCKED_STATUSES = {
+    "failed",
+    "failure",
+    "failed-nonpdf",
+    "failed_nonpdf",
+    "failed-ambiguous",
+    "failed_ambiguous",
+    "error",
+    "blocked",
+    "no-access",
+    "no_access",
+}
+
+
+def _resolve_project_path(root: Path, path: Path) -> Path:
+    return path if path.is_absolute() else root / path
+
+
+def _zotero_codex_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("items", "targets", "results", "records", "entries"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            return [item for item in value.values() if isinstance(item, dict)]
+    return []
+
+
+def _zotero_codex_item_status(item: dict[str, Any]) -> str:
+    return _as_text(
+        item.get("status")
+        or item.get("acquisition_status")
+        or item.get("result_status")
+        or item.get("outcome")
+        or item.get("state")
+    ).strip().lower()
+
+
+def _zotero_codex_item_ref(item: dict[str, Any]) -> dict[str, Any]:
+    return _compact_dict(
+        {
+            "target_id": item.get("target_id") or item.get("id"),
+            "rank": item.get("rank") or item.get("top30_rank"),
+            "title": item.get("title"),
+            "doi": item.get("doi"),
+            "url": item.get("url"),
+            "status": item.get("status") or item.get("acquisition_status") or item.get("outcome"),
+            "reason": item.get("reason") or item.get("error") or item.get("message"),
+            "zotero_item_key": item.get("zotero_item_key") or item.get("item_key"),
+            "cache_path": item.get("cache_path") or item.get("cache_dir"),
+        }
+    )
+
+
+def _sidecar_verification_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    if not payload:
+        return {}
+    missing = payload.get("missing") or payload.get("missing_sidecars") or []
+    invalid = payload.get("invalid") or payload.get("invalid_sidecars") or []
+    errors = payload.get("errors") or []
+    return _compact_dict(
+        {
+            "status": payload.get("status"),
+            "verified_count": payload.get("verified_count") or payload.get("checked_count") or payload.get("count"),
+            "missing_count": len(missing) if isinstance(missing, list) else payload.get("missing_count"),
+            "invalid_count": len(invalid) if isinstance(invalid, list) else payload.get("invalid_count"),
+            "error_count": len(errors) if isinstance(errors, list) else payload.get("error_count"),
+        }
+    )
+
+
+def _status_from_zotero_counts(total: int, success_count: int, login_count: int, blocked_count: int) -> str:
+    if total == 0:
+        return "acquisition_status_imported_no_targets"
+    if blocked_count:
+        return "acquisition_partial_with_blockers" if success_count or login_count else "acquisition_blocked"
+    if login_count:
+        return "acquisition_partial_needs_user_login" if success_count else "acquisition_needs_user_login"
+    if success_count >= total:
+        return "acquisition_complete"
+    if success_count:
+        return "acquisition_in_progress"
+    return "acquisition_status_imported"
+
+
+def import_zotero_codex_batch_status(
+    root: Path,
+    *,
+    batch_status_path: Path | None = None,
+    sidecar_verification_path: Path | None = None,
+    status_markdown_path: Path | None = None,
+    imported_at: str | None = None,
+    sync: bool = True,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    imported_at = imported_at or EARecord.now_iso()
+    batch_status_path = batch_status_path or Path("literature/zotero_codex_batch_status.json")
+    resolved_batch_status = _resolve_project_path(root, batch_status_path)
+    batch_payload = _load_manifest(resolved_batch_status)
+    if not isinstance(batch_payload, dict):
+        raise ValueError("Zotero-Codex batch status must be a JSON/YAML object")
+    items = _zotero_codex_items(batch_payload)
+    project_status = read_yaml(status_path)
+    project_id = str(project_status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
+
+    success_items: list[dict[str, Any]] = []
+    login_items: list[dict[str, Any]] = []
+    blocked_items: list[dict[str, Any]] = []
+    downloaded_fulltext = 0
+    cached_fulltext = 0
+    for item in items:
+        status_key = _zotero_codex_item_status(item)
+        compact = _zotero_codex_item_ref(item)
+        has_pdf = any(item.get(key) for key in ("local_path", "pdf_path", "attachment_path", "pdf"))
+        has_cache = any(item.get(key) for key in ("cache_path", "cache_dir", "cached_path"))
+        if status_key in ZOTERO_CODEX_LOGIN_STATUSES:
+            login_items.append(compact)
+            continue
+        if status_key in ZOTERO_CODEX_BLOCKED_STATUSES:
+            blocked_items.append(compact)
+            continue
+        if status_key in ZOTERO_CODEX_SUCCESS_STATUSES or has_pdf or has_cache or item.get("zotero_item_key"):
+            success_items.append(compact)
+        if status_key in ZOTERO_CODEX_SUCCESS_STATUSES or has_pdf or has_cache:
+            downloaded_fulltext += 1
+        if status_key in ZOTERO_CODEX_CACHE_STATUSES or has_cache:
+            cached_fulltext += 1
+
+    sidecar_payload: dict[str, Any] = {}
+    sidecar_ref = None
+    if sidecar_verification_path:
+        resolved_sidecar = _resolve_project_path(root, sidecar_verification_path)
+        sidecar_payload = _load_manifest(resolved_sidecar)
+        sidecar_ref = _project_relative(root, resolved_sidecar)
+        sidecar_status = _as_text(sidecar_payload.get("status")).lower()
+        if sidecar_status and sidecar_status not in {"pass", "ok", "success"}:
+            blocked_items.append(
+                _compact_dict(
+                    {
+                        "title": "Zotero-Codex sidecar verification",
+                        "status": sidecar_payload.get("status"),
+                        "reason": "sidecar_verification_failed",
+                        "source_ref": sidecar_ref,
+                    }
+                )
+            )
+
+    status_markdown_ref = None
+    if status_markdown_path:
+        resolved_markdown = _resolve_project_path(root, status_markdown_path)
+        status_markdown_ref = _project_relative(root, resolved_markdown)
+
+    total = _safe_int(batch_payload.get("target_count") or batch_payload.get("item_count"), len(items))
+    status_value = _status_from_zotero_counts(total, len(success_items), len(login_items), len(blocked_items))
+    summary = (
+        f"Zotero-Codex status import saw {total} target(s): "
+        f"{downloaded_fulltext} downloaded/reused PDF item(s), {cached_fulltext} cached full-text item(s), "
+        f"{len(login_items)} item(s) needing user login, and {len(blocked_items)} blocked item(s). "
+        "EA imported status artifacts only; it did not run Zotero, browser automation, DOI resolution, PDF download, or cache extraction."
+    )
+    status_import_path = literature_root / "zotero_codex_status_import.yml"
+    update_path = literature_root / "acquisition_status_update.yml"
+    status_import = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "imported_at": imported_at,
+        "status": status_value,
+        "batch_status_ref": _project_relative(root, resolved_batch_status),
+        "status_markdown_ref": status_markdown_ref,
+        "sidecar_verification_ref": sidecar_ref,
+        "target_count": total,
+        "success_count": len(success_items),
+        "downloaded_fulltext": downloaded_fulltext,
+        "cached_fulltext": cached_fulltext,
+        "needs_user_login_count": len(login_items),
+        "blocked_count": len(blocked_items),
+        "sidecar_verification": _sidecar_verification_summary(sidecar_payload),
+        "items": {
+            "successful": success_items,
+            "needs_user_login": login_items,
+            "blocked": blocked_items,
+        },
+        "boundaries": [
+            "This import reads Zotero-Codex status artifacts only.",
+            "No Zotero scripts, browser automation, DOI resolution, PDF download, credential handling, or full-text parsing is executed by EA.",
+        ],
+    }
+    update = {
+        "schema_version": "0.2",
+        "status": status_value,
+        "candidate_count": batch_payload.get("candidate_count") or project_status.get("candidate_count") or total,
+        "deduped_count": batch_payload.get("deduped_count") or project_status.get("deduped_count") or total,
+        "downloaded_fulltext": downloaded_fulltext,
+        "cached_fulltext": cached_fulltext,
+        "needs_user_login": login_items,
+        "blocked_items": blocked_items,
+        "summary_for_origin_thread": summary,
+        "zotero_codex_batch_status_ref": _project_relative(root, resolved_batch_status),
+        "zotero_codex_status_markdown_ref": status_markdown_ref,
+        "zotero_codex_sidecar_verification_ref": sidecar_ref,
+        "zotero_codex_status_import_ref": "literature/zotero_codex_status_import.yml",
+        "sidecar_verification": status_import["sidecar_verification"],
+    }
+    write_yaml(status_import_path, status_import)
+    write_yaml(update_path, update)
+    sync_result = (
+        sync_literature_acquisition_status(root, update_path=Path("literature/acquisition_status_update.yml"), synced_at=imported_at)
+        if sync
+        else None
+    )
+    return {
+        "batch_status_path": str(resolved_batch_status),
+        "status_import_path": str(status_import_path),
+        "status_update_path": str(update_path),
+        "status_import": status_import,
+        "status_update": update,
+        "sync": sync_result,
     }
 
 

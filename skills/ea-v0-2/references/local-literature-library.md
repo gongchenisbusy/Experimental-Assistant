@@ -50,6 +50,7 @@ ea literature rank-candidates /path/to/ea-project --candidates literature/candid
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
 ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
+ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib
@@ -66,6 +67,8 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 `acquisition-request` writes `acquisition_request.yml`, `zotero_codex_queries.jsonl`, and `zotero_codex_targets.jsonl` after confirmed top-N selection. If `selected_items.yml` or `ranking.csv` contains selected candidates, the target JSONL is suitable for a dedicated Zotero-Codex workflow to consume with `batch_acquire.py`. If no selected targets exist yet, EA writes only query requests and marks the request as `awaiting_search_results`. This command never runs Zotero, browser automation, live search, DOI resolution, or PDF download.
 
 `zotero-bridge` reads `acquisition_request.yml` and writes `zotero_codex_bridge.yml`, `zotero_codex_bridge.md`, and `zotero_codex_settings_request.yml`. It records user-supplied or user-confirmed Zotero-Codex config, cache root, project collection, browser assist, browser profile, and institution access settings, then emits safe commands for `literature_doctor.py`, `batch_acquire.py`, status rendering, sidecar writing/verification, and EA sync/import. It does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, store credentials, or assume developer-machine accounts.
+
+`import-zotero-status` reads `zotero_codex_batch_status.json` plus optional sidecar verification and rendered status refs, writes `zotero_codex_status_import.yml` and `acquisition_status_update.yml`, then syncs `deployment_status.yml` and `origin_thread_sync.yml`. It normalizes cached/downloaded counts, login needs, and blocked items. It imports status artifacts only; it does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
 
 `import-acquisition` imports a dedicated literature workflow's `acquisition_manifest.yml` into EA. It updates `library_manifest.yml`, `cache_index.yml`, `deployment_status.yml`, and `origin_thread_sync.yml`, and registers reusable project references under `literature/references/` while de-duplicating by DOI, URL, title, or citation. The manifest can include `title`, `authors`, `year`, `venue`, `doi`, `url`, `local_path`, `cache_path`, `zotero_item_key`, and acquisition `status`.
 

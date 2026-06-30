@@ -10,6 +10,7 @@ from ea.literature import (
     confirm_literature_selection,
     generate_literature_keywords,
     import_literature_acquisition_manifest,
+    import_zotero_codex_batch_status,
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
@@ -365,6 +366,162 @@ def test_cli_literature_zotero_bridge_wires_arguments(tmp_path: Path, capsys, mo
     )
     result = json.loads(capsys.readouterr().out)
     assert result["bridge"]["status"] == "ready_for_zotero_codex_batch"
+
+
+def test_literature_import_zotero_status_writes_update_and_syncs(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Status",
+        project_slug="mos2-zotero-status",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    batch_status_path = tmp_path / "literature" / "zotero_codex_batch_status.json"
+    batch_status_path.write_text(
+        json.dumps(
+            {
+                "target_count": 2,
+                "candidate_count": 12,
+                "deduped_count": 9,
+                "items": [
+                    {
+                        "target_id": "target-001",
+                        "rank": 1,
+                        "title": "Raman modes in MoS2",
+                        "doi": "10.1000/mos2-raman",
+                        "status": "cached",
+                        "local_path": "literature/fulltext/raman.pdf",
+                        "cache_path": "knowledge/project/fulltext/ABCD1234",
+                        "zotero_item_key": "ABCD1234",
+                    },
+                    {
+                        "target_id": "target-002",
+                        "rank": 2,
+                        "title": "MoS2 photoluminescence",
+                        "doi": "10.1000/mos2-pl",
+                        "status": "reused-cache",
+                        "cache_path": "knowledge/project/fulltext/EFGH5678",
+                        "zotero_item_key": "EFGH5678",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    sidecar_path = tmp_path / "literature" / "zotero_codex_sidecars_verify.json"
+    sidecar_path.write_text(json.dumps({"status": "pass", "verified_count": 2}), encoding="utf-8")
+    markdown_path = tmp_path / "literature" / "zotero_codex_batch_status.md"
+    markdown_path.write_text("| target | status |\n| --- | --- |\n", encoding="utf-8")
+
+    result = import_zotero_codex_batch_status(
+        tmp_path,
+        batch_status_path=Path("literature/zotero_codex_batch_status.json"),
+        sidecar_verification_path=Path("literature/zotero_codex_sidecars_verify.json"),
+        status_markdown_path=Path("literature/zotero_codex_batch_status.md"),
+        imported_at="2026-07-01T13:00:00",
+    )
+    update = read_yaml(tmp_path / "literature" / "acquisition_status_update.yml")
+    status_import = read_yaml(tmp_path / "literature" / "zotero_codex_status_import.yml")
+    deployment = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    origin_sync = read_yaml(tmp_path / "literature" / "origin_thread_sync.yml")
+
+    assert result["status_update"]["status"] == "acquisition_complete"
+    assert update["downloaded_fulltext"] == 2
+    assert update["cached_fulltext"] == 2
+    assert update["zotero_codex_batch_status_ref"] == "literature/zotero_codex_batch_status.json"
+    assert update["zotero_codex_status_markdown_ref"] == "literature/zotero_codex_batch_status.md"
+    assert update["zotero_codex_sidecar_verification_ref"] == "literature/zotero_codex_sidecars_verify.json"
+    assert update["sidecar_verification"]["status"] == "pass"
+    assert status_import["success_count"] == 2
+    assert deployment["status"] == "acquisition_complete"
+    assert deployment["candidate_count"] == 12
+    assert deployment["zotero_codex_status_import_ref"] == "literature/zotero_codex_status_import.yml"
+    assert origin_sync["cached_fulltext"] == 2
+
+
+def test_literature_import_zotero_status_tracks_login_and_blocked_items(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Status Mixed",
+        project_slug="mos2-zotero-status-mixed",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    batch_status_path = tmp_path / "literature" / "zotero_codex_batch_status.json"
+    batch_status_path.write_text(
+        json.dumps(
+            {
+                "target_count": 2,
+                "targets": [
+                    {
+                        "target_id": "target-001",
+                        "title": "Gated MoS2 paper",
+                        "doi": "10.1000/login",
+                        "status": "needs-login",
+                        "reason": "publisher_login_required",
+                    },
+                    {
+                        "target_id": "target-002",
+                        "title": "Ambiguous PDF",
+                        "doi": "10.1000/failed",
+                        "status": "failed-nonpdf",
+                        "error": "download returned HTML",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = import_zotero_codex_batch_status(tmp_path, imported_at="2026-07-01T13:10:00")
+    update = result["status_update"]
+    deployment = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert update["status"] == "acquisition_partial_with_blockers"
+    assert update["downloaded_fulltext"] == 0
+    assert update["cached_fulltext"] == 0
+    assert update["needs_user_login"][0]["doi"] == "10.1000/login"
+    assert update["blocked_items"][0]["doi"] == "10.1000/failed"
+    assert "did not run Zotero" in update["summary_for_origin_thread"]
+    assert deployment["needs_user_login"][0]["status"] == "needs-login"
+
+
+def test_cli_literature_import_zotero_status_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_import_zotero_codex_batch_status(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["batch_status_path"] == Path("literature/status.json")
+        assert kwargs["sidecar_verification_path"] == Path("literature/sidecars.json")
+        assert kwargs["status_markdown_path"] == Path("literature/status.md")
+        assert kwargs["sync"] is False
+        return {"status_update": {"status": "acquisition_complete"}}
+
+    monkeypatch.setattr("ea.cli.import_zotero_codex_batch_status", fake_import_zotero_codex_batch_status)
+
+    assert (
+        main(
+            [
+                "literature",
+                "import-zotero-status",
+                str(tmp_path),
+                "--batch-status",
+                "literature/status.json",
+                "--sidecar-verification",
+                "literature/sidecars.json",
+                "--status-markdown",
+                "literature/status.md",
+                "--no-sync",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status_update"]["status"] == "acquisition_complete"
 
 
 def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tmp_path: Path) -> None:
@@ -1038,10 +1195,12 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "search-public" in readme
     assert "public_search_state.yml" in readme
     assert "zotero-bridge" in readme
+    assert "import-zotero-status" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
     assert "zotero_codex_bridge.yml" in reference
+    assert "zotero_codex_status_import.yml" in reference
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
@@ -1052,9 +1211,12 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "public_search_state_record" in manifest["output_artifacts"]
     assert "zotero_codex_bridge_runbook" in manifest["output_artifacts"]
     assert "zotero_codex_settings_request" in manifest["output_artifacts"]
+    assert "zotero_codex_status_import" in manifest["output_artifacts"]
+    assert "acquisition_status_update" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
+    assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

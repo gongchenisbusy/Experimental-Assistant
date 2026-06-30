@@ -62,6 +62,8 @@ literature/
 ├── zotero_codex_bridge.yml
 ├── zotero_codex_bridge.md
 ├── zotero_codex_settings_request.yml
+├── zotero_codex_status_import.yml
+├── zotero_codex_sidecars_verify.json
 ├── acquisition_manifest.yml
 ├── selected_items.yml
 ├── references.bib

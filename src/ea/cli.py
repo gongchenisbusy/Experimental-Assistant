@@ -29,6 +29,7 @@ from ea.literature import (
     confirm_literature_selection,
     ensure_literature_status,
     import_literature_acquisition_manifest,
+    import_zotero_codex_batch_status,
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
@@ -447,6 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
     lit_import = literature_sub.add_parser("import-acquisition", help="import acquisition manifest output from a dedicated literature workflow")
     lit_import.add_argument("workspace", type=Path)
     lit_import.add_argument("--manifest", required=True, type=Path)
+    lit_zotero_status = literature_sub.add_parser("import-zotero-status", help="import Zotero-Codex batch status into EA sync records")
+    lit_zotero_status.add_argument("workspace", type=Path)
+    lit_zotero_status.add_argument("--batch-status", type=Path)
+    lit_zotero_status.add_argument("--sidecar-verification", type=Path)
+    lit_zotero_status.add_argument("--status-markdown", type=Path)
+    lit_zotero_status.add_argument("--no-sync", action="store_true")
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
@@ -1258,6 +1265,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.literature_command == "import-acquisition":
             manifest_path = args.manifest if args.manifest.is_absolute() else args.workspace / args.manifest
             _print_json(import_literature_acquisition_manifest(args.workspace, manifest_path=manifest_path))
+            return 0
+        if args.literature_command == "import-zotero-status":
+            _print_json(
+                import_zotero_codex_batch_status(
+                    args.workspace,
+                    batch_status_path=args.batch_status,
+                    sidecar_verification_path=args.sidecar_verification,
+                    status_markdown_path=args.status_markdown,
+                    sync=not args.no_sync,
+                )
+            )
             return 0
         if args.literature_command == "sync-status":
             _print_json(
