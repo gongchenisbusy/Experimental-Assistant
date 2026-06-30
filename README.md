@@ -17,6 +17,7 @@ ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
+ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
 ```
 
 Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.

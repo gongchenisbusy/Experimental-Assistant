@@ -17,7 +17,7 @@ Do not assume developer-machine Zotero, browser, institution, cache, or test pat
 2. If no project exists, run or emulate `ea init-project` and ask only for settings that affect the next work. Keep Zotero, browser, institution, and cache settings disabled or null unless the user provides them.
 3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under `processed/`, `figures/`, `reports/`, `literature/`, or other non-raw directories.
 4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
-5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save candidate memory as review-gated suggestions, not confirmed findings.
+5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
 6. Put questions that affect future work or scientific judgement at the end of the response.
 
 ## CLI Quick Start
@@ -38,6 +38,9 @@ ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-
 ea add-skills register /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
 ea image-data report /path/to/ea-project --metadata processed/sample-001/sem/res-project-sem-20260630-001/image_metadata.yml
+ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
+ea memory review /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --user-response "可以，保存"
+ea memory commit /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --review-ref review-20260630-001
 ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 ```
 
@@ -52,6 +55,7 @@ The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-p
 - For literature-library deployment, read `references/local-literature-library.md`.
 - For Raman v0.2 behavior, read `references/raman-workflow.md`.
 - For SEM/TEM/optical microscopy image data, read `references/image-data-workflow.md`.
+- For review-gated durable project memory, read `references/memory-workflow.md`.
 
 ## Scripts
 

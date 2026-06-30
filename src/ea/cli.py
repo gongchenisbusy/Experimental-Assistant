@@ -15,6 +15,7 @@ from ea.literature import (
     prepare_literature_acquisition_handoff,
     sync_literature_acquisition_status,
 )
+from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.projects.service import initialize_project
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record
@@ -103,6 +104,27 @@ def build_parser() -> argparse.ArgumentParser:
     image_report.add_argument("--project-id")
     image_report.add_argument("--experiment-ref", action="append", default=[])
     image_report.add_argument("--sample-ref", action="append", default=[])
+
+    memory = sub.add_parser("memory", help="review-gated project memory helpers")
+    memory_sub = memory.add_subparsers(dest="memory_command", required=True)
+    memory_propose = memory_sub.add_parser("propose", help="propose a memory candidate without committing it")
+    memory_propose.add_argument("workspace", type=Path)
+    memory_propose.add_argument("--project-id")
+    memory_propose.add_argument("--text", required=True)
+    memory_propose.add_argument("--source-ref", action="append", default=[])
+    memory_propose.add_argument("--provenance-ref", action="append", default=[])
+    memory_propose.add_argument("--category", choices=["finding", "interpretation", "hypothesis", "method_note", "project_rule"], default="interpretation")
+    memory_propose.add_argument("--confidence", choices=["high", "medium", "low", "insufficient"], default="medium")
+    memory_propose.add_argument("--rationale")
+    memory_review = memory_sub.add_parser("review", help="record user review for a memory candidate")
+    memory_review.add_argument("workspace", type=Path)
+    memory_review.add_argument("--candidate", required=True, type=Path)
+    memory_review.add_argument("--user-response", required=True)
+    memory_review.add_argument("--reviewed-content")
+    memory_commit = memory_sub.add_parser("commit", help="commit a user-confirmed memory candidate to project memory")
+    memory_commit.add_argument("workspace", type=Path)
+    memory_commit.add_argument("--candidate", required=True, type=Path)
+    memory_commit.add_argument("--review-ref")
 
     add_skills = sub.add_parser("add-skills", help="validate EA child-skill manifests")
     add_skills_sub = add_skills.add_subparsers(dest="add_skills_command", required=True)
@@ -257,6 +279,38 @@ def main(argv: list[str] | None = None) -> int:
                 related_samples=args.sample_ref,
             )
             _print_json({"report": str(path)})
+            return 0
+    if args.command == "memory":
+        if args.memory_command == "propose":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            path = propose_memory_candidate(
+                args.workspace,
+                project_id=project_id,
+                candidate_text=args.text,
+                source_refs=args.source_ref,
+                provenance_refs=args.provenance_ref,
+                category=args.category,
+                confidence=args.confidence,
+                rationale=args.rationale,
+            )
+            _print_json({"candidate": str(path)})
+            return 0
+        if args.memory_command == "review":
+            path = review_memory_candidate(
+                args.workspace,
+                candidate_path=args.candidate,
+                user_response=args.user_response,
+                reviewed_content=args.reviewed_content,
+            )
+            _print_json({"candidate": str(path)})
+            return 0
+        if args.memory_command == "commit":
+            path = commit_memory_candidate(
+                args.workspace,
+                candidate_path=args.candidate,
+                review_ref=args.review_ref,
+            )
+            _print_json({"memory": str(path)})
             return 0
     if args.command == "add-skills":
         if args.add_skills_command == "check":

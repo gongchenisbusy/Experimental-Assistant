@@ -20,6 +20,8 @@ KIND_PREFIX = {
     "decision": "decision",
     "knowledge": "knowledge",
     "open_item": "openitem",
+    "memory": "mem",
+    "memory_candidate": "memcand",
 }
 
 

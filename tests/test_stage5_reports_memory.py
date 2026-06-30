@@ -2,9 +2,13 @@ from pathlib import Path
 
 import pytest
 
+from ea.cli import main
 from ea.memory import (
     MemoryBoundaryError,
+    commit_memory_candidate,
+    propose_memory_candidate,
     record_suggestion,
+    review_memory_candidate,
     update_suggestion_status,
     write_confirmed_finding,
     write_decision_log_entry,
@@ -177,3 +181,148 @@ def test_open_items_are_tracked_without_becoming_confirmed_memory(tmp_path: Path
     assert data["status"] == "open"
     assert data["priority"] == "high"
     assert not (tmp_path / "memory" / "confirmed-findings.md").exists()
+
+
+def test_memory_candidate_requires_review_before_commit(tmp_path: Path) -> None:
+    source = tmp_path / "reports" / "source-report.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("source report", encoding="utf-8")
+
+    candidate = propose_memory_candidate(
+        tmp_path,
+        project_id="project-20260602-mos2",
+        candidate_text="Raman peak separation may be consistent with a thin MoS2 region, pending supporting evidence.",
+        source_refs=["reports/source-report.md"],
+        provenance_refs=["prov-20260602-001"],
+        category="interpretation",
+        confidence="medium",
+        rationale="Candidate extracted from report interpretation.",
+        created_at="2026-06-02T17:00:00",
+    )
+    frontmatter, body = read_markdown_record(candidate)
+    candidate_index = read_yaml(tmp_path / "memory" / "candidates" / "index.yml")
+
+    assert frontmatter["status"] == "draft"
+    assert frontmatter["memory_candidate_id"] == "memcand-20260602-001"
+    assert "thin MoS2" in body
+    assert candidate_index["candidates"][frontmatter["memory_candidate_id"]]["status"] == "draft"
+
+    with pytest.raises(MemoryBoundaryError, match="user_confirmed"):
+        commit_memory_candidate(tmp_path, candidate_path=candidate)
+
+    review_memory_candidate(
+        tmp_path,
+        candidate_path=candidate,
+        user_response="可能吧，先别保存",
+        reviewed_at="2026-06-02T17:05:00",
+    )
+    frontmatter, _ = read_markdown_record(candidate)
+    assert frontmatter["status"] == "deferred"
+
+    with pytest.raises(MemoryBoundaryError, match="user_confirmed"):
+        commit_memory_candidate(tmp_path, candidate_path=candidate)
+
+    review_memory_candidate(
+        tmp_path,
+        candidate_path=candidate,
+        user_response="可以，保存",
+        reviewed_content="confirmed memory candidate",
+        reviewed_at="2026-06-02T17:10:00",
+    )
+    frontmatter, _ = read_markdown_record(candidate)
+    assert frontmatter["status"] == "user_confirmed"
+    assert len(frontmatter["review_refs"]) == 2
+
+    memory_path = commit_memory_candidate(
+        tmp_path,
+        candidate_path=candidate,
+        review_ref=frontmatter["review_refs"][-1],
+        committed_at="2026-06-02T17:15:00",
+    )
+    committed_frontmatter, _ = read_markdown_record(candidate)
+    memory_index = read_yaml(tmp_path / "memory" / "index.yml")
+
+    assert memory_path == tmp_path / "memory" / "confirmed-findings.md"
+    assert "Memory mem-20260602-001" in memory_path.read_text(encoding="utf-8")
+    assert committed_frontmatter["status"] == "committed"
+    assert committed_frontmatter["committed_memory_id"] == "mem-20260602-001"
+    assert memory_index["memories"]["mem-20260602-001"]["candidate_ref"].endswith("memcand-20260602-001.md")
+
+
+def test_hypothesis_candidate_commits_to_hypotheses(tmp_path: Path) -> None:
+    source = tmp_path / "reports" / "image-report.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("image source", encoding="utf-8")
+    candidate = propose_memory_candidate(
+        tmp_path,
+        project_id="project-20260602-mos2",
+        candidate_text="Image contrast may indicate local topography variation.",
+        source_refs=["reports/image-report.md"],
+        provenance_refs=["prov-20260602-002"],
+        category="hypothesis",
+        confidence="low",
+    )
+    review_memory_candidate(tmp_path, candidate_path=candidate, user_response="可以，保存")
+    frontmatter, _ = read_markdown_record(candidate)
+    memory_path = commit_memory_candidate(tmp_path, candidate_path=candidate, review_ref=frontmatter["review_refs"][-1])
+
+    assert memory_path == tmp_path / "memory" / "hypotheses.md"
+    assert "category: hypothesis" in memory_path.read_text(encoding="utf-8")
+
+
+def test_memory_candidate_cli_roundtrip(tmp_path: Path, capsys) -> None:
+    source = tmp_path / "reports" / "cli-source.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("cli source", encoding="utf-8")
+
+    assert main(
+        [
+            "memory",
+            "propose",
+            str(tmp_path),
+            "--project-id",
+            "project-20260602-mos2",
+            "--text",
+            "CLI candidate memory text.",
+            "--source-ref",
+            "reports/cli-source.md",
+            "--provenance-ref",
+            "prov-cli-001",
+            "--category",
+            "finding",
+            "--confidence",
+            "high",
+        ]
+    ) == 0
+    propose_output = capsys.readouterr().out
+    assert "memcand-" in propose_output
+    candidate = next((tmp_path / "memory" / "candidates").glob("memcand-*.md"))
+
+    assert main(
+        [
+            "memory",
+            "review",
+            str(tmp_path),
+            "--candidate",
+            candidate.relative_to(tmp_path).as_posix(),
+            "--user-response",
+            "可以，保存",
+        ]
+    ) == 0
+    review_output = capsys.readouterr().out
+    assert "memcand-" in review_output
+    frontmatter, _ = read_markdown_record(candidate)
+
+    assert main(
+        [
+            "memory",
+            "commit",
+            str(tmp_path),
+            "--candidate",
+            candidate.relative_to(tmp_path).as_posix(),
+            "--review-ref",
+            frontmatter["review_refs"][-1],
+        ]
+    ) == 0
+    commit_output = capsys.readouterr().out
+    assert "confirmed-findings.md" in commit_output
