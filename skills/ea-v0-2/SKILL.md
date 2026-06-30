@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate repository release manifests, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, or XRD analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate repository release manifests or release packages, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -19,7 +19,7 @@ Do not assume developer-machine Zotero, browser, institution, cache, or test pat
 4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
 5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
 6. Run `ea healthcheck` and `ea eval project` before handoff or public-demo readiness checks; these now include batch records and material-assignment traceability in addition to raw/report/figure/reference/provenance checks.
-7. For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate a release manifest with `ea-release-manifest` or `python3 scripts/build_release_manifest.py`.
+7. For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate release artifacts with `ea-release-manifest` / `ea-release-package` or their script equivalents.
 8. Put questions that affect future work or scientific judgement at the end of the response.
 
 ## CLI Quick Start
@@ -88,9 +88,10 @@ Repository release smoke check:
 ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
+ea-release-package
 ```
 
-The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. These release checks do not use Zotero, browser profiles, institution login, or local literature caches.
+The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. These release checks do not use Zotero, browser profiles, institution login, or local literature caches.
 
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, image-data, and scientific-figure style entries as concrete initial workflows; treat FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and literature-library entries as EA contract boundaries until their implementation services exist.
 
@@ -122,4 +123,4 @@ Report bundle export is read-only for analysis state. It copies one indexed repo
 
 ## Scripts
 
-Repository scripts live outside the skill folder. Use `scripts/public_release_smoke.py` for release checks and `scripts/build_release_manifest.py` for release metadata. They are local-only and should not require user-specific Zotero, browser, institution, or cache settings.
+Repository scripts live outside the skill folder. Use `scripts/public_release_smoke.py` for release checks, `scripts/build_release_manifest.py` for release metadata, and `scripts/build_release_package.py` for the portable release zip. They are local-only and should not require user-specific Zotero, browser, institution, or cache settings.

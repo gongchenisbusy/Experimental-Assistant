@@ -27,6 +27,7 @@ dev = [
 ea = "ea.cli:main"
 ea-public-release-smoke = "ea.release_smoke:main"
 ea-release-manifest = "ea.release_manifest:main"
+ea-release-package = "ea.release_package:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

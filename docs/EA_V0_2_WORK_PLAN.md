@@ -132,6 +132,7 @@ ea export verify-bundle
 ea export verify-archive
 ea-public-release-smoke
 ea-release-manifest
+ea-release-package
 ea templates parameters
 ea templates batch-manifest
 ea literature status
@@ -145,6 +146,7 @@ ea config doctor
 - 用户能通过 CLI 导出并验证单个报告或单个 batch run 的本地 handoff bundle，包含报告、图片、源数据、结果元数据、引用、batch 记录、provenance 和 checksum manifest，并可选择生成 zip 归档及 `.zip.sha256` sidecar 用于转交。
 - 仓库发布前可通过 `ea-public-release-smoke` 一次性运行测试、EA skill validation、核心 CLI help 检查和公开用户 portability scan。
 - 仓库发布时可通过 `ea-release-manifest` 生成 release manifest，记录 package metadata、git state、entry points、核心发布输入 checksum 和公开用户边界说明。
+- 仓库转交时可通过 `ea-release-package` 生成包含 release manifest 和发布输入的 zip archive，并提供 `.zip.sha256` sidecar 用于传输完整性检查。
 - 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。
