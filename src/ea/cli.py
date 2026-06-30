@@ -8,7 +8,13 @@ from ea.config import doctor_project_config
 from ea.figures import lookup_figure
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
-from ea.literature import confirm_literature_selection, ensure_literature_status, plan_literature_deployment
+from ea.literature import (
+    confirm_literature_selection,
+    ensure_literature_status,
+    plan_literature_deployment,
+    prepare_literature_acquisition_handoff,
+    sync_literature_acquisition_status,
+)
 from ea.projects.service import initialize_project
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record
@@ -68,6 +74,13 @@ def build_parser() -> argparse.ArgumentParser:
     lit_confirm.add_argument("workspace", type=Path)
     lit_confirm.add_argument("--selected-top-n", required=True, type=int)
     lit_confirm.add_argument("--user-response", required=True)
+    lit_handoff = literature_sub.add_parser("handoff", help="prepare an acquisition handoff packet for a dedicated literature workflow")
+    lit_handoff.add_argument("workspace", type=Path)
+    lit_handoff.add_argument("--mode", choices=["dedicated_thread", "manual_agent", "same_thread"], default="dedicated_thread")
+    lit_handoff.add_argument("--literature-thread-id")
+    lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
+    lit_sync.add_argument("workspace", type=Path)
+    lit_sync.add_argument("--update", type=Path)
 
     image_data = sub.add_parser("image-data", help="image characterization helpers for SEM, TEM, and microscopy data")
     image_sub = image_data.add_subparsers(dest="image_command", required=True)
@@ -196,6 +209,23 @@ def main(argv: list[str] | None = None) -> int:
                     args.workspace,
                     selected_top_n=args.selected_top_n,
                     user_response=args.user_response,
+                )
+            )
+            return 0
+        if args.literature_command == "handoff":
+            _print_json(
+                prepare_literature_acquisition_handoff(
+                    args.workspace,
+                    handoff_mode=args.mode,
+                    literature_thread_id=args.literature_thread_id,
+                )
+            )
+            return 0
+        if args.literature_command == "sync-status":
+            _print_json(
+                sync_literature_acquisition_status(
+                    args.workspace,
+                    update_path=args.update,
                 )
             )
             return 0

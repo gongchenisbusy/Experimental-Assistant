@@ -4,7 +4,9 @@ from ea.literature.service import (
     ensure_literature_status,
     generate_literature_keywords,
     plan_literature_deployment,
+    prepare_literature_acquisition_handoff,
     recommended_top_n,
+    sync_literature_acquisition_status,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "ensure_literature_status",
     "generate_literature_keywords",
     "plan_literature_deployment",
+    "prepare_literature_acquisition_handoff",
     "recommended_top_n",
+    "sync_literature_acquisition_status",
 ]

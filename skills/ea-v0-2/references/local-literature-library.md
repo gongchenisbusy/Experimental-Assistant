@@ -12,6 +12,10 @@ literature/
 ├── search_log.md
 ├── candidates.csv
 ├── ranking.csv
+├── acquisition_handoff.yml
+├── acquisition_handoff.md
+├── acquisition_status_update.yml
+├── origin_thread_sync.yml
 ├── selected_items.yml
 ├── references.bib
 ├── notes/
@@ -33,6 +37,12 @@ Use the planning commands before any bulk search or full-text acquisition:
 ```bash
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only --keyword strain
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
+ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
+ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ```
 
 `plan` writes `search_queries.yml`, `search_log.md`, empty `candidates.csv`, empty `ranking.csv`, and `confirmation_request.yml`. It does not run web searches, open Zotero, use browser profiles, or download PDFs. `confirm` records the user's selected top N and moves the deployment state to `confirmed_awaiting_acquisition`.
+
+`handoff` writes an acquisition packet for a dedicated literature workflow after confirmation. It records selected top N, access mode, input/output refs, forbidden actions, and the sync contract. It does not run search, browser automation, Zotero calls, institution login, or PDF downloads.
+
+`sync-status` reads `literature/acquisition_status_update.yml` (or `--update`) and merges acquisition progress into `deployment_status.yml` plus `origin_thread_sync.yml`. Use it so the origin project knows candidate counts, deduped counts, downloaded/cached full text, login needs, blockers, and a short status summary.

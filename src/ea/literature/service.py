@@ -5,10 +5,12 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
+from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
+HandoffMode = Literal["dedicated_thread", "manual_agent", "same_thread"]
 
 SEARCH_SOURCES = [
     "project_zotero_library",
@@ -36,6 +38,18 @@ RANKING_HEADERS = [
     "fulltext_availability_and_usefulness",
     "score",
     "notes",
+]
+
+STATUS_UPDATE_FIELDS = [
+    "status",
+    "literature_thread_id",
+    "candidate_count",
+    "deduped_count",
+    "downloaded_fulltext",
+    "cached_fulltext",
+    "needs_user_login",
+    "blocked_items",
+    "summary_for_origin_thread",
 ]
 
 
@@ -230,6 +244,17 @@ def _estimate_confirmation(scope: ProjectScope, top_n: int | tuple[int, int], ac
     }
 
 
+def _timestamp_key(value: str | None = None) -> str:
+    raw = value or EARecord.now_iso()
+    return (
+        raw.replace("-", "")
+        .replace(":", "")
+        .replace("+", "")
+        .replace(".", "")
+        .replace("T", "T")[:15]
+    )
+
+
 def plan_literature_deployment(
     root: Path,
     *,
@@ -389,4 +414,183 @@ def confirm_literature_selection(
         "status_path": str(status_path),
         "selected_items_path": str(selected_path),
         "status": status,
+    }
+
+
+def prepare_literature_acquisition_handoff(
+    root: Path,
+    *,
+    handoff_mode: HandoffMode = "dedicated_thread",
+    literature_thread_id: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    status = read_yaml(status_path)
+    if status.get("status") not in {"confirmed_awaiting_acquisition", "acquisition_handoff_ready"}:
+        raise ValueError("Literature acquisition handoff requires confirmed_awaiting_acquisition status")
+    selected_top_n = status.get("selected_top_n")
+    if not selected_top_n:
+        raise ValueError("Literature acquisition handoff requires selected_top_n")
+
+    project = _project_context(root)
+    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    created_at = created_at or EARecord.now_iso()
+    handoff_id = f"lit-handoff-{_timestamp_key(created_at)}"
+    handoff_path = literature_root / "acquisition_handoff.yml"
+    prompt_path = literature_root / "acquisition_handoff.md"
+    sync_path = literature_root / "origin_thread_sync.yml"
+    handoff = {
+        "schema_version": "0.2",
+        "handoff_id": handoff_id,
+        "project_id": project_id,
+        "created_at": created_at,
+        "handoff_mode": handoff_mode,
+        "literature_thread_id": literature_thread_id,
+        "status": "ready_for_acquisition_workflow",
+        "selected_top_n": selected_top_n,
+        "access_mode": status.get("access_mode", "open_access_only"),
+        "input_refs": {
+            "deployment_status": "literature/deployment_status.yml",
+            "search_queries": status.get("search_queries_ref", "literature/search_queries.yml"),
+            "confirmation_request": status.get("confirmation_request_ref", "literature/confirmation_request.yml"),
+            "candidate_table": "literature/candidates.csv",
+            "ranking_table": "literature/ranking.csv",
+            "selected_items": "literature/selected_items.yml",
+        },
+        "expected_output_refs": {
+            "candidate_table": "literature/candidates.csv",
+            "ranking_table": "literature/ranking.csv",
+            "selected_items": "literature/selected_items.yml",
+            "library_manifest": "literature/library_manifest.yml",
+            "cache_index": "literature/cache_index.yml",
+            "status_update": "literature/acquisition_status_update.yml",
+        },
+        "workflow_contract": [
+            "Do not assume developer-machine Zotero, browser, institution login, cache, or school authentication paths.",
+            "Use user-provided access settings only; record items that require login under needs_user_login.",
+            "Log sources, queries, dates, and known gaps; do not claim exhaustive web coverage.",
+            "Do not download full text until selected_top_n has been confirmed and lawful access is available.",
+            "Write status updates to literature/acquisition_status_update.yml, then run ea literature sync-status in the origin project.",
+        ],
+        "forbidden_actions": [
+            "do_not_store_passwords",
+            "do_not_bypass_sso_mfa_captcha_or_paywalls",
+            "do_not_modify_reference_manager_database_directly",
+            "do_not_write_generated_outputs_under_raw",
+        ],
+    }
+    write_yaml(handoff_path, handoff)
+    prompt = "\n".join(
+        [
+            "# Literature Acquisition Handoff",
+            "",
+            f"- handoff_id: `{handoff_id}`",
+            f"- project_id: `{project_id}`",
+            f"- selected_top_n: `{selected_top_n}`",
+            f"- access_mode: `{handoff['access_mode']}`",
+            f"- handoff_mode: `{handoff_mode}`",
+            "",
+            "Use EA v0.2 literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Keep the acquisition workflow context separate from experimental analysis work.",
+            "",
+            "## Required Inputs",
+            "",
+            *[f"- {key}: `{value}`" for key, value in handoff["input_refs"].items()],
+            "",
+            "## Expected Outputs",
+            "",
+            *[f"- {key}: `{value}`" for key, value in handoff["expected_output_refs"].items()],
+            "",
+            "## Sync Back",
+            "",
+            "After search/ranking/acquisition progress, write `literature/acquisition_status_update.yml` with the fields needed by `ea literature sync-status`, then run that command in the origin project.",
+            "",
+            "## Boundaries",
+            "",
+            *[f"- {item}" for item in handoff["workflow_contract"]],
+        ]
+    )
+    prompt_path.write_text(prompt + "\n", encoding="utf-8")
+    sync_seed = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "handoff_id": handoff_id,
+        "last_synced_at": None,
+        "status": "handoff_ready",
+        "summary_for_origin_thread": (
+            f"Literature acquisition handoff is ready for top {selected_top_n}. "
+            "No search or full-text download has been executed by this handoff step."
+        ),
+    }
+    write_yaml(sync_path, sync_seed)
+    status.update(
+        {
+            "status": "acquisition_handoff_ready",
+            "literature_thread_id": literature_thread_id,
+            "acquisition_handoff_ref": "literature/acquisition_handoff.yml",
+            "acquisition_handoff_prompt_ref": "literature/acquisition_handoff.md",
+            "origin_thread_sync_ref": "literature/origin_thread_sync.yml",
+            "summary_for_origin_thread": sync_seed["summary_for_origin_thread"],
+        }
+    )
+    write_yaml(status_path, status)
+    return {
+        "handoff_path": str(handoff_path),
+        "prompt_path": str(prompt_path),
+        "sync_path": str(sync_path),
+        "status_path": str(status_path),
+        "handoff": handoff,
+        "status": status,
+    }
+
+
+def sync_literature_acquisition_status(
+    root: Path,
+    *,
+    update_path: Path | None = None,
+    synced_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    status_path = literature_root / "deployment_status.yml"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    update_path = update_path or (literature_root / "acquisition_status_update.yml")
+    update_path = update_path if update_path.is_absolute() else root / update_path
+    update = read_yaml(update_path)
+    status = read_yaml(status_path)
+    for field in STATUS_UPDATE_FIELDS:
+        if field in update:
+            status[field] = update[field]
+    status["last_acquisition_sync_at"] = synced_at or EARecord.now_iso()
+    status["acquisition_status_update_ref"] = str(update_path.relative_to(root)) if update_path.is_relative_to(root) else str(update_path)
+    if "status" not in update:
+        status["status"] = "acquisition_in_progress"
+    write_yaml(status_path, status)
+
+    sync_path = literature_root / "origin_thread_sync.yml"
+    sync_record = read_yaml(sync_path) if sync_path.exists() else {"schema_version": "0.2"}
+    sync_record.update(
+        {
+            "project_id": status.get("project_id"),
+            "handoff_id": sync_record.get("handoff_id") or status.get("acquisition_handoff_ref"),
+            "last_synced_at": status["last_acquisition_sync_at"],
+            "status": status.get("status"),
+            "candidate_count": status.get("candidate_count", 0),
+            "deduped_count": status.get("deduped_count", 0),
+            "downloaded_fulltext": status.get("downloaded_fulltext", 0),
+            "cached_fulltext": status.get("cached_fulltext", 0),
+            "needs_user_login": status.get("needs_user_login", []),
+            "blocked_items": status.get("blocked_items", []),
+            "summary_for_origin_thread": status.get("summary_for_origin_thread"),
+        }
+    )
+    write_yaml(sync_path, sync_record)
+    return {
+        "status_path": str(status_path),
+        "sync_path": str(sync_path),
+        "status": status,
+        "sync": sync_record,
     }

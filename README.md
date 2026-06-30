@@ -13,6 +13,8 @@ ea init-project /path/to/ea-project --name "Project name" --slug project-slug --
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
+ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
+ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
 ```
