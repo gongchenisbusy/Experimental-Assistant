@@ -23,6 +23,8 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea healthcheck" in text
     assert "ea eval project" in text
     assert "ea literature plan" in text
+    assert "open-items/" in text
+    assert "--enable-literature" in text
     assert "ea export report-bundle" in text
     assert "ea-public-release-smoke" in text
     assert "developer-machine assumptions" in text

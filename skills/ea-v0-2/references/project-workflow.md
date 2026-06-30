@@ -34,14 +34,15 @@ ea-project/
 Workflow:
 
 1. Open or initialize the project.
-2. Preserve user input as source text when structuring logs.
-3. Import raw files as controlled read-only copies with hashes.
-4. Run deterministic processing scripts after review gates are satisfied.
-5. Write reports, figure records, provenance, and review records.
-6. Save new findings as memory candidates until the user confirms them.
-7. Keep open questions in `open-items/` when they matter but do not block the current step.
-8. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, provenance, references, or memory.
-9. Run `ea eval project` before handoff, public-demo readiness checks, or long context transitions.
+2. Check whether `literature/deployment_status.yml` exists. If not, read the initialization-created `open-items/` literature-library decision record and ask whether the user wants to deploy a local literature library.
+3. Preserve user input as source text when structuring logs.
+4. Import raw files as controlled read-only copies with hashes.
+5. Run deterministic processing scripts after review gates are satisfied.
+6. Write reports, figure records, provenance, and review records.
+7. Save new findings as memory candidates until the user confirms them.
+8. Keep open questions in `open-items/` when they matter but do not block the current step.
+9. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, provenance, references, or memory.
+10. Run `ea eval project` before handoff, public-demo readiness checks, or long context transitions.
 
 CLI path for the first Raman workflow:
 

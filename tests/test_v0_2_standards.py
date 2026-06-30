@@ -31,6 +31,7 @@ def test_v0_2_public_project_init_writes_portable_config(tmp_path: Path) -> None
 
     frontmatter, _ = read_markdown_record(outputs["project"])
     config = read_yaml(outputs["config"])
+    literature_status = read_yaml(outputs["literature_status"])
 
     assert frontmatter["project_id"] == "prj-mos2-public"
     assert frontmatter["project_slug"] == "mos2-public"
@@ -41,6 +42,10 @@ def test_v0_2_public_project_init_writes_portable_config(tmp_path: Path) -> None
     assert "/Users/geecoe" not in json.dumps(config, ensure_ascii=False)
     assert doctor_project_config(tmp_path)["status"] == "pass"
     assert outputs["literature_status"].exists()
+    assert "literature_decision_open_item" not in outputs
+    assert literature_status["decision_status"] == "enabled_at_initialization"
+    assert literature_status["recommended_next_command"].startswith("ea literature plan")
+    assert "browser_name_and_profile_if_browser_assist_is_used" in literature_status["environment_settings_required"]
 
 
 def test_v0_2_standard_ids_and_figure_index(tmp_path: Path) -> None:
@@ -156,6 +161,9 @@ def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
     assert result == 0
     out = json.loads(capsys.readouterr().out)
     assert out["config"].endswith(".ea/project_config.yml")
+    assert out["literature_status"].endswith("literature/deployment_status.yml")
+    status = read_yaml(Path(out["literature_status"]))
+    assert status["decision_status"] == "enabled_at_initialization"
 
     assert main(["config", "doctor", str(workspace)]) == 0
     doctor = json.loads(capsys.readouterr().out)

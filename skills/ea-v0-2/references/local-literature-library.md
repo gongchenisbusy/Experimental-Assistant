@@ -2,7 +2,9 @@
 
 Use this reference when initializing or updating project literature.
 
-The literature library is recommended during project initialization but must be user-confirmed before bulk search or full-text acquisition. Store project state under `literature/`:
+The literature library is recommended during project initialization but must be user-confirmed before bulk search or full-text acquisition. If `ea init-project` is run without `--enable-literature`, EA writes an `open-items/` record with `item_type: literature_library_decision`; read that open item and ask the user whether to deploy a local literature library. If `--enable-literature` is supplied, EA creates `literature/deployment_status.yml` and records `decision_status: enabled_at_initialization`, but scope, access mode, selected top N, and all Zotero/browser/cache/institution settings still require user confirmation.
+
+Store project state under `literature/`:
 
 ```text
 literature/
@@ -40,6 +42,7 @@ Treat "full web search" as systematic multi-source coverage with a search log, n
 Use the planning commands before any bulk search or full-text acquisition:
 
 ```bash
+ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type" --enable-literature
 ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only --keyword strain
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001

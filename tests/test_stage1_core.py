@@ -21,12 +21,20 @@ def test_initialize_project_creates_required_local_workspace(tmp_path: Path) -> 
 
     project_frontmatter, _ = read_markdown_record(outputs["project"])
     rule_frontmatter, _ = read_markdown_record(outputs["rule_card"])
+    literature_decision = read_yaml(outputs["literature_decision_open_item"])
 
     assert project_frontmatter["workspace_mode"] == "single_project"
     assert project_frontmatter["knowledge_global_dir"] == "knowledge/global/"
     assert project_frontmatter["provenance_refs"]
     assert rule_frontmatter["status"] == "draft"
     assert rule_frontmatter["raw_file_policy"] == "controlled_readonly_copy"
+    assert literature_decision["open_item_id"] == "openitem-20260602-001"
+    assert literature_decision["item_type"] == "literature_library_decision"
+    assert literature_decision["status"] == "open"
+    assert "ea literature plan" in literature_decision["description"]
+    assert "/Users/geecoe" not in literature_decision["description"]
+    provenance = read_yaml(tmp_path / "provenance" / f"{project_frontmatter['provenance_refs'][0]}.yml")
+    assert "open-items/openitem-20260602-001.yml" in provenance["outputs"]["records"]
     review_path = confirm_rule_card_item(
         tmp_path,
         rule_key="sample_id_rule",

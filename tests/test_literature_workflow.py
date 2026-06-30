@@ -453,3 +453,22 @@ def test_cli_literature_plan_and_confirm(tmp_path: Path, capsys) -> None:
     synced = json.loads(capsys.readouterr().out)
     assert synced["status"]["candidate_count"] == 75
     assert synced["sync"]["summary_for_origin_thread"] == "CLI sync update."
+
+
+def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
+    root = Path.cwd()
+
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    reference = (root / "skills" / "ea-v0-2" / "references" / "local-literature-library.md").read_text(encoding="utf-8")
+    registry = read_yaml(root / "skill-registry" / "index.yml")
+    manifest = read_yaml(root / "skill-registry" / "builtins" / "local-literature-library.yml")["ea_skill"]
+
+    assert "literature-library decision record" in readme
+    assert "open-items/" in reference
+    assert "decision_status: enabled_at_initialization" in reference
+    assert "contract boundaries until their implementation services exist" not in skill
+    literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
+    assert "Literature initialization decision" in literature_record["notes"]
+    assert "open_item" in manifest["output_artifacts"]
+    assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]

@@ -441,7 +441,7 @@ def write_open_item(
     source_refs: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
-    open_item_id = next_id(root, "open_item")
+    open_item_id = next_id(root, "open_item", created_at[:10] if created_at else None)
     item = OpenItem(
         open_item_id=open_item_id,
         created_at=created_at or EARecord.now_iso(),

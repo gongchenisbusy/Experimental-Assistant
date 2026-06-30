@@ -10,11 +10,13 @@ ea_skill:
     - access_settings
     - optional_bibtex_export
   output_artifacts:
+    - open_item
     - literature_status
     - reference_record
     - report_section
     - provenance_record
   review_gates:
+    - confirm_literature_library_decision
     - confirm_search_scope
     - confirm_bulk_download_scope
     - confirm_reference_import
@@ -37,3 +39,18 @@ ea_skill:
     access_mode_logged: true
     generated_outputs_outside_raw: true
     no_private_account_defaults: true
+  current_v0_2_support:
+    implemented:
+      - initialization_open_item_when_literature_not_enabled
+      - deployment_status_when_literature_enabled
+      - search_query_and_confirmation_package_generation
+      - top_n_confirmation_record
+      - dedicated_workflow_handoff_packet
+      - zotero_codex_query_and_target_manifest_generation
+      - acquisition_manifest_import_and_reference_registration
+      - origin_thread_status_sync
+    external_or_user_confirmed:
+      - live_literature_search
+      - zotero_or_browser_acquisition
+      - institution_login
+      - pdf_download_and_fulltext_cache_creation

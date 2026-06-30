@@ -40,7 +40,9 @@ ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ```
 
-The initialization step writes `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, and the project directory structure. It does not assume a Zotero database, browser profile, institution login, literature cache, or test fixture path.
+The initialization step writes `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, and the project directory structure. It also writes an `open-items/` literature-library decision record when `--enable-literature` is not supplied, so the next agent asks whether to deploy a local literature library instead of silently skipping it. It does not assume a Zotero database, browser profile, institution login, literature cache, or test fixture path.
+
+To create the literature status record during initialization, add `--enable-literature`. Still ask the user to confirm search scope, access mode, selected top N, and any Zotero/browser/cache/institution settings before planning or acquisition.
 
 To inspect the packaged example before creating a real project:
 
@@ -107,7 +109,7 @@ Reports should contain report IDs, sample/raw/result references, embedded figure
 
 ## 5. Literature Library Setup
 
-Literature deployment is recommended, but it is optional and user-controlled.
+Literature deployment is recommended, but it is optional and user-controlled. New projects initialized without `--enable-literature` contain an `open-items/` decision record asking whether to create a local literature library. If the user agrees later, start with `ea literature plan`; if the project was initialized with `--enable-literature`, check `literature/deployment_status.yml` before planning.
 
 Start with a plan:
 
