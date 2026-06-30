@@ -7,11 +7,15 @@ import yaml
 
 
 EA_PROJECT_DIRS = [
+    ".ea",
     "experiments",
     "samples",
     "raw",
     "processed",
+    "figures",
     "reports",
+    "literature",
+    "skill-registry",
     "memory",
     "memory/paper-materials",
     "provenance",

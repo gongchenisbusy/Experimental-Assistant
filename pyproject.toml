@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ea-v0-1"
-version = "0.1.0"
-description = "Local-first EA v0.1 agent-native scientific assistant core"
+name = "ea-v0-2"
+version = "0.2.0"
+description = "Modular local-first Experimental Assistant core"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

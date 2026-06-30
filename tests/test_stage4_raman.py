@@ -14,7 +14,7 @@ from ea.review import write_review_record
 from ea.storage import read_yaml
 
 
-PUBLIC_RAW = Path("工作指南/test_cases/test-case-001/public/raw_data")
+PUBLIC_RAW = Path("tests/fixtures/public/test-case-001/raw_data")
 
 
 def test_inspect_public_raman_txt_requires_confirmation() -> None:

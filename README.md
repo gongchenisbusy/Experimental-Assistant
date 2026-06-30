@@ -1,26 +1,28 @@
-# EAv0.1-build
+# EA v0.2 Build
 
-这是 EA v0.1 的正式构建项目文件夹。
+EA v0.2 is the clean implementation workspace for the local-first Experimental Assistant.
 
-新 agent 打开本项目后，先阅读：
+Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-1. `工作指南/README.md`
-2. `工作指南/docs/EA_V0_1_BUILD_PACKAGE_MANIFEST.md`
-3. `工作指南/docs/EA_V0_1_GIT_WORKFLOW.md`
-4. `工作指南/docs/EA_V0_1_AGENT_TEAM_SETUP.md`
-5. `工作指南/docs/EA_V0_1_SKILL_SETUP.md`
+## Public Setup
 
-重要边界：
+EA must initialize projects for unknown users without assuming developer-machine Zotero, browser, institution login, cache, or test paths. Use:
 
-- `工作指南/` 是正式构建指南包。
-- 产品代码应在本仓库根目录下创建，不要写进 `工作指南/`。
-- 构建 agent 可读 `工作指南/test_cases/test-case-001/public/`。
-- hidden truth 和 evaluator-only 文件没有放入本正式构建仓库。
-- 每个稳定阶段都要 commit；remote 可用时每阶段 push。
+```bash
+ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
+ea config doctor /path/to/ea-project
+```
 
-当前 Git 状态：
+Enable Zotero, browser assist, literature cache, or institution access only when the user supplies those settings.
 
-- branch: `main`
-- remote: `origin`
-- remote URL: `https://github.com/gongchenisbusy/EAv0.1-build.git`
+## Developer Setup
 
+```bash
+python3 -m pip install -e ".[dev]"
+python3 -m pytest
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
+```
+
+## Local Test Fixtures
+
+Public workflow tests use `tests/fixtures/public/`. Local integration tests that touch real Zotero, browser profiles, institution login, or user caches must be marked `local-test-only` and kept out of product defaults.

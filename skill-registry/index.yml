@@ -1,0 +1,9 @@
+schema_version: "0.2"
+registry_type: ea_builtin_skill_registry
+skills:
+  - id: ea.raman-analysis
+    manifest: skill-registry/builtins/raman-analysis.yml
+    status: builtin_v0_2_reference
+    category: characterization.spectrum
+    method: raman
+    notes: First complete characterization skill target for EA v0.2.

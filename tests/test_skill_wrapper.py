@@ -6,21 +6,28 @@ import sys
 from pathlib import Path
 
 
-def test_ea_v0_1_skill_defaults_to_user_workflow() -> None:
-    skill_doc = Path(".agents/skills/ea-v0-1/SKILL.md").read_text(encoding="utf-8")
+def test_ea_v0_2_skill_defaults_to_public_user_workflow() -> None:
+    skill_doc = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
 
-    assert "Do not run the bundled public demo by default." in skill_doc
-    assert "Default Codex Behavior" in skill_doc
-    assert "Developer Demo Only" in skill_doc
-    assert "Use `工作指南/test_cases/test-case-001/public/` only for explicit developer/demo validation." in skill_doc
+    assert "Do not assume developer-machine Zotero, browser, institution, cache, or test paths." in skill_doc
+    assert "Default Workflow" in skill_doc
+    assert "References" in skill_doc
+    assert "tests/fixtures/public/" not in skill_doc
 
 
-def test_ea_v0_1_skill_public_demo_command_runs(tmp_path: Path) -> None:
+def test_ea_v0_2_skill_public_demo_command_runs(tmp_path: Path) -> None:
     workspace = tmp_path / "public-demo"
-    script = Path(".agents/skills/ea-v0-1/scripts/run_public_demo.py")
+    script = Path("skills/ea-v0-2/scripts/run_public_demo.py")
 
     result = subprocess.run(
-        [sys.executable, str(script), "--workspace", str(workspace)],
+        [
+            sys.executable,
+            str(script),
+            "--workspace",
+            str(workspace),
+            "--fixture-root",
+            "tests/fixtures/public/test-case-001",
+        ],
         check=True,
         capture_output=True,
         text=True,

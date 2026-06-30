@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
+from ea.config import build_project_config, write_project_config
+from ea.literature import ensure_literature_status
 from ea.schema import Project, ProjectRuleCard
+from ea.standards import slugify, standard_project_id
 from ea.storage.files import ensure_project_dirs, write_markdown_record
 from ea.provenance import write_provenance_entry
 from ea.review import write_review_record
 
 
 def _slug(text: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
-    return slug or "project"
+    return slugify(text)
 
 
 def initialize_project(
@@ -21,17 +22,31 @@ def initialize_project(
     research_direction: str,
     material_system: str,
     experiment_type: str,
+    project_slug: str | None = None,
+    default_language: str = "zh",
+    enable_literature: bool = False,
+    enable_zotero: bool = False,
+    literature_cache_root: str | None = None,
+    zotero_local_api_url: str | None = None,
+    zotero_collection: str | None = None,
+    browser_assist_enabled: bool = False,
+    browser_name: str | None = None,
+    browser_profile: str | None = None,
+    institution_access: str | None = None,
     created_at: str = "2026-06-02T00:00:00",
 ) -> dict[str, Path]:
     ensure_project_dirs(root)
     day = created_at[:10].replace("-", "")
-    project_id = f"project-{day}-{_slug(project_name)}"
+    normalized_slug = _slug(project_slug or project_name)
+    project_id = standard_project_id(normalized_slug) if project_slug else f"project-{day}-{normalized_slug}"
     project = Project(
         project_id=project_id,
         project_name=project_name,
+        project_slug=normalized_slug,
         research_direction=research_direction,
         material_system=material_system,
         experiment_type=experiment_type,
+        default_language=default_language,  # type: ignore[arg-type]
         created_at=created_at,
         updated_at=created_at,
         status="draft",
@@ -42,9 +57,26 @@ def initialize_project(
         research_direction=research_direction,
         material_system=material_system,
         experiment_type=experiment_type,
+        default_report_language=default_language,  # type: ignore[arg-type]
         created_at=created_at,
         updated_at=created_at,
     )
+    config = build_project_config(
+        project_slug=normalized_slug,
+        report_language=default_language,
+        enable_literature=enable_literature,
+        enable_zotero=enable_zotero,
+        literature_cache_root=literature_cache_root,
+        zotero_local_api_url=zotero_local_api_url,
+        zotero_collection=zotero_collection,
+        browser_assist_enabled=browser_assist_enabled,
+        browser_name=browser_name,
+        browser_profile=browser_profile,
+        institution_access=institution_access,
+    )
+    config_path = write_project_config(root, config)
+    if enable_literature:
+        ensure_literature_status(root, project_id=project_id)
     project_path = write_markdown_record(
         root / "EA_PROJECT.md",
         project.model_dump(exclude_none=True),
@@ -59,11 +91,16 @@ def initialize_project(
         root,
         workflow="project_initialization",
         inputs={"records": [], "files": []},
-        outputs={"records": ["EA_PROJECT.md", "PROJECT_RULE_CARD.md"], "files": []},
+        outputs={
+            "records": ["EA_PROJECT.md", "PROJECT_RULE_CARD.md", str(config_path.relative_to(root))],
+            "files": [],
+        },
         parameters={
             "project_name": project_name,
             "material_system": material_system,
             "status": "draft_until_user_review",
+            "project_slug": normalized_slug,
+            "public_initialization": "developer_machine_defaults_disabled",
         },
         created_at=created_at,
     )
@@ -74,7 +111,10 @@ def initialize_project(
         project_frontmatter,
         "# EA Project\n\nThis project record is review-gated.",
     )
-    return {"project": project_path, "rule_card": rule_card_path}
+    outputs = {"project": project_path, "rule_card": rule_card_path, "config": config_path}
+    if enable_literature:
+        outputs["literature_status"] = root / "literature" / "deployment_status.yml"
+    return outputs
 
 
 def confirm_rule_card_item(

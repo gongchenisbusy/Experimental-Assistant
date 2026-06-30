@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class EARecord(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    schema_version: str = "0.1"
+    schema_version: str = "0.2"
     created_at: str | None = None
     updated_at: str | None = None
     status: str | None = None
@@ -25,10 +25,11 @@ class EARecord(BaseModel):
 class Project(EARecord):
     project_id: str
     project_name: str
+    project_slug: str | None = None
     research_direction: str
     material_system: str
     experiment_type: str
-    default_language: Literal["zh"] = "zh"
+    default_language: Literal["zh", "en"] = "zh"
     workspace_mode: Literal["single_project"] = "single_project"
     rule_card_ref: str = "PROJECT_RULE_CARD.md"
     knowledge_global_dir: str = "knowledge/global/"
@@ -49,7 +50,7 @@ class ProjectRuleCard(EARecord):
     experiment_type: str
     sample_id_rule_ref: str = "needs_user_review"
     sample_quality_rule_ref: str = "needs_user_review"
-    default_report_language: Literal["zh"] = "zh"
+    default_report_language: Literal["zh", "en"] = "zh"
     raw_file_policy: Literal["controlled_readonly_copy"] = "controlled_readonly_copy"
     knowledge_policy_ref: str = "needs_user_review"
 
