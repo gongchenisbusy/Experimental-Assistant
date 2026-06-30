@@ -13,7 +13,7 @@ ea init-project /path/to/ea-project --name "Project name" --slug project-slug --
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
-ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001
+ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --zip
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
 ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
@@ -60,7 +60,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
-`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff.
+`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. Add `--zip` or `--zip-output` when the handoff should include a portable archive.
 
 ## Developer Setup
 

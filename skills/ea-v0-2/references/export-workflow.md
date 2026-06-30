@@ -7,6 +7,8 @@ Command:
 ```bash
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --output exports/report-bundles/custom-name
+ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --zip
+ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --zip-output exports/report-bundles/custom-name.zip
 ```
 
 Default output:
@@ -24,6 +26,14 @@ exports/report-bundles/{report_id}/
 └── provenance-inputs/
 ```
 
+Optional archive:
+
+```text
+exports/report-bundles/{report_id}.zip
+```
+
+`--zip` writes a sibling `.zip` archive for the generated bundle. `--zip-output` writes the archive to a user-selected path and also enables archive creation. The manifest records `archive_created`, `archive_path`, and `archive_ref` before the archive is written, so the `bundle_manifest.yml` inside the archive matches the returned CLI JSON.
+
 What the bundle includes:
 
 - The report Markdown from `reports/index.yml`.
@@ -38,6 +48,6 @@ What the bundle includes:
 Boundaries:
 
 - Export is read-only for analysis state.
-- Export does not rerun processing, regenerate figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
+- Export and optional archive creation do not rerun processing, regenerate figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
 - Export skips files outside the project root and records the skip in `bundle_manifest.yml`.
 - A bundle with missing linked project refs returns status `warning`; fix the source project links and re-export before handoff when possible.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,27 @@ def _record_missing(manifest: dict[str, Any], *, kind: str, ref: str, reason: st
     manifest.setdefault("missing_refs", []).append({"kind": kind, "ref": ref, "reason": reason})
 
 
+def _default_archive_path(bundle_dir: Path) -> Path:
+    return bundle_dir.parent / f"{bundle_dir.name}.zip"
+
+
+def _write_zip_archive(bundle_dir: Path, archive_path: Path) -> Path:
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_resolved = archive_path.resolve()
+    if archive_path.exists():
+        archive_path.unlink()
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for path in sorted(item for item in bundle_dir.rglob("*") if item.is_file()):
+            if path.resolve() == archive_resolved:
+                continue
+            zip_info = zipfile.ZipInfo(path.relative_to(bundle_dir).as_posix())
+            zip_info.date_time = (1980, 1, 1, 0, 0, 0)
+            zip_info.compress_type = zipfile.ZIP_DEFLATED
+            zip_info.external_attr = 0o644 << 16
+            archive.writestr(zip_info, path.read_bytes())
+    return archive_path
+
+
 def _copy_provenance(
     root: Path,
     bundle_dir: Path,
@@ -168,6 +190,8 @@ def export_report_bundle(
     report_id: str,
     output_dir: Path | None = None,
     created_at: str | None = None,
+    create_archive: bool = False,
+    archive_path: Path | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
     reports = _reports_index(root)
@@ -198,6 +222,9 @@ def export_report_bundle(
         },
         "provenance_inputs": [],
         "missing_refs": [],
+        "archive_created": False,
+        "archive_path": None,
+        "archive_ref": None,
     }
 
     report_ref = str(report_record.get("path") or "")
@@ -311,7 +338,20 @@ def export_report_bundle(
     manifest["artifacts"]["provenance"].extend(_copy_provenance(root, bundle_dir, manifest, report_provenance_refs))
 
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
-    manifest_path = write_yaml(bundle_dir / "bundle_manifest.yml", manifest)
+    if create_archive:
+        archive_target = archive_path or _default_archive_path(bundle_dir)
+        if not archive_target.is_absolute():
+            archive_target = root / archive_target
+        manifest["archive_created"] = True
+        manifest["archive_path"] = str(archive_target)
+        manifest["archive_ref"] = _project_ref(root, archive_target)
+
+    manifest_path = bundle_dir / "bundle_manifest.yml"
     manifest["manifest_path"] = str(manifest_path)
     write_yaml(manifest_path, manifest)
+    if create_archive:
+        try:
+            _write_zip_archive(bundle_dir, archive_target)
+        except OSError as exc:
+            raise ReportBundleError(f"Failed to create report bundle archive: {archive_target}: {exc}") from exc
     return manifest

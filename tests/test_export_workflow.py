@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 
 from ea.cli import main
@@ -128,6 +129,31 @@ def test_cli_exports_report_bundle_with_traceable_artifacts(tmp_path: Path, caps
         for artifact in manifest["artifacts"][group]:
             if artifact["copied"]:
                 assert (bundle_dir / artifact["bundle_ref"]).exists(), artifact
+
+
+def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+
+    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    output = _json_output(capsys)
+    manifest = read_yaml(Path(output["manifest_path"]))
+    archive_path = Path(output["archive_path"])
+
+    assert output["archive_created"] is True
+    assert manifest["archive_path"] == str(archive_path)
+    assert manifest["archive_ref"] == f"exports/report-bundles/{built['report_id']}.zip"
+    assert archive_path.exists()
+
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+
+    assert "bundle_manifest.yml" in names
+    assert any(name.startswith("reports/") for name in names)
+    assert any(name.startswith("figures/") for name in names)
+    assert any(name.startswith("source-data/") for name in names)
+    assert any(name.startswith("results/") for name in names)
+    assert any(name.startswith("references/") for name in names)
+    assert any(name.startswith("provenance/") for name in names)
 
 
 def test_export_report_bundle_returns_nonzero_for_unknown_report(tmp_path: Path, capsys) -> None:

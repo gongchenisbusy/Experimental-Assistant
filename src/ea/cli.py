@@ -88,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_bundle.add_argument("workspace", type=Path)
     report_bundle.add_argument("--report-id", required=True)
     report_bundle.add_argument("--output", type=Path)
+    report_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
+    report_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
 
     healthcheck = sub.add_parser("healthcheck", help="audit EA project config, provenance, raw files, reports, and figures")
     healthcheck.add_argument("workspace", type=Path)
@@ -440,8 +442,18 @@ def main(argv: list[str] | None = None) -> int:
             output_dir = args.output
             if output_dir and not output_dir.is_absolute():
                 output_dir = args.workspace / output_dir
+            archive_path = args.zip_output
+            if archive_path and not archive_path.is_absolute():
+                archive_path = args.workspace / archive_path
+            create_archive = args.zip or archive_path is not None
             try:
-                result = export_report_bundle(args.workspace, report_id=args.report_id, output_dir=output_dir)
+                result = export_report_bundle(
+                    args.workspace,
+                    report_id=args.report_id,
+                    output_dir=output_dir,
+                    create_archive=create_archive,
+                    archive_path=archive_path,
+                )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})
                 return 2
