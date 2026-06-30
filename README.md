@@ -95,6 +95,7 @@ ea literature search-public /path/to/ea-project --source crossref --source opena
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
+ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
@@ -106,6 +107,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 ```
 
 Use `ea literature search-public --page-limit N --delay-seconds S --resume` for longer public metadata runs that should write and reuse `literature/public_search_state.yml`.
+Use `ea literature zotero-bridge` after `acquisition-request` to write `literature/zotero_codex_bridge.yml`, `literature/zotero_codex_bridge.md`, and `literature/zotero_codex_settings_request.yml` for a dedicated Zotero-Codex workflow. The bridge emits commands and required user settings; it does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts.
 
 `ea init-project` writes an `open-items/` literature-library decision record unless `--enable-literature` is supplied. Use `--enable-literature` only when the user explicitly wants a project literature status record created during initialization; all Zotero, browser, cache, proxy/VPN, and institution settings still remain user-supplied.
 

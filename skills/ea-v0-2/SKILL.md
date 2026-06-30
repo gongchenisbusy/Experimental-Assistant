@@ -106,6 +106,7 @@ ea literature search-public /path/to/ea-project --source crossref --source opena
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
+ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills check /path/to/child-skill-manifest.yml

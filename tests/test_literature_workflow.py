@@ -13,6 +13,7 @@ from ea.literature import (
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
@@ -227,6 +228,143 @@ def test_literature_acquisition_request_without_targets_keeps_search_boundary(tm
     assert "Run literature search/ranking" in result["request"]["next_action"]
     assert (tmp_path / "literature" / "zotero_codex_queries.jsonl").read_text(encoding="utf-8")
     assert (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_literature_zotero_bridge_writes_runbook_with_user_settings(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Bridge",
+        project_slug="mos2-zotero-bridge",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="user_authenticated")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-mos2-zotero-bridge",
+            "selection_status": "selected",
+            "selected_top_n": 1,
+            "items": [
+                {
+                    "candidate_id": "cand-001",
+                    "rank": 1,
+                    "title": "Raman modes in MoS2",
+                    "doi": "10.1000/mos2-raman",
+                    "url": "https://doi.org/10.1000/mos2-raman",
+                }
+            ],
+        },
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-01T12:00:00")
+
+    result = prepare_zotero_codex_acquisition_bridge(
+        tmp_path,
+        zotero_config=Path("config/zotero-codex.json"),
+        cache_root=Path("knowledge/project/fulltext"),
+        project_collection="MoS2 Zotero Bridge",
+        browser_assist=True,
+        browser_name="Chrome",
+        browser_profile=Path("browser-profiles/mos2-zotero"),
+        institution_access="User-managed university proxy; no credentials stored in EA.",
+        created_at="2026-07-01T12:05:00",
+    )
+    bridge = read_yaml(tmp_path / "literature" / "zotero_codex_bridge.yml")
+    settings_request = read_yaml(tmp_path / "literature" / "zotero_codex_settings_request.yml")
+    runbook = (tmp_path / "literature" / "zotero_codex_bridge.md").read_text(encoding="utf-8")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert result["bridge"]["bridge_id"] == "lit-zotero-bridge-20260701T120500"
+    assert bridge["status"] == "ready_for_zotero_codex_batch"
+    assert bridge["target_count"] == 1
+    assert bridge["required_user_inputs"] == []
+    assert bridge["settings"]["zotero_codex_config_ref"] == "config/zotero-codex.json"
+    assert bridge["settings"]["cache_root_ref"] == "knowledge/project/fulltext"
+    assert "literature_doctor.py --config config/zotero-codex.json --json" in bridge["commands"]["doctor"]
+    assert "batch_acquire.py --config config/zotero-codex.json" in bridge["commands"]["batch_acquire"]
+    assert "verify_project_sidecars.py" in bridge["commands"]["verify_project_sidecars"]
+    assert settings_request["status"] == "settings_confirmed"
+    assert "Never store passwords" in "\n".join(bridge["boundaries"])
+    assert "batch_acquire" in runbook
+    assert status["status"] == "zotero_codex_bridge_ready"
+    assert status["zotero_codex_bridge_ref"] == "literature/zotero_codex_bridge.yml"
+
+
+def test_literature_zotero_bridge_missing_settings_requests_public_user_inputs(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Missing Settings",
+        project_slug="mos2-zotero-missing",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="user_authenticated")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "items": [{"candidate_id": "cand-001", "rank": 1, "title": "MoS2 gated article"}],
+        },
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-01T12:10:00")
+
+    result = prepare_zotero_codex_acquisition_bridge(tmp_path, created_at="2026-07-01T12:15:00")
+    fields = {item["field"] for item in result["bridge"]["required_user_inputs"]}
+
+    assert result["bridge"]["status"] == "needs_user_settings"
+    assert {"zotero_codex_config", "project_collection", "institution_access", "browser_assist"}.issubset(fields)
+    assert result["settings_request"]["status"] == "needs_user_input"
+    assert "did not run Zotero" in result["status"]["summary_for_origin_thread"]
+
+
+def test_cli_literature_zotero_bridge_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_prepare_zotero_codex_acquisition_bridge(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["zotero_config"] == Path("config/zotero-codex.json")
+        assert kwargs["allow_default_config"] is True
+        assert kwargs["cache_root"] == Path("knowledge/project/fulltext")
+        assert kwargs["project_collection"] == "MoS2 Project"
+        assert kwargs["browser_assist"] is True
+        assert kwargs["browser_name"] == "Chrome"
+        assert kwargs["browser_profile"] == Path("profiles/mos2")
+        assert kwargs["institution_access"] == "manual SSO"
+        return {"bridge": {"status": "ready_for_zotero_codex_batch"}}
+
+    monkeypatch.setattr("ea.cli.prepare_zotero_codex_acquisition_bridge", fake_prepare_zotero_codex_acquisition_bridge)
+
+    assert (
+        main(
+            [
+                "literature",
+                "zotero-bridge",
+                str(tmp_path),
+                "--zotero-config",
+                "config/zotero-codex.json",
+                "--allow-default-config",
+                "--cache-root",
+                "knowledge/project/fulltext",
+                "--project-collection",
+                "MoS2 Project",
+                "--enable-browser-assist",
+                "--browser-name",
+                "Chrome",
+                "--browser-profile",
+                "profiles/mos2",
+                "--institution-access",
+                "manual SSO",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["bridge"]["status"] == "ready_for_zotero_codex_batch"
 
 
 def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tmp_path: Path) -> None:
@@ -899,9 +1037,11 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "rank-candidates" in readme
     assert "search-public" in readme
     assert "public_search_state.yml" in readme
+    assert "zotero-bridge" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
+    assert "zotero_codex_bridge.yml" in reference
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
@@ -910,8 +1050,11 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "open_item" in manifest["output_artifacts"]
     assert "public_search_candidate_manifest" in manifest["output_artifacts"]
     assert "public_search_state_record" in manifest["output_artifacts"]
+    assert "zotero_codex_bridge_runbook" in manifest["output_artifacts"]
+    assert "zotero_codex_settings_request" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
+    assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

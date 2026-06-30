@@ -59,6 +59,9 @@ literature/
 ├── acquisition_request.yml
 ├── zotero_codex_queries.jsonl
 ├── zotero_codex_targets.jsonl
+├── zotero_codex_bridge.yml
+├── zotero_codex_bridge.md
+├── zotero_codex_settings_request.yml
 ├── acquisition_manifest.yml
 ├── selected_items.yml
 ├── references.bib

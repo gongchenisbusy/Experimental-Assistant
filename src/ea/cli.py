@@ -32,6 +32,7 @@ from ea.literature import (
     plan_literature_deployment,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     search_public_literature_metadata,
     sync_literature_acquisition_status,
@@ -433,6 +434,16 @@ def build_parser() -> argparse.ArgumentParser:
     lit_handoff.add_argument("--literature-thread-id")
     lit_request = literature_sub.add_parser("acquisition-request", help="prepare confirmed acquisition request and Zotero-Codex target manifests")
     lit_request.add_argument("workspace", type=Path)
+    lit_bridge = literature_sub.add_parser("zotero-bridge", help="prepare a Zotero-Codex acquisition bridge runbook")
+    lit_bridge.add_argument("workspace", type=Path)
+    lit_bridge.add_argument("--zotero-config", type=Path)
+    lit_bridge.add_argument("--allow-default-config", action="store_true")
+    lit_bridge.add_argument("--cache-root", type=Path)
+    lit_bridge.add_argument("--project-collection")
+    lit_bridge.add_argument("--enable-browser-assist", action="store_true")
+    lit_bridge.add_argument("--browser-name")
+    lit_bridge.add_argument("--browser-profile", type=Path)
+    lit_bridge.add_argument("--institution-access")
     lit_import = literature_sub.add_parser("import-acquisition", help="import acquisition manifest output from a dedicated literature workflow")
     lit_import.add_argument("workspace", type=Path)
     lit_import.add_argument("--manifest", required=True, type=Path)
@@ -1228,6 +1239,21 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.literature_command == "acquisition-request":
             _print_json(prepare_literature_acquisition_request(args.workspace))
+            return 0
+        if args.literature_command == "zotero-bridge":
+            _print_json(
+                prepare_zotero_codex_acquisition_bridge(
+                    args.workspace,
+                    zotero_config=args.zotero_config,
+                    allow_default_config=args.allow_default_config,
+                    cache_root=args.cache_root,
+                    project_collection=args.project_collection,
+                    browser_assist=args.enable_browser_assist,
+                    browser_name=args.browser_name,
+                    browser_profile=args.browser_profile,
+                    institution_access=args.institution_access,
+                )
+            )
             return 0
         if args.literature_command == "import-acquisition":
             manifest_path = args.manifest if args.manifest.is_absolute() else args.workspace / args.manifest

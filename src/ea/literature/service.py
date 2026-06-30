@@ -788,6 +788,256 @@ def prepare_literature_acquisition_request(
     }
 
 
+def _optional_path_ref(root: Path, path: Path | None) -> str | None:
+    return _project_relative(root, path) if path else None
+
+
+def _bridge_required_inputs(
+    *,
+    access_mode: str,
+    zotero_config_ref: str | None,
+    allow_default_config: bool,
+    project_collection: str | None,
+    browser_assist: bool,
+    browser_name: str | None,
+    browser_profile_ref: str | None,
+    institution_access: str | None,
+) -> list[dict[str, str]]:
+    inputs: list[dict[str, str]] = []
+    if not zotero_config_ref and not allow_default_config:
+        inputs.append(
+            {
+                "field": "zotero_codex_config",
+                "reason": "Confirm a Zotero-Codex config path or explicitly allow the user's default config.",
+            }
+        )
+    if not project_collection:
+        inputs.append(
+            {
+                "field": "project_collection",
+                "reason": "Confirm the Zotero collection or project tag that should receive acquired items.",
+            }
+        )
+    if access_mode == "user_authenticated" and not institution_access:
+        inputs.append(
+            {
+                "field": "institution_access",
+                "reason": "Describe the user-managed institution/proxy/VPN access route before gated acquisition.",
+            }
+        )
+    if access_mode == "user_authenticated" and not browser_assist:
+        inputs.append(
+            {
+                "field": "browser_assist",
+                "reason": "Confirm whether a visible browser-assisted authorization workflow is allowed.",
+            }
+        )
+    if browser_assist and not browser_name:
+        inputs.append(
+            {
+                "field": "browser_name",
+                "reason": "Confirm which user-managed browser should be used for visible authorization windows.",
+            }
+        )
+    if browser_assist and not browser_profile_ref:
+        inputs.append(
+            {
+                "field": "browser_profile",
+                "reason": "Confirm the user-managed browser profile path or profile name; do not assume a developer-machine profile.",
+            }
+        )
+    return inputs
+
+
+def prepare_zotero_codex_acquisition_bridge(
+    root: Path,
+    *,
+    zotero_config: Path | None = None,
+    allow_default_config: bool = False,
+    cache_root: Path | None = None,
+    project_collection: str | None = None,
+    browser_assist: bool = False,
+    browser_name: str | None = None,
+    browser_profile: Path | None = None,
+    institution_access: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    request_path = literature_root / "acquisition_request.yml"
+    status_path = literature_root / "deployment_status.yml"
+    if not request_path.exists():
+        raise FileNotFoundError(request_path)
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+
+    request = read_yaml(request_path)
+    status = read_yaml(status_path)
+    created_at = created_at or EARecord.now_iso()
+    project = _project_context(root)
+    project_id = str(request.get("project_id") or status.get("project_id") or project.get("project_id", "unknown-project"))
+    bridge_id = f"lit-zotero-bridge-{_timestamp_key(created_at)}"
+    target_count = _safe_int(request.get("target_count"), 0)
+    access_mode = str(request.get("access_mode") or status.get("access_mode") or "open_access_only")
+    zotero_config_ref = _optional_path_ref(root, zotero_config)
+    cache_root_ref = _optional_path_ref(root, cache_root)
+    browser_profile_ref = _optional_path_ref(root, browser_profile)
+    target_manifest_ref = str(request.get("target_manifest_ref") or "literature/zotero_codex_targets.jsonl")
+    batch_status_ref = str(request.get("batch_status_ref") or "literature/zotero_codex_batch_status.json")
+    batch_status_md_ref = "literature/zotero_codex_batch_status.md"
+    acquisition_manifest_ref = "literature/acquisition_manifest.yml"
+    status_update_ref = "literature/acquisition_status_update.yml"
+
+    required_inputs = _bridge_required_inputs(
+        access_mode=access_mode,
+        zotero_config_ref=zotero_config_ref,
+        allow_default_config=allow_default_config,
+        project_collection=project_collection,
+        browser_assist=browser_assist,
+        browser_name=browser_name,
+        browser_profile_ref=browser_profile_ref,
+        institution_access=institution_access,
+    )
+    bridge_status = (
+        "awaiting_targets"
+        if target_count <= 0
+        else "needs_user_settings"
+        if required_inputs
+        else "ready_for_zotero_codex_batch"
+    )
+
+    config_option = f" --config {zotero_config_ref}" if zotero_config_ref else ""
+    commands = {
+        "doctor": f"python3 scripts/literature_doctor.py{config_option} --json",
+        "batch_acquire": (
+            "python3 scripts/batch_acquire.py"
+            f"{config_option} --targets {target_manifest_ref} --batch-status {batch_status_ref} --resume --json"
+        ),
+        "render_status": (
+            "python3 scripts/render_batch_status.py"
+            f" --batch-status {batch_status_ref} --markdown {batch_status_md_ref} --json"
+        ),
+        "write_project_sidecars": f"python3 scripts/write_project_sidecars.py --status {batch_status_ref} --json",
+        "verify_project_sidecars": (
+            "python3 scripts/verify_project_sidecars.py"
+            f" --status {batch_status_ref} --expect-count {target_count} --compact-json"
+        ),
+        "sync_status_back_to_ea": f"ea literature sync-status /path/to/ea-project --update {status_update_ref}",
+        "import_acquisition_manifest": (
+            f"ea literature import-acquisition /path/to/ea-project --manifest {acquisition_manifest_ref}"
+        ),
+    }
+    settings = {
+        "zotero_codex_config_ref": zotero_config_ref,
+        "allow_default_zotero_codex_config": allow_default_config,
+        "cache_root_ref": cache_root_ref,
+        "project_collection": project_collection,
+        "browser_assist_enabled": browser_assist,
+        "browser_name": browser_name,
+        "browser_profile_ref": browser_profile_ref,
+        "institution_access": institution_access,
+    }
+    bridge_path = literature_root / "zotero_codex_bridge.yml"
+    runbook_path = literature_root / "zotero_codex_bridge.md"
+    settings_path = literature_root / "zotero_codex_settings_request.yml"
+    bridge = {
+        "schema_version": "0.2",
+        "bridge_id": bridge_id,
+        "project_id": project_id,
+        "created_at": created_at,
+        "status": bridge_status,
+        "acquisition_request_ref": "literature/acquisition_request.yml",
+        "target_manifest_ref": target_manifest_ref,
+        "target_count": target_count,
+        "access_mode": access_mode,
+        "settings_request_ref": "literature/zotero_codex_settings_request.yml",
+        "runbook_ref": "literature/zotero_codex_bridge.md",
+        "settings": settings,
+        "required_user_inputs": required_inputs,
+        "commands": commands,
+        "expected_outputs": {
+            "batch_status": batch_status_ref,
+            "batch_status_markdown": batch_status_md_ref,
+            "project_sidecars": "Zotero-Codex cache sidecars generated by write_project_sidecars.py",
+            "acquisition_manifest": acquisition_manifest_ref,
+            "status_update": status_update_ref,
+        },
+        "boundaries": [
+            "This bridge only prepares a Zotero-Codex runbook; it does not run Zotero, browser automation, DOI resolution, PDF download, or cache extraction.",
+            "Use only user-supplied or user-confirmed Zotero, browser, cache, proxy, VPN, and institution settings.",
+            "Pause for SSO, MFA, CAPTCHA, institution selection, publisher access control, or non-autofilled login.",
+            "Never store passwords, bypass access controls, modify the reference-manager database file directly, or assume developer-machine defaults.",
+        ],
+    }
+    settings_request = {
+        "schema_version": "0.2",
+        "project_id": project_id,
+        "created_at": created_at,
+        "status": "needs_user_input" if required_inputs else "settings_confirmed",
+        "required_user_inputs": required_inputs,
+        "provided_settings": settings,
+        "notes": [
+            "The dedicated literature workflow may use Zotero-Codex defaults only if the user confirms they are valid for this project.",
+            "Institution or publisher authorization must happen in a visible user-managed browser session.",
+            "Do not ask the user to paste institution credentials into chat.",
+        ],
+    }
+    runbook_lines = [
+        "# Zotero-Codex Acquisition Bridge",
+        "",
+        f"- bridge_id: `{bridge_id}`",
+        f"- project_id: `{project_id}`",
+        f"- status: `{bridge_status}`",
+        f"- target_count: `{target_count}`",
+        f"- access_mode: `{access_mode}`",
+        "",
+        "## Required User Inputs",
+        "",
+    ]
+    if required_inputs:
+        runbook_lines.extend(f"- `{item['field']}`: {item['reason']}" for item in required_inputs)
+    else:
+        runbook_lines.append("- All bridge settings required before batch acquisition are confirmed.")
+    runbook_lines.extend(
+        [
+            "",
+            "## Commands",
+            "",
+            *[f"- `{name}`: `{command}`" for name, command in commands.items()],
+            "",
+            "## Boundaries",
+            "",
+            *[f"- {item}" for item in bridge["boundaries"]],
+        ]
+    )
+
+    write_yaml(bridge_path, bridge)
+    write_yaml(settings_path, settings_request)
+    runbook_path.write_text("\n".join(runbook_lines) + "\n", encoding="utf-8")
+    status.update(
+        {
+            "status": "zotero_codex_bridge_ready" if bridge_status == "ready_for_zotero_codex_batch" else bridge_status,
+            "zotero_codex_bridge_ref": _project_relative(root, bridge_path),
+            "zotero_codex_bridge_runbook_ref": _project_relative(root, runbook_path),
+            "zotero_codex_settings_request_ref": _project_relative(root, settings_path),
+            "zotero_codex_bridge_status": bridge_status,
+            "summary_for_origin_thread": (
+                f"Zotero-Codex bridge prepared for {target_count} target(s); status is {bridge_status}. "
+                "EA did not run Zotero, browser automation, DOI resolution, PDF download, or cache extraction."
+            ),
+        }
+    )
+    write_yaml(status_path, status)
+    return {
+        "bridge_path": str(bridge_path),
+        "runbook_path": str(runbook_path),
+        "settings_request_path": str(settings_path),
+        "status_path": str(status_path),
+        "bridge": bridge,
+        "settings_request": settings_request,
+        "status": status,
+    }
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".json":

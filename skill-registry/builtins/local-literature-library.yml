@@ -19,6 +19,8 @@ ea_skill:
     - public_search_state_record
     - ranked_candidate_table
     - selected_literature_items
+    - zotero_codex_bridge_runbook
+    - zotero_codex_settings_request
     - reference_record
     - report_section
     - provenance_record
@@ -57,6 +59,7 @@ ea_skill:
       - supplied_candidate_ranking_and_selection_export
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
+      - zotero_codex_acquisition_bridge_runbook
       - acquisition_manifest_import_and_reference_registration
       - origin_thread_status_sync
     external_or_user_confirmed:
