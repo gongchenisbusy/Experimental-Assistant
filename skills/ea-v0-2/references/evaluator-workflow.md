@@ -37,10 +37,17 @@ Scope limits:
 - Do not use it for live literature search, DOI resolution, PDF download, Zotero database reads, browser profile access, or institution-login checks.
 - Use it as a deterministic local readiness report that later agents can inspect.
 
+Repository release gate:
+
+- For publishing or handing off the EA v0.2 repository itself, run `ea-public-release-smoke` after project-level readiness checks.
+- The smoke gate is broader than `ea eval project`: it runs the test suite, validates the EA v0.2 skill package, checks core CLI help commands, and scans product files for accidental developer-machine defaults.
+- The smoke gate should remain local and deterministic; it must not require Zotero, browser profiles, institution login, live web search, or private literature caches.
+
 Recommended use:
 
 1. Run workflow-specific tests or commands.
 2. Run `ea healthcheck`.
 3. Run `ea eval project`.
-4. Fix `fail` items before handoff.
-5. Either fix `warning` items or record why the warning is acceptable for the current stage.
+4. Run `ea-public-release-smoke` when the repository is being prepared for public release or broad handoff.
+5. Fix `fail` items before handoff.
+6. Either fix `warning` items or record why the warning is acceptable for the current stage.

@@ -71,7 +71,11 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 python3 -m pip install -e ".[dev]"
 python3 -m pytest
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
+python3 scripts/public_release_smoke.py --dry-run
+python3 scripts/public_release_smoke.py
 ```
+
+`scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The installed console entry point is `ea-public-release-smoke`.
 
 ## Local Test Fixtures
 

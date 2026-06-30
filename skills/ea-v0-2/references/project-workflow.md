@@ -93,6 +93,15 @@ ea eval project /path/to/ea-project
 ea eval project /path/to/ea-project --no-write
 ```
 
+Repository public-release smoke check:
+
+```bash
+ea-public-release-smoke --dry-run
+ea-public-release-smoke
+```
+
+Use the smoke check before publishing or handing off the EA v0.2 repository itself. It is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, and a portability scan without relying on Zotero, browser profiles, institution access, or developer-machine paths.
+
 Report bundle export:
 
 ```bash
