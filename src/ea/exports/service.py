@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
@@ -127,14 +128,30 @@ def _default_archive_path(bundle_dir: Path) -> Path:
     return bundle_dir.parent / f"{bundle_dir.name}.zip"
 
 
-def _write_zip_archive(bundle_dir: Path, archive_path: Path) -> Path:
+def _archive_checksum_path(archive_path: Path) -> Path:
+    return archive_path.with_name(f"{archive_path.name}.sha256")
+
+
+def _resolved_paths(paths: Iterable[Path | None]) -> set[Path]:
+    return {path.resolve() for path in paths if path is not None}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_zip_archive(bundle_dir: Path, archive_path: Path, *, exclude_paths: Iterable[Path | None] = ()) -> Path:
     archive_path.parent.mkdir(parents=True, exist_ok=True)
-    archive_resolved = archive_path.resolve()
+    excluded = _resolved_paths([archive_path, *exclude_paths])
     if archive_path.exists():
         archive_path.unlink()
     with zipfile.ZipFile(archive_path, "w") as archive:
         for path in sorted(item for item in bundle_dir.rglob("*") if item.is_file()):
-            if path.resolve() == archive_resolved:
+            if path.resolve() in excluded:
                 continue
             zip_info = zipfile.ZipInfo(path.relative_to(bundle_dir).as_posix())
             zip_info.date_time = (1980, 1, 1, 0, 0, 0)
@@ -142,6 +159,52 @@ def _write_zip_archive(bundle_dir: Path, archive_path: Path) -> Path:
             zip_info.external_attr = 0o644 << 16
             archive.writestr(zip_info, path.read_bytes())
     return archive_path
+
+
+def _write_archive_checksum(archive_path: Path, checksum_path: Path) -> Path:
+    checksum_path.parent.mkdir(parents=True, exist_ok=True)
+    checksum_path.write_text(f"{_sha256_file(archive_path)}  {archive_path.name}\n", encoding="utf-8")
+    return checksum_path
+
+
+def _write_bundle_checksums(
+    root: Path,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    exclude_paths: Iterable[Path | None] = (),
+) -> Path:
+    checksum_path = bundle_dir / "bundle_checksums.yml"
+    excluded = _resolved_paths([checksum_path, *exclude_paths])
+    files = []
+    for path in sorted(item for item in bundle_dir.rglob("*") if item.is_file()):
+        if path.resolve() in excluded:
+            continue
+        files.append(
+            {
+                "path": path.relative_to(bundle_dir).as_posix(),
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        )
+    checksum_manifest = {
+        "schema_version": "0.2",
+        "checksum_manifest_id": f"checksums-{manifest['bundle_id']}",
+        "bundle_id": manifest["bundle_id"],
+        "created_at": manifest["created_at"],
+        "algorithm": "sha256",
+        "bundle_path": str(bundle_dir),
+        "checksum_manifest_path": str(checksum_path),
+        "checksum_manifest_ref": _project_ref(root, checksum_path),
+        "excluded_paths": sorted(
+            path.relative_to(bundle_dir).as_posix()
+            for path in (bundle_dir / rel for rel in ["bundle_checksums.yml"])
+            if path.resolve() in excluded
+        ),
+        "files": files,
+    }
+    write_yaml(checksum_path, checksum_manifest)
+    return checksum_path
 
 
 def _copy_provenance(
@@ -241,6 +304,11 @@ def export_report_bundle(
         "archive_created": False,
         "archive_path": None,
         "archive_ref": None,
+        "archive_checksum_path": None,
+        "archive_checksum_ref": None,
+        "checksum_manifest_path": None,
+        "checksum_manifest_ref": None,
+        "checksum_manifest_bundle_ref": None,
     }
 
     report_ref = str(report_record.get("path") or "")
@@ -354,20 +422,31 @@ def export_report_bundle(
     manifest["artifacts"]["provenance"].extend(_copy_provenance(root, bundle_dir, manifest, report_provenance_refs))
 
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
+    archive_target: Path | None = None
+    archive_checksum: Path | None = None
     if create_archive:
         archive_target = archive_path or _default_archive_path(bundle_dir)
         if not archive_target.is_absolute():
             archive_target = root / archive_target
+        archive_checksum = _archive_checksum_path(archive_target)
         manifest["archive_created"] = True
         manifest["archive_path"] = str(archive_target)
         manifest["archive_ref"] = _project_ref(root, archive_target)
+        manifest["archive_checksum_path"] = str(archive_checksum)
+        manifest["archive_checksum_ref"] = _project_ref(root, archive_checksum)
 
     manifest_path = bundle_dir / "bundle_manifest.yml"
     manifest["manifest_path"] = str(manifest_path)
+    checksum_path = bundle_dir / "bundle_checksums.yml"
+    manifest["checksum_manifest_path"] = str(checksum_path)
+    manifest["checksum_manifest_ref"] = _project_ref(root, checksum_path)
+    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(bundle_dir).as_posix()
     write_yaml(manifest_path, manifest)
+    _write_bundle_checksums(root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum])
     if create_archive:
         try:
-            _write_zip_archive(bundle_dir, archive_target)
+            _write_zip_archive(bundle_dir, archive_target, exclude_paths=[archive_checksum])
+            _write_archive_checksum(archive_target, archive_checksum)
         except OSError as exc:
             raise ReportBundleError(f"Failed to create report bundle archive: {archive_target}: {exc}") from exc
     return manifest
@@ -410,6 +489,11 @@ def export_batch_bundle(
         "archive_created": False,
         "archive_path": None,
         "archive_ref": None,
+        "archive_checksum_path": None,
+        "archive_checksum_ref": None,
+        "checksum_manifest_path": None,
+        "checksum_manifest_ref": None,
+        "checksum_manifest_bundle_ref": None,
     }
 
     batch_refs = [
@@ -496,20 +580,31 @@ def export_batch_bundle(
     )
 
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
+    archive_target: Path | None = None
+    archive_checksum: Path | None = None
     if create_archive:
         archive_target = archive_path or _default_archive_path(bundle_dir)
         if not archive_target.is_absolute():
             archive_target = root / archive_target
+        archive_checksum = _archive_checksum_path(archive_target)
         manifest["archive_created"] = True
         manifest["archive_path"] = str(archive_target)
         manifest["archive_ref"] = _project_ref(root, archive_target)
+        manifest["archive_checksum_path"] = str(archive_checksum)
+        manifest["archive_checksum_ref"] = _project_ref(root, archive_checksum)
 
     manifest_path = bundle_dir / "batch_bundle_manifest.yml"
     manifest["manifest_path"] = str(manifest_path)
+    checksum_path = bundle_dir / "bundle_checksums.yml"
+    manifest["checksum_manifest_path"] = str(checksum_path)
+    manifest["checksum_manifest_ref"] = _project_ref(root, checksum_path)
+    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(bundle_dir).as_posix()
     write_yaml(manifest_path, manifest)
+    _write_bundle_checksums(root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum])
     if create_archive:
         try:
-            _write_zip_archive(bundle_dir, archive_target)
+            _write_zip_archive(bundle_dir, archive_target, exclude_paths=[archive_checksum])
+            _write_archive_checksum(archive_target, archive_checksum)
         except OSError as exc:
             raise ReportBundleError(f"Failed to create batch bundle archive: {archive_target}: {exc}") from exc
     return manifest

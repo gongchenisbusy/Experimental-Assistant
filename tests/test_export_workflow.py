@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import zipfile
 from pathlib import Path
@@ -20,6 +21,10 @@ FIXTURE_RAW = Path("tests/fixtures/public/test-case-001/raw_data/MoS-2(1).txt").
 
 def _json_output(capsys) -> dict:
     return json.loads(capsys.readouterr().out)
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _build_report_project(root: Path) -> dict[str, str]:
@@ -213,16 +218,25 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     output = _json_output(capsys)
     manifest = read_yaml(Path(output["manifest_path"]))
     archive_path = Path(output["archive_path"])
+    checksum_manifest = read_yaml(Path(output["checksum_manifest_path"]))
+    checksum_entries = {item["path"]: item for item in checksum_manifest["files"]}
 
     assert output["archive_created"] is True
     assert manifest["archive_path"] == str(archive_path)
     assert manifest["archive_ref"] == f"exports/report-bundles/{built['report_id']}.zip"
+    assert manifest["checksum_manifest_bundle_ref"] == "bundle_checksums.yml"
     assert archive_path.exists()
+    assert Path(output["archive_checksum_path"]).exists()
+    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[0] == _sha256(archive_path)
+    assert checksum_manifest["algorithm"] == "sha256"
+    assert checksum_entries["bundle_manifest.yml"]["sha256"] == _sha256(Path(output["manifest_path"]))
+    assert checksum_entries["bundle_manifest.yml"]["size_bytes"] == Path(output["manifest_path"]).stat().st_size
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
 
     assert "bundle_manifest.yml" in names
+    assert "bundle_checksums.yml" in names
     assert any(name.startswith("reports/") for name in names)
     assert any(name.startswith("figures/") for name in names)
     assert any(name.startswith("source-data/") for name in names)
@@ -239,11 +253,17 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     manifest = read_yaml(Path(output["manifest_path"]))
     bundle_dir = Path(manifest["bundle_path"])
     archive_path = Path(output["archive_path"])
+    checksum_manifest = read_yaml(Path(output["checksum_manifest_path"]))
+    checksum_entries = {item["path"]: item for item in checksum_manifest["files"]}
 
     assert manifest["status"] == "complete"
     assert manifest["batch_id"] == built["batch_id"]
     assert manifest["archive_created"] is True
     assert archive_path.exists()
+    assert Path(output["archive_checksum_path"]).exists()
+    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[0] == _sha256(archive_path)
+    assert checksum_manifest["algorithm"] == "sha256"
+    assert checksum_entries["batch_bundle_manifest.yml"]["sha256"] == _sha256(Path(output["manifest_path"]))
     assert {record["kind"] for record in manifest["artifacts"]["batch_records"]} == {
         "batch_index",
         "batch_run",
@@ -262,13 +282,19 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert nested_manifest["artifacts"]["figures"]
     assert nested_manifest["artifacts"]["source_data"]
     assert nested_manifest["artifacts"]["results"]
+    nested_checksum_path = bundle_dir / nested["bundle_ref"] / "bundle_checksums.yml"
+    nested_checksum = read_yaml(nested_checksum_path)
+    nested_entries = {item["path"]: item for item in nested_checksum["files"]}
+    assert nested_entries["bundle_manifest.yml"]["sha256"] == _sha256(bundle_dir / nested["manifest_ref"])
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
 
     assert "batch_bundle_manifest.yml" in names
+    assert "bundle_checksums.yml" in names
     assert any(name.startswith("batch/") for name in names)
     assert any(name.startswith("report-bundles/") and name.endswith("bundle_manifest.yml") for name in names)
+    assert any(name.startswith("report-bundles/") and name.endswith("bundle_checksums.yml") for name in names)
     assert any(name.startswith("report-bundles/") and "/figures/" in name for name in names)
 
 

@@ -100,7 +100,7 @@ ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ```
 
-Report bundles are written under `exports/report-bundles/{report_id}` by default and copy linked report, figure, source-data, result, reference, and provenance artifacts for handoff. Batch bundles are written under `exports/batch-bundles/{batch_id}` and include batch records plus nested per-report bundles. Use `--zip` or `--zip-output` when the same bundle should also be archived for transfer.
+Report bundles are written under `exports/report-bundles/{report_id}` by default and copy linked report, figure, source-data, result, reference, and provenance artifacts for handoff. Batch bundles are written under `exports/batch-bundles/{batch_id}` and include batch records plus nested per-report bundles. Both bundle types write `bundle_checksums.yml`; use `--zip` or `--zip-output` when the same bundle should also be archived with a `.zip.sha256` sidecar for transfer.
 
 Batch characterization after individual item review gates exist:
 

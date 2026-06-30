@@ -61,7 +61,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
-`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`. Add `--zip` or `--zip-output` when the handoff should include a portable archive.
+`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar.
 
 ## Developer Setup
 
