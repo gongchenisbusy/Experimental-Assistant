@@ -32,6 +32,25 @@ def _write_thermal_fixture(path: Path) -> Path:
     return path
 
 
+def _write_dsc_fixture(path: Path) -> Path:
+    lines = [
+        "# temperature_unit = C",
+        "# signal_unit = mW/mg",
+        "# measurement_mode = dsc",
+        "# technique = DSC heat flow",
+        "temperature_C heat_flow_mW_mg",
+    ]
+    for index in range(800):
+        temperature = 25.0 + index * (275.0 / 799.0)
+        baseline = 0.001 * (temperature - 25.0)
+        endotherm = -0.55 * math.exp(-((temperature - 145.0) ** 2) / (2.0 * 8.0**2))
+        exotherm = 0.35 * math.exp(-((temperature - 210.0) ** 2) / (2.0 * 10.0**2))
+        signal = baseline + endotherm + exotherm
+        lines.append(f"{temperature:.4f} {signal:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def test_inspect_synthetic_thermal_fixture(tmp_path: Path) -> None:
     fixture = _write_thermal_fixture(tmp_path / "synthetic-thermal-tga.txt")
 
@@ -237,6 +256,204 @@ def test_cli_runs_synthetic_thermal_workflow_end_to_end(tmp_path: Path, capsys) 
     assert evaluation["reports"]["report_count"] == 1
 
 
+def test_thermal_context_record_preserves_reviewed_sign_and_baseline_metadata(tmp_path: Path, capsys) -> None:
+    fixture = _write_dsc_fixture(tmp_path / "synthetic-thermal-dsc.txt")
+    workspace = tmp_path / "thermal-context-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Thermal Context Records",
+            "--slug",
+            "thermal-context-records",
+            "--direction",
+            "thermal context record workflow",
+            "--material",
+            "polymer film",
+            "--experiment-type",
+            "materials DSC context record",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "thermal_analysis",
+            "--sample-ref",
+            "sample-dsc-001",
+            "--experiment-ref",
+            "exp-dsc-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "temperature=temperature_C, signal=heat_flow_mW_mg, temperature_unit=C, signal_unit=mW/mg, mode=dsc",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "DSC nitrogen; 10 C/min; sealed aluminum pan; exotherm-up reviewed; instrument linear baseline applied"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_thermal_processing_parameters()
+    parameters["context_record"].update(
+        {
+            "enabled": True,
+            "dsc_sign_convention": {
+                "exotherm_direction": "up",
+                "endotherm_direction": "down",
+                "status": "reviewed",
+            },
+            "baseline_reference": {
+                "baseline_method": "instrument_linear_baseline",
+                "reference_pan": "empty aluminum pan",
+                "numeric_correction": "instrument_applied",
+                "status": "reviewed",
+            },
+            "sample_context": {
+                "sample_mass_mg": 5.2,
+                "pan": "sealed aluminum",
+                "sample_form": "polymer film",
+            },
+            "atmosphere_program": {
+                "atmosphere": "N2",
+                "flow_mL_min": 50,
+                "heating_rate_C_min": 10,
+            },
+            "correction_notes": [
+                "EA records thermal context only; no Tg/Tm/Tc assignment or kinetic fitting was applied."
+            ],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "thermal",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-001",
+            "--temperature-column",
+            "temperature_C",
+            "--signal-column",
+            "heat_flow_mW_mg",
+            "--temperature-unit",
+            "C",
+            "--signal-unit",
+            "mW/mg",
+            "--measurement-mode",
+            "dsc",
+            "--context-summary",
+            context_text,
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps({"context_record": parameters["context_record"]}, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    thermal_metadata = Path(process_output["metadata"])
+    thermal = read_yaml(thermal_metadata)
+
+    context_record = thermal["peak_analysis"]["context_record"]
+    assert context_record["status"] == "reviewed_context_recorded"
+    assert context_record["confidence"] == "low"
+    assert "dsc_sign_convention" in context_record["reviewed_context_fields"]
+    assert context_record["dsc_sign_convention"]["exotherm_direction"] == "up"
+    assert "metadata/provenance only" in context_record["boundary"]
+    assert "Tg/Tm/Tc assignment" in context_record["boundary"]
+    assert thermal["outputs"]["context_record"].endswith("thermal_context.yml")
+    saved_context = read_yaml(workspace / thermal["outputs"]["context_record"])
+    assert saved_context["record_ref"] == thermal["outputs"]["context_record"]
+    assert saved_context["baseline_reference"]["reference_pan"] == "empty aluminum pan"
+    assert "context_record" in thermal["peak_analysis"]["possible_interpretations"][-1]["evidence"]
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][thermal["figure_id"]]
+    assert thermal["outputs"]["context_record"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "thermal",
+            "report",
+            str(workspace),
+            "--metadata",
+            thermal_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-001",
+            "--experiment-ref",
+            "exp-dsc-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Thermal context record" in report_body
+    assert "exotherm_direction=up" in report_body
+    assert "不自动翻转 DSC 符号" in report_body
+    assert thermal["outputs"]["context_record"] in report_body
+
+
 def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -251,6 +468,8 @@ def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     assert thermal_reference.exists()
     reference_text = thermal_reference.read_text(encoding="utf-8")
     assert "context_review_ref" in reference_text
+    assert "context_record" in reference_text
     assert "kinetic" in reference_text
     thermal_record = next(item for item in registry["skills"] if item["id"] == "ea.thermal-analysis")
     assert "Minimal thermal analysis workflow implemented" in thermal_record["notes"]
+    assert "context_records" in thermal_record["notes"]

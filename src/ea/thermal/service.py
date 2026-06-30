@@ -111,6 +111,16 @@ def default_thermal_processing_parameters() -> dict[str, Any]:
             "fractions": [0.05, 0.10],
             "source": "ea.thermal.threshold_summary:v0.2",
         },
+        "context_record": {
+            "enabled": False,
+            "method": "reviewed_metadata_record",
+            "source": "ea.thermal.context_record:v0.2",
+            "dsc_sign_convention": {},
+            "baseline_reference": {},
+            "sample_context": {},
+            "atmosphere_program": {},
+            "correction_notes": [],
+        },
     }
 
 
@@ -404,7 +414,123 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], reques
     return pd.DataFrame(rows, columns=THERMAL_FEATURE_COLUMNS)
 
 
-def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ThermalAnalysisProcessingRequest) -> dict[str, Any]:
+_THERMAL_CONTEXT_SECTIONS = ("dsc_sign_convention", "baseline_reference", "sample_context", "atmosphere_program")
+
+
+def _has_context_payload(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_context_payload(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_context_payload(item) for item in value)
+    return True
+
+
+def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    value = params.get(name, {})
+    if isinstance(value, dict):
+        return deepcopy(value), None
+    return (
+        {},
+        _warning(
+            "thermal_context_section_ignored",
+            "A thermal context-record section was ignored because it was not a mapping.",
+            severity="medium",
+            section=name,
+        ),
+    )
+
+
+def _context_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+    notes = params.get("correction_notes", [])
+    if isinstance(notes, list):
+        return deepcopy(notes), None
+    if isinstance(notes, tuple):
+        return list(notes), None
+    if isinstance(notes, str) and notes.strip():
+        return [notes], None
+    return (
+        [],
+        _warning(
+            "thermal_context_notes_ignored",
+            "Thermal context notes were ignored because they were not a list or non-empty string.",
+            severity="medium",
+        ),
+    )
+
+
+def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("context_record", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    sections: dict[str, dict[str, Any]] = {}
+    for name in _THERMAL_CONTEXT_SECTIONS:
+        section, warning = _context_section(params, name)
+        sections[name] = section
+        if warning:
+            warnings.append(warning)
+    notes, notes_warning = _context_notes(params)
+    if notes_warning:
+        warnings.append(notes_warning)
+
+    reviewed_fields = [name for name, section in sections.items() if _has_context_payload(section)]
+    if _has_context_payload(notes):
+        reviewed_fields.append("correction_notes")
+    has_reviewed_context = bool(reviewed_fields)
+    if not has_reviewed_context:
+        warnings.append(
+            _warning(
+                "thermal_context_record_empty",
+                "Thermal context_record was enabled, but no reviewed method/context metadata was supplied.",
+                severity="medium",
+            )
+        )
+    source = str(params.get("source") or "ea.thermal.context_record:v0.2")
+    return (
+        {
+            "enabled": True,
+            "status": "reviewed_context_recorded" if has_reviewed_context else "enabled_without_reviewed_context",
+            "method": str(params.get("method") or "reviewed_metadata_record"),
+            "assignment_source": source,
+            "confidence": "low" if has_reviewed_context else "insufficient",
+            "reviewed_context_fields": reviewed_fields,
+            **sections,
+            "correction_notes": notes,
+            "warnings": warnings,
+            "boundary": (
+                "Thermal context record is metadata/provenance only; no automatic DSC sign inversion, "
+                "baseline/reference correction, Tg/Tm/Tc assignment, kinetic fitting, or thermal mechanism assignment was applied."
+            ),
+        },
+        warnings,
+    )
+
+
+def _append_context_interpretation(analysis: dict[str, Any], context_record: dict[str, Any] | None) -> dict[str, Any]:
+    if not context_record:
+        return analysis
+    analysis["context_record"] = context_record
+    if context_record.get("status") == "reviewed_context_recorded":
+        fields = ", ".join(str(value) for value in context_record.get("reviewed_context_fields", [])) or "thermal context"
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"Reviewed thermal method/context metadata was recorded for {fields}. Use it to interpret screening events, "
+                    "but do not treat the metadata record as an automatic DSC sign inversion, baseline correction, transition assignment, kinetic fit, or mechanism conclusion."
+                ),
+                "confidence": context_record.get("confidence", "low"),
+                "evidence": ["context_record"],
+                "assignment_source": context_record.get("assignment_source", "ea.thermal.context_record:v0.2"),
+            }
+        )
+    return analysis
+
+
+def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ThermalAnalysisProcessingRequest, context_record: dict[str, Any] | None = None) -> dict[str, Any]:
     temperature = processed["temperature_C"].to_numpy(dtype=float)
     signal = processed["processed_signal"].to_numpy(dtype=float)
     analysis: dict[str, Any] = {
@@ -450,7 +576,7 @@ def _summary(processed: pd.DataFrame, features: pd.DataFrame, request: ThermalAn
                 "evidence": [],
             }
         )
-    return analysis
+    return _append_context_interpretation(analysis, context_record)
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -519,7 +645,8 @@ def process_thermal_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), request, parameters)
     features = _detect_features(processed, parameters, request)
-    analysis = _summary(processed, features, request)
+    context_record, context_warnings = _record_context(parameters)
+    analysis = _summary(processed, features, request, context_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -532,15 +659,23 @@ def process_thermal_result(
     output_dir = root / "processed" / sample_dir / "thermal_analysis" / result_id
     processed_csv = output_dir / "thermal_processed.csv"
     features_csv = output_dir / "thermal_features.csv"
+    context_yml = output_dir / "thermal_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "thermal_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "thermal_metadata.yml"
-    for output in [processed_csv, features_csv, figure, result_metadata]:
+    for output in [processed_csv, features_csv, context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     features.to_csv(features_csv, index=False)
+    context_ref: str | None = None
+    if context_record is not None:
+        context_ref = str(context_yml.relative_to(root))
+        context_record["record_ref"] = context_ref
+        write_yaml(context_yml, context_record)
+        if analysis.get("context_record"):
+            analysis["context_record"]["record_ref"] = context_ref
     _plot_thermal(processed, features, figure, request, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -551,6 +686,16 @@ def process_thermal_result(
     if not request.context_summary:
         warnings.append(_warning("thermal_context_missing", "Thermal temperature-program/sample/atmosphere context summary is empty.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(context_warnings)
+    outputs = {
+        "figure": str(figure.relative_to(root)),
+        "feature_table": str(features_csv.relative_to(root)),
+        "peak_table": str(features_csv.relative_to(root)),
+        "processed_csv": str(processed_csv.relative_to(root)),
+        "metadata": str(result_metadata.relative_to(root)),
+    }
+    if context_ref:
+        outputs["context_record"] = context_ref
     result = ThermalAnalysisProcessingResult(
         thermal_result_id=result_id,
         result_id=result_id,
@@ -565,13 +710,7 @@ def process_thermal_result(
         measurement_mode=request.measurement_mode,  # type: ignore[arg-type]
         context_summary=request.context_summary,
         processing_parameters=parameters,
-        outputs={
-            "figure": str(figure.relative_to(root)),
-            "feature_table": str(features_csv.relative_to(root)),
-            "peak_table": str(features_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
-        },
+        outputs=outputs,
         peak_analysis=analysis,
         figure_id=figure_id,
         warnings=warnings,
@@ -580,6 +719,13 @@ def process_thermal_result(
         updated_at=created_at or EARecord.now_iso(),
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
+    provenance_files = [
+        str(processed_csv.relative_to(root)),
+        str(features_csv.relative_to(root)),
+        str(figure.relative_to(root)),
+    ]
+    if context_ref:
+        provenance_files.append(context_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="thermal_analysis_processing",
@@ -589,7 +735,7 @@ def process_thermal_result(
         },
         outputs={
             "records": [str(result_metadata.relative_to(root))],
-            "files": [str(processed_csv.relative_to(root)), str(features_csv.relative_to(root)), str(figure.relative_to(root))],
+            "files": provenance_files,
         },
         parameters={
             "temperature_column": request.temperature_column,
@@ -634,6 +780,14 @@ def process_thermal_result(
             caption="Thermal analysis trace with processed signal, screening events, reviewed context, and traceable processing parameters.",
             purpose="thermal_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
-            source_data_refs=[str(processed_csv.relative_to(root)), str(features_csv.relative_to(root))],
+            source_data_refs=[
+                value
+                for value in [
+                    str(processed_csv.relative_to(root)),
+                    str(features_csv.relative_to(root)),
+                    context_ref,
+                ]
+                if value
+            ],
         )
     return result_metadata

@@ -48,7 +48,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.thermal
     method: thermal_analysis
-    notes: Minimal thermal analysis workflow implemented for review-gated TGA/DSC/DTG-style tabular data, temperature conversion, mass/heat-flow event summaries, traceable figures, and confidence-labeled reports; kinetic models and formal transition assignments remain future work.
+    notes: Minimal thermal analysis workflow implemented for review-gated TGA/DSC/DTG-style tabular data, temperature conversion, mass/heat-flow event summaries, context_records for reviewed DSC sign/baseline/reference/sample/atmosphere metadata, traceable figures, and confidence-labeled reports; kinetic models, numeric baseline correction, and formal transition assignments remain future work.
   - id: ea.uv-vis-analysis
     manifest: skill-registry/builtins/uv-vis-analysis.yml
     status: builtin_v0_2_reference

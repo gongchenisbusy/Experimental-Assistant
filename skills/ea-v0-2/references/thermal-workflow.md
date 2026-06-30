@@ -6,10 +6,10 @@ Required gates:
 
 1. Inspect the file and confirm it is thermal analysis temperature/signal data.
 2. Ask for or verify temperature/signal columns, temperature unit (`C`, `K`, or `unknown`), signal unit (`%`, `mg`, `mW`, `W/g`, `mW/mg`, or `unknown`), and measurement mode (`tga`, `dsc`, `dtg`, or `unknown`).
-3. Ask for or verify temperature program, atmosphere, sample mass, baseline/reference context before analysis. Record `context_summary` and `context_review_ref`.
+3. Ask for or verify temperature program, atmosphere, sample mass, DSC sign convention, and baseline/reference context before analysis. Record `context_summary` and `context_review_ref`.
 4. Ask for or verify processing parameters before analysis.
 5. Keep raw data untouched; write processed outputs outside `raw/`.
-6. Record temperature conversion, optional smoothing, derivative/mass-loss summaries, detected screening events, generated figure, report, and provenance.
+6. Record temperature conversion, optional smoothing, derivative/mass-loss summaries, detected screening events, optional reviewed `context_record`, generated figure, report, and provenance.
 7. Treat automatic events as screening evidence. Use protocol context, baselines, replicates, instrument settings, and literature before writing decomposition, transition, kinetic, composition, or thermal-stability conclusions.
 8. Write memory candidates only after user confirmation.
 
@@ -20,8 +20,9 @@ Current v0.2 thermal support:
 - Processing supports `C`/`K` temperature handling, TGA mass-percent normalization from `%` or `mg`, optional Savitzky-Golay smoothing, mass derivative summaries, SciPy event detection for TGA/DSC/DTG traces, and simple mass-loss threshold summaries.
 - Processed CSV files include `temperature_raw`, `temperature_C`, `signal_raw`, `processed_signal`, and method-specific processed columns such as `processed_mass_percent`, `mass_derivative_percent_per_C`, `processed_heat_flow`, or `processed_dtg_signal`.
 - Feature tables include event ID/type, temperature, signal value, mass percent, derivative, heat-flow/DTG values when available, prominence, method, confidence, and assignment source.
-- Reports include an embedded thermal figure, original figure path, context section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
-- First-pass support does not perform glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, baseline-model fitting, replicate statistics, or formal thermal-stability ranking.
+- Optional disabled-by-default `context_record` preserves reviewed DSC sign convention, baseline/reference handling, sample context, atmosphere/program context, and correction notes in `thermal_context.yml`.
+- Reports include an embedded thermal figure, original figure path, context section, optional context-record section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
+- First-pass support does not perform glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, numeric baseline/reference correction, replicate statistics, or formal thermal-stability ranking.
 
 CLI path:
 
@@ -35,4 +36,29 @@ ea thermal process /path/to/ea-project --metadata raw/thermal_analysis/char-2026
 ea thermal report /path/to/ea-project --metadata processed/sample-001/thermal_analysis/res-project-thermal-analysis-20260630-001/thermal_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
-Future thermal work should add user-confirmed baseline models, DSC sign-convention handling, Tg/Tm/Tc workflows, kinetic models, replicate comparison, atmosphere/program metadata schemas, reference libraries, and user-confirmed memory-candidate generation from report interpretations.
+Optional context-record parameters:
+
+```yaml
+context_record:
+  enabled: true
+  dsc_sign_convention:
+    exotherm_direction: up
+    endotherm_direction: down
+    status: reviewed
+  baseline_reference:
+    baseline_method: instrument_linear_baseline
+    reference_pan: empty aluminum pan
+    numeric_correction: instrument_applied
+  sample_context:
+    sample_mass_mg: 5.2
+    pan: sealed aluminum
+  atmosphere_program:
+    atmosphere: N2
+    heating_rate_C_min: 10
+  correction_notes:
+    - Record context only; do not auto-assign Tg/Tm/Tc or kinetics from this metadata.
+```
+
+The context record is metadata/provenance only. It does not invert DSC signs, apply baseline/reference correction, assign Tg/Tm/Tc, fit kinetics, or prove decomposition/melting/crystallization mechanisms.
+
+Future thermal work should add user-confirmed numeric baseline/reference correction workflows, Tg/Tm/Tc workflows, kinetic models, replicate comparison, reference libraries, and user-confirmed memory-candidate generation from report interpretations.
