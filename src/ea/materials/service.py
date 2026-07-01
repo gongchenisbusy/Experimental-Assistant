@@ -116,6 +116,227 @@ def assignment_candidates(material: str, method: str | None = None) -> dict[str,
     return result
 
 
+def _raman_feature_window(rule: Mapping[str, Any]) -> list[float] | None:
+    target = _finite_float(rule.get("target_cm_minus_1"))
+    tolerance = _finite_float(rule.get("tolerance_cm_minus_1"))
+    if target is None or tolerance is None:
+        return None
+    return [target - tolerance, target + tolerance]
+
+
+def _window_overlaps(window: list[float] | None, lower: float | None, upper: float | None) -> bool:
+    if window is None:
+        return lower is None and upper is None
+    if lower is not None and window[1] < lower:
+        return False
+    if upper is not None and window[0] > upper:
+        return False
+    return True
+
+
+def _reference_hints_for_method(profile: Mapping[str, Any], method: str) -> list[dict[str, Any]]:
+    hints = []
+    for hint in profile.get("reference_hints", []):
+        if method not in hint.get("methods", []):
+            continue
+        record = copy.deepcopy(hint)
+        doi = record.get("doi")
+        if doi and "url" not in record:
+            record["url"] = f"https://doi.org/{doi}"
+        hints.append(record)
+    return hints
+
+
+def _raman_candidate_summary(
+    *,
+    material_id: str,
+    profile: Mapping[str, Any],
+    method_profile: Mapping[str, Any],
+    rule: Mapping[str, Any],
+    reference_hints: list[dict[str, Any]],
+) -> dict[str, Any]:
+    window = _raman_feature_window(rule)
+    target = _finite_float(rule.get("target_cm_minus_1"))
+    tolerance = _finite_float(rule.get("tolerance_cm_minus_1"))
+    return {
+        "candidate_id": f"raman-builtin-{material_id}-{rule.get('feature')}",
+        "material_id": material_id,
+        "material_display_name": profile.get("display_name", material_id),
+        "feature": rule.get("feature"),
+        "label": rule.get("label"),
+        "target_cm-1": target,
+        "tolerance_cm-1": tolerance,
+        "window_cm-1": window,
+        "assignment_source": method_profile.get("assignment_source"),
+        "reference_hint_keys": [hint.get("key") for hint in reference_hints if hint.get("key")],
+        "source_backed": bool(reference_hints),
+        "auto_applied": False,
+        "requires_user_review": True,
+        "notes": rule.get("notes"),
+    }
+
+
+def summarize_raman_assignment_libraries(
+    *,
+    materials: list[str] | None = None,
+    features: list[str] | None = None,
+    shift_min_cm1: float | None = None,
+    shift_max_cm1: float | None = None,
+) -> dict[str, Any]:
+    """Summarize built-in Raman assignment profiles without creating project artifacts."""
+
+    library = _library()
+    material_filters = [value for value in (materials or []) if value]
+    feature_filters = [value for value in (features or []) if value]
+    resolved_materials: list[str] = []
+    if material_filters:
+        unknown: list[str] = []
+        for material in material_filters:
+            resolved = resolve_material_id(material)
+            if resolved:
+                resolved_materials.append(resolved)
+            else:
+                unknown.append(material)
+        if unknown:
+            available = ", ".join(record["material_id"] for record in available_materials())
+            raise KeyError(f"Unknown material assignment profile: {', '.join(unknown)}. Available materials: {available}")
+    feature_filter_keys = {_normalise_key(feature) for feature in feature_filters}
+
+    all_candidates: list[dict[str, Any]] = []
+    matching_profiles: list[dict[str, Any]] = []
+    matching_reference_keys: set[str] = set()
+    available_features: set[str] = set()
+    available_windows: list[list[float]] = []
+
+    for material_id, profile in sorted(library["materials"].items()):
+        methods = profile.get("methods") or {}
+        method_profile = methods.get("raman")
+        if not method_profile:
+            continue
+        if resolved_materials and material_id not in resolved_materials:
+            continue
+        reference_hints = _reference_hints_for_method(profile, "raman")
+        matching_candidates: list[dict[str, Any]] = []
+        matching_feature_ids: set[str] = set()
+        for rule in method_profile.get("feature_rules", []):
+            feature = str(rule.get("feature") or "")
+            label = str(rule.get("label") or "")
+            available_features.add(feature)
+            window = _raman_feature_window(rule)
+            if window is not None:
+                available_windows.append(window)
+            candidate = _raman_candidate_summary(
+                material_id=material_id,
+                profile=profile,
+                method_profile=method_profile,
+                rule=rule,
+                reference_hints=reference_hints,
+            )
+            all_candidates.append(candidate)
+
+            if feature_filter_keys and not (
+                _normalise_key(feature) in feature_filter_keys
+                or any(key and key in _normalise_key(feature) for key in feature_filter_keys)
+                or any(key and key in _normalise_key(label) for key in feature_filter_keys)
+            ):
+                continue
+            if not _window_overlaps(window, shift_min_cm1, shift_max_cm1):
+                continue
+            matching_candidates.append(candidate)
+            matching_feature_ids.add(feature)
+            matching_reference_keys.update(candidate["reference_hint_keys"])
+
+        if not matching_candidates:
+            continue
+
+        pair_rules = []
+        for pair_rule in method_profile.get("pair_rules", []):
+            required = list(pair_rule.get("required_features", []))
+            if feature_filter_keys and not any(feature in matching_feature_ids for feature in required):
+                continue
+            pair_rules.append(
+                {
+                    "rule": pair_rule.get("rule"),
+                    "required_features": required,
+                    "matching_required_features": [feature for feature in required if feature in matching_feature_ids],
+                    "fully_covered_by_matching_features": all(feature in matching_feature_ids for feature in required),
+                    "separation_cm-1": pair_rule.get("separation_cm_minus_1"),
+                }
+            )
+
+        matching_profiles.append(
+            {
+                "material_id": material_id,
+                "display_name": profile.get("display_name", material_id),
+                "formula": profile.get("formula"),
+                "assignment_source": method_profile.get("assignment_source"),
+                "candidate_count": len(method_profile.get("feature_rules", [])),
+                "matching_candidate_count": len(matching_candidates),
+                "reference_hints": reference_hints,
+                "caveats": list(profile.get("caveats", [])),
+                "pair_rules": pair_rules,
+                "candidates": matching_candidates,
+            }
+        )
+
+    total_count = len(all_candidates)
+    matching_count = sum(len(profile["candidates"]) for profile in matching_profiles)
+    if available_windows:
+        available_shift_range = [min(window[0] for window in available_windows), max(window[1] for window in available_windows)]
+    else:
+        available_shift_range = None
+
+    next_commands: dict[str, Any] = {
+        "inspect_material_profile": [
+            f"ea materials assignments {profile['material_id']} --method raman" for profile in matching_profiles
+        ],
+        "process_raman": "ea raman process /path/to/ea-project --metadata raw/raman/<characterization_id>/metadata.yml --x-column <x> --y-column <y> --x-unit cm^-1 --column-review-ref <review-id> --parameter-review-ref <review-id>",
+        "generate_report": "ea raman report /path/to/ea-project --metadata processed/sample-001/raman/<result_id>/raman_metadata.yml --reference-id <registered-reference-id>",
+        "register_references": "ea references add /path/to/ea-project --citation <citation> --doi <doi> --source-type manual",
+    }
+    if matching_count == 0:
+        next_commands["inspect_material_profile"] = []
+
+    return {
+        "schema_version": "0.2",
+        "source": "ea.materials.raman_assignment_library_discovery:v0.2",
+        "status": "ready" if matching_count else "no_matching_candidates",
+        "method": "raman",
+        "available_builtin_libraries": ["builtin_material_assignments"],
+        "library_version": library.get("library_version", "unknown"),
+        "material_count": len(matching_profiles),
+        "total_candidate_count": total_count,
+        "matching_candidate_count": matching_count,
+        "available_materials": [record for record in available_materials() if "raman" in record.get("methods", [])],
+        "available_features": sorted(feature for feature in available_features if feature),
+        "available_shift_range_cm-1": available_shift_range,
+        "matching_reference_hint_keys": sorted(key for key in matching_reference_keys if key),
+        "filters": {
+            "materials": material_filters,
+            "resolved_materials": resolved_materials,
+            "features": feature_filters,
+            "shift_min_cm-1": shift_min_cm1,
+            "shift_max_cm-1": shift_max_cm1,
+        },
+        "libraries": [
+            {
+                "library_id": "builtin_material_assignments",
+                "library_ref": f"builtin:ea.materials.assignments:{library.get('library_version', 'unknown')}",
+                "method": "raman",
+                "candidate_count": total_count,
+                "matching_candidate_count": matching_count,
+                "material_profiles": matching_profiles,
+            }
+        ],
+        "next_commands": next_commands,
+        "boundaries": [
+            "This discovery command reads bundled Raman material-assignment metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download or parse articles, register references, inject report citations, create ReviewRecords, write memory, process spectra, match peaks, or apply assignments.",
+            "Source-backed Raman candidates remain screening aids; they do not prove material identity, phase identity, layer number, strain, doping, calibration, or sample quality without project context, registered references, and user review.",
+        ],
+    }
+
+
 def _finite_float(value: Any) -> float | None:
     try:
         number = float(value)

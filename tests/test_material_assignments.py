@@ -12,6 +12,7 @@ from ea.materials import (
     match_pl_peaks,
     match_raman_peaks,
     match_xrd_peaks,
+    summarize_raman_assignment_libraries,
 )
 from ea.storage import write_markdown_record
 
@@ -168,3 +169,88 @@ def test_materials_cli_lists_and_shows_assignments(capsys) -> None:
     assert main(["materials", "assignments", "ws2", "--method", "pl"]) == 0
     pl = _json_output(capsys)
     assert pl["assignment_source"] == "ea.materials.builtin:ws2:pl:v0.2"
+
+
+def test_raman_assignment_library_summary_filters_source_backed_candidates() -> None:
+    summary = summarize_raman_assignment_libraries(
+        materials=["MoS2"],
+        features=["mos2_a1g_like"],
+        shift_min_cm1=400.0,
+        shift_max_cm1=420.0,
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["method"] == "raman"
+    assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
+    assert summary["library_version"] == "0.2.1"
+    assert summary["total_candidate_count"] == 2
+    assert summary["matching_candidate_count"] == 1
+    assert summary["available_shift_range_cm-1"] == [375.0, 416.0]
+    assert summary["matching_reference_hint_keys"] == ["lee-2010-mos2-raman"]
+    assert summary["filters"]["resolved_materials"] == ["mos2"]
+
+    profile = summary["libraries"][0]["material_profiles"][0]
+    assert profile["material_id"] == "mos2"
+    assert profile["assignment_source"] == "ea.materials.builtin:mos2:raman:v0.2"
+    assert profile["reference_hints"][0]["doi"] == "10.1021/nn1003937"
+    assert profile["reference_hints"][0]["url"] == "https://doi.org/10.1021/nn1003937"
+
+    candidate = profile["candidates"][0]
+    assert candidate["candidate_id"] == "raman-builtin-mos2-mos2_a1g_like"
+    assert candidate["window_cm-1"] == [400.0, 416.0]
+    assert candidate["source_backed"] is True
+    assert candidate["auto_applied"] is False
+    assert candidate["requires_user_review"] is True
+
+    pair_rule = profile["pair_rules"][0]
+    assert pair_rule["rule"] == "mos2_e2g_a1g_layer_screen"
+    assert pair_rule["matching_required_features"] == ["mos2_a1g_like"]
+    assert pair_rule["fully_covered_by_matching_features"] is False
+    assert "ea materials assignments mos2 --method raman" in summary["next_commands"]["inspect_material_profile"]
+    assert any("does not run live literature search" in boundary for boundary in summary["boundaries"])
+    assert any("do not prove material identity" in boundary for boundary in summary["boundaries"])
+
+
+def test_cli_lists_raman_assignment_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "raman",
+                "list-assignment-libraries",
+                "--material",
+                "ws2",
+                "--feature",
+                "a1g",
+                "--shift-min-cm1",
+                "410",
+                "--shift-max-cm1",
+                "430",
+            ]
+        )
+        == 0
+    )
+    ready = _json_output(capsys)
+    assert ready["status"] == "ready"
+    assert ready["matching_candidate_count"] == 1
+    assert ready["libraries"][0]["material_profiles"][0]["candidates"][0]["candidate_id"] == "raman-builtin-ws2-ws2_a1g_like"
+
+    assert (
+        main(
+            [
+                "raman",
+                "list-assignment-libraries",
+                "--material",
+                "hbn",
+                "--shift-min-cm1",
+                "400",
+                "--shift-max-cm1",
+                "420",
+            ]
+        )
+        == 0
+    )
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["libraries"][0]["material_profiles"] == []
+    assert no_match["next_commands"]["inspect_material_profile"] == []

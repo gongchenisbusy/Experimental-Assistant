@@ -55,7 +55,7 @@ from ea.literature import (
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
-from ea.materials import assignment_candidates, available_materials, get_material_profile
+from ea.materials import assignment_candidates, available_materials, get_material_profile, summarize_raman_assignment_libraries
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
@@ -203,6 +203,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     raman = sub.add_parser("raman", help="Raman inspection, processing, and report helpers")
     raman_sub = raman.add_subparsers(dest="raman_command", required=True)
+    raman_list_libraries = raman_sub.add_parser("list-assignment-libraries", help="list built-in Raman assignment libraries and candidates")
+    raman_list_libraries.add_argument("--material", action="append", default=[])
+    raman_list_libraries.add_argument("--feature", action="append", default=[])
+    raman_list_libraries.add_argument("--shift-min-cm1", type=float)
+    raman_list_libraries.add_argument("--shift-max-cm1", type=float)
     raman_inspect = raman_sub.add_parser("inspect", help="inspect a spectrum file and suggest Raman columns/unit")
     raman_inspect.add_argument("workspace", type=Path)
     raman_inspect.add_argument("spectrum", type=Path)
@@ -1050,6 +1055,16 @@ def main(argv: list[str] | None = None) -> int:
         project_id = getattr(args, "project_id", None)
         if args.raman_command in {"process", "report"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
+        if args.raman_command == "list-assignment-libraries":
+            _print_json(
+                summarize_raman_assignment_libraries(
+                    materials=args.material,
+                    features=args.feature,
+                    shift_min_cm1=args.shift_min_cm1,
+                    shift_max_cm1=args.shift_max_cm1,
+                )
+            )
+            return 0
         if args.raman_command == "inspect":
             inspection = asdict(inspect_spectrum_file(_project_path(args.workspace, args.spectrum)))
             inspection["path"] = str(inspection["path"])
