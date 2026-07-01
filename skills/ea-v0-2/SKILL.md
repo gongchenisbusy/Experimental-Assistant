@@ -63,6 +63,7 @@ ea ftir build-assignment-packet /path/to/ea-project
 ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
+ea ftir prepare-review /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
 ea review add /path/to/ea-project --target-type ftir_assignment_suggestions --target-ref suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed FTIR assignment suggestion candidates"
 ea ftir propose-memory /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --review-ref review-20260630-009
 ea raw import /path/to/ea-project /path/to/raw-uv-vis.txt --characterization-type uv_vis --sample-ref sample-001 --experiment-ref exp-001
@@ -79,6 +80,7 @@ ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/
 ea xps build-source-packet /path/to/ea-project --builtin-library generic_xps_parameters --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea references register-seeds /path/to/ea-project --source-packet suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea xps suggest-parameters /path/to/ea-project --source-file suggestions/xps/source-packets/xps_parameter_source_packet.yml --related-record raw/xps/char-20260630-001/metadata.yml
+ea xps prepare-review /path/to/ea-project --suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml
 ea review add /path/to/ea-project --target-type xps_parameter_suggestions --target-ref suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed XPS parameter suggestion candidates"
 ea xps propose-memory /path/to/ea-project --suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml --review-ref review-20260630-014
 ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-011 --calibration-review-ref review-20260630-012 --parameter-review-ref review-20260630-013 --sample-ref sample-001

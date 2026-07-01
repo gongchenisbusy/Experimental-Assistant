@@ -15,6 +15,7 @@ ea_skill:
     - parameter_source_packet
     - parameter_suggestion_record
     - parameter_suggestion_table
+    - parameter_review_package
     - component_fit_record
     - component_fit_table
     - region_records_record
@@ -58,6 +59,7 @@ ea_skill:
       - ea xps inspect
       - ea xps build-source-packet
       - ea xps suggest-parameters
+      - ea xps prepare-review
       - ea xps propose-memory
       - ea xps process
       - ea xps report
@@ -79,6 +81,7 @@ ea_skill:
       - background_subtraction_tougaard_u2_preprocessing
       - source_backed_parameter_source_packets
       - source_backed_parameter_suggestions
+      - xps_parameter_review_packages
       - xps_parameter_memory_candidate_proposals
       - reviewed_component_fit_screening
       - reviewed_region_records
@@ -102,7 +105,11 @@ ea_skill:
         - templates/xps_parameter_source_packet.yml
         - suggestions/xps/<suggestion_id>/xps_parameter_suggestions.yml
         - suggestions/xps/<suggestion_id>/xps_parameter_suggestions.csv
+        - suggestions/xps/<suggestion_id>/review_package.yml
+        - suggestions/xps/<suggestion_id>/review_package.md
         - memory/candidates/<memory_candidate_id>.md
+      review_package_helper: ea xps prepare-review
+      review_package_format: yaml_and_markdown
       memory_candidate_bridge: ea xps propose-memory
       boundary: advisory_only_no_network_lookup_no_auto_application_no_component_background_selection_no_chemical_state_or_composition_proof
     background_model_records:

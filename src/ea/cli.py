@@ -28,6 +28,7 @@ from ea.ftir import (
     builtin_ftir_assignment_libraries,
     default_ftir_processing_parameters,
     inspect_ftir_file,
+    prepare_ftir_assignment_review_package,
     process_ftir_result,
     propose_ftir_assignment_memory_candidates,
     suggest_ftir_assignments,
@@ -85,6 +86,7 @@ from ea.xps import (
     builtin_xps_parameter_libraries,
     default_xps_processing_parameters,
     inspect_xps_file,
+    prepare_xps_parameter_review_package,
     process_xps_result,
     propose_xps_parameter_memory_candidates,
     suggest_xps_parameters,
@@ -286,6 +288,11 @@ def build_parser() -> argparse.ArgumentParser:
     ftir_suggest.add_argument("--source-file", required=True, type=Path)
     ftir_suggest.add_argument("--project-id")
     ftir_suggest.add_argument("--related-record", action="append", default=[])
+    ftir_prepare_review = ftir_sub.add_parser("prepare-review", help="prepare a grouped review package from FTIR assignment suggestions")
+    ftir_prepare_review.add_argument("workspace", type=Path)
+    ftir_prepare_review.add_argument("--suggestion", required=True, type=Path)
+    ftir_prepare_review.add_argument("--project-id")
+    ftir_prepare_review.add_argument("--candidate-id", action="append", default=[])
     ftir_memory = ftir_sub.add_parser("propose-memory", help="propose draft memory candidates from reviewed FTIR assignment suggestions")
     ftir_memory.add_argument("workspace", type=Path)
     ftir_memory.add_argument("--suggestion", required=True, type=Path)
@@ -363,6 +370,11 @@ def build_parser() -> argparse.ArgumentParser:
     xps_suggest.add_argument("--source-file", required=True, type=Path)
     xps_suggest.add_argument("--project-id")
     xps_suggest.add_argument("--related-record", action="append", default=[])
+    xps_prepare_review = xps_sub.add_parser("prepare-review", help="prepare a grouped review package from XPS parameter suggestions")
+    xps_prepare_review.add_argument("workspace", type=Path)
+    xps_prepare_review.add_argument("--suggestion", required=True, type=Path)
+    xps_prepare_review.add_argument("--project-id")
+    xps_prepare_review.add_argument("--candidate-id", action="append", default=[])
     xps_memory = xps_sub.add_parser("propose-memory", help="propose draft memory candidates from reviewed XPS parameter suggestions")
     xps_memory.add_argument("workspace", type=Path)
     xps_memory.add_argument("--suggestion", required=True, type=Path)
@@ -999,7 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "ftir":
         project_id = getattr(args, "project_id", None)
-        if args.ftir_command in {"process", "report", "suggest-assignments", "propose-memory", "build-assignment-packet"} and not project_id:
+        if args.ftir_command in {"process", "report", "suggest-assignments", "prepare-review", "propose-memory", "build-assignment-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.ftir_command == "inspect":
             inspection = asdict(inspect_ftir_file(_project_path(args.workspace, args.spectrum)))
@@ -1045,6 +1057,16 @@ def main(argv: list[str] | None = None) -> int:
                     ftir_metadata_path=_project_path(args.workspace, args.metadata),
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.ftir_command == "prepare-review":
+            _print_json(
+                prepare_ftir_assignment_review_package(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    candidate_ids=args.candidate_id,
                 )
             )
             return 0
@@ -1116,7 +1138,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xps":
         project_id = getattr(args, "project_id", None)
-        if args.xps_command in {"process", "report", "suggest-parameters", "propose-memory", "build-source-packet"} and not project_id:
+        if args.xps_command in {"process", "report", "suggest-parameters", "prepare-review", "propose-memory", "build-source-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xps_command == "inspect":
             inspection = asdict(inspect_xps_file(_project_path(args.workspace, args.spectrum)))
@@ -1163,6 +1185,16 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.xps_command == "prepare-review":
+            _print_json(
+                prepare_xps_parameter_review_package(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    candidate_ids=args.candidate_id,
                 )
             )
             return 0

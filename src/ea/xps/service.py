@@ -1187,6 +1187,264 @@ def _xps_candidate_parameter_values_text(candidate: dict[str, Any]) -> str:
     return "no supported XPS parameter values recorded"
 
 
+def _review_status_counts(candidates: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        status = str(candidate.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def _review_group_for_status(status: str) -> str:
+    if status == "ready_for_user_review":
+        return "ready_for_user_review"
+    if status == "needs_reference_registration":
+        return "needs_reference_registration"
+    if status.startswith("invalid"):
+        return "invalid_or_incomplete"
+    return "other"
+
+
+def _review_value(value: Any) -> str:
+    if value in (None, "", [], {}):
+        return "not recorded"
+    if isinstance(value, list | tuple):
+        return ", ".join(str(item) for item in value if str(item).strip()) or "not recorded"
+    if isinstance(value, dict):
+        parts = [f"{key}={item}" for key, item in value.items() if item not in (None, "", [], {})]
+        return "; ".join(parts) or "not recorded"
+    return str(value)
+
+
+def _xps_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+    status = str(candidate.get("status") or "unknown")
+    if status == "ready_for_user_review":
+        action = "Ask the user to accept, reject, or edit this source-backed parameter candidate before any report/memory/processing reuse."
+    elif status == "needs_reference_registration":
+        action = "Register, replace, or remove unresolved reference_ids before treating this candidate as report evidence or method memory."
+    elif status.startswith("invalid"):
+        action = "Fix missing source, parameter, reference, or applicability metadata before user review."
+    else:
+        action = "Inspect status and decide whether more source/context work is needed."
+    return {
+        "candidate_id": str(candidate.get("candidate_id") or ""),
+        "review_group": _review_group_for_status(status),
+        "status": status,
+        "suggestion_type": str(candidate.get("suggestion_type") or "unknown"),
+        "target_parameter_path": str(candidate.get("target_parameter_path") or "not recorded"),
+        "element": str(candidate.get("element") or "not specified"),
+        "core_level": str(candidate.get("core_level") or "not specified"),
+        "confidence": str(candidate.get("confidence") or "low"),
+        "parameter_origin": str(candidate.get("parameter_origin") or "not recorded"),
+        "parameter_values": _xps_candidate_parameter_values_text(candidate),
+        "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
+        "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
+        "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
+        "source_summary": str(candidate.get("source_summary") or "not recorded"),
+        "applicability_notes": _coerce_string_list(candidate.get("applicability_notes")),
+        "caveats": _coerce_string_list(candidate.get("caveats")),
+        "recommended_action": action,
+    }
+
+
+def _render_xps_review_package_markdown(package: dict[str, Any]) -> str:
+    lines = [
+        "# XPS Parameter Suggestion Review Package",
+        "",
+        "## Summary",
+        f"- review_package_id: `{package.get('review_package_id')}`",
+        f"- project_id: `{package.get('project_id')}`",
+        f"- suggestion_ref: `{package.get('suggestion_ref')}`",
+        f"- selected_candidates: `{package.get('selected_candidate_count')}` / `{package.get('candidate_count')}`",
+        f"- status: `{package.get('status')}`",
+        "",
+        "## Status Counts",
+    ]
+    for status, count in (package.get("selected_status_counts") or {}).items():
+        lines.append(f"- `{status}`: {count}")
+    lines.extend(["", "## Candidate Groups"])
+    for group in package.get("groups", []):
+        lines.append(f"### {group.get('group')}")
+        lines.append(f"- candidate_ids: `{_review_value(group.get('candidate_ids'))}`")
+        lines.append(f"- recommended_action: {group.get('recommended_action')}")
+        lines.append("")
+    lines.append("## Candidates")
+    for candidate in package.get("candidate_summaries", []):
+        lines.extend(
+            [
+                f"### `{candidate.get('candidate_id')}`",
+                f"- group/status: `{candidate.get('review_group')}` / `{candidate.get('status')}`",
+                f"- suggestion_type: `{candidate.get('suggestion_type')}`",
+                f"- target_parameter_path: `{candidate.get('target_parameter_path')}`",
+                f"- element/core_level: `{candidate.get('element')}` / `{candidate.get('core_level')}`",
+                f"- parameter_values: {candidate.get('parameter_values')}",
+                f"- references: `{_review_value(candidate.get('reference_ids'))}`",
+                f"- unresolved_references: `{_review_value(candidate.get('unresolved_reference_ids'))}`",
+                f"- confidence: `{candidate.get('confidence')}`",
+                f"- source_summary: {candidate.get('source_summary')}",
+                f"- applicability_notes: {_review_value(candidate.get('applicability_notes'))}",
+                f"- caveats: {_review_value(candidate.get('caveats'))}",
+                f"- recommended_action: {candidate.get('recommended_action')}",
+                "",
+            ]
+        )
+    commands = package.get("recommended_commands") or {}
+    lines.extend(["## Suggested Commands"])
+    for name, command in commands.items():
+        lines.append(f"- {name}: `{command}`")
+    lines.extend(["", "## Boundaries"])
+    for boundary in package.get("boundaries", []):
+        lines.append(f"- {boundary}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def prepare_xps_parameter_review_package(
+    root: Path,
+    *,
+    project_id: str,
+    suggestion_path: Path,
+    candidate_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    suggestion = read_yaml(resolved_suggestion_path)
+    if suggestion.get("source") != "ea.xps.parameter_suggestions:v0.2":
+        raise XPSProcessingError(f"Not an XPS parameter suggestion record: {suggestion_path}")
+
+    suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
+    suggestion_project_id = str(suggestion.get("project_id") or "")
+    if suggestion_project_id and project_id and suggestion_project_id != project_id:
+        raise XPSProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+
+    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
+    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    requested_set = set(requested_ids)
+    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
+    missing_candidate_ids = [candidate_id for candidate_id in requested_ids if candidate_id not in found_ids]
+    warnings: list[dict[str, Any]] = [
+        _warning(
+            "xps_review_package_candidate_not_found",
+            "A requested XPS parameter suggestion candidate_id was not found in the suggestion record.",
+            severity="medium",
+            candidate_id=candidate_id,
+        )
+        for candidate_id in missing_candidate_ids
+    ]
+
+    summaries = [_xps_review_candidate_summary(candidate) for candidate in selected]
+    group_actions = {
+        "ready_for_user_review": "Review these candidates with the user; create a ReviewRecord only after explicit confirmation.",
+        "needs_reference_registration": "Resolve references first with `ea references register-seeds` or `ea references add`, then regenerate suggestions or review with caveats.",
+        "invalid_or_incomplete": "Fix candidate metadata before asking the user to review.",
+        "other": "Inspect manually before downstream use.",
+    }
+    groups = []
+    for group_name in ["ready_for_user_review", "needs_reference_registration", "invalid_or_incomplete", "other"]:
+        ids = [summary["candidate_id"] for summary in summaries if summary["review_group"] == group_name]
+        if ids:
+            groups.append({"group": group_name, "candidate_ids": ids, "recommended_action": group_actions[group_name]})
+
+    package_dir = resolved_suggestion_path.parent
+    package_path = package_dir / "review_package.yml"
+    markdown_path = package_dir / "review_package.md"
+    for path in [package_path, markdown_path]:
+        assert_not_raw_output_path(root, path)
+    package_ref = _relative_to_root(root, package_path)
+    markdown_ref = _relative_to_root(root, markdown_path)
+    timestamp = created_at or EARecord.now_iso()
+    package_id = f"{suggestion.get('suggestion_id') or package_dir.name}-review-package"
+    package: dict[str, Any] = {
+        "schema_version": "0.2",
+        "review_package_id": package_id,
+        "project_id": project_id or suggestion_project_id,
+        "method": "xps",
+        "source": "ea.xps.parameter_review_package:v0.2",
+        "status": "review_package_prepared" if selected else "no_candidates_selected",
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "suggestion_id": suggestion.get("suggestion_id"),
+        "suggestion_ref": suggestion_ref,
+        "table_ref": suggestion.get("table_ref"),
+        "source_packet_ref": suggestion.get("source_packet_ref"),
+        "related_records": suggestion.get("related_records") or [],
+        "review_target_type": "xps_parameter_suggestions",
+        "review_target_ref": suggestion_ref,
+        "candidate_count": len(candidates),
+        "selected_candidate_count": len(selected),
+        "requested_candidate_ids": requested_ids,
+        "missing_candidate_ids": missing_candidate_ids,
+        "overall_status_counts": _review_status_counts(candidates),
+        "selected_status_counts": _review_status_counts(selected),
+        "groups": groups,
+        "candidate_summaries": summaries,
+        "reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("reference_ids", [])}),
+        "unresolved_reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("unresolved_reference_ids", [])}),
+        "recommended_commands": {
+            "create_review_record": (
+                "ea review add /path/to/ea-project --target-type xps_parameter_suggestions "
+                f"--target-ref {suggestion_ref} --user-response \"可以，保存\" "
+                "--reviewed-content \"User reviewed the listed XPS parameter candidates; record accepted/rejected/edited candidate IDs.\""
+            ),
+            "report_with_suggestion": (
+                "ea xps report /path/to/ea-project --metadata <xps_metadata.yml> "
+                f"--parameter-suggestion {suggestion_ref}"
+            ),
+            "propose_memory_after_review": (
+                f"ea xps propose-memory /path/to/ea-project --suggestion {suggestion_ref} --review-ref <review-id>"
+            ),
+        },
+        "next_steps": [
+            "Ask the user to review ready candidates and state which candidate IDs are accepted, rejected, edited, or deferred.",
+            "Resolve unresolved references before using candidates as report evidence unless the report explicitly discusses them as unresolved.",
+            "After a confirmed ReviewRecord targets this suggestion record, copy values into processing parameters only through a separate reviewed processing step.",
+        ],
+        "boundaries": [
+            "This package prepares review context only; it does not create a ReviewRecord.",
+            "It does not apply XPS parameters, run fitting/background subtraction, inject report citations, write confirmed memory, prove chemical state, or calculate composition.",
+            "Unresolved or invalid candidates remain visible so the user can decide whether to fix, exclude, or discuss them with caveats.",
+        ],
+        "warnings": warnings,
+    }
+    write_yaml(package_path, package)
+    markdown_path.write_text(_render_xps_review_package_markdown(package), encoding="utf-8")
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="xps_parameter_review_package",
+        inputs={"records": [suggestion_ref], "files": []},
+        outputs={"records": [package_ref, markdown_ref], "files": []},
+        parameters={
+            "suggestion_id": suggestion.get("suggestion_id"),
+            "requested_candidate_ids": requested_ids,
+            "selected_candidate_count": len(selected),
+            "auto_applied": False,
+        },
+        warnings=warnings,
+        source_refs=package["reference_ids"],
+        created_at=created_at,
+    )
+    package["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(package_path, package)
+    markdown_path.write_text(_render_xps_review_package_markdown(package), encoding="utf-8")
+    return {
+        "status": package["status"],
+        "review_package": str(package_path),
+        "review_package_markdown": str(markdown_path),
+        "review_package_ref": package_ref,
+        "review_package_markdown_ref": markdown_ref,
+        "suggestion_id": suggestion.get("suggestion_id"),
+        "suggestion_ref": suggestion_ref,
+        "candidate_count": len(candidates),
+        "selected_candidate_count": len(selected),
+        "selected_status_counts": package["selected_status_counts"],
+        "missing_candidate_ids": missing_candidate_ids,
+        "provenance": str(provenance_path),
+        "warnings": warnings,
+        "boundaries": package["boundaries"],
+    }
+
+
 def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready: bool) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     status = str(candidate.get("status") or "")

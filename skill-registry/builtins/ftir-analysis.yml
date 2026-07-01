@@ -13,6 +13,7 @@ ea_skill:
     - context_record
     - assignment_source_packet
     - assignment_suggestion_record
+    - assignment_review_package
     - figure_record
     - report_section
     - provenance_record
@@ -52,6 +53,7 @@ ea_skill:
       - ea ftir report
       - ea ftir build-assignment-packet
       - ea ftir suggest-assignments
+      - ea ftir prepare-review
       - ea ftir propose-memory
     processing:
       - optional rolling-quantile baseline correction
@@ -75,6 +77,8 @@ ea_skill:
       built_in_assignment_library: generic_materials
       source_packet_format: yaml
       record_format: yaml_and_csv
+      review_package_helper: ea ftir prepare-review
+      review_package_format: yaml_and_markdown
       reference_seed_registration_helper: ea references register-seeds
       report_integration: optional_via_assignment_suggestion_argument
       memory_candidate_bridge: ea ftir propose-memory
@@ -91,6 +95,7 @@ ea_skill:
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
       - source-backed assignment suggestions match reviewed candidate windows to detected bands and can be shown in reports, but remain advisory until user review
+      - prepare-review writes grouped review packages only and does not create ReviewRecords or confirmed interpretations
       - propose-memory writes draft memory candidates only and does not commit confirmed memory
       - context records preserve reviewed method metadata but do not apply automatic background/reference correction
       - formal functional-group or composition conclusions require project chemistry, reference spectra or literature, and user review

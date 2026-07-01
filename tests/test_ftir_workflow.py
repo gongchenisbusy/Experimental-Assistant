@@ -634,6 +634,31 @@ candidates:
     assert "Example FTIR reference spectrum note." in report_body
 
     suggestion_ref = Path(suggestion_output["record"]).relative_to(workspace).as_posix()
+    review_count_before_package = len(list((workspace / "reviews").glob("*.yml")))
+    assert main(["ftir", "prepare-review", str(workspace), "--project-id", project_id, "--suggestion", suggestion_ref]) == 0
+    review_package_output = _json_output(capsys)
+    assert review_package_output["status"] == "review_package_prepared"
+    assert review_package_output["selected_candidate_count"] == 3
+    assert review_package_output["selected_status_counts"]["ready_for_user_review"] == 1
+    assert review_package_output["selected_status_counts"]["needs_reference_registration"] == 1
+    assert review_package_output["selected_status_counts"]["no_feature_match"] == 1
+    assert len(list((workspace / "reviews").glob("*.yml"))) == review_count_before_package
+
+    review_package = read_yaml(Path(review_package_output["review_package"]))
+    review_package_markdown = Path(review_package_output["review_package_markdown"]).read_text(encoding="utf-8")
+    assert review_package["source"] == "ea.ftir.assignment_review_package:v0.2"
+    assert review_package["review_target_type"] == "ftir_assignment_suggestions"
+    assert review_package["review_target_ref"] == suggestion_ref
+    assert review_package["groups"][0]["group"] == "ready_for_user_review"
+    assert "ftir-assignment-carbonyl-001" in review_package["groups"][0]["candidate_ids"]
+    assert "ref-missing-ftir-001" in review_package["unresolved_reference_ids"]
+    assert "ea review add /path/to/ea-project" in review_package["recommended_commands"]["create_review_record"]
+    assert "ea ftir propose-memory" in review_package["recommended_commands"]["propose_memory_after_review"]
+    assert "does not create a ReviewRecord" in " ".join(review_package["boundaries"])
+    assert "FTIR Assignment Suggestion Review Package" in review_package_markdown
+    assert "ester/carbonyl C=O stretching" in review_package_markdown
+    assert "does not apply FTIR assignments" in review_package_markdown
+
     assert main(
         [
             "review",
