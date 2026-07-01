@@ -1712,7 +1712,43 @@ def _electrochemistry_correction_record_text(metadata: dict) -> str:
         f"Correction record 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
         f"{detail_text}\n\n"
-        "该记录只保存已审核的参比电极、电位换算和 iR compensation/Ru 语境；本阶段不自动平移电位、不执行 iR 数值校正、不拟合等效电路，也不生成 Tafel/GCD 或性能结论。"
+        "该 correction record 本身只保存已审核的参比电极、电位换算和 iR compensation/Ru 语境；不会由 correction_record 自动平移电位、不执行 iR 数值校正、不拟合等效电路，也不生成 Tafel/GCD 或性能结论。"
+    )
+
+
+def _electrochemistry_potential_conversion_text(metadata: dict) -> str:
+    conversion = (metadata.get("peak_analysis") or {}).get("potential_conversion")
+    if not conversion:
+        return "当前没有启用或记录 electrochemistry potential conversion。"
+    status = conversion.get("status", "unknown")
+    confidence = conversion.get("confidence", "insufficient")
+    source = conversion.get("assignment_source", "ea.electrochemistry.potential_conversion:v0.2")
+    record_ref = conversion.get("record_ref", "未生成")
+    applied = conversion.get("applied_to_processed_data", False)
+    plot_axis = conversion.get("applied_to_plot_axis", False)
+    labels = {
+        "input_scale": "input scale",
+        "target_scale": "target scale",
+        "offset_V": "offset V",
+        "equation": "equation",
+        "input_column": "input column",
+        "output_column": "output column",
+        "reference_electrode": "reference electrode",
+        "reference_ids": "reference ids",
+        "reviewer_notes": "reviewer notes",
+        "caveats": "caveats",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = conversion.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry potential conversion details: `未记录`"
+    return (
+        f"Potential conversion 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
+        f"applied_to_plot_axis: `{plot_axis}`；record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该步骤是基于用户已审核数值 offset 的 coordinate transform，只对 processed voltammetry 坐标进行换算，并保留原始 `potential_V` 列；它不是 iR compensation、Tafel 分析、等效电路拟合、GCD 性能计算、催化剂排名或机理证明。"
     )
 
 
@@ -1757,6 +1793,7 @@ def generate_electrochemistry_report(
     current_summary = _electrochemistry_eis_summary_text(metadata) if is_eis else _electrochemistry_current_summary(metadata)
     summary_heading = "EIS Nyquist screening 摘要" if is_eis else "电流摘要"
     correction_text = _electrochemistry_correction_record_text(metadata)
+    potential_conversion_text = _electrochemistry_potential_conversion_text(metadata)
     caution_text = (
         "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
@@ -1794,6 +1831,10 @@ def generate_electrochemistry_report(
 
 {correction_text}
 
+## Potential conversion
+
+{potential_conversion_text}
+
 ## 图谱
 
 {figure_embed}
@@ -1829,6 +1870,7 @@ def generate_electrochemistry_report(
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{feature_table_ref}`
 {f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
+{f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1852,7 +1894,17 @@ def generate_electrochemistry_report(
         workflow="report_generation",
         inputs={
             "records": [str(electrochemistry_metadata_path.relative_to(root))],
-            "files": [value for value in [outputs["processed_csv"], feature_table_ref, outputs.get("correction_record"), outputs["figure"]] if value],
+            "files": [
+                value
+                for value in [
+                    outputs["processed_csv"],
+                    feature_table_ref,
+                    outputs.get("correction_record"),
+                    outputs.get("potential_conversion"),
+                    outputs["figure"],
+                ]
+                if value
+            ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},

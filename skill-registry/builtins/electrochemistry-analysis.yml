@@ -12,6 +12,7 @@ ea_skill:
     - processed_result
     - eis_screening_summary
     - correction_record
+    - potential_conversion_record
     - figure_record
     - report_section
     - provenance_record
@@ -71,6 +72,7 @@ ea_skill:
     limitations:
       - eis_nyquist_screening_only_no_equivalent_circuit_fitting
       - correction_records_preserve_reference_and_ir_metadata_without_numeric_correction
+      - potential_conversion_is_reviewed_coordinate_transform_only
       - no_tafel_or_overpotential_extraction
       - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
       - no_memory_write_without_user_confirmation
@@ -84,3 +86,18 @@ ea_skill:
         - ir_compensation
         - correction_notes
       confidence_boundary: metadata_record_only
+    potential_conversion:
+      implemented: true
+      record_format: yaml
+      method: reviewed_offset_conversion
+      fields:
+        - input_scale
+        - target_scale
+        - offset_V
+        - equation
+        - output_column
+        - reference_electrode
+        - reference_ids
+        - reviewer_notes
+        - caveats
+      confidence_boundary: reviewed_coordinate_transform_only_no_ir_tafel_eis_or_performance_claim

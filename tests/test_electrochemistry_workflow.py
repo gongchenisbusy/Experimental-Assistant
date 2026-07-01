@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import math
 from pathlib import Path
@@ -344,6 +345,20 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
             "correction_notes": ["EA records correction metadata only; no potential shift or iR correction was applied."],
         }
     )
+    parameters["potential_conversion"].update(
+        {
+            "enabled": True,
+            "input_scale": "Ag/AgCl_sat_KCl",
+            "target_scale": "RHE",
+            "offset_V": 0.966,
+            "equation": "E_RHE = E_AgAgCl + 0.197 + 0.0591*pH",
+            "output_column": "potential_RHE_V",
+            "reference_electrode": {"type": "Ag/AgCl", "electrolyte": "sat_KCl", "status": "reviewed"},
+            "reference_ids": ["ref-electrochemistry-method-001"],
+            "reviewer_notes": ["Offset reviewed for the synthetic fixture protocol."],
+            "caveats": ["Confirm pH and reference calibration before overpotential comparisons."],
+        }
+    )
     assert main(
         [
             "review",
@@ -387,7 +402,13 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
             "--electrode-area-cm2",
             "0.196",
             "--parameters-json",
-            json.dumps({"correction_record": parameters["correction_record"]}, ensure_ascii=False),
+            json.dumps(
+                {
+                    "correction_record": parameters["correction_record"],
+                    "potential_conversion": parameters["potential_conversion"],
+                },
+                ensure_ascii=False,
+            ),
             "--column-review-ref",
             column_review["review_id"],
             "--context-review-ref",
@@ -400,6 +421,7 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     electrochemistry_metadata = Path(process_output["metadata"])
     electrochemistry = read_yaml(electrochemistry_metadata)
     correction_record = electrochemistry["peak_analysis"]["correction_record"]
+    potential_conversion = electrochemistry["peak_analysis"]["potential_conversion"]
 
     assert correction_record["status"] == "reviewed_correction_recorded"
     assert correction_record["confidence"] == "low"
@@ -412,9 +434,28 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     saved_correction = read_yaml(workspace / electrochemistry["outputs"]["correction_record"])
     assert saved_correction["uncompensated_resistance"]["ru_ohm"] == 18.5
     assert saved_correction["record_ref"] == electrochemistry["outputs"]["correction_record"]
+    assert potential_conversion["status"] == "reviewed_potential_conversion_applied"
+    assert potential_conversion["input_scale"] == "Ag/AgCl_sat_KCl"
+    assert potential_conversion["target_scale"] == "RHE"
+    assert potential_conversion["offset_V"] == 0.966
+    assert potential_conversion["output_column"] == "potential_RHE_V"
+    assert potential_conversion["applied_to_processed_data"] is True
+    assert potential_conversion["applied_to_plot_axis"] is True
+    assert potential_conversion["applied_to_feature_detection"] is False
+    assert "coordinate transform" in potential_conversion["boundary"]
+    assert electrochemistry["outputs"]["potential_conversion"].endswith("electrochemistry_potential_conversion.yml")
+    saved_conversion = read_yaml(workspace / electrochemistry["outputs"]["potential_conversion"])
+    assert saved_conversion["record_ref"] == electrochemistry["outputs"]["potential_conversion"]
+
+    with (workspace / electrochemistry["outputs"]["processed_csv"]).open(newline="", encoding="utf-8") as handle:
+        processed_rows = list(csv.DictReader(handle))
+    assert "potential_RHE_V" in processed_rows[0]
+    first_row = processed_rows[0]
+    assert math.isclose(float(first_row["potential_RHE_V"]) - float(first_row["potential_V"]), 0.966, rel_tol=1e-9, abs_tol=1e-9)
 
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
     assert electrochemistry["outputs"]["correction_record"] in figure_record["source_data_refs"]
+    assert electrochemistry["outputs"]["potential_conversion"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -434,9 +475,12 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     report_output = _json_output(capsys)
     _, report_body = read_markdown_record(Path(report_output["report"]))
     assert "## Correction/reference record" in report_body
+    assert "## Potential conversion" in report_body
     assert "Ag/AgCl" in report_body
     assert "RHE" in report_body
-    assert "不自动平移电位" in report_body
+    assert "potential_RHE_V" in report_body
+    assert "coordinate transform" in report_body
+    assert "correction_record 自动平移电位" in report_body
 
 
 def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
@@ -632,7 +676,9 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "EIS Nyquist" in reference_text
     assert "equivalent-circuit" in reference_text
     assert "correction_record" in reference_text
+    assert "potential_conversion" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
     assert "eis_nyquist_screening" in electrochemistry_record["notes"]
     assert "correction_records" in electrochemistry_record["notes"]
+    assert "potential_conversion" in electrochemistry_record["notes"]

@@ -9,22 +9,24 @@ Required gates:
 3. Ask for or verify electrode/electrolyte/reference-electrode/protocol context before analysis. Record `context_summary`, optional `electrode_area_cm2`, and `context_review_ref`.
 4. Ask for or verify processing parameters before analysis.
 5. Keep raw data untouched; write processed outputs outside `raw/`.
-6. Record unit conversion, optional current-density normalization, smoothing, detected screening features, optional EIS Nyquist screening features, optional reviewed correction/reference record, generated figure, report, and provenance.
-7. Treat automatic features, EIS screening estimates, and correction/reference records as screening/provenance evidence. Use protocol context, replicates, normalization, reference-electrode correction, frequency order, equivalent-circuit assumptions, and literature before writing performance or mechanism conclusions.
+6. Record unit conversion, optional current-density normalization, smoothing, optional reviewed potential conversion, detected screening features, optional EIS Nyquist screening features, optional reviewed correction/reference record, generated figure, report, and provenance.
+7. Treat automatic features, EIS screening estimates, potential-conversion records, and correction/reference records as screening/provenance evidence. Use protocol context, replicates, normalization, reference-electrode calibration, frequency order, equivalent-circuit assumptions, and literature before writing performance or mechanism conclusions.
 8. Write memory candidates only after user confirmation.
 
 Current v0.2 electrochemistry support:
 
 - Raw import uses `ea raw import --characterization-type electrochemistry`.
 - Inspection identifies common electrochemistry files by path/name, metadata, potential/current columns, time/current columns, and mode hints.
-- Processing supports current conversion to mA, optional current-density calculation from reviewed electrode area, optional Savitzky-Golay smoothing, SciPy feature detection for CV/LSV-like traces, simple threshold-current summaries, start/end current summaries for chrono/GCD-style data, EIS Nyquist screening for reviewed two-column impedance data, and disabled-by-default correction/reference records.
-- Processed CSV files include `axis_raw`, `current_raw`, converted `current_mA`, optional `potential_V` or `time_s`, optional `current_density_mA_cm-2`, and processed current columns.
+- Processing supports current conversion to mA, optional current-density calculation from reviewed electrode area, optional Savitzky-Golay smoothing, disabled-by-default reviewed offset potential conversion, SciPy feature detection for CV/LSV-like traces, simple threshold-current summaries, start/end current summaries for chrono/GCD-style data, EIS Nyquist screening for reviewed two-column impedance data, and disabled-by-default correction/reference records.
+- Processed CSV files include `axis_raw`, `current_raw`, converted `current_mA`, optional `potential_V` or `time_s`, optional `current_density_mA_cm-2`, and processed current columns. When reviewed `potential_conversion.enabled` is true and `potential_V` exists, EA also writes the configured converted potential column.
 - EIS processed CSV files include `z_real_ohm`, signed `z_imag_ohm`, plotted `neg_z_imag_ohm`, impedance magnitude, and an imaginary-column convention record.
 - Feature tables include feature ID/type, axis value/unit, potential/time or impedance coordinates when available, current or impedance values, optional current density, prominence, method, confidence, and assignment source.
+- When `potential_conversion.enabled` is reviewed, EA writes `electrochemistry_potential_conversion.yml` with input/target scales, numeric offset, equation/provenance notes, output column, reference electrode, references, caveats, confidence, source, boundary, and record ref. The conversion changes processed/plot coordinates only and keeps the raw `potential_V` column.
 - When `correction_record.enabled` is reviewed, EA writes `electrochemistry_correction.yml` with reference electrode, converted potential scale, uncompensated resistance, iR compensation, correction notes, confidence, source, boundary, and record ref.
-- Reports include an embedded electrochemistry figure, original figure path, context section, optional correction/reference record summary/link, feature table, current or EIS Nyquist summary, confidence-labeled possible interpretations, file links, References, and provenance.
+- Reports include an embedded electrochemistry figure, original figure path, context section, optional potential-conversion summary/link, optional correction/reference record summary/link, feature table, current or EIS Nyquist summary, confidence-labeled possible interpretations, file links, References, and provenance.
 - `correction_record` is disabled by default. Enable it only after the user reviews reference-electrode scale, converted scale/offset, uncompensated resistance, iR compensation status, and correction notes. This record is metadata/provenance only; EA does not automatically shift potential, apply iR correction, fit circuits, or calculate Tafel/GCD/performance metrics from it in v0.2.
-- First-pass support does not perform equivalent-circuit fitting, Randles/Rct assignment, Warburg analysis, Tafel analysis, overpotential extraction, capacitance/capacity calculation, automatic IR correction, automatic reference-electrode conversion, replicate statistics, or device-performance claims.
+- `potential_conversion` is disabled by default. Enable it only after the user reviews the input scale, target scale, numeric offset in volts, equation/source, and reference-electrode context. This step is a coordinate transform only; it is not iR compensation, Tafel analysis, equivalent-circuit fitting, GCD performance calculation, catalyst ranking, or mechanistic proof.
+- First-pass support does not perform equivalent-circuit fitting, Randles/Rct assignment, Warburg analysis, Tafel analysis, overpotential extraction, capacitance/capacity calculation, automatic IR correction, automatic reference-electrode constant inference, replicate statistics, or device-performance claims.
 
 CLI path:
 
@@ -68,4 +70,28 @@ correction_record:
     - EA records correction metadata only; no potential shift or iR correction is applied.
 ```
 
-Future electrochemistry work should add dedicated equivalent-circuit fitting, Tafel/overpotential workflows, GCD capacitance/capacity calculations, numeric reference-electrode conversion helpers, numeric IR compensation workflows, replicate comparison, protocol-aware validation, and user-confirmed memory-candidate generation from report interpretations.
+Optional reviewed potential conversion can be supplied with `--parameters-json` or `--parameters-file`:
+
+```yaml
+potential_conversion:
+  enabled: true
+  method: reviewed_offset_conversion
+  source: ea.electrochemistry.potential_conversion:v0.2
+  input_scale: Ag/AgCl_sat_KCl
+  target_scale: RHE
+  offset_V: 0.966
+  equation: E_RHE = E_AgAgCl + 0.197 + 0.0591*pH
+  output_column: potential_RHE_V
+  reference_electrode:
+    type: Ag/AgCl
+    electrolyte: sat_KCl
+    status: reviewed
+  reference_ids:
+    - ref-project-method-001
+  reviewer_notes:
+    - Numeric offset was user-reviewed for this electrolyte and pH.
+  caveats:
+    - Confirm reference calibration and pH before comparing overpotential values.
+```
+
+Future electrochemistry work should add dedicated equivalent-circuit fitting, Tafel/overpotential workflows, GCD capacitance/capacity calculations, numeric IR compensation workflows, replicate comparison, protocol-aware validation, richer reference-electrode conversion helpers, and user-confirmed memory-candidate generation from report interpretations.

@@ -105,6 +105,20 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "ir_compensation": {},
             "correction_notes": [],
         },
+        "potential_conversion": {
+            "enabled": False,
+            "method": "reviewed_offset_conversion",
+            "source": "ea.electrochemistry.potential_conversion:v0.2",
+            "input_scale": "",
+            "target_scale": "",
+            "offset_V": 0.0,
+            "equation": "",
+            "output_column": "converted_potential_V",
+            "reference_electrode": {},
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -629,6 +643,194 @@ def _append_correction_interpretation(analysis: dict[str, Any], correction_recor
     return analysis
 
 
+def _conversion_mapping(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    value = params.get(name, {})
+    if isinstance(value, dict):
+        return deepcopy(value), None
+    return (
+        {},
+        _warning(
+            "electrochemistry_potential_conversion_section_ignored",
+            "An electrochemistry potential-conversion section was ignored because it was not a mapping.",
+            severity="medium",
+            section=name,
+        ),
+    )
+
+
+def _conversion_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+    value = params.get(name, [])
+    if isinstance(value, list):
+        return deepcopy(value), None
+    if isinstance(value, tuple):
+        return list(value), None
+    if isinstance(value, str) and value.strip():
+        return [value], None
+    if value in (None, "", []):
+        return [], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_potential_conversion_list_ignored",
+            "An electrochemistry potential-conversion list field was ignored because it was not a list or non-empty string.",
+            severity="medium",
+            field=name,
+        ),
+    )
+
+
+def _potential_conversion_column_name(params: dict[str, Any]) -> str:
+    output_column = str(params.get("output_column") or "converted_potential_V").strip()
+    return output_column or "converted_potential_V"
+
+
+def _apply_potential_conversion(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    measurement_mode: str,
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("potential_conversion", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return processed, None, []
+
+    converted = processed.copy()
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.electrochemistry.potential_conversion:v0.2")
+    method = str(params.get("method") or "reviewed_offset_conversion")
+    if method != "reviewed_offset_conversion":
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_method_unsupported",
+                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this v0.2 workflow.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_offset_conversion"
+
+    offset, offset_adjusted = _coerce_float(params.get("offset_V"), 0.0)
+    if offset_adjusted:
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_offset_defaulted",
+                "Potential conversion offset_V was missing or invalid and defaulted to 0.0 V.",
+                severity="medium",
+            )
+        )
+    input_scale = str(params.get("input_scale") or params.get("source_scale") or "").strip()
+    target_scale = str(params.get("target_scale") or "").strip()
+    if not input_scale:
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_input_scale_missing",
+                "Potential conversion input_scale was not recorded; confirm the original reference scale before scientific interpretation.",
+                severity="medium",
+            )
+        )
+    if not target_scale:
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_target_scale_missing",
+                "Potential conversion target_scale was not recorded; confirm the converted reference scale before scientific interpretation.",
+                severity="medium",
+            )
+        )
+
+    reference_electrode, reference_warning = _conversion_mapping(params, "reference_electrode")
+    if reference_warning:
+        warnings.append(reference_warning)
+    reference_ids, reference_ids_warning = _conversion_list(params, "reference_ids")
+    if reference_ids_warning:
+        warnings.append(reference_ids_warning)
+    reviewer_notes, reviewer_notes_warning = _conversion_list(params, "reviewer_notes")
+    if reviewer_notes_warning:
+        warnings.append(reviewer_notes_warning)
+    caveats, caveats_warning = _conversion_list(params, "caveats")
+    if caveats_warning:
+        warnings.append(caveats_warning)
+
+    output_column = _potential_conversion_column_name(params)
+    requested_output_column = output_column
+    if output_column in converted.columns:
+        output_column = f"{output_column}_converted"
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_output_column_adjusted",
+                "Potential conversion output column already existed and was renamed to avoid overwriting processed data.",
+                severity="medium",
+                requested_output_column=requested_output_column,
+                output_column=output_column,
+            )
+        )
+
+    applied = False
+    input_column = "potential_V" if "potential_V" in converted.columns else None
+    if measurement_mode == "eis":
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_skipped_for_eis",
+                "Potential conversion was skipped for EIS mode because the reviewed data are impedance coordinates, not potential/current coordinates.",
+                severity="medium",
+            )
+        )
+    elif input_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_potential_conversion_no_potential_column",
+                "Potential conversion was enabled but no potential_V column was available in the processed electrochemistry table.",
+                severity="medium",
+            )
+        )
+    else:
+        converted[output_column] = converted[input_column].to_numpy(dtype=float) + offset
+        applied = True
+
+    status = "reviewed_potential_conversion_applied" if applied else "enabled_without_potential_conversion"
+    confidence = str(params.get("confidence") or ("medium" if applied and input_scale and target_scale else "low" if applied else "insufficient"))
+    record = {
+        "enabled": True,
+        "status": status,
+        "method": method,
+        "assignment_source": source,
+        "confidence": confidence,
+        "input_scale": input_scale,
+        "target_scale": target_scale,
+        "offset_V": offset,
+        "equation": str(params.get("equation") or ""),
+        "input_column": input_column,
+        "output_column": output_column if applied else None,
+        "applied_to_processed_data": applied,
+        "applied_to_plot_axis": applied,
+        "applied_to_feature_detection": False,
+        "reference_electrode": reference_electrode,
+        "reference_ids": reference_ids,
+        "reviewer_notes": reviewer_notes,
+        "caveats": caveats,
+        "warnings": warnings,
+        "boundary": "Potential conversion is a user-reviewed numeric coordinate transform applied to processed voltammetry tables and plots only; it is not iR compensation, Tafel analysis, equivalent-circuit fitting, GCD performance calculation, catalyst ranking, or mechanistic proof.",
+    }
+    return converted, record, warnings
+
+
+def _append_potential_conversion_interpretation(analysis: dict[str, Any], conversion_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["potential_conversion"] = conversion_record
+    if conversion_record and conversion_record.get("applied_to_processed_data"):
+        target_scale = conversion_record.get("target_scale") or "converted scale"
+        output_column = conversion_record.get("output_column") or "converted potential column"
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed potential conversion was applied to processed voltammetry coordinates as {output_column} on the {target_scale} scale. "
+                    "Use the converted coordinate for alignment with protocol/literature context, while keeping raw potential and current evidence traceable."
+                ),
+                "confidence": conversion_record.get("confidence", "low"),
+                "evidence": ["potential_conversion"],
+                "assignment_source": conversion_record.get("assignment_source", "ea.electrochemistry.potential_conversion:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _eis_summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -743,7 +945,15 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_electrochemistry(processed: pd.DataFrame, features: pd.DataFrame, output: Path, measurement_mode: str, *, footer: str | None = None) -> None:
+def _plot_electrochemistry(
+    processed: pd.DataFrame,
+    features: pd.DataFrame,
+    output: Path,
+    measurement_mode: str,
+    *,
+    potential_conversion_record: dict[str, Any] | None = None,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     if measurement_mode == "eis":
         ax.plot(processed["z_real_ohm"], processed["neg_z_imag_ohm"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, marker="o", markersize=2.5, label="Nyquist trace")
@@ -762,7 +972,16 @@ def _plot_electrochemistry(processed: pd.DataFrame, features: pd.DataFrame, outp
         ax.set_aspect("equal", adjustable="datalim")
         save_styled_figure(fig, output, footer=footer)
         return
-    if "potential_V" in processed.columns:
+    conversion_column = None
+    if potential_conversion_record and potential_conversion_record.get("applied_to_plot_axis"):
+        candidate = potential_conversion_record.get("output_column")
+        if isinstance(candidate, str) and candidate in processed.columns:
+            conversion_column = candidate
+    if conversion_column:
+        x = processed[conversion_column]
+        target_scale = potential_conversion_record.get("target_scale") or "converted scale"
+        xlabel = f"Potential vs {target_scale} (V)"
+    elif "potential_V" in processed.columns:
         x = processed["potential_V"]
         xlabel = "Potential (V)"
     elif "time_s" in processed.columns:
@@ -776,11 +995,18 @@ def _plot_electrochemistry(processed: pd.DataFrame, features: pd.DataFrame, outp
     ax.plot(x, processed[y_column], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed current")
     if not features.empty:
         feature_y = "current_density_mA_cm-2" if y_column == "processed_current_density_mA_cm-2" else "current_mA"
-        ax.scatter(features["axis_value"], features[feature_y], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected features", zorder=3)
+        if conversion_column and "potential_V" in features.columns:
+            feature_x = features["potential_V"] + float(potential_conversion_record.get("offset_V", 0.0))
+        else:
+            feature_x = features["axis_value"]
+        ax.scatter(feature_x, features[feature_y], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected features", zorder=3)
         for _, feature in features.head(8).iterrows():
+            feature_x_value = float(feature["axis_value"])
+            if conversion_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
+                feature_x_value = float(feature["potential_V"]) + float(potential_conversion_record.get("offset_V", 0.0))
             ax.annotate(
                 str(feature["feature_id"]).replace("ec-", ""),
-                (float(feature["axis_value"]), float(feature[feature_y])),
+                (feature_x_value, float(feature[feature_y])),
                 textcoords="offset points",
                 xytext=(0, 6),
                 ha="center",
@@ -814,9 +1040,11 @@ def process_electrochemistry_result(
         processed, processing_warnings = _apply_eis_processing(confirmed, parameters)
     else:
         processed, processing_warnings = _apply_processing(confirmed, parameters)
+    processed, potential_conversion_record, potential_conversion_warnings = _apply_potential_conversion(processed, parameters, request.measurement_mode)
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
+    analysis = _append_potential_conversion_interpretation(analysis, potential_conversion_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -830,10 +1058,11 @@ def process_electrochemistry_result(
     processed_csv = output_dir / "electrochemistry_processed.csv"
     features_csv = output_dir / "electrochemistry_features.csv"
     correction_yml = output_dir / "electrochemistry_correction.yml"
+    potential_conversion_yml = output_dir / "electrochemistry_potential_conversion.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -846,7 +1075,21 @@ def process_electrochemistry_result(
         write_yaml(correction_yml, correction_record)
         if analysis.get("correction_record"):
             analysis["correction_record"]["record_ref"] = correction_ref
-    _plot_electrochemistry(processed, features, figure, request.measurement_mode, footer=figure_footer(figure_id, None) if figure_id else None)
+    potential_conversion_ref: str | None = None
+    if potential_conversion_record is not None:
+        potential_conversion_ref = str(potential_conversion_yml.relative_to(root))
+        potential_conversion_record["record_ref"] = potential_conversion_ref
+        write_yaml(potential_conversion_yml, potential_conversion_record)
+        if analysis.get("potential_conversion"):
+            analysis["potential_conversion"]["record_ref"] = potential_conversion_ref
+    _plot_electrochemistry(
+        processed,
+        features,
+        figure,
+        request.measurement_mode,
+        potential_conversion_record=potential_conversion_record,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
@@ -858,6 +1101,7 @@ def process_electrochemistry_result(
         warnings.append(_warning("electrochemistry_context_missing", "Electrode/electrolyte context summary is empty.", severity="medium"))
     warnings.extend(processing_warnings)
     warnings.extend(correction_warnings)
+    warnings.extend(potential_conversion_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "feature_table": str(features_csv.relative_to(root)),
@@ -867,6 +1111,8 @@ def process_electrochemistry_result(
     }
     if correction_ref:
         outputs["correction_record"] = correction_ref
+    if potential_conversion_ref:
+        outputs["potential_conversion"] = potential_conversion_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -898,6 +1144,8 @@ def process_electrochemistry_result(
     ]
     if correction_ref:
         provenance_files.append(correction_ref)
+    if potential_conversion_ref:
+        provenance_files.append(potential_conversion_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -931,7 +1179,7 @@ def process_electrochemistry_result(
         caption = (
             "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
             if request.measurement_mode == "eis"
-            else "Electrochemistry trace with processed current, screening features, reviewed context, and traceable processing parameters."
+            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion, and traceable processing parameters."
         )
         register_figure(
             root,
@@ -963,6 +1211,7 @@ def process_electrochemistry_result(
                 str(processed_csv.relative_to(root)),
                 str(features_csv.relative_to(root)),
             ]
-            + ([correction_ref] if correction_ref else []),
+            + ([correction_ref] if correction_ref else [])
+            + ([potential_conversion_ref] if potential_conversion_ref else []),
         )
     return result_metadata
