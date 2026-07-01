@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from ea.cli import main
+from ea.references import register_reference
 from ea.storage import read_markdown_record, read_yaml, write_yaml
 from ea.uv_vis import build_uv_vis_source_packet, default_uv_vis_processing_parameters, inspect_uv_vis_file
 
@@ -833,6 +834,249 @@ def test_cli_uv_vis_builds_source_packet_from_confirmed_literature_manifest(tmp_
     assert Path(output["provenance"]).exists()
 
 
+def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "uv-vis-interpretation-suggestion-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV Vis Interpretation Suggestions",
+            "--slug",
+            "uv-vis-interpretation-suggestions",
+            "--direction",
+            "source-backed UV-Vis interpretation suggestions",
+            "--material",
+            "oxide semiconductor film on quartz",
+            "--experiment-type",
+            "UV-Vis source-backed suggestions",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+    register_reference(
+        workspace,
+        project_id=project_id,
+        reference_id="ref-uv-gap",
+        citation="A. Source. Optical gap reporting for oxide films. Example Journal (2025).",
+        title="Optical gap reporting for oxide films",
+        authors=["A. Source"],
+        year=2025,
+        doi="10.1000/uv-gap",
+        source_type="manual",
+        created_at="2026-07-01T21:00:00",
+    )
+
+    result_dir = workspace / "processed" / "sample-uv-suggestion-001" / "uv_vis" / "res-uv-vis-source-suggestion"
+    features_path = result_dir / "uv_vis_features.csv"
+    tauc_path = result_dir / "uv_vis_tauc.csv"
+    derivative_path = result_dir / "uv_vis_derivative.csv"
+    correction_path = result_dir / "uv_vis_correction_context.yml"
+    metadata_path = result_dir / "uv_vis_metadata.yml"
+    features_ref = features_path.relative_to(workspace).as_posix()
+    tauc_ref = tauc_path.relative_to(workspace).as_posix()
+    derivative_ref = derivative_path.relative_to(workspace).as_posix()
+    correction_ref = correction_path.relative_to(workspace).as_posix()
+    metadata_ref = metadata_path.relative_to(workspace).as_posix()
+
+    result_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "feature_id": "uvvis-feature-001",
+                "position": 590.0,
+                "position_unit": "nm",
+                "wavelength_nm": 590.0,
+                "energy_eV": 2.10,
+                "raw_signal": 0.2,
+                "processed_signal": 1.0,
+                "detection_height": 1.0,
+                "prominence": 0.3,
+                "method": "scipy_find_peaks",
+                "signal_mode": "absorbance",
+                "feature_type": "absorbance_maximum",
+                "assignment_confidence": "low",
+                "assignment_source": "ea.uv_vis.feature_detection:v0.2",
+                "notes": "fixture feature for source-backed suggestion matching",
+            }
+        ]
+    ).to_csv(features_path, index=False)
+    pd.DataFrame([{"energy_eV": 2.12, "tauc_fit_window": True}]).to_csv(tauc_path, index=False)
+    pd.DataFrame([{"energy_eV": 2.11, "first_derivative": 0.8}]).to_csv(derivative_path, index=False)
+    write_yaml(
+        correction_path,
+        {
+            "record_id": "uv-vis-correction-context-test",
+            "record_ref": correction_ref,
+            "reviewed_context_fields": ["substrate", "reference"],
+            "confidence": "low",
+        },
+    )
+    write_yaml(
+        metadata_path,
+        {
+            "schema_version": "0.2",
+            "source": "ea.uv_vis.processing_result:v0.2",
+            "project_id": project_id,
+            "result_id": "res-uv-vis-source-suggestion",
+            "uv_vis_result_id": "res-uv-vis-source-suggestion",
+            "sample_refs": ["sample-uv-suggestion-001"],
+            "outputs": {
+                "metadata": metadata_ref,
+                "peak_table": features_ref,
+                "tauc_table": tauc_ref,
+                "derivative_table": derivative_ref,
+                "correction_context": correction_ref,
+            },
+            "peak_analysis": {
+                "edge_estimate": {"energy_eV": 2.08, "wavelength_nm": 596.1, "confidence": "low"},
+                "tauc_analysis": {
+                    "status": "screening_fit_recorded",
+                    "intercept_energy_eV": 2.12,
+                    "transition": "direct_allowed",
+                    "transform": "absorbance",
+                    "confidence": "low",
+                    "table_ref": tauc_ref,
+                },
+                "derivative_analysis": {
+                    "status": "screening_derivative_recorded",
+                    "max_abs_slope": {"energy_eV": 2.11},
+                    "confidence": "low",
+                    "table_ref": derivative_ref,
+                },
+                "correction_context": {
+                    "status": "reviewed_correction_context_recorded",
+                    "record_ref": correction_ref,
+                    "reviewed_context_fields": ["substrate", "reference"],
+                    "confidence": "low",
+                },
+            },
+        },
+    )
+
+    packet_path = workspace / "suggestions" / "uv_vis" / "source-packets" / "uv_vis_source_packet.yml"
+    packet_ref = packet_path.relative_to(workspace).as_posix()
+    write_yaml(
+        packet_path,
+        {
+            "schema_version": "0.2",
+            "source_packet_id": "uv-vis-source-packet-test",
+            "project_id": project_id,
+            "source": "ea.uv_vis.source_packet:v0.2",
+            "status": "staged_for_future_uv_vis_suggestions",
+            "candidates": [
+                {
+                    "candidate_id": "uv-gap-ready",
+                    "candidate_type": "optical_gap_candidate",
+                    "optical_target": "absorption edge screening",
+                    "reported_energy_eV": 2.10,
+                    "energy_window_eV": [2.0, 2.2],
+                    "transition_assumption": "direct-allowed Tauc-style screening context from the cited source",
+                    "expected_feature": "absorbance_maximum",
+                    "source_summary": "Comparable oxide film source reports an optical-gap candidate near this energy.",
+                    "applicability_notes": ["Use only after checking substrate/background and transition assumptions."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "medium",
+                    "caveats": ["Source-backed candidate only; not a definitive band-gap proof."],
+                },
+                {
+                    "candidate_id": "uv-feature-ready",
+                    "candidate_type": "optical_feature_assignment",
+                    "optical_target": "visible absorption feature",
+                    "feature_label": "source-backed visible absorbance maximum",
+                    "energy_window_eV": [2.05, 2.15],
+                    "wavelength_window_nm": [580.0, 600.0],
+                    "expected_feature": "absorbance_maximum",
+                    "source_summary": "Source describes a comparable absorbance feature in the visible region.",
+                    "applicability_notes": ["Review overlap with scattering and substrate absorption."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "medium",
+                    "caveats": ["Feature match alone does not prove mechanism."],
+                },
+                {
+                    "candidate_id": "uv-correction-ready",
+                    "candidate_type": "correction_context_candidate",
+                    "optical_target": "substrate correction context",
+                    "correction_context_type": "substrate",
+                    "correction_method": "source-backed substrate/reference context",
+                    "source_summary": "Source discusses substrate/reference handling for comparable thin films.",
+                    "applicability_notes": ["Use only as interpretation context unless a numeric correction protocol is reviewed."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "low",
+                    "caveats": ["This suggestion does not apply any numeric correction."],
+                },
+                {
+                    "candidate_id": "uv-transition-unresolved",
+                    "candidate_type": "optical_transition_model",
+                    "optical_target": "Tauc transition model",
+                    "transition_model": "direct_allowed",
+                    "transition_assumption": "Review whether direct-allowed screening is appropriate.",
+                    "source_summary": "A source-backed transition-model candidate with an unresolved reference.",
+                    "applicability_notes": ["Register the missing reference before use in reports."],
+                    "reference_ids": ["ref-missing"],
+                    "confidence": "low",
+                    "caveats": ["Unresolved source; advisory only."],
+                },
+            ],
+        },
+    )
+
+    assert main(
+        [
+            "uv-vis",
+            "suggest-interpretations",
+            str(workspace),
+            "--metadata",
+            metadata_ref,
+            "--source-file",
+            packet_ref,
+            "--related-record",
+            "raw/uv_vis/char-test/metadata.yml",
+        ]
+    ) == 0
+    output = _json_output(capsys)
+    record = read_yaml(Path(output["record"]))
+    table = pd.read_csv(Path(output["table"]))
+    provenance = read_yaml(Path(output["provenance"]))
+
+    assert output["status"] == "ready_for_user_review"
+    assert output["candidate_count"] == 4
+    assert output["ready_for_user_review_count"] == 3
+    assert output["needs_reference_registration_count"] == 1
+    assert output["no_evidence_match_count"] == 0
+    assert output["invalid_count"] == 0
+    assert record["source"] == "ea.uv_vis.interpretation_suggestions:v0.2"
+    assert record["source_packet_ref"] == packet_ref
+    assert record["uv_vis_metadata_ref"] == metadata_ref
+    assert record["feature_table_ref"] == features_ref
+    assert record["related_records"] == ["raw/uv_vis/char-test/metadata.yml"]
+    assert "does not perform live lookup" in " ".join(record["boundaries"])
+    assert "does not register references" in " ".join(record["boundaries"])
+    assert "review-package/report/memory workflow" in " ".join(record["next_steps"])
+
+    candidates = {candidate["candidate_id"]: candidate for candidate in record["candidates"]}
+    gap = candidates["uv-gap-ready"]
+    assert gap["status"] == "ready_for_user_review"
+    assert gap["matched_feature_ids"] == ["uvvis-feature-001"]
+    assert {"uvvis-feature-001", "edge_estimate", tauc_ref, derivative_ref}.issubset(set(gap["evidence_refs"]))
+    assert gap["auto_applied"] is False
+    assert gap["requires_user_review"] is True
+    assert candidates["uv-feature-ready"]["status"] == "ready_for_user_review"
+    assert candidates["uv-feature-ready"]["matched_feature_ids"] == ["uvvis-feature-001"]
+    assert candidates["uv-correction-ready"]["status"] == "ready_for_user_review"
+    assert candidates["uv-correction-ready"]["evidence_refs"] == [correction_ref]
+    unresolved = candidates["uv-transition-unresolved"]
+    assert unresolved["status"] == "needs_reference_registration"
+    assert unresolved["unresolved_reference_ids"] == ["ref-missing"]
+    assert "ref-missing" in record["reference_ids"]
+    assert set(table["candidate_id"]) == set(candidates)
+    assert provenance["workflow"] == "uv_vis_interpretation_suggestion"
+    assert provenance["inputs"]["records"] == [packet_ref, metadata_ref, "raw/uv_vis/char-test/metadata.yml"]
+    assert {features_ref, tauc_ref, derivative_ref, correction_ref}.issubset(set(provenance["inputs"]["files"]))
+    assert set(provenance["source_refs"]) == {"ref-uv-gap", "ref-missing"}
+
+
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -843,8 +1087,10 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
 
     assert "ea uv-vis inspect" in readme
     assert "ea uv-vis build-source-packet" in readme
+    assert "ea uv-vis suggest-interpretations" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
+    assert "ea uv-vis suggest-interpretations" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
@@ -854,6 +1100,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "correction_context" in reference_text
     assert "prepare-source-candidates --method uv_vis" in reference_text
     assert "ea uv-vis build-source-packet" in reference_text
+    assert "ea uv-vis suggest-interpretations" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
@@ -863,3 +1110,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "correction_context_records" in uv_vis_record["notes"]
     assert "source-candidate manifest/preflight" in uv_vis_record["notes"]
     assert "source_packet building" in uv_vis_record["notes"]
+    assert "interpretation_suggestions" in uv_vis_record["notes"]

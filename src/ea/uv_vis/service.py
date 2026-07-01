@@ -1344,6 +1344,638 @@ def build_uv_vis_source_packet(
     }
 
 
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _candidate_number(value: Any, *names: str) -> float | None:
+    if not isinstance(value, dict):
+        return None
+    for name in names:
+        if value.get(name) is None:
+            continue
+        try:
+            number = float(value.get(name))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(number):
+            return number
+    return None
+
+
+def _candidate_window(value: Any, *names: str) -> list[float] | None:
+    if not isinstance(value, dict):
+        return None
+    for name in names:
+        raw = value.get(name)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            raw = [part.strip() for part in raw.replace(" to ", ",").replace("-", ",").split(",")]
+        if isinstance(raw, dict):
+            low_raw = raw.get("min", raw.get("lower", raw.get("low", raw.get("start"))))
+            high_raw = raw.get("max", raw.get("upper", raw.get("high", raw.get("end"))))
+            raw = [low_raw, high_raw]
+        if not isinstance(raw, list | tuple) or len(raw) != 2:
+            continue
+        try:
+            low = float(raw[0])
+            high = float(raw[1])
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(low) and np.isfinite(high):
+            return [min(low, high), max(low, high)]
+    return None
+
+
+def _value_in_window(value: Any, window: list[float] | None) -> bool:
+    if window is None or len(window) != 2:
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return np.isfinite(number) and window[0] <= number <= window[1]
+
+
+def _normalize_uv_vis_expected_feature(value: Any) -> str:
+    normalized = str(value or "any").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "peak": "any",
+        "band": "any",
+        "feature": "any",
+        "absorbance": "absorbance_maximum",
+        "absorbance_peak": "absorbance_maximum",
+        "maximum": "absorbance_maximum",
+        "transmittance": "transmittance_minimum",
+        "transmittance_valley": "transmittance_minimum",
+        "reflectance": "reflectance_minimum",
+        "reflectance_valley": "reflectance_minimum",
+        "minimum": "any",
+        "shoulder": "any",
+        "derivative_extremum": "any",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _feature_type_matches(expected_feature: str, feature_type: str) -> bool:
+    if expected_feature in {"", "any"}:
+        return True
+    return expected_feature == str(feature_type or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _match_uv_vis_features(
+    features: pd.DataFrame,
+    *,
+    energy_window: list[float] | None,
+    wavelength_window: list[float] | None,
+    expected_feature: str,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    if features.empty:
+        return matches
+    for _, row in features.iterrows():
+        energy = row.get("energy_eV")
+        wavelength = row.get("wavelength_nm")
+        feature_type = str(row.get("feature_type") or "")
+        if energy_window is not None and not _value_in_window(energy, energy_window):
+            continue
+        if wavelength_window is not None and not _value_in_window(wavelength, wavelength_window):
+            continue
+        if energy_window is None and wavelength_window is None:
+            continue
+        if not _feature_type_matches(expected_feature, feature_type):
+            continue
+        matches.append(
+            {
+                "feature_id": str(row.get("feature_id") or ""),
+                "energy_eV": float(energy) if pd.notna(energy) else None,
+                "wavelength_nm": float(wavelength) if pd.notna(wavelength) else None,
+                "prominence": float(row.get("prominence", 0.0)) if pd.notna(row.get("prominence", np.nan)) else None,
+                "feature_type": feature_type,
+                "assignment_source": str(row.get("assignment_source") or ""),
+            }
+        )
+    return matches
+
+
+def _uv_vis_interpretation_suggestion_columns() -> list[str]:
+    return [
+        "candidate_id",
+        "candidate_type",
+        "status",
+        "requires_user_review",
+        "auto_applied",
+        "optical_target",
+        "evidence_status",
+        "evidence_refs",
+        "matched_feature_ids",
+        "matched_energies_eV",
+        "matched_wavelengths_nm",
+        "reported_energy_eV",
+        "energy_window_eV",
+        "wavelength_window_nm",
+        "transition_model",
+        "transition_assumption",
+        "tauc_transform",
+        "feature_label",
+        "expected_feature",
+        "correction_context_type",
+        "correction_method",
+        "source_summary",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "confidence",
+        "missing_fields",
+        "caveats",
+    ]
+
+
+def _uv_vis_gap_evidence(
+    metadata: dict[str, Any],
+    features: pd.DataFrame,
+    *,
+    energy_window: list[float] | None,
+    expected_feature: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    evidence: list[dict[str, Any]] = []
+    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
+    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
+    intercept = tauc.get("intercept_energy_eV")
+    if _value_in_window(intercept, energy_window):
+        evidence.append(
+            {
+                "evidence_type": "tauc_analysis",
+                "evidence_ref": tauc.get("table_ref") or "tauc_analysis",
+                "energy_eV": float(intercept),
+                "status": tauc.get("status"),
+                "confidence": tauc.get("confidence"),
+            }
+        )
+    edge = peak_analysis.get("edge_estimate") if isinstance(peak_analysis.get("edge_estimate"), dict) else {}
+    edge_energy = edge.get("energy_eV")
+    if _value_in_window(edge_energy, energy_window):
+        evidence.append(
+            {
+                "evidence_type": "edge_estimate",
+                "evidence_ref": "edge_estimate",
+                "energy_eV": float(edge_energy),
+                "confidence": edge.get("confidence"),
+            }
+        )
+    feature_matches = _match_uv_vis_features(
+        features,
+        energy_window=energy_window,
+        wavelength_window=None,
+        expected_feature=expected_feature,
+    )
+    for match in feature_matches:
+        evidence.append(
+            {
+                "evidence_type": "detected_feature",
+                "evidence_ref": match.get("feature_id"),
+                "energy_eV": match.get("energy_eV"),
+                "wavelength_nm": match.get("wavelength_nm"),
+                "feature_type": match.get("feature_type"),
+            }
+        )
+    derivative = peak_analysis.get("derivative_analysis") if isinstance(peak_analysis.get("derivative_analysis"), dict) else {}
+    max_slope = derivative.get("max_abs_slope") if isinstance(derivative.get("max_abs_slope"), dict) else {}
+    derivative_energy = max_slope.get("energy_eV")
+    if _value_in_window(derivative_energy, energy_window):
+        evidence.append(
+            {
+                "evidence_type": "derivative_analysis",
+                "evidence_ref": derivative.get("table_ref") or "derivative_analysis",
+                "energy_eV": float(derivative_energy),
+                "confidence": derivative.get("confidence"),
+            }
+        )
+    return evidence, feature_matches
+
+
+def _uv_vis_transition_evidence(metadata: dict[str, Any], transition_model: str) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
+    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
+    if tauc:
+        tauc_transition = str(tauc.get("transition") or "").strip().lower().replace("-", "_")
+        relation = "matching_tauc_transition" if transition_model and transition_model == tauc_transition else "available_tauc_analysis"
+        evidence.append(
+            {
+                "evidence_type": "tauc_analysis",
+                "evidence_ref": tauc.get("table_ref") or "tauc_analysis",
+                "relation": relation,
+                "transition": tauc.get("transition"),
+                "transform": tauc.get("transform"),
+                "confidence": tauc.get("confidence"),
+            }
+        )
+    return evidence
+
+
+def _uv_vis_correction_evidence(metadata: dict[str, Any], correction_context_type: str) -> list[dict[str, Any]]:
+    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
+    correction = peak_analysis.get("correction_context") if isinstance(peak_analysis.get("correction_context"), dict) else {}
+    if not correction:
+        return []
+    reviewed_fields = [str(item).strip().lower() for item in correction.get("reviewed_context_fields", [])]
+    normalized_type = correction_context_type.strip().lower().replace("-", "_").replace(" ", "_")
+    relation = "matching_correction_context" if normalized_type and normalized_type in reviewed_fields else "available_correction_context"
+    return [
+        {
+            "evidence_type": "correction_context",
+            "evidence_ref": correction.get("record_ref") or "correction_context",
+            "relation": relation,
+            "reviewed_context_fields": correction.get("reviewed_context_fields", []),
+            "confidence": correction.get("confidence"),
+        }
+    ]
+
+
+def _normalize_uv_vis_interpretation_candidate(
+    raw_candidate: Any,
+    *,
+    suggestion_id: str,
+    number: int,
+    metadata: dict[str, Any],
+    features: pd.DataFrame,
+    registered_references: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(raw_candidate, dict):
+        candidate_id = f"{suggestion_id}-cand-{number:03d}"
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_suggestion_ignored",
+                "A UV-Vis interpretation suggestion candidate was not a mapping and was recorded as invalid.",
+                severity="medium",
+                candidate_id=candidate_id,
+            )
+        )
+        return {
+            "candidate_id": candidate_id,
+            "candidate_type": "unknown",
+            "status": "invalid_candidate_mapping",
+            "requires_user_review": True,
+            "auto_applied": False,
+            "missing_fields": ["candidate_mapping"],
+        }
+
+    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("suggestion_id") or f"{suggestion_id}-cand-{number:03d}")
+    candidate_type = _normalize_uv_vis_candidate_type(raw_candidate.get("candidate_type") or raw_candidate.get("type"))
+    reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
+    applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
+    caveats = _coerce_string_list(raw_candidate.get("caveats"))
+    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
+    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    optical_target = str(raw_candidate.get("optical_target") or raw_candidate.get("target") or "").strip()
+    reported_energy = _candidate_number(raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV")
+    energy_window = _candidate_window(raw_candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV")
+    wavelength_window = _candidate_window(raw_candidate, "wavelength_window_nm", "reported_wavelength_window_nm", "window_nm")
+    transition_model = str(raw_candidate.get("transition_model") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    transition_assumption = str(raw_candidate.get("transition_assumption") or raw_candidate.get("model_assumption") or "").strip()
+    tauc_transform = str(raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or "").strip() or None
+    feature_label = str(raw_candidate.get("feature_label") or raw_candidate.get("assignment_label") or "").strip()
+    expected_feature = _normalize_uv_vis_expected_feature(raw_candidate.get("expected_feature"))
+    correction_context_type = str(raw_candidate.get("correction_context_type") or raw_candidate.get("correction_type") or "").strip()
+    correction_method = str(raw_candidate.get("correction_method") or raw_candidate.get("method") or "").strip()
+
+    missing_fields: list[str] = []
+    if candidate_type not in {
+        "optical_transition_model",
+        "optical_gap_candidate",
+        "optical_feature_assignment",
+        "correction_context_candidate",
+    }:
+        missing_fields.append("candidate_type")
+    if not source_summary:
+        missing_fields.append("source_summary")
+    if not reference_ids:
+        missing_fields.append("reference_ids")
+    if not applicability_notes:
+        missing_fields.append("applicability_notes")
+
+    evidence_matches: list[dict[str, Any]] = []
+    matched_features: list[dict[str, Any]] = []
+    requires_direct_match = False
+
+    if candidate_type == "optical_transition_model":
+        if not transition_model and not transition_assumption:
+            missing_fields.append("transition_model_or_assumption")
+        evidence_matches = _uv_vis_transition_evidence(metadata, transition_model)
+    elif candidate_type == "optical_gap_candidate":
+        requires_direct_match = True
+        if not optical_target:
+            missing_fields.append("optical_target")
+        if reported_energy is None and energy_window is None:
+            missing_fields.append("reported_energy_eV_or_energy_window_eV")
+        if not transition_assumption:
+            missing_fields.append("transition_assumption")
+        evidence_matches, matched_features = _uv_vis_gap_evidence(
+            metadata,
+            features,
+            energy_window=energy_window,
+            expected_feature=expected_feature,
+        )
+    elif candidate_type == "optical_feature_assignment":
+        requires_direct_match = True
+        if not optical_target and not feature_label:
+            missing_fields.append("optical_target_or_feature_label")
+        if energy_window is None and wavelength_window is None and reported_energy is None:
+            missing_fields.append("energy_or_wavelength_window")
+        matched_features = _match_uv_vis_features(
+            features,
+            energy_window=energy_window,
+            wavelength_window=wavelength_window,
+            expected_feature=expected_feature,
+        )
+        evidence_matches = [
+            {
+                "evidence_type": "detected_feature",
+                "evidence_ref": match.get("feature_id"),
+                "energy_eV": match.get("energy_eV"),
+                "wavelength_nm": match.get("wavelength_nm"),
+                "feature_type": match.get("feature_type"),
+            }
+            for match in matched_features
+        ]
+    elif candidate_type == "correction_context_candidate":
+        if not optical_target:
+            missing_fields.append("optical_target")
+        if not correction_context_type and not correction_method:
+            missing_fields.append("correction_context_type_or_method")
+        evidence_matches = _uv_vis_correction_evidence(metadata, correction_context_type)
+
+    if missing_fields:
+        status = "invalid_missing_required_metadata"
+    elif unresolved_reference_ids:
+        status = "needs_reference_registration"
+    elif requires_direct_match and not evidence_matches:
+        status = "no_evidence_match"
+    else:
+        status = "ready_for_user_review"
+
+    evidence_refs = [str(item.get("evidence_ref")) for item in evidence_matches if item.get("evidence_ref")]
+    candidate = {
+        "candidate_id": candidate_id,
+        "candidate_type": candidate_type or "unknown",
+        "status": status,
+        "requires_user_review": True,
+        "auto_applied": False,
+        "optical_target": optical_target or None,
+        "evidence_status": "matched_processed_evidence" if evidence_matches else "source_context_only",
+        "evidence_matches": evidence_matches,
+        "evidence_refs": evidence_refs,
+        "matched_feature_ids": [match["feature_id"] for match in matched_features if match.get("feature_id")],
+        "matched_energies_eV": [match["energy_eV"] for match in matched_features if match.get("energy_eV") is not None],
+        "matched_wavelengths_nm": [match["wavelength_nm"] for match in matched_features if match.get("wavelength_nm") is not None],
+        "reported_energy_eV": reported_energy,
+        "energy_window_eV": energy_window,
+        "wavelength_window_nm": wavelength_window,
+        "transition_model": transition_model or None,
+        "transition_assumption": transition_assumption or None,
+        "tauc_transform": tauc_transform,
+        "feature_label": feature_label or None,
+        "expected_feature": expected_feature,
+        "correction_context_type": correction_context_type or None,
+        "correction_method": correction_method or None,
+        "source_summary": source_summary,
+        "reference_ids": reference_ids,
+        "unresolved_reference_ids": unresolved_reference_ids,
+        "applicability_notes": applicability_notes,
+        "confidence": confidence,
+        "missing_fields": missing_fields,
+        "caveats": caveats,
+    }
+    if unresolved_reference_ids:
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_suggestion_reference_unresolved",
+                "A UV-Vis interpretation suggestion cites reference_ids that are not registered in the project reference index.",
+                severity="medium",
+                candidate_id=candidate_id,
+                unresolved_reference_ids=unresolved_reference_ids,
+            )
+        )
+    if missing_fields:
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_suggestion_missing_metadata",
+                "A UV-Vis interpretation suggestion is missing required source, applicability, or candidate metadata.",
+                severity="medium",
+                candidate_id=candidate_id,
+                missing_fields=missing_fields,
+            )
+        )
+    if status == "no_evidence_match":
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_suggestion_no_evidence_match",
+                "A UV-Vis source-backed candidate did not match current processed UV-Vis feature/gap evidence.",
+                severity="low",
+                candidate_id=candidate_id,
+                candidate_type=candidate_type,
+            )
+        )
+    return candidate
+
+
+def suggest_uv_vis_interpretations(
+    root: Path,
+    *,
+    project_id: str,
+    uv_vis_metadata_path: Path,
+    source_path: Path,
+    related_records: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_metadata_path = uv_vis_metadata_path if uv_vis_metadata_path.is_absolute() else root / uv_vis_metadata_path
+    resolved_source_path = source_path if source_path.is_absolute() else root / source_path
+    uv_vis_metadata = read_yaml(resolved_metadata_path)
+    source_packet = read_yaml(resolved_source_path)
+    metadata_project_id = str(uv_vis_metadata.get("project_id") or "").strip()
+    source_project_id = str(source_packet.get("project_id") or "").strip() if isinstance(source_packet, dict) else ""
+    if metadata_project_id and project_id and metadata_project_id != project_id:
+        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis metadata has {metadata_project_id}, request has {project_id}")
+    if source_project_id and project_id and source_project_id != project_id:
+        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis source packet has {source_project_id}, request has {project_id}")
+
+    raw_candidates = _uv_vis_source_candidates(source_packet)
+    peak_table_ref = uv_vis_metadata.get("outputs", {}).get("peak_table") if isinstance(uv_vis_metadata.get("outputs"), dict) else None
+    features = pd.DataFrame()
+    warnings: list[dict[str, Any]] = []
+    if peak_table_ref:
+        peak_table_path = root / str(peak_table_ref)
+        if peak_table_path.exists():
+            features = pd.read_csv(peak_table_path)
+        else:
+            warnings.append(
+                _warning(
+                    "uv_vis_interpretation_feature_table_missing",
+                    "UV-Vis metadata references a feature table that does not exist; feature assignment matching was skipped.",
+                    severity="medium",
+                    feature_table_ref=str(peak_table_ref),
+                )
+            )
+    else:
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_feature_table_not_recorded",
+                "UV-Vis metadata does not include outputs.peak_table; feature assignment matching was skipped.",
+                severity="medium",
+            )
+        )
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_suggestion_empty_source",
+                "No UV-Vis interpretation candidates were found in the source packet.",
+                severity="medium",
+            )
+        )
+
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    suggestion_id = next_id(root, "suggestion", day)
+    output_dir = root / "suggestions" / "uv_vis" / suggestion_id
+    record_path = output_dir / "uv_vis_interpretation_suggestions.yml"
+    table_path = output_dir / "uv_vis_interpretation_suggestions.csv"
+    for path in [record_path, table_path]:
+        assert_not_raw_output_path(root, path)
+
+    registered_references = _registered_reference_ids(root)
+    candidates = [
+        _normalize_uv_vis_interpretation_candidate(
+            candidate,
+            suggestion_id=suggestion_id,
+            number=index,
+            metadata=uv_vis_metadata,
+            features=features,
+            registered_references=registered_references,
+            warnings=warnings,
+        )
+        for index, candidate in enumerate(raw_candidates, start=1)
+    ]
+    table = pd.DataFrame(candidates, columns=_uv_vis_interpretation_suggestion_columns())
+    for column in [
+        "evidence_refs",
+        "matched_feature_ids",
+        "matched_energies_eV",
+        "matched_wavelengths_nm",
+        "energy_window_eV",
+        "wavelength_window_nm",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "missing_fields",
+        "caveats",
+    ]:
+        if column in table.columns:
+            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+
+    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
+    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
+    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_evidence_match")
+    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    if ready_count:
+        status = "ready_for_user_review"
+    elif unresolved_count:
+        status = "needs_reference_registration"
+    elif no_match_count:
+        status = "no_evidence_match"
+    else:
+        status = "needs_source_metadata"
+
+    source_ref = _relative_to_root(root, resolved_source_path)
+    metadata_ref = _relative_to_root(root, resolved_metadata_path)
+    record_ref = _relative_to_root(root, record_path)
+    table_ref = _relative_to_root(root, table_path)
+    related_records = related_records or []
+    output_refs = uv_vis_metadata.get("outputs") if isinstance(uv_vis_metadata.get("outputs"), dict) else {}
+    evidence_files = [
+        str(ref)
+        for ref in [
+            peak_table_ref,
+            output_refs.get("tauc_table"),
+            output_refs.get("derivative_table"),
+            output_refs.get("correction_context"),
+        ]
+        if ref
+    ]
+    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    record = {
+        "schema_version": "0.2",
+        "suggestion_id": suggestion_id,
+        "project_id": project_id,
+        "method": "uv_vis",
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.uv_vis.interpretation_suggestions:v0.2",
+        "source_packet_ref": source_ref,
+        "uv_vis_metadata_ref": metadata_ref,
+        "feature_table_ref": str(peak_table_ref) if peak_table_ref else None,
+        "table_ref": table_ref,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_evidence_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "candidates": candidates,
+        "related_records": related_records,
+        "reference_ids": all_reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or correct unresolved reference_ids before using source-backed UV-Vis suggestions as report evidence.",
+            "Ask the user to review ready candidates before discussing them as project interpretations.",
+            "Use evidence_refs, matched_feature_ids, source_summary, applicability_notes, confidence, and caveats when discussing possible optical models, gaps, features, or correction context.",
+            "A later review-package/report/memory workflow must consume this suggestion record explicitly; this command does not create those artifacts.",
+        ],
+        "boundaries": [
+            "UV-Vis interpretation suggestions are advisory and auto_applied is always false.",
+            "This suggestion-record step is deterministic local analysis of supplied project artifacts. It does not perform live lookup, does not download or parse full text, does not register references, does not inject report citations, does not create review packages, does not alter processed UV-Vis outputs, does not apply optical models/corrections, does not prove band gaps/transition mechanisms/feature assignments/corrections, and does not write confirmed memory.",
+        ],
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(table_path, index=False)
+    write_yaml(record_path, record)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="uv_vis_interpretation_suggestion",
+        inputs={"records": [source_ref, metadata_ref, *related_records], "files": evidence_files},
+        outputs={"records": [record_ref, table_ref], "files": []},
+        parameters={"candidate_count": len(candidates), "auto_applied": False},
+        warnings=warnings,
+        source_refs=all_reference_ids,
+        created_at=created_at,
+    )
+    record["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(record_path, record)
+    return {
+        "suggestion_id": suggestion_id,
+        "record": str(record_path),
+        "table": str(table_path),
+        "status": status,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_evidence_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
+
+
 def _created_day(created_at: str | None) -> str | None:
     return created_at[:10] if created_at else None
 

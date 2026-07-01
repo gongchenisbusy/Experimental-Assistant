@@ -6,6 +6,7 @@ from ea.uv_vis.service import (
     default_uv_vis_processing_parameters,
     inspect_uv_vis_file,
     process_uv_vis_result,
+    suggest_uv_vis_interpretations,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "default_uv_vis_processing_parameters",
     "inspect_uv_vis_file",
     "process_uv_vis_result",
+    "suggest_uv_vis_interpretations",
 ]

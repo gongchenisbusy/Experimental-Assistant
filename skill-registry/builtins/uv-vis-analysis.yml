@@ -14,6 +14,7 @@ ea_skill:
     - derivative_screening_table
     - correction_context_record
     - source_packet
+    - interpretation_suggestion_record
     - figure_record
     - report_section
     - provenance_record
@@ -50,6 +51,7 @@ ea_skill:
       - ea uv-vis process
       - ea uv-vis report
       - ea uv-vis build-source-packet
+      - ea uv-vis suggest-interpretations
     supported_signal_modes:
       - absorbance
       - transmittance
@@ -94,6 +96,21 @@ ea_skill:
         - optical_feature_assignment
         - correction_context_candidate
       confidence_boundary: staging_only
+    interpretation_suggestions:
+      implemented: true
+      command: ea uv-vis suggest-interpretations
+      candidate_types:
+        - optical_transition_model
+        - optical_gap_candidate
+        - optical_feature_assignment
+        - correction_context_candidate
+      evidence_links:
+        - processed_feature_table
+        - tauc_analysis
+        - edge_estimate
+        - derivative_analysis
+        - correction_context_record
+      confidence_boundary: advisory_review_target
     supported_x_units:
       - nm
       - eV
@@ -104,5 +121,5 @@ ea_skill:
       - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
       - correction-context records preserve reviewed metadata but do not apply automatic numeric correction
-      - source packets preserve source-backed candidates and reference seeds but do not generate UV-Vis suggestions, inject report citations, or apply optical models
+      - source packets and interpretation suggestions preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not inject report citations, generate review packages, write memory, or apply optical models/corrections
       - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references
