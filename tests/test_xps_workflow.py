@@ -338,9 +338,14 @@ def _spin_orbit_component_fit_parameters() -> dict:
                         "center_delta_eV": 13.4,
                         "area_ratio": 0.5,
                         "fwhm_ratio": 1.0,
+                        "parameter_origin": "user_confirmed_source_suggested",
+                        "source_summary": "Fe 2p doublet screening values were checked against the registered XPS reference before user confirmation.",
+                        "applicability_notes": [
+                            "Applies only to the reviewed Fe 2p screening model and does not prove chemical state."
+                        ],
                         "reference_ids": ["ref-xps-spin-orbit-001"],
-                        "reviewer_notes": ["User supplied signed separation, area ratio, and FWHM ratio."],
-                        "caveats": ["No automatic spin-orbit constants were used."],
+                        "reviewer_notes": ["User confirmed the source-backed signed separation, area ratio, and FWHM ratio."],
+                        "caveats": ["Source-backed screening constraint only; not chemical-state proof."],
                         "confidence": "low",
                     }
                 ],
@@ -1217,6 +1222,11 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     constraint = region["spin_orbit_constraints"][0]
     assert constraint["constraint_id"] == "xps-spin-fe2p-001"
     assert constraint["center_delta_eV"] == 13.4
+    assert constraint["parameter_origin"] == "user_confirmed_source_suggested"
+    assert "registered XPS reference" in constraint["source_summary"]
+    assert constraint["applicability_notes"] == [
+        "Applies only to the reviewed Fe 2p screening model and does not prove chemical state."
+    ]
     components = {component["component_id"]: component for component in region["components"]}
     anchor = components["xps-fit-fe2p3-001"]
     dependent = components["xps-fit-fe2p1-001"]
@@ -1229,8 +1239,10 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
 
     fit_table = pd.read_csv(workspace / xps["outputs"]["component_fit_table"])
     assert "spin_orbit_constraint_id" in fit_table.columns
+    assert "spin_orbit_parameter_origin" in fit_table.columns
     assert set(fit_table["spin_orbit_role"].dropna()) == {"anchor", "dependent"}
     assert set(fit_table["spin_orbit_constraint_id"].dropna()) == {"xps-spin-fe2p-001"}
+    assert set(fit_table["spin_orbit_parameter_origin"].dropna()) == {"user_confirmed_source_suggested"}
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
     assert xps["outputs"]["component_fit"] in figure_record["source_data_refs"]
     assert xps["outputs"]["component_fit_table"] in figure_record["source_data_refs"]
@@ -1253,6 +1265,7 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     report_output = _json_output(capsys)
     _, report_body = read_markdown_record(Path(report_output["report"]))
     assert "spin-orbit constraints" in report_body
+    assert "source-backed" in report_body
     assert "xps-spin-fe2p-001" in report_body
     assert "dependent" in report_body
     assert "不自动选择" in report_body or "screening" in report_body

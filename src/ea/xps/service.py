@@ -1578,6 +1578,9 @@ def _component_fit_columns() -> list[str]:
         "spin_orbit_area_ratio",
         "spin_orbit_fwhm_ratio",
         "spin_orbit_constraint_status",
+        "spin_orbit_parameter_origin",
+        "spin_orbit_source_summary",
+        "spin_orbit_applicability_notes",
         "initial_center_eV",
         "fitted_center_eV",
         "initial_amplitude",
@@ -1939,6 +1942,39 @@ def _component_fit_spin_orbit_constraints(
         center_delta = _component_fit_constraint_number(constraint, ("center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"))
         area_ratio = _component_fit_constraint_number(constraint, ("area_ratio", "dependent_area_ratio"))
         fwhm_ratio = _component_fit_constraint_number(constraint, ("fwhm_ratio", "dependent_fwhm_ratio"))
+        reference_ids = _coerce_string_list(constraint.get("reference_ids"))
+        parameter_origin = str(
+            constraint.get("parameter_origin")
+            or constraint.get("constraint_origin")
+            or constraint.get("source_type")
+            or "reported_by_user"
+        ).strip().lower().replace(" ", "_")
+        allowed_origins = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
+        if parameter_origin not in allowed_origins:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_parameter_origin_normalized",
+                    "XPS spin-orbit constraint parameter_origin was not recognized and was recorded as reported_by_user.",
+                    severity="low",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    supplied_parameter_origin=parameter_origin,
+                )
+            )
+            parameter_origin = "reported_by_user"
+        if parameter_origin in {"source_suggested", "user_confirmed_source_suggested"} and not reference_ids:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_source_reference_missing",
+                    "XPS source-backed spin-orbit constraints require reference_ids before constrained fitting can be applied.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    parameter_origin=parameter_origin,
+                )
+            )
+            fatal = True
+            continue
         missing = []
         if not anchor_id:
             missing.append("anchor_component_id")
@@ -2079,7 +2115,10 @@ def _component_fit_spin_orbit_constraints(
                 "area_ratio": float(area_ratio),
                 "fwhm_ratio": float(fwhm_ratio),
                 "amplitude_factor": amplitude_factor,
-                "reference_ids": _coerce_string_list(constraint.get("reference_ids")),
+                "parameter_origin": parameter_origin,
+                "source_summary": str(constraint.get("source_summary") or constraint.get("reference_summary") or "").strip(),
+                "applicability_notes": _coerce_string_list(constraint.get("applicability_notes")),
+                "reference_ids": reference_ids,
                 "reviewer_notes": _coerce_string_list(constraint.get("reviewer_notes") or constraint.get("notes")),
                 "caveats": _coerce_string_list(constraint.get("caveats")),
                 "confidence": str(constraint.get("confidence") or "low").strip().lower(),
@@ -2204,7 +2243,7 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
             "XPS component_fit is reviewed screening-level numerical modeling only. EA v0.2 does not automatically choose components, "
-            "backgrounds, bounds, peak shapes, spin-orbit constants, chemical states, or definitive composition from this record."
+            "backgrounds, bounds, peak shapes, unsourced spin-orbit constants, chemical states, or definitive composition from this record."
         ),
     }
 
@@ -2615,6 +2654,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "spin_orbit_area_ratio": spin_constraint.get("area_ratio") if spin_constraint else None,
                 "spin_orbit_fwhm_ratio": spin_constraint.get("fwhm_ratio") if spin_constraint else None,
                 "spin_orbit_constraint_status": spin_constraint.get("status") if spin_constraint else None,
+                "spin_orbit_parameter_origin": spin_constraint.get("parameter_origin") if spin_constraint else None,
+                "spin_orbit_source_summary": spin_constraint.get("source_summary") if spin_constraint else None,
+                "spin_orbit_applicability_notes": "; ".join(spin_constraint.get("applicability_notes") or []) if spin_constraint else None,
                 "initial_center_eV": spec["initial_center_eV"],
                 "fitted_center_eV": fitted_spec["center_eV"],
                 "initial_amplitude": spec["initial_amplitude"],
@@ -3011,7 +3053,7 @@ def _analyze_peaks(
             ]
             constraint_count = int(component_fit_record.get("spin_orbit_constraint_count", 0) or 0)
             constraint_note = (
-                " Reviewed spin-orbit constraints were applied only from user-supplied signed deltas/ratios/bounds."
+                " Reviewed spin-orbit constraints were applied from recorded signed deltas/ratios/bounds with parameter origins and references preserved when supplied."
                 if constraint_count
                 else " No automatic spin-orbit constrained fitting was performed."
             )

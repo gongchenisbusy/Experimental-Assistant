@@ -1445,8 +1445,9 @@ def _xps_component_fit_summary(metadata: dict) -> str:
         f"constrained components: `{constrained_components}`；record: `{record_ref}`；table: `{table_ref}`；"
         f"fit column: `{fit_column}`；residual column: `{residual_column}`；confidence: `{confidence}`；"
         f"assignment_source: `{source}`；references: `{reference_text}`。\n\n"
-        "该记录只表示用户审核过的 component-fit screening；若存在 spin-orbit constraints，也只使用用户审核过的 signed delta/ratio/bounds。"
-        "EA 不自动选择组分、背景、bounds、峰形、spin-orbit 常数，"
+        "该记录只表示用户审核过的 component-fit screening；若存在 spin-orbit constraints，signed delta/ratio/bounds "
+        "可以来自用户报告值或有 reference_id 的 source-backed 建议值，但参数来源、适用性和确认状态必须保存在记录中。"
+        "EA 可以讨论有来源的候选参数，但不在缺少来源或适用性记录时把它们当作拟合约束；EA 不自动选择组分、背景、bounds 或峰形，"
         "也不据此证明化学态、组成或正式定量。"
     )
 
