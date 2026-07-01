@@ -9,7 +9,7 @@ Required gates:
 3. Ask for or verify temperature program, atmosphere, sample mass, DSC sign convention, and baseline/reference context before analysis. Record `context_summary` and `context_review_ref`.
 4. Ask for or verify processing parameters before analysis.
 5. Keep raw data untouched; write processed outputs outside `raw/`.
-6. Record temperature conversion, optional smoothing, optional reviewed `baseline_correction`, derivative/mass-loss summaries, detected screening events, optional reviewed `context_record`, generated figure, report, and provenance.
+6. Record temperature conversion, optional smoothing, optional reviewed `baseline_correction`, derivative/mass-loss summaries, detected screening events, optional reviewed `transition_analysis`, optional reviewed `context_record`, generated figure, report, and provenance.
 7. Treat automatic events as screening evidence. Use protocol context, baselines, replicates, instrument settings, and literature before writing decomposition, transition, kinetic, composition, or thermal-stability conclusions.
 8. Write memory candidates only after user confirmation.
 
@@ -17,13 +17,14 @@ Current v0.2 thermal support:
 
 - Raw import uses `ea raw import --characterization-type thermal_analysis`.
 - Inspection identifies common thermal files by path/name, metadata, temperature columns, mass/heat-flow columns, and mode hints.
-- Processing supports `C`/`K` temperature handling, TGA mass-percent normalization from `%` or `mg`, optional Savitzky-Golay smoothing, optional reviewed linear baseline correction for DSC/DTG-style traces, mass derivative summaries, SciPy event detection for TGA/DSC/DTG traces, and simple mass-loss threshold summaries.
+- Processing supports `C`/`K` temperature handling, TGA mass-percent normalization from `%` or `mg`, optional Savitzky-Golay smoothing, optional reviewed linear baseline correction for DSC/DTG-style traces, optional reviewed-window transition screening for DSC Tg/Tm/Tc-style candidates, mass derivative summaries, SciPy event detection for TGA/DSC/DTG traces, and simple mass-loss threshold summaries.
 - Processed CSV files include `temperature_raw`, `temperature_C`, `signal_raw`, `processed_signal`, and method-specific processed columns such as `processed_mass_percent`, `mass_derivative_percent_per_C`, `processed_heat_flow`, or `processed_dtg_signal`. When reviewed baseline correction is enabled, they also include `baseline_estimate` and `baseline_corrected_signal`.
 - Feature tables include event ID/type, temperature, signal value, mass percent, derivative, heat-flow/DTG values when available, prominence, method, confidence, and assignment source.
 - Optional disabled-by-default `context_record` preserves reviewed DSC sign convention, baseline/reference handling, sample context, atmosphere/program context, and correction notes in `thermal_context.yml`.
 - Optional disabled-by-default `baseline_correction` applies a reviewed two-point linear baseline to DSC/DTG-style traces and records `thermal_baseline.yml`.
-- Reports include an embedded thermal figure, original figure path, context section, optional baseline-correction section, optional context-record section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
-- First-pass support does not perform glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, non-linear/reference correction, replicate statistics, or formal thermal-stability ranking.
+- Optional disabled-by-default `transition_analysis` screens user-reviewed DSC windows for Tg/Tm/Tc-style candidate metrics and records `thermal_transitions.csv` plus `thermal_transitions.yml`.
+- Reports include an embedded thermal figure, original figure path, context section, optional baseline-correction section, optional transition-screening section, optional context-record section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
+- First-pass support does not perform formal glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, non-linear/reference correction, replicate statistics, or formal thermal-stability ranking.
 
 CLI path:
 
@@ -76,4 +77,27 @@ baseline_correction:
 
 Baseline correction is a reviewed numeric processing step for DSC/DTG-style traces. It does not assign Tg/Tm/Tc, fit kinetics, rank thermal stability, or prove decomposition/melting/crystallization mechanisms.
 
-Future thermal work should add user-confirmed non-linear/reference correction workflows, Tg/Tm/Tc workflows, kinetic models, replicate comparison, reference libraries, and user-confirmed memory-candidate generation from report interpretations.
+Optional transition-screening parameters:
+
+```yaml
+transition_analysis:
+  enabled: true
+  method: reviewed_window_screening
+  transitions:
+    - transition_id: tg-001
+      transition_type: Tg
+      temperature_window_C: [85.0, 105.0]
+      signal_direction: auto
+    - transition_id: tm-001
+      transition_type: Tm
+      temperature_window_C: [135.0, 155.0]
+      signal_direction: endotherm_down
+    - transition_id: tc-001
+      transition_type: Tc
+      temperature_window_C: [200.0, 220.0]
+      signal_direction: exotherm_up
+```
+
+Transition screening extracts candidate metrics only inside reviewed DSC windows. It does not make formal Tg/Tm/Tc assignments, fit kinetics, rank thermal stability, or prove decomposition/melting/crystallization mechanisms.
+
+Future thermal work should add formal user-confirmed transition assignment workflows, non-linear/reference correction workflows, kinetic models, replicate comparison, reference libraries, and user-confirmed memory-candidate generation from report interpretations.

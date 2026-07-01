@@ -1989,6 +1989,53 @@ def _thermal_baseline_correction_text(metadata: dict) -> str:
     )
 
 
+def _thermal_transition_screening_text(metadata: dict) -> str:
+    transition = (metadata.get("peak_analysis") or {}).get("transition_analysis")
+    if not transition:
+        return "当前没有启用或记录 thermal transition screening。"
+    status = transition.get("status", "unknown")
+    count = transition.get("transition_count", 0)
+    confidence = transition.get("confidence", "insufficient")
+    source = transition.get("assignment_source", "ea.thermal.transition_analysis:v0.2")
+    table_ref = transition.get("table_ref", "未生成")
+    record_ref = transition.get("record_ref", "未生成")
+    method = transition.get("method", "未记录")
+    return (
+        f"Thermal transition screening 状态为 `{status}`；candidate count: `{count}`；method: `{method}`；"
+        f"table: `{table_ref}`；record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        "该 screening 只在用户已审核的温度窗口内提取 Tg/Tm/Tc-style 候选指标；它不是正式相变赋值、动力学拟合、热稳定性排名或分解/熔融/结晶机制证明。"
+    )
+
+
+def _thermal_transition_table(root: Path, transition_table_ref: str | None) -> str:
+    if not transition_table_ref:
+        return "当前没有可展示的 reviewed transition screening 表。"
+    transitions = pd.read_csv(root / transition_table_ref)
+    if transitions.empty:
+        return "当前 transition screening 未生成候选行。"
+    rows = [
+        "| transition_id | type | window (C) | candidate T (C) | metric | signal | confidence | source |",
+        "|---|---|---:|---:|---|---:|---|---|",
+    ]
+    for _, item in transitions.head(12).iterrows():
+        candidate = item.get("estimated_temperature_C")
+        signal = item.get("signal_value")
+        rows.append(
+            "| {transition_id} | {transition_type} | {window_start:.1f}-{window_end:.1f} | {candidate} | {metric} | {signal} | {confidence} | {source} |".format(
+                transition_id=item.get("transition_id", "n/a"),
+                transition_type=item.get("transition_type", "n/a"),
+                window_start=float(item.get("window_start_C", 0.0)) if pd.notna(item.get("window_start_C")) else 0.0,
+                window_end=float(item.get("window_end_C", 0.0)) if pd.notna(item.get("window_end_C")) else 0.0,
+                candidate=f"{float(candidate):.2f}" if pd.notna(candidate) else "n/a",
+                metric=item.get("metric", "n/a"),
+                signal=f"{float(signal):.4g}" if pd.notna(signal) else "n/a",
+                confidence=item.get("assignment_confidence", "insufficient"),
+                source=item.get("assignment_source", "未记录"),
+            )
+        )
+    return "\n".join(rows)
+
+
 def generate_thermal_report(
     root: Path,
     *,
@@ -2029,6 +2076,8 @@ def generate_thermal_report(
     summary_text = _thermal_summary_text(metadata)
     context_text = _thermal_context_record_text(metadata)
     baseline_text = _thermal_baseline_correction_text(metadata)
+    transition_text = _thermal_transition_screening_text(metadata)
+    transition_table = _thermal_transition_table(root, outputs.get("transition_table"))
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -2065,6 +2114,12 @@ def generate_thermal_report(
 
 {baseline_text}
 
+## Thermal transition screening
+
+{transition_text}
+
+{transition_table}
+
 ## 图谱
 
 {figure_embed}
@@ -2100,6 +2155,8 @@ def generate_thermal_report(
 - processed CSV: `{outputs['processed_csv']}`
 - feature table: `{feature_table_ref}`
 {f"- baseline correction: `{outputs['baseline_correction']}`" if outputs.get('baseline_correction') else "- baseline correction: `未生成`"}
+{f"- transition table: `{outputs['transition_table']}`" if outputs.get('transition_table') else "- transition table: `未生成`"}
+{f"- transition record: `{outputs['transition_record']}`" if outputs.get('transition_record') else "- transition record: `未生成`"}
 {f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
@@ -2130,6 +2187,8 @@ def generate_thermal_report(
                     outputs["processed_csv"],
                     feature_table_ref,
                     outputs.get("baseline_correction"),
+                    outputs.get("transition_table"),
+                    outputs.get("transition_record"),
                     outputs.get("context_record"),
                     outputs["figure"],
                 ]

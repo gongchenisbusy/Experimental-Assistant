@@ -84,6 +84,26 @@ THERMAL_FEATURE_COLUMNS = [
 ]
 
 
+THERMAL_TRANSITION_COLUMNS = [
+    "transition_id",
+    "transition_type",
+    "label",
+    "status",
+    "window_start_C",
+    "window_end_C",
+    "estimated_temperature_C",
+    "metric",
+    "signal_value",
+    "area_signal_C",
+    "step_delta",
+    "point_count",
+    "method",
+    "assignment_confidence",
+    "assignment_source",
+    "notes",
+]
+
+
 def default_thermal_processing_parameters() -> dict[str, Any]:
     return {
         "smoothing": {
@@ -117,6 +137,12 @@ def default_thermal_processing_parameters() -> dict[str, Any]:
             "source": "ea.thermal.baseline_correction:v0.2",
             "anchor_strategy": "trace_edges",
             "anchor_temperatures_C": [],
+        },
+        "transition_analysis": {
+            "enabled": False,
+            "method": "reviewed_window_screening",
+            "source": "ea.thermal.transition_analysis:v0.2",
+            "transitions": [],
         },
         "context_record": {
             "enabled": False,
@@ -578,6 +604,240 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], reques
     return pd.DataFrame(rows, columns=THERMAL_FEATURE_COLUMNS)
 
 
+_TG_TYPES = {"tg", "glass_transition", "glass-transition", "glass transition"}
+_PEAK_POSITIVE_DIRECTIONS = {"peak_positive", "positive", "up", "exotherm_up", "max", "maximum"}
+_PEAK_NEGATIVE_DIRECTIONS = {"peak_negative", "negative", "down", "endotherm_down", "min", "minimum"}
+
+
+def _normalized_transition_type(value: Any) -> str:
+    text = str(value or "other").strip().lower().replace(" ", "_").replace("-", "_")
+    if text in {"tm", "melting", "melting_peak"}:
+        return "Tm"
+    if text in {"tc", "crystallization", "crystallisation", "crystallization_peak", "crystallisation_peak"}:
+        return "Tc"
+    if text in {"tg", "glass_transition", "glass_transition_midpoint"}:
+        return "Tg"
+    return str(value or "other").strip() or "other"
+
+
+def _transition_window(spec: dict[str, Any]) -> tuple[float | None, float | None]:
+    raw_window = spec.get("temperature_window_C")
+    if isinstance(raw_window, list | tuple) and len(raw_window) >= 2:
+        low = _as_float(raw_window[0])
+        high = _as_float(raw_window[1])
+    else:
+        low = _as_float(spec.get("window_start_C"))
+        high = _as_float(spec.get("window_end_C"))
+    if low is None or high is None:
+        return None, None
+    return (min(low, high), max(low, high))
+
+
+def _transition_row(
+    *,
+    transition_id: str,
+    transition_type: str,
+    label: str,
+    status: str,
+    window_start: float | None,
+    window_end: float | None,
+    estimated_temperature: float | None,
+    metric: str,
+    signal_value: float | None,
+    area: float | None,
+    step_delta: float | None,
+    point_count: int,
+    method: str,
+    confidence: str,
+    source: str,
+    notes: str,
+) -> dict[str, Any]:
+    return {
+        "transition_id": transition_id,
+        "transition_type": transition_type,
+        "label": label,
+        "status": status,
+        "window_start_C": window_start,
+        "window_end_C": window_end,
+        "estimated_temperature_C": estimated_temperature,
+        "metric": metric,
+        "signal_value": signal_value,
+        "area_signal_C": area,
+        "step_delta": step_delta,
+        "point_count": point_count,
+        "method": method,
+        "assignment_confidence": confidence,
+        "assignment_source": source,
+        "notes": notes,
+    }
+
+
+def _transition_candidate(spec: dict[str, Any], processed: pd.DataFrame, *, number: int, method: str, source: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    transition_id = str(spec.get("transition_id") or f"thermal-transition-{number:03d}")
+    transition_type = _normalized_transition_type(spec.get("transition_type") or spec.get("type"))
+    label = str(spec.get("label") or transition_type)
+    window_start, window_end = _transition_window(spec)
+    if window_start is None or window_end is None:
+        return (
+            _transition_row(
+                transition_id=transition_id,
+                transition_type=transition_type,
+                label=label,
+                status="skipped_invalid_window",
+                window_start=window_start,
+                window_end=window_end,
+                estimated_temperature=None,
+                metric="invalid_window",
+                signal_value=None,
+                area=None,
+                step_delta=None,
+                point_count=0,
+                method=method,
+                confidence="insufficient",
+                source=source,
+                notes="transition window was missing or not numeric; no candidate metric was extracted",
+            ),
+            _warning("thermal_transition_window_invalid", "Thermal transition window was ignored because it was missing or not numeric.", severity="medium", transition_id=transition_id),
+        )
+
+    window = processed[(processed["temperature_C"] >= window_start) & (processed["temperature_C"] <= window_end)].copy()
+    if len(window) < 3:
+        return (
+            _transition_row(
+                transition_id=transition_id,
+                transition_type=transition_type,
+                label=label,
+                status="skipped_insufficient_points",
+                window_start=window_start,
+                window_end=window_end,
+                estimated_temperature=None,
+                metric="insufficient_points",
+                signal_value=None,
+                area=None,
+                step_delta=None,
+                point_count=int(len(window)),
+                method=method,
+                confidence="insufficient",
+                source=source,
+                notes="transition window contains fewer than three points; no candidate metric was extracted",
+            ),
+            _warning("thermal_transition_window_too_sparse", "Thermal transition window contains fewer than three points.", severity="medium", transition_id=transition_id, point_count=int(len(window))),
+        )
+
+    x = window["temperature_C"].to_numpy(dtype=float)
+    y = window["processed_signal"].to_numpy(dtype=float)
+    direction = str(spec.get("signal_direction") or "auto").strip().lower().replace(" ", "_").replace("-", "_")
+    transition_key = transition_type.strip().lower().replace(" ", "_").replace("-", "_")
+    if transition_key in _TG_TYPES:
+        derivative = np.gradient(y, x)
+        if direction in _PEAK_POSITIVE_DIRECTIONS:
+            local_index = int(np.nanargmax(derivative))
+            metric = "derivative_maximum"
+        elif direction in _PEAK_NEGATIVE_DIRECTIONS:
+            local_index = int(np.nanargmin(derivative))
+            metric = "derivative_minimum"
+        else:
+            local_index = int(np.nanargmax(np.abs(derivative)))
+            metric = "derivative_absolute_extremum"
+    elif direction in _PEAK_POSITIVE_DIRECTIONS:
+        local_index = int(np.nanargmax(y))
+        metric = "signal_maximum"
+    elif direction in _PEAK_NEGATIVE_DIRECTIONS:
+        local_index = int(np.nanargmin(y))
+        metric = "signal_minimum"
+    else:
+        edge_baseline = np.interp(x, [float(x[0]), float(x[-1])], [float(y[0]), float(y[-1])])
+        local_index = int(np.nanargmax(np.abs(y - edge_baseline)))
+        metric = "signal_deviation_extremum"
+    area = float(np.trapezoid(y, x)) if hasattr(np, "trapezoid") else float(np.trapz(y, x))
+    step_delta = float(y[-1] - y[0])
+    return (
+        _transition_row(
+            transition_id=transition_id,
+            transition_type=transition_type,
+            label=label,
+            status="candidate_extracted",
+            window_start=window_start,
+            window_end=window_end,
+            estimated_temperature=float(x[local_index]),
+            metric=metric,
+            signal_value=float(y[local_index]),
+            area=area,
+            step_delta=step_delta,
+            point_count=int(len(window)),
+            method=method,
+            confidence="medium",
+            source=source,
+            notes="reviewed-window thermal transition candidate; requires user interpretation, replicates, method context, and references before formal assignment",
+        ),
+        None,
+    )
+
+
+def _analyze_transitions(processed: pd.DataFrame, parameters: dict[str, Any], request: ThermalAnalysisProcessingRequest) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("transition_analysis", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return pd.DataFrame(columns=THERMAL_TRANSITION_COLUMNS), None, []
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "reviewed_window_screening")
+    source = str(params.get("source") or "ea.thermal.transition_analysis:v0.2")
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "measurement_mode": request.measurement_mode,
+        "confidence": "insufficient",
+        "transition_count": 0,
+        "boundary": (
+            "Thermal transition screening extracts candidate metrics from user-reviewed windows only; it does not make formal Tg/Tm/Tc assignments, "
+            "fit kinetic models, rank thermal stability, or prove decomposition, melting, crystallization, or mechanism claims."
+        ),
+    }
+    if method != "reviewed_window_screening":
+        warning = _warning("thermal_transition_method_unsupported", "Thermal transition analysis method is not supported by EA v0.2.", severity="medium", method=method)
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_method", "warnings": warnings})
+        return pd.DataFrame(columns=THERMAL_TRANSITION_COLUMNS), record, warnings
+    if request.measurement_mode != "dsc":
+        warning = _warning(
+            "thermal_transition_mode_unsupported",
+            "Thermal transition screening was skipped because Tg/Tm/Tc-style windows are currently supported only for reviewed DSC traces.",
+            severity="medium",
+            measurement_mode=request.measurement_mode,
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_mode", "warnings": warnings})
+        return pd.DataFrame(columns=THERMAL_TRANSITION_COLUMNS), record, warnings
+    specs = params.get("transitions", [])
+    if not isinstance(specs, list) or not specs:
+        warning = _warning("thermal_transition_windows_missing", "Thermal transition_analysis was enabled, but no reviewed transition windows were supplied.", severity="medium")
+        warnings.append(warning)
+        record.update({"status": "enabled_without_reviewed_windows", "warnings": warnings})
+        return pd.DataFrame(columns=THERMAL_TRANSITION_COLUMNS), record, warnings
+
+    rows: list[dict[str, Any]] = []
+    for number, spec in enumerate(specs, start=1):
+        if not isinstance(spec, dict):
+            warning = _warning("thermal_transition_spec_ignored", "A thermal transition spec was ignored because it was not a mapping.", severity="medium", transition_number=number)
+            warnings.append(warning)
+            continue
+        row, warning = _transition_candidate(spec, processed, number=number, method=method, source=source)
+        rows.append(row)
+        if warning:
+            warnings.append(warning)
+    table = pd.DataFrame(rows, columns=THERMAL_TRANSITION_COLUMNS)
+    extracted = int((table["status"] == "candidate_extracted").sum()) if not table.empty else 0
+    record.update(
+        {
+            "status": "reviewed_transition_candidates_recorded" if extracted else "no_transition_candidates_extracted",
+            "transition_count": extracted,
+            "confidence": "medium" if extracted else "insufficient",
+            "warnings": warnings,
+        }
+    )
+    return table, record, warnings
+
+
 _THERMAL_CONTEXT_SECTIONS = ("dsc_sign_convention", "baseline_reference", "sample_context", "atmosphere_program")
 
 
@@ -716,12 +976,33 @@ def _append_baseline_interpretation(analysis: dict[str, Any], baseline_record: d
     return analysis
 
 
+def _append_transition_interpretation(analysis: dict[str, Any], transition_record: dict[str, Any] | None) -> dict[str, Any]:
+    if not transition_record:
+        return analysis
+    analysis["transition_analysis"] = transition_record
+    if transition_record.get("status") == "reviewed_transition_candidates_recorded":
+        table_ref = transition_record.get("table_ref", "transition_table")
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    "Reviewed thermal transition windows were screened for candidate Tg/Tm/Tc-style metrics. Treat these as candidate metrics for user review, "
+                    "not formal transition assignments or mechanism conclusions."
+                ),
+                "confidence": transition_record.get("confidence", "medium"),
+                "evidence": ["transition_analysis", table_ref],
+                "assignment_source": transition_record.get("assignment_source", "ea.thermal.transition_analysis:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
     request: ThermalAnalysisProcessingRequest,
     context_record: dict[str, Any] | None = None,
     baseline_record: dict[str, Any] | None = None,
+    transition_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     temperature = processed["temperature_C"].to_numpy(dtype=float)
     signal = processed["processed_signal"].to_numpy(dtype=float)
@@ -769,7 +1050,8 @@ def _summary(
             }
         )
     analysis = _append_context_interpretation(analysis, context_record)
-    return _append_baseline_interpretation(analysis, baseline_record)
+    analysis = _append_baseline_interpretation(analysis, baseline_record)
+    return _append_transition_interpretation(analysis, transition_record)
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -780,7 +1062,7 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_thermal(processed: pd.DataFrame, features: pd.DataFrame, output: Path, request: ThermalAnalysisProcessingRequest, *, footer: str | None = None) -> None:
+def _plot_thermal(processed: pd.DataFrame, features: pd.DataFrame, output: Path, request: ThermalAnalysisProcessingRequest, *, transitions: pd.DataFrame | None = None, footer: str | None = None) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     x = processed["temperature_C"]
     if "processed_mass_percent" in processed.columns:
@@ -813,6 +1095,21 @@ def _plot_thermal(processed: pd.DataFrame, features: pd.DataFrame, output: Path,
                     ha="center",
                     fontsize=7,
                 )
+    if transitions is not None and not transitions.empty and "estimated_temperature_C" in transitions.columns:
+        plotted = transitions[pd.notna(transitions["estimated_temperature_C"])]
+        for _, transition in plotted.head(6).iterrows():
+            temperature = float(transition["estimated_temperature_C"])
+            ax.axvline(temperature, color=NATURE_LIKE_COLORS["orange"], linewidth=0.8, alpha=0.72)
+            ax.annotate(
+                str(transition["transition_id"]),
+                (temperature, float(processed[y_column].median())),
+                textcoords="offset points",
+                xytext=(3, 0),
+                rotation=90,
+                va="center",
+                fontsize=6.5,
+                color=NATURE_LIKE_COLORS["orange"],
+            )
     style_axis(ax, title=title, xlabel="Temperature (C)", ylabel=ylabel)
     save_styled_figure(fig, output, footer=footer)
 
@@ -838,8 +1135,9 @@ def process_thermal_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings, baseline_record = _apply_processing(_confirmed_frame(raw_path, request), request, parameters)
     features = _detect_features(processed, parameters, request)
+    transitions, transition_record, transition_warnings = _analyze_transitions(processed, parameters, request)
     context_record, context_warnings = _record_context(parameters)
-    analysis = _summary(processed, features, request, context_record, baseline_record)
+    analysis = _summary(processed, features, request, context_record, baseline_record, transition_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -852,17 +1150,35 @@ def process_thermal_result(
     output_dir = root / "processed" / sample_dir / "thermal_analysis" / result_id
     processed_csv = output_dir / "thermal_processed.csv"
     features_csv = output_dir / "thermal_features.csv"
+    transitions_csv = output_dir / "thermal_transitions.csv"
     baseline_yml = output_dir / "thermal_baseline.yml"
+    transitions_yml = output_dir / "thermal_transitions.yml"
     context_yml = output_dir / "thermal_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "thermal_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "thermal_metadata.yml"
-    for output in [processed_csv, features_csv, baseline_yml, context_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, transitions_csv, baseline_yml, transitions_yml, context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     features.to_csv(features_csv, index=False)
+    transition_table_ref: str | None = None
+    transition_record_ref: str | None = None
+    if transition_record is not None:
+        transition_table_ref = str(transitions_csv.relative_to(root))
+        transition_record_ref = str(transitions_yml.relative_to(root))
+        transitions.to_csv(transitions_csv, index=False)
+        transition_record["table_ref"] = transition_table_ref
+        transition_record["record_ref"] = transition_record_ref
+        write_yaml(transitions_yml, transition_record)
+        if analysis.get("transition_analysis"):
+            analysis["transition_analysis"]["table_ref"] = transition_table_ref
+            analysis["transition_analysis"]["record_ref"] = transition_record_ref
+        for item in analysis.get("possible_interpretations", []):
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [transition_table_ref if value == "transition_table" else value for value in evidence]
     baseline_ref: str | None = None
     if baseline_record is not None:
         baseline_ref = str(baseline_yml.relative_to(root))
@@ -877,7 +1193,7 @@ def process_thermal_result(
         write_yaml(context_yml, context_record)
         if analysis.get("context_record"):
             analysis["context_record"]["record_ref"] = context_ref
-    _plot_thermal(processed, features, figure, request, footer=figure_footer(figure_id, None) if figure_id else None)
+    _plot_thermal(processed, features, figure, request, transitions=transitions, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
     if request.temperature_unit == "unknown":
@@ -887,6 +1203,7 @@ def process_thermal_result(
     if not request.context_summary:
         warnings.append(_warning("thermal_context_missing", "Thermal temperature-program/sample/atmosphere context summary is empty.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(transition_warnings)
     warnings.extend(context_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
@@ -897,6 +1214,10 @@ def process_thermal_result(
     }
     if baseline_ref:
         outputs["baseline_correction"] = baseline_ref
+    if transition_table_ref:
+        outputs["transition_table"] = transition_table_ref
+    if transition_record_ref:
+        outputs["transition_record"] = transition_record_ref
     if context_ref:
         outputs["context_record"] = context_ref
     result = ThermalAnalysisProcessingResult(
@@ -931,6 +1252,10 @@ def process_thermal_result(
         provenance_files.append(context_ref)
     if baseline_ref:
         provenance_files.append(baseline_ref)
+    if transition_table_ref:
+        provenance_files.append(transition_table_ref)
+    if transition_record_ref:
+        provenance_files.append(transition_record_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="thermal_analysis_processing",
@@ -991,6 +1316,8 @@ def process_thermal_result(
                     str(processed_csv.relative_to(root)),
                     str(features_csv.relative_to(root)),
                     baseline_ref,
+                    transition_table_ref,
+                    transition_record_ref,
                     context_ref,
                 ]
                 if value

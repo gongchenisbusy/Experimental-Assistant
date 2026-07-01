@@ -53,6 +53,26 @@ def _write_dsc_fixture(path: Path) -> Path:
     return path
 
 
+def _write_dsc_transition_fixture(path: Path) -> Path:
+    lines = [
+        "# temperature_unit = C",
+        "# signal_unit = mW/mg",
+        "# measurement_mode = dsc",
+        "# technique = DSC heat flow with reviewed transition windows",
+        "temperature_C heat_flow_mW_mg",
+    ]
+    for index in range(900):
+        temperature = 30.0 + index * (230.0 / 899.0)
+        baseline = 0.001 * (temperature - 30.0)
+        glass_step = 0.08 / (1.0 + math.exp(-(temperature - 95.0) / 3.0))
+        endotherm = -0.48 * math.exp(-((temperature - 145.0) ** 2) / (2.0 * 7.0**2))
+        exotherm = 0.34 * math.exp(-((temperature - 210.0) ** 2) / (2.0 * 8.0**2))
+        signal = baseline + glass_step + endotherm + exotherm
+        lines.append(f"{temperature:.4f} {signal:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def test_inspect_synthetic_thermal_fixture(tmp_path: Path) -> None:
     fixture = _write_thermal_fixture(tmp_path / "synthetic-thermal-tga.txt")
 
@@ -640,6 +660,229 @@ def test_thermal_baseline_correction_applies_reviewed_linear_model(tmp_path: Pat
     assert thermal["outputs"]["baseline_correction"] in report_body
 
 
+def test_thermal_transition_screening_extracts_reviewed_window_candidates(tmp_path: Path, capsys) -> None:
+    fixture = _write_dsc_transition_fixture(tmp_path / "synthetic-thermal-dsc-transitions.txt")
+    workspace = tmp_path / "thermal-transition-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Thermal Transition Screening",
+            "--slug",
+            "thermal-transition-screening",
+            "--direction",
+            "thermal transition screening workflow",
+            "--material",
+            "polymer film",
+            "--experiment-type",
+            "materials DSC transition screening",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "thermal_analysis",
+            "--sample-ref",
+            "sample-dsc-transition-001",
+            "--experiment-ref",
+            "exp-dsc-transition-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "temperature=temperature_C, signal=heat_flow_mW_mg, temperature_unit=C, signal_unit=mW/mg, mode=dsc",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "DSC nitrogen; reviewed transition windows for Tg, Tm, and Tc; exotherm-up convention reviewed"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_thermal_processing_parameters()
+    parameters["baseline_correction"].update(
+        {
+            "enabled": True,
+            "method": "linear_two_point",
+            "anchor_temperatures_C": [30.0, 260.0],
+        }
+    )
+    parameters["transition_analysis"].update(
+        {
+            "enabled": True,
+            "method": "reviewed_window_screening",
+            "transitions": [
+                {
+                    "transition_id": "tg-001",
+                    "transition_type": "Tg",
+                    "label": "reviewed Tg candidate window",
+                    "temperature_window_C": [85.0, 105.0],
+                    "signal_direction": "auto",
+                },
+                {
+                    "transition_id": "tm-001",
+                    "transition_type": "Tm",
+                    "label": "reviewed melting candidate window",
+                    "temperature_window_C": [135.0, 155.0],
+                    "signal_direction": "endotherm_down",
+                },
+                {
+                    "transition_id": "tc-001",
+                    "transition_type": "Tc",
+                    "label": "reviewed crystallization candidate window",
+                    "temperature_window_C": [200.0, 220.0],
+                    "signal_direction": "exotherm_up",
+                },
+            ],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "thermal_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "thermal",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-transition-001",
+            "--temperature-column",
+            "temperature_C",
+            "--signal-column",
+            "heat_flow_mW_mg",
+            "--temperature-unit",
+            "C",
+            "--signal-unit",
+            "mW/mg",
+            "--measurement-mode",
+            "dsc",
+            "--context-summary",
+            context_text,
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(
+                {
+                    "baseline_correction": parameters["baseline_correction"],
+                    "transition_analysis": parameters["transition_analysis"],
+                },
+                ensure_ascii=False,
+            ),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    thermal_metadata = Path(process_output["metadata"])
+    thermal = read_yaml(thermal_metadata)
+
+    transition_record = thermal["peak_analysis"]["transition_analysis"]
+    assert transition_record["status"] == "reviewed_transition_candidates_recorded"
+    assert transition_record["transition_count"] == 3
+    assert "does not make formal Tg/Tm/Tc assignments" in transition_record["boundary"]
+    assert thermal["outputs"]["transition_table"].endswith("thermal_transitions.csv")
+    assert thermal["outputs"]["transition_record"].endswith("thermal_transitions.yml")
+    saved_transition = read_yaml(workspace / thermal["outputs"]["transition_record"])
+    assert saved_transition["record_ref"] == thermal["outputs"]["transition_record"]
+    assert saved_transition["table_ref"] == thermal["outputs"]["transition_table"]
+
+    transition_table = pd.read_csv(workspace / thermal["outputs"]["transition_table"])
+    assert set(transition_table["transition_id"]) == {"tg-001", "tm-001", "tc-001"}
+    tg = transition_table.set_index("transition_id").loc["tg-001"]
+    tm = transition_table.set_index("transition_id").loc["tm-001"]
+    tc = transition_table.set_index("transition_id").loc["tc-001"]
+    assert 90.0 <= float(tg["estimated_temperature_C"]) <= 100.0
+    assert tg["metric"] == "derivative_absolute_extremum"
+    assert 140.0 <= float(tm["estimated_temperature_C"]) <= 150.0
+    assert tm["metric"] == "signal_minimum"
+    assert 205.0 <= float(tc["estimated_temperature_C"]) <= 215.0
+    assert tc["metric"] == "signal_maximum"
+    assert thermal["outputs"]["transition_table"] in thermal["peak_analysis"]["possible_interpretations"][-1]["evidence"]
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][thermal["figure_id"]]
+    assert thermal["outputs"]["transition_table"] in figure_record["source_data_refs"]
+    assert thermal["outputs"]["transition_record"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "thermal",
+            "report",
+            str(workspace),
+            "--metadata",
+            thermal_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-dsc-transition-001",
+            "--experiment-ref",
+            "exp-dsc-transition-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Thermal transition screening" in report_body
+    assert "reviewed_window_screening" in report_body
+    assert "tg-001" in report_body
+    assert "不是正式相变赋值" in report_body
+    assert thermal["outputs"]["transition_table"] in report_body
+
+
 def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -656,8 +899,10 @@ def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     assert "context_review_ref" in reference_text
     assert "context_record" in reference_text
     assert "baseline_correction" in reference_text
+    assert "transition_analysis" in reference_text
     assert "kinetic" in reference_text
     thermal_record = next(item for item in registry["skills"] if item["id"] == "ea.thermal-analysis")
     assert "Minimal thermal analysis workflow implemented" in thermal_record["notes"]
     assert "context_records" in thermal_record["notes"]
     assert "baseline_corrections" in thermal_record["notes"]
+    assert "transition_screening" in thermal_record["notes"]

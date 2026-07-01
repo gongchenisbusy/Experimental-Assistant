@@ -11,6 +11,8 @@ ea_skill:
   output_artifacts:
     - processed_result
     - baseline_correction
+    - transition_table
+    - transition_record
     - context_record
     - figure_record
     - report_section
@@ -87,8 +89,22 @@ ea_skill:
         - baseline_estimate
         - baseline_corrected_signal
       boundary: numeric_processing_only_no_transition_assignment_kinetics_stability_ranking_or_mechanism_claim
+    transition_screening:
+      source: ea.thermal.transition_analysis:v0.2
+      default_enabled: false
+      method: reviewed_window_screening
+      supported_modes:
+        - dsc
+      supported_candidates:
+        - Tg
+        - Tm
+        - Tc
+      output_artifacts:
+        - thermal_transitions.csv
+        - thermal_transitions.yml
+      boundary: reviewed_window_candidate_metrics_only_no_formal_transition_assignment_kinetics_stability_ranking_or_mechanism_claim
     limitations:
-      - no_glass_transition_or_melting_assignment_without_future_protocol_model
+      - no_formal_glass_transition_or_melting_assignment_without_user_review_and_future_protocol_model
       - no_kinetic_model_fitting
       - no_reference_correction_or_nonlinear_baseline_model
       - no_formal_thermal_stability_ranking_without_replicates_and_user_review
