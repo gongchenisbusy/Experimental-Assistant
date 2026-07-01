@@ -772,6 +772,36 @@ def test_thermal_transition_screening_extracts_reviewed_window_candidates(tmp_pa
             ],
         }
     )
+    parameters["transition_assignment"].update(
+        {
+            "enabled": True,
+            "method": "user_confirmed_transition_assignments",
+            "assignments": [
+                {
+                    "assignment_id": "ta-tg-001",
+                    "transition_id": "tg-001",
+                    "assigned_transition_type": "Tg",
+                    "assigned_label": "user-confirmed glass-transition assignment",
+                    "confidence": "medium",
+                    "evidence_refs": ["thermal_transitions.csv:tg-001", "thermal_context_review"],
+                    "reference_ids": ["ref-polymer-dsc-001"],
+                    "reviewer_notes": ["User confirmed Tg label after reviewing DSC context and candidate window."],
+                    "caveats": ["Needs replicate DSC runs before publication-level assignment."],
+                },
+                {
+                    "assignment_id": "ta-tm-001",
+                    "transition_id": "tm-001",
+                    "assigned_transition_type": "Tm",
+                    "assigned_label": "user-confirmed melting assignment",
+                    "confidence": "medium",
+                    "evidence_refs": ["thermal_transitions.csv:tm-001", "exotherm_up_context"],
+                    "reference_ids": ["ref-polymer-dsc-001"],
+                    "reviewer_notes": ["User confirmed melting label for the endotherm-down candidate."],
+                    "caveats": ["No kinetic interpretation from this single trace."],
+                },
+            ],
+        }
+    )
     assert main(
         [
             "review",
@@ -823,6 +853,7 @@ def test_thermal_transition_screening_extracts_reviewed_window_candidates(tmp_pa
                 {
                     "baseline_correction": parameters["baseline_correction"],
                     "transition_analysis": parameters["transition_analysis"],
+                    "transition_assignment": parameters["transition_assignment"],
                 },
                 ensure_ascii=False,
             ),
@@ -853,11 +884,27 @@ def test_thermal_transition_screening_extracts_reviewed_window_candidates(tmp_pa
     assert tm["metric"] == "signal_minimum"
     assert 205.0 <= float(tc["estimated_temperature_C"]) <= 215.0
     assert tc["metric"] == "signal_maximum"
-    assert thermal["outputs"]["transition_table"] in thermal["peak_analysis"]["possible_interpretations"][-1]["evidence"]
+    assert any(
+        thermal["outputs"]["transition_table"] in item.get("evidence", [])
+        for item in thermal["peak_analysis"]["possible_interpretations"]
+    )
+
+    assignment_record = thermal["peak_analysis"]["transition_assignment"]
+    assert assignment_record["status"] == "reviewed_transition_assignments_recorded"
+    assert assignment_record["assignment_count"] == 2
+    assert "does not infer formal Tg/Tm/Tc" in assignment_record["boundary"]
+    assert thermal["outputs"]["transition_assignment"].endswith("thermal_transition_assignments.yml")
+    saved_assignment = read_yaml(workspace / thermal["outputs"]["transition_assignment"])
+    assert saved_assignment["record_ref"] == thermal["outputs"]["transition_assignment"]
+    assert saved_assignment["assignments"][0]["candidate_link_status"] == "linked_to_screening_candidate"
+    assert 90.0 <= float(saved_assignment["assignments"][0]["assigned_temperature_C"]) <= 100.0
+    assert saved_assignment["assignments"][0]["reference_ids"] == ["ref-polymer-dsc-001"]
+    assert thermal["outputs"]["transition_assignment"] in thermal["peak_analysis"]["possible_interpretations"][-1]["evidence"]
 
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][thermal["figure_id"]]
     assert thermal["outputs"]["transition_table"] in figure_record["source_data_refs"]
     assert thermal["outputs"]["transition_record"] in figure_record["source_data_refs"]
+    assert thermal["outputs"]["transition_assignment"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -881,6 +928,10 @@ def test_thermal_transition_screening_extracts_reviewed_window_candidates(tmp_pa
     assert "tg-001" in report_body
     assert "不是正式相变赋值" in report_body
     assert thermal["outputs"]["transition_table"] in report_body
+    assert "## Thermal transition assignments" in report_body
+    assert "ta-tg-001" in report_body
+    assert "用户确认" in report_body
+    assert thermal["outputs"]["transition_assignment"] in report_body
 
 
 def test_thermal_docs_and_skill_references_are_discoverable() -> None:
@@ -900,9 +951,11 @@ def test_thermal_docs_and_skill_references_are_discoverable() -> None:
     assert "context_record" in reference_text
     assert "baseline_correction" in reference_text
     assert "transition_analysis" in reference_text
+    assert "transition_assignment" in reference_text
     assert "kinetic" in reference_text
     thermal_record = next(item for item in registry["skills"] if item["id"] == "ea.thermal-analysis")
     assert "Minimal thermal analysis workflow implemented" in thermal_record["notes"]
     assert "context_records" in thermal_record["notes"]
     assert "baseline_corrections" in thermal_record["notes"]
     assert "transition_screening" in thermal_record["notes"]
+    assert "transition_assignments" in thermal_record["notes"]

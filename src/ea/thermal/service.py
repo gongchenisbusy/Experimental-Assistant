@@ -144,6 +144,12 @@ def default_thermal_processing_parameters() -> dict[str, Any]:
             "source": "ea.thermal.transition_analysis:v0.2",
             "transitions": [],
         },
+        "transition_assignment": {
+            "enabled": False,
+            "method": "user_confirmed_transition_assignments",
+            "source": "ea.thermal.transition_assignment:v0.2",
+            "assignments": [],
+        },
         "context_record": {
             "enabled": False,
             "method": "reviewed_metadata_record",
@@ -853,6 +859,197 @@ def _has_context_payload(value: Any) -> bool:
     return True
 
 
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _transition_candidate_lookup(transitions: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if transitions.empty or "transition_id" not in transitions.columns:
+        return {}
+    candidates: dict[str, dict[str, Any]] = {}
+    for _, row in transitions.iterrows():
+        transition_id = str(row.get("transition_id") or "").strip()
+        if not transition_id:
+            continue
+        candidates[transition_id] = {
+            "transition_type": row.get("transition_type"),
+            "estimated_temperature_C": row.get("estimated_temperature_C"),
+            "metric": row.get("metric"),
+            "status": row.get("status"),
+        }
+    return candidates
+
+
+def _reviewed_transition_assignment(
+    spec: dict[str, Any],
+    *,
+    number: int,
+    source: str,
+    candidates: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    assignment_id = str(spec.get("assignment_id") or f"thermal-transition-assignment-{number:03d}")
+    transition_id = str(spec.get("transition_id") or spec.get("candidate_transition_id") or "").strip()
+    assigned_type = _normalized_transition_type(
+        spec.get("assigned_transition_type") or spec.get("transition_type") or spec.get("type") or "other"
+    )
+    assigned_label = str(spec.get("assigned_label") or spec.get("label") or assigned_type)
+    confidence = str(spec.get("confidence") or spec.get("assignment_confidence") or "low").strip().lower()
+    if confidence not in {"high", "medium", "low", "insufficient"}:
+        warnings.append(
+            _warning(
+                "thermal_transition_assignment_confidence_normalized",
+                "Thermal transition assignment confidence was not one of high/medium/low/insufficient and was normalized to low.",
+                severity="low",
+                assignment_id=assignment_id,
+                supplied_confidence=confidence,
+            )
+        )
+        confidence = "low"
+    candidate = candidates.get(transition_id) if transition_id else None
+    candidate_temperature = _as_float(spec.get("candidate_temperature_C"))
+    candidate_metric = str(spec.get("candidate_metric") or "")
+    candidate_link_status = "not_linked"
+    if transition_id:
+        if candidate:
+            candidate_link_status = "linked_to_screening_candidate"
+            candidate_temperature = candidate_temperature if candidate_temperature is not None else _as_float(candidate.get("estimated_temperature_C"))
+            candidate_metric = candidate_metric or str(candidate.get("metric") or "")
+        else:
+            candidate_link_status = "candidate_not_found"
+            warnings.append(
+                _warning(
+                    "thermal_transition_assignment_candidate_missing",
+                    "A user-confirmed transition assignment refers to a transition_id that was not found in the current screening table.",
+                    severity="medium",
+                    assignment_id=assignment_id,
+                    transition_id=transition_id,
+                )
+            )
+    assigned_temperature = _as_float(spec.get("assigned_temperature_C") or spec.get("temperature_C"))
+    if assigned_temperature is None:
+        assigned_temperature = candidate_temperature
+    status = "user_confirmed_assignment_recorded"
+    if not transition_id and not _has_context_payload(assigned_label):
+        status = "skipped_missing_assignment_target"
+        warnings.append(
+            _warning(
+                "thermal_transition_assignment_missing_target",
+                "A transition assignment was skipped because no transition_id or label was supplied.",
+                severity="medium",
+                assignment_id=assignment_id,
+            )
+        )
+    return (
+        {
+            "assignment_id": assignment_id,
+            "transition_id": transition_id,
+            "assigned_transition_type": assigned_type,
+            "assigned_label": assigned_label,
+            "assigned_temperature_C": assigned_temperature,
+            "candidate_temperature_C": candidate_temperature,
+            "candidate_metric": candidate_metric,
+            "candidate_link_status": candidate_link_status,
+            "review_status": str(spec.get("review_status") or "user_confirmed"),
+            "confidence": confidence,
+            "evidence_refs": _coerce_string_list(spec.get("evidence_refs") or spec.get("evidence")),
+            "reference_ids": _coerce_string_list(spec.get("reference_ids")),
+            "reviewer_notes": _coerce_string_list(spec.get("reviewer_notes") or spec.get("notes")),
+            "caveats": _coerce_string_list(spec.get("caveats")),
+            "status": status,
+            "assignment_source": source,
+            "boundary": (
+                "This thermal transition assignment is a user-confirmed interpretation record linked to reviewed evidence; "
+                "it is not an automatic transition assignment, kinetic fit, thermal-stability ranking, or mechanism proof."
+            ),
+        },
+        warnings,
+    )
+
+
+def _record_transition_assignments(
+    parameters: dict[str, Any],
+    request: ThermalAnalysisProcessingRequest,
+    transitions: pd.DataFrame,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("transition_assignment", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "user_confirmed_transition_assignments")
+    source = str(params.get("source") or "ea.thermal.transition_assignment:v0.2")
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "measurement_mode": request.measurement_mode,
+        "confidence": "insufficient",
+        "assignment_count": 0,
+        "assignments": [],
+        "boundary": (
+            "Thermal transition assignment records store user-confirmed interpretation and provenance only. EA does not infer formal Tg/Tm/Tc "
+            "labels automatically from screening metrics, fit kinetic models, rank thermal stability, or prove decomposition, melting, crystallization, or mechanism claims."
+        ),
+    }
+    if method != "user_confirmed_transition_assignments":
+        warning = _warning("thermal_transition_assignment_method_unsupported", "Thermal transition assignment method is not supported by EA v0.2.", severity="medium", method=method)
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_method", "warnings": warnings})
+        return record, warnings
+    if request.measurement_mode != "dsc":
+        warning = _warning(
+            "thermal_transition_assignment_mode_unsupported",
+            "Thermal transition assignments are currently supported only for reviewed DSC traces.",
+            severity="medium",
+            measurement_mode=request.measurement_mode,
+        )
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_mode", "warnings": warnings})
+        return record, warnings
+    specs = params.get("assignments", [])
+    if not isinstance(specs, list) or not specs:
+        warning = _warning("thermal_transition_assignments_missing", "transition_assignment was enabled, but no reviewed assignments were supplied.", severity="medium")
+        warnings.append(warning)
+        record.update({"status": "enabled_without_reviewed_assignments", "warnings": warnings})
+        return record, warnings
+
+    candidates = _transition_candidate_lookup(transitions)
+    assignments: list[dict[str, Any]] = []
+    for number, spec in enumerate(specs, start=1):
+        if not isinstance(spec, dict):
+            warnings.append(
+                _warning(
+                    "thermal_transition_assignment_ignored",
+                    "A transition assignment was ignored because it was not a mapping.",
+                    severity="medium",
+                    assignment_number=number,
+                )
+            )
+            continue
+        assignment, assignment_warnings = _reviewed_transition_assignment(spec, number=number, source=source, candidates=candidates)
+        assignments.append(assignment)
+        warnings.extend(assignment_warnings)
+    recorded = [item for item in assignments if item.get("status") == "user_confirmed_assignment_recorded"]
+    reference_ids = sorted({reference_id for item in recorded for reference_id in item.get("reference_ids", [])})
+    record.update(
+        {
+            "status": "reviewed_transition_assignments_recorded" if recorded else "no_transition_assignments_recorded",
+            "assignment_count": len(recorded),
+            "assignments": assignments,
+            "reference_ids": reference_ids,
+            "confidence": "low" if recorded else "insufficient",
+            "warnings": warnings,
+        }
+    )
+    return record, warnings
+
+
 def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
     value = params.get(name, {})
     if isinstance(value, dict):
@@ -996,6 +1193,26 @@ def _append_transition_interpretation(analysis: dict[str, Any], transition_recor
     return analysis
 
 
+def _append_transition_assignment_interpretation(analysis: dict[str, Any], assignment_record: dict[str, Any] | None) -> dict[str, Any]:
+    if not assignment_record:
+        return analysis
+    analysis["transition_assignment"] = assignment_record
+    if assignment_record.get("status") == "reviewed_transition_assignments_recorded":
+        assignment_count = int(assignment_record.get("assignment_count") or 0)
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"User-confirmed thermal transition assignment records were saved for {assignment_count} reviewed transition(s). "
+                    "Treat these records as reviewed interpretation with provenance, not as automatic transition assignment, kinetic fitting, stability ranking, or mechanism proof."
+                ),
+                "confidence": assignment_record.get("confidence", "low"),
+                "evidence": ["transition_assignment", "transition_assignment_record"],
+                "assignment_source": assignment_record.get("assignment_source", "ea.thermal.transition_assignment:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -1003,6 +1220,7 @@ def _summary(
     context_record: dict[str, Any] | None = None,
     baseline_record: dict[str, Any] | None = None,
     transition_record: dict[str, Any] | None = None,
+    transition_assignment_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     temperature = processed["temperature_C"].to_numpy(dtype=float)
     signal = processed["processed_signal"].to_numpy(dtype=float)
@@ -1051,7 +1269,8 @@ def _summary(
         )
     analysis = _append_context_interpretation(analysis, context_record)
     analysis = _append_baseline_interpretation(analysis, baseline_record)
-    return _append_transition_interpretation(analysis, transition_record)
+    analysis = _append_transition_interpretation(analysis, transition_record)
+    return _append_transition_assignment_interpretation(analysis, transition_assignment_record)
 
 
 def _created_day(created_at: str | None) -> str | None:
@@ -1136,8 +1355,9 @@ def process_thermal_result(
     processed, processing_warnings, baseline_record = _apply_processing(_confirmed_frame(raw_path, request), request, parameters)
     features = _detect_features(processed, parameters, request)
     transitions, transition_record, transition_warnings = _analyze_transitions(processed, parameters, request)
+    transition_assignment_record, transition_assignment_warnings = _record_transition_assignments(parameters, request, transitions)
     context_record, context_warnings = _record_context(parameters)
-    analysis = _summary(processed, features, request, context_record, baseline_record, transition_record)
+    analysis = _summary(processed, features, request, context_record, baseline_record, transition_record, transition_assignment_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -1153,11 +1373,12 @@ def process_thermal_result(
     transitions_csv = output_dir / "thermal_transitions.csv"
     baseline_yml = output_dir / "thermal_baseline.yml"
     transitions_yml = output_dir / "thermal_transitions.yml"
+    transition_assignments_yml = output_dir / "thermal_transition_assignments.yml"
     context_yml = output_dir / "thermal_context.yml"
     figure_name = f"{figure_id}.png" if figure_id else "thermal_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "thermal_metadata.yml"
-    for output in [processed_csv, features_csv, transitions_csv, baseline_yml, transitions_yml, context_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, transitions_csv, baseline_yml, transitions_yml, transition_assignments_yml, context_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1179,6 +1400,17 @@ def process_thermal_result(
             evidence = item.get("evidence")
             if isinstance(evidence, list):
                 item["evidence"] = [transition_table_ref if value == "transition_table" else value for value in evidence]
+    transition_assignment_ref: str | None = None
+    if transition_assignment_record is not None:
+        transition_assignment_ref = str(transition_assignments_yml.relative_to(root))
+        transition_assignment_record["record_ref"] = transition_assignment_ref
+        write_yaml(transition_assignments_yml, transition_assignment_record)
+        if analysis.get("transition_assignment"):
+            analysis["transition_assignment"]["record_ref"] = transition_assignment_ref
+        for item in analysis.get("possible_interpretations", []):
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [transition_assignment_ref if value == "transition_assignment_record" else value for value in evidence]
     baseline_ref: str | None = None
     if baseline_record is not None:
         baseline_ref = str(baseline_yml.relative_to(root))
@@ -1204,6 +1436,7 @@ def process_thermal_result(
         warnings.append(_warning("thermal_context_missing", "Thermal temperature-program/sample/atmosphere context summary is empty.", severity="medium"))
     warnings.extend(processing_warnings)
     warnings.extend(transition_warnings)
+    warnings.extend(transition_assignment_warnings)
     warnings.extend(context_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
@@ -1218,6 +1451,8 @@ def process_thermal_result(
         outputs["transition_table"] = transition_table_ref
     if transition_record_ref:
         outputs["transition_record"] = transition_record_ref
+    if transition_assignment_ref:
+        outputs["transition_assignment"] = transition_assignment_ref
     if context_ref:
         outputs["context_record"] = context_ref
     result = ThermalAnalysisProcessingResult(
@@ -1256,6 +1491,8 @@ def process_thermal_result(
         provenance_files.append(transition_table_ref)
     if transition_record_ref:
         provenance_files.append(transition_record_ref)
+    if transition_assignment_ref:
+        provenance_files.append(transition_assignment_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="thermal_analysis_processing",
@@ -1318,6 +1555,7 @@ def process_thermal_result(
                     baseline_ref,
                     transition_table_ref,
                     transition_record_ref,
+                    transition_assignment_ref,
                     context_ref,
                 ]
                 if value

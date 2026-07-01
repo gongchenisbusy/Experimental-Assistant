@@ -9,7 +9,7 @@ Required gates:
 3. Ask for or verify temperature program, atmosphere, sample mass, DSC sign convention, and baseline/reference context before analysis. Record `context_summary` and `context_review_ref`.
 4. Ask for or verify processing parameters before analysis.
 5. Keep raw data untouched; write processed outputs outside `raw/`.
-6. Record temperature conversion, optional smoothing, optional reviewed `baseline_correction`, derivative/mass-loss summaries, detected screening events, optional reviewed `transition_analysis`, optional reviewed `context_record`, generated figure, report, and provenance.
+6. Record temperature conversion, optional smoothing, optional reviewed `baseline_correction`, derivative/mass-loss summaries, detected screening events, optional reviewed `transition_analysis`, optional user-confirmed `transition_assignment`, optional reviewed `context_record`, generated figure, report, and provenance.
 7. Treat automatic events as screening evidence. Use protocol context, baselines, replicates, instrument settings, and literature before writing decomposition, transition, kinetic, composition, or thermal-stability conclusions.
 8. Write memory candidates only after user confirmation.
 
@@ -23,8 +23,9 @@ Current v0.2 thermal support:
 - Optional disabled-by-default `context_record` preserves reviewed DSC sign convention, baseline/reference handling, sample context, atmosphere/program context, and correction notes in `thermal_context.yml`.
 - Optional disabled-by-default `baseline_correction` applies a reviewed two-point linear baseline to DSC/DTG-style traces and records `thermal_baseline.yml`.
 - Optional disabled-by-default `transition_analysis` screens user-reviewed DSC windows for Tg/Tm/Tc-style candidate metrics and records `thermal_transitions.csv` plus `thermal_transitions.yml`.
-- Reports include an embedded thermal figure, original figure path, context section, optional baseline-correction section, optional transition-screening section, optional context-record section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
-- First-pass support does not perform formal glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, non-linear/reference correction, replicate statistics, or formal thermal-stability ranking.
+- Optional disabled-by-default `transition_assignment` preserves user-confirmed Tg/Tm/Tc-style interpretation records that link to reviewed screening candidates, evidence refs, reference IDs, confidence, notes, and caveats in `thermal_transition_assignments.yml`.
+- Reports include an embedded thermal figure, original figure path, context section, optional baseline-correction section, optional transition-screening section, optional transition-assignment section, optional context-record section, event table, mass/signal summary, confidence-labeled possible interpretations, file links, References, and provenance.
+- First-pass support does not perform automatic formal glass-transition assignment, melting/crystallization assignment, decomposition mechanism identification, kinetic modeling, non-linear/reference correction, replicate statistics, or formal thermal-stability ranking.
 
 CLI path:
 
@@ -100,4 +101,29 @@ transition_analysis:
 
 Transition screening extracts candidate metrics only inside reviewed DSC windows. It does not make formal Tg/Tm/Tc assignments, fit kinetics, rank thermal stability, or prove decomposition/melting/crystallization mechanisms.
 
-Future thermal work should add formal user-confirmed transition assignment workflows, non-linear/reference correction workflows, kinetic models, replicate comparison, reference libraries, and user-confirmed memory-candidate generation from report interpretations.
+Optional transition-assignment parameters:
+
+```yaml
+transition_assignment:
+  enabled: true
+  method: user_confirmed_transition_assignments
+  assignments:
+    - assignment_id: ta-tg-001
+      transition_id: tg-001
+      assigned_transition_type: Tg
+      assigned_label: user-confirmed glass-transition assignment
+      confidence: medium
+      evidence_refs:
+        - thermal_transitions.csv:tg-001
+        - reviewed_dsc_context
+      reference_ids:
+        - ref-polymer-dsc-001
+      reviewer_notes:
+        - User confirmed Tg after reviewing DSC context and candidate window.
+      caveats:
+        - Needs replicate DSC runs before publication-level assignment.
+```
+
+Transition assignments are user-confirmed interpretation records. They do not make EA infer formal Tg/Tm/Tc labels automatically, fit kinetics, rank thermal stability, or prove decomposition/melting/crystallization mechanisms.
+
+Future thermal work should add non-linear/reference correction workflows, kinetic models, replicate comparison, reference libraries, and user-confirmed memory-candidate generation from report interpretations.

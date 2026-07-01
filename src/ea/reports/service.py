@@ -2036,6 +2036,56 @@ def _thermal_transition_table(root: Path, transition_table_ref: str | None) -> s
     return "\n".join(rows)
 
 
+def _thermal_transition_assignment_text(metadata: dict) -> str:
+    assignment = (metadata.get("peak_analysis") or {}).get("transition_assignment")
+    if not assignment:
+        return "当前没有启用或记录 user-confirmed thermal transition assignments。"
+    status = assignment.get("status", "unknown")
+    count = assignment.get("assignment_count", 0)
+    confidence = assignment.get("confidence", "insufficient")
+    source = assignment.get("assignment_source", "ea.thermal.transition_assignment:v0.2")
+    record_ref = assignment.get("record_ref", "未生成")
+    method = assignment.get("method", "未记录")
+    reference_ids = assignment.get("reference_ids") or []
+    reference_text = "、".join(str(item) for item in reference_ids) if reference_ids else "未绑定 reference_id"
+    return (
+        f"Thermal transition assignment 状态为 `{status}`；assignment count: `{count}`；method: `{method}`；"
+        f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
+        "该记录保存用户确认的 transition interpretation 及其证据/引用链接；它不是 EA 自动从候选峰生成的正式相变赋值，也不是动力学拟合、热稳定性排名或机理证明。"
+    )
+
+
+def _thermal_transition_assignment_table(metadata: dict) -> str:
+    assignment = (metadata.get("peak_analysis") or {}).get("transition_assignment")
+    if not assignment:
+        return "当前没有可展示的 user-confirmed transition assignment 表。"
+    assignments = assignment.get("assignments") or []
+    if not assignments:
+        return "当前 transition assignment record 未生成 assignment 行。"
+    rows = [
+        "| assignment_id | transition_id | assigned type | assigned T (C) | candidate link | confidence | references |",
+        "|---|---|---|---:|---|---|---|",
+    ]
+    for item in assignments[:12]:
+        if not isinstance(item, dict):
+            continue
+        temperature = item.get("assigned_temperature_C")
+        references = item.get("reference_ids") or []
+        reference_text = ", ".join(str(ref) for ref in references) if references else "n/a"
+        rows.append(
+            "| {assignment_id} | {transition_id} | {assigned_type} | {temperature} | {link_status} | {confidence} | {references} |".format(
+                assignment_id=item.get("assignment_id", "n/a"),
+                transition_id=item.get("transition_id", "n/a") or "n/a",
+                assigned_type=item.get("assigned_transition_type", "n/a"),
+                temperature=f"{float(temperature):.2f}" if temperature is not None else "n/a",
+                link_status=item.get("candidate_link_status", "n/a"),
+                confidence=item.get("confidence", "insufficient"),
+                references=reference_text,
+            )
+        )
+    return "\n".join(rows)
+
+
 def generate_thermal_report(
     root: Path,
     *,
@@ -2078,6 +2128,8 @@ def generate_thermal_report(
     baseline_text = _thermal_baseline_correction_text(metadata)
     transition_text = _thermal_transition_screening_text(metadata)
     transition_table = _thermal_transition_table(root, outputs.get("transition_table"))
+    transition_assignment_text = _thermal_transition_assignment_text(metadata)
+    transition_assignment_table = _thermal_transition_assignment_table(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -2120,6 +2172,12 @@ def generate_thermal_report(
 
 {transition_table}
 
+## Thermal transition assignments
+
+{transition_assignment_text}
+
+{transition_assignment_table}
+
 ## 图谱
 
 {figure_embed}
@@ -2157,6 +2215,7 @@ def generate_thermal_report(
 {f"- baseline correction: `{outputs['baseline_correction']}`" if outputs.get('baseline_correction') else "- baseline correction: `未生成`"}
 {f"- transition table: `{outputs['transition_table']}`" if outputs.get('transition_table') else "- transition table: `未生成`"}
 {f"- transition record: `{outputs['transition_record']}`" if outputs.get('transition_record') else "- transition record: `未生成`"}
+{f"- transition assignment: `{outputs['transition_assignment']}`" if outputs.get('transition_assignment') else "- transition assignment: `未生成`"}
 {f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
@@ -2189,6 +2248,7 @@ def generate_thermal_report(
                     outputs.get("baseline_correction"),
                     outputs.get("transition_table"),
                     outputs.get("transition_record"),
+                    outputs.get("transition_assignment"),
                     outputs.get("context_record"),
                     outputs["figure"],
                 ]
