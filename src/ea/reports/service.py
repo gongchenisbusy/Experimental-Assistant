@@ -1317,7 +1317,7 @@ def _xps_background_model_text(metadata: dict) -> str:
         f"Reviewed XPS background model record 状态为 `{status}`；region count: `{count}`；record: `{record_ref}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
         "该记录保存用户审核的 Shirley/Tougaard/linear/local-minimum/rolling-quantile 等背景模型选择、区域和来源；"
-        "本阶段不自动执行 Shirley/Tougaard 扣背景、不进行 spin-orbit constrained fitting，也不证明化学态或组成。"
+        "该 background model record 本身不执行扣背景、不进行 spin-orbit constrained fitting，也不证明化学态或组成。"
     )
 
 
@@ -1354,21 +1354,23 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
     subtraction = (metadata.get("peak_analysis") or {}).get("background_subtraction") or {}
     if not subtraction:
         return "当前没有启用或记录 XPS background subtraction。"
+    method = subtraction.get("method", "reviewed_linear_background_subtraction")
+    method_label = "Shirley" if method == "reviewed_shirley_background_subtraction" else "linear"
     status = subtraction.get("status", "unknown")
     corrected_count = subtraction.get("corrected_region_count", 0)
     region_count = subtraction.get("region_count", 0)
     confidence = subtraction.get("confidence", "insufficient")
     source = subtraction.get("assignment_source", "ea.xps.background_subtraction:v0.2")
     record_ref = subtraction.get("record_ref", "未生成")
-    background_column = subtraction.get("background_column", "xps_linear_background")
+    background_column = subtraction.get("background_column", "xps_background")
     corrected_column = subtraction.get("corrected_intensity_column", "xps_background_subtracted_intensity")
     references = subtraction.get("reference_ids") or []
     reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
     return (
-        f"Reviewed XPS linear background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
+        f"Reviewed XPS {method_label} background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
         f"record: `{record_ref}`；background column: `{background_column}`；corrected column: `{corrected_column}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
-        "该记录只表示用户审核过的线性数值扣背景预处理；EA 不自动选择端点/窗口，不执行 Shirley/Tougaard 扣背景，"
+        "该记录只表示用户审核过的数值扣背景预处理；EA 不自动选择端点/窗口，不执行未声明的 Tougaard 或峰拟合模型，"
         "也不据此证明化学态、组成或 spin-orbit constrained fitting。"
     )
 
@@ -1379,9 +1381,10 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
     if not regions:
         return "当前没有可展示的 XPS background subtraction region。"
     rows = [
-        "| region_id | window (eV) | left anchor (eV) | right anchor (eV) | points | status | confidence |",
-        "|---|---:|---:|---:|---:|---|---|",
+        "| region_id | method | algorithm | window (eV) | left anchor (eV) | right anchor (eV) | points | iterations | converged | status | confidence |",
+        "|---|---|---|---:|---:|---:|---:|---:|---|---|---|",
     ]
+    method = subtraction.get("method", "reviewed_linear_background_subtraction")
     for region in regions[:12]:
         if not isinstance(region, dict):
             continue
@@ -1392,12 +1395,16 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
         left_x = left.get("binding_energy_eV") if isinstance(left, dict) else None
         right_x = right.get("binding_energy_eV") if isinstance(right, dict) else None
         rows.append(
-            "| {region_id} | {window} | {left} | {right} | {points} | {status} | {confidence} |".format(
+            "| {region_id} | {method} | {algorithm} | {window} | {left} | {right} | {points} | {iterations} | {converged} | {status} | {confidence} |".format(
                 region_id=region.get("region_id", "n/a"),
+                method=method,
+                algorithm=region.get("algorithm", "n/a"),
                 window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
                 left=f"{float(left_x):.2f}" if left_x is not None else "n/a",
                 right=f"{float(right_x):.2f}" if right_x is not None else "n/a",
                 points=region.get("point_count", 0),
+                iterations=region.get("iterations", "n/a"),
+                converged=region.get("converged", "n/a"),
                 status=region.get("status", "unknown"),
                 confidence=region.get("confidence", "insufficient"),
             )
@@ -1508,7 +1515,7 @@ def generate_xps_report(
 
 {background_table}
 
-## XPS reviewed linear background subtraction
+## XPS reviewed background subtraction
 
 {background_subtraction_summary}
 

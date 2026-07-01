@@ -135,6 +135,34 @@ def _component_quantification_parameters() -> dict:
     return parameters
 
 
+def _shirley_background_subtraction_parameters() -> dict:
+    parameters = default_xps_processing_parameters()
+    parameters["background_subtraction"] = {
+        "enabled": True,
+        "method": "reviewed_shirley_background_subtraction",
+        "source": "ea.xps.background_subtraction:v0.2",
+        "input_intensity_column": "processed_intensity",
+        "min_points": 5,
+        "max_iterations": 200,
+        "tolerance": 1e-5,
+        "reference_ids": ["ref-xps-background-001"],
+        "regions": [
+            {
+                "region_id": "xps-shirley-c1s-001",
+                "label": "C 1s reviewed Shirley background",
+                "binding_energy_window_eV": [280.0, 292.0],
+                "left_anchor_window_eV": [280.0, 281.0],
+                "right_anchor_window_eV": [291.0, 292.0],
+                "reference_ids": ["ref-xps-background-001"],
+                "reviewer_notes": ["User confirmed endpoint windows and Shirley iteration settings."],
+                "caveats": ["Reviewed Shirley preprocessing only; not chemical-state proof."],
+                "confidence": "low",
+            }
+        ],
+    }
+    return parameters
+
+
 def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
 
@@ -365,7 +393,7 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "xps_analysis"
     assert "## XPS background model record" in report_body
-    assert "## XPS reviewed linear background subtraction" in report_body
+    assert "## XPS reviewed background subtraction" in report_body
     assert "xps-bg-c1s-001" in report_body
     assert "xps-bgsub-c1s-001" in report_body
     assert "xps_background_subtracted_intensity" in report_body
@@ -389,6 +417,155 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert evaluation["reports"]["report_count"] == 1
 
 
+def test_cli_runs_reviewed_shirley_background_subtraction(tmp_path: Path, capsys) -> None:
+    fixture = _write_xps_fixture(tmp_path / "synthetic-xps-shirley.txt")
+    parameters = _shirley_background_subtraction_parameters()
+    workspace = tmp_path / "cli-xps-shirley-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Shirley Workflow",
+            "--slug",
+            "cli-xps-shirley",
+            "--direction",
+            "XPS Shirley workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "xps",
+            "--sample-ref",
+            "sample-xps-shirley-001",
+            "--experiment-ref",
+            "exp-xps-shirley-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    for target_type, reviewed_content in [
+        ("xps_columns", "x=binding_energy_eV, y=intensity, unit=eV"),
+        ("xps_calibration", "C 1s reference at 284.8 eV; no additional shift needed"),
+        ("xps_parameters", json.dumps(parameters, ensure_ascii=False)),
+    ]:
+        assert main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                target_type,
+                "--target-ref",
+                raw_metadata_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                reviewed_content,
+            ]
+        ) == 0
+        review = _json_output(capsys)
+        if target_type == "xps_columns":
+            column_review = review
+        elif target_type == "xps_calibration":
+            calibration_review = review
+        else:
+            parameter_review = review
+
+    assert main(
+        [
+            "xps",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-shirley-001",
+            "--x-column",
+            "binding_energy_eV",
+            "--y-column",
+            "intensity",
+            "--x-unit",
+            "eV",
+            "--energy-shift-ev",
+            "0.0",
+            "--calibration-reference",
+            "C 1s 284.8 eV user-confirmed reference",
+            "--column-review-ref",
+            column_review["review_id"],
+            "--calibration-review-ref",
+            calibration_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    xps_metadata = Path(process_output["metadata"])
+    xps = read_yaml(xps_metadata)
+
+    subtraction_record = xps["peak_analysis"]["background_subtraction"]
+    assert subtraction_record["status"] == "reviewed_shirley_background_subtracted"
+    assert subtraction_record["method"] == "reviewed_shirley_background_subtraction"
+    assert subtraction_record["background_column"] == "xps_shirley_background"
+    assert subtraction_record["corrected_intensity_column"] == "xps_shirley_subtracted_intensity"
+    assert subtraction_record["corrected_region_count"] == 1
+    saved_subtraction = read_yaml(workspace / xps["outputs"]["background_subtraction"])
+    region = saved_subtraction["regions"][0]
+    assert region["status"] == "shirley_background_subtracted"
+    assert region["algorithm"] == "iterative_shirley_background"
+    assert region["iterations"] <= 200
+    assert region["converged"] is True
+    assert "residual_area" in region
+    processed = pd.read_csv(workspace / xps["outputs"]["processed_csv"])
+    assert "xps_shirley_background" in processed.columns
+    assert "xps_shirley_subtracted_intensity" in processed.columns
+    corrected = processed.loc[processed["xps_background_subtraction_region_id"] == "xps-shirley-c1s-001", "xps_shirley_subtracted_intensity"]
+    assert corrected.notna().any()
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
+    assert xps["outputs"]["background_subtraction"] in figure_record["source_data_refs"]
+    assert any(xps["outputs"]["background_subtraction"] in item.get("evidence", []) for item in xps["peak_analysis"]["possible_interpretations"])
+
+    assert main(
+        [
+            "xps",
+            "report",
+            str(workspace),
+            "--metadata",
+            xps_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-shirley-001",
+            "--experiment-ref",
+            "exp-xps-shirley-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "Reviewed XPS Shirley background subtraction" in report_body
+    assert "xps-shirley-c1s-001" in report_body
+    assert "xps_shirley_subtracted_intensity" in report_body
+    assert "iterative_shirley_background" in report_body
+
+
 def test_xps_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -406,8 +583,10 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_quantification" in xps_reference_text
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
+    assert "reviewed_shirley_background_subtraction" in xps_reference_text
     assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
     assert "background_subtraction" in xps_record["notes"]
+    assert "reviewed_shirley_background_subtraction" in xps_record["notes"]

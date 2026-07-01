@@ -626,6 +626,40 @@ def _column_name(value: Any, default: str) -> str:
     return name or default
 
 
+def _background_subtraction_defaults(method: str) -> dict[str, str]:
+    if method == "reviewed_shirley_background_subtraction":
+        return {
+            "background_column": "xps_shirley_background",
+            "corrected_intensity_column": "xps_shirley_subtracted_intensity",
+            "region_id_column": "xps_background_subtraction_region_id",
+        }
+    return {
+        "background_column": "xps_linear_background",
+        "corrected_intensity_column": "xps_background_subtracted_intensity",
+        "region_id_column": "xps_background_subtraction_region_id",
+    }
+
+
+def _background_subtraction_method_label(method: str) -> str:
+    return "Shirley" if method == "reviewed_shirley_background_subtraction" else "linear"
+
+
+def _background_subtraction_success_status(method: str) -> str:
+    if method == "reviewed_shirley_background_subtraction":
+        return "reviewed_shirley_background_subtracted"
+    return "reviewed_linear_background_subtracted"
+
+
+def _background_subtraction_region_status(method: str) -> str:
+    if method == "reviewed_shirley_background_subtraction":
+        return "shirley_background_subtracted"
+    return "linear_background_subtracted"
+
+
+def _is_background_subtraction_success(record: dict[str, Any]) -> bool:
+    return record.get("status") in {"reviewed_linear_background_subtracted", "reviewed_shirley_background_subtracted"}
+
+
 def _anchor_window(region: dict[str, Any], side: str) -> tuple[float, float] | None:
     value = region.get(f"{side}_anchor_window_eV") or region.get(f"{side}_endpoint_window_eV")
     if not isinstance(value, (list, tuple)) or len(value) != 2:
@@ -720,6 +754,69 @@ def _background_anchor(
     return None
 
 
+def _linear_background_from_anchors(x: np.ndarray, *, x_left: float, y_left: float, x_right: float, y_right: float) -> tuple[np.ndarray, float]:
+    slope = (y_right - y_left) / (x_right - x_left)
+    return y_left + slope * (x - x_left), float(slope)
+
+
+def _trapezoid_cumulative(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+    if len(y) < 2:
+        return np.zeros_like(y, dtype=float)
+    increments = (y[:-1] + y[1:]) * 0.5 * np.diff(x)
+    return np.concatenate([[0.0], np.cumsum(increments)])
+
+
+def _shirley_background_from_anchors(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    x_left: float,
+    y_left: float,
+    x_right: float,
+    y_right: float,
+    max_iterations: int,
+    tolerance: float,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    linear_background, slope = _linear_background_from_anchors(x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+    background = linear_background.copy()
+    endpoint_low = float(linear_background[0])
+    endpoint_high = float(linear_background[-1])
+    final_delta = 0.0
+    residual_area = 0.0
+    converged = False
+    iterations = 0
+
+    for iteration in range(1, max_iterations + 1):
+        residual = np.clip(y - background, a_min=0.0, a_max=None)
+        residual_area = float(np.trapezoid(residual, x))
+        if residual_area <= 1e-15:
+            final_delta = 0.0
+            iterations = iteration
+            converged = True
+            break
+        normalized = _trapezoid_cumulative(residual, x) / residual_area
+        next_background = endpoint_low + (endpoint_high - endpoint_low) * normalized
+        final_delta = float(np.nanmax(np.abs(next_background - background)))
+        background = next_background
+        iterations = iteration
+        if final_delta <= tolerance:
+            converged = True
+            break
+
+    return background, {
+        "algorithm": "iterative_shirley_background",
+        "linear_endpoint_slope_intensity_per_eV": float(slope),
+        "endpoint_low_intensity": endpoint_low,
+        "endpoint_high_intensity": endpoint_high,
+        "max_iterations": int(max_iterations),
+        "iterations": int(iterations),
+        "tolerance": float(tolerance),
+        "final_delta": float(final_delta),
+        "residual_area": float(residual_area),
+        "converged": bool(converged),
+    }
+
+
 def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("background_subtraction", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
@@ -727,12 +824,25 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
 
     warnings: list[dict[str, Any]] = []
     method = str(params.get("method") or "reviewed_linear_background_subtraction")
+    supported_methods = {"reviewed_linear_background_subtraction", "reviewed_shirley_background_subtraction"}
+    method_label = _background_subtraction_method_label(method)
+    defaults = _background_subtraction_defaults(method)
+    base_defaults = _background_subtraction_defaults("reviewed_linear_background_subtraction")
     source = str(params.get("source") or "ea.xps.background_subtraction:v0.2")
     input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
-    background_column = _column_name(params.get("background_column"), "xps_linear_background")
-    corrected_column = _column_name(params.get("corrected_intensity_column"), "xps_background_subtracted_intensity")
-    region_id_column = _column_name(params.get("region_id_column"), "xps_background_subtraction_region_id")
+    background_column_input = params.get("background_column")
+    corrected_column_input = params.get("corrected_intensity_column")
+    if method == "reviewed_shirley_background_subtraction":
+        if background_column_input == base_defaults["background_column"]:
+            background_column_input = None
+        if corrected_column_input == base_defaults["corrected_intensity_column"]:
+            corrected_column_input = None
+    background_column = _column_name(background_column_input, defaults["background_column"])
+    corrected_column = _column_name(corrected_column_input, defaults["corrected_intensity_column"])
+    region_id_column = _column_name(params.get("region_id_column"), defaults["region_id_column"])
     min_points, adjusted_min_points = _coerce_int(params.get("min_points"), 5, minimum=2)
+    max_iterations, adjusted_max_iterations = _coerce_int(params.get("max_iterations"), 100, minimum=2)
+    tolerance, adjusted_tolerance = _coerce_float(params.get("tolerance"), 1e-6, minimum=1e-12)
     record: dict[str, Any] = {
         "enabled": True,
         "method": method,
@@ -742,6 +852,8 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "corrected_intensity_column": corrected_column,
         "region_id_column": region_id_column,
         "min_points": min_points,
+        "max_iterations": max_iterations if method == "reviewed_shirley_background_subtraction" else None,
+        "tolerance": tolerance if method == "reviewed_shirley_background_subtraction" else None,
         "status": "not_applied",
         "confidence": "insufficient",
         "region_count": 0,
@@ -751,18 +863,19 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS background_subtraction applies only user-reviewed linear numeric preprocessing inside explicit binding-energy regions. "
-            "EA v0.2 does not automatically choose endpoints/windows, perform Shirley/Tougaard subtraction, assign chemical states, "
+            "XPS background_subtraction applies only user-reviewed numeric preprocessing inside explicit binding-energy regions. "
+            "EA v0.2 does not automatically choose endpoints/windows, perform undeclared Tougaard subtraction or peak fitting, assign chemical states, "
             "prove composition, or perform spin-orbit constrained fitting from this record."
         ),
     }
-    if method != "reviewed_linear_background_subtraction":
+    if method not in supported_methods:
         warnings.append(
             _warning(
                 "xps_background_subtraction_method_unsupported",
                 "XPS background_subtraction method is not supported by EA v0.2.",
                 severity="medium",
                 method=method,
+                supported_methods=sorted(supported_methods),
             )
         )
         record.update({"status": "skipped_unsupported_method", "warnings": warnings})
@@ -774,6 +887,16 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 "Invalid XPS background_subtraction min_points was adjusted before processing.",
                 severity="medium",
                 min_points=min_points,
+            )
+        )
+    if method == "reviewed_shirley_background_subtraction" and (adjusted_max_iterations or adjusted_tolerance):
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_shirley_parameter_adjusted",
+                "Invalid XPS Shirley background_subtraction iteration parameters were adjusted before processing.",
+                severity="medium",
+                max_iterations=max_iterations,
+                tolerance=tolerance,
             )
         )
     if input_column not in processed.columns:
@@ -893,7 +1016,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
             warnings.append(
                 _warning(
                     "xps_background_subtraction_insufficient_points",
-                    "A reviewed XPS background_subtraction region had too few points for linear subtraction.",
+                    f"A reviewed XPS background_subtraction region had too few points for {method_label} subtraction.",
                     severity="medium",
                     region_id=region_id,
                     point_count=point_count,
@@ -939,16 +1062,43 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                     region_id=region_id,
                 )
             )
-        slope = (y_right - y_left) / (x_right - x_left)
-        background = y_left + slope * (x[mask] - x_left)
+        if method == "reviewed_shirley_background_subtraction":
+            background, subtraction_details = _shirley_background_from_anchors(
+                x[mask],
+                y[mask],
+                x_left=x_left,
+                y_left=y_left,
+                x_right=x_right,
+                y_right=y_right,
+                max_iterations=max_iterations,
+                tolerance=tolerance,
+            )
+            if not subtraction_details["converged"]:
+                warnings.append(
+                    _warning(
+                        "xps_background_subtraction_shirley_not_converged",
+                        "A reviewed XPS Shirley background_subtraction region did not converge within the reviewed iteration limit.",
+                        severity="medium",
+                        region_id=region_id,
+                        iterations=subtraction_details["iterations"],
+                        final_delta=subtraction_details["final_delta"],
+                        tolerance=tolerance,
+                    )
+                )
+        else:
+            background, slope = _linear_background_from_anchors(x[mask], x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+            subtraction_details = {
+                "algorithm": "linear_anchor_interpolation",
+                "slope_intensity_per_eV": float(slope),
+            }
         corrected = y[mask] - background
         processed.loc[mask, background_column] = background
         processed.loc[mask, corrected_column] = corrected
         processed.loc[mask, region_id_column] = region_id
         region_record.update(
             {
-                "status": "linear_background_subtracted",
-                "slope_intensity_per_eV": float(slope),
+                "status": _background_subtraction_region_status(method),
+                **subtraction_details,
                 "background_min": float(np.nanmin(background)),
                 "background_max": float(np.nanmax(background)),
                 "corrected_min": float(np.nanmin(corrected)),
@@ -961,7 +1111,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
 
     record.update(
         {
-            "status": "reviewed_linear_background_subtracted" if corrected_count else "no_regions_corrected",
+            "status": _background_subtraction_success_status(method) if corrected_count else "no_regions_corrected",
             "confidence": "low" if corrected_count else "insufficient",
             "region_count": len(regions),
             "corrected_region_count": corrected_count,
@@ -1260,10 +1410,11 @@ def _analyze_peaks(
             )
     if background_subtraction_record:
         analysis["background_subtraction"] = background_subtraction_record
-        if background_subtraction_record.get("status") == "reviewed_linear_background_subtracted":
+        if _is_background_subtraction_success(background_subtraction_record):
+            method_label = _background_subtraction_method_label(str(background_subtraction_record.get("method") or "reviewed_linear_background_subtraction"))
             analysis["possible_interpretations"].append(
                 {
-                    "text": "Reviewed linear XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as Shirley/Tougaard modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
+                    "text": f"Reviewed {method_label} XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as Tougaard modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
                     "confidence": background_subtraction_record.get("confidence", "low"),
                     "evidence": ["background_subtraction"],
                     "assignment_source": background_subtraction_record.get("assignment_source", "ea.xps.background_subtraction:v0.2"),
@@ -1291,7 +1442,8 @@ def _plot_xps(
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(processed["binding_energy_eV"], processed["processed_intensity"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed intensity")
-    if background_subtraction and background_subtraction.get("status") == "reviewed_linear_background_subtracted":
+    if background_subtraction and _is_background_subtraction_success(background_subtraction):
+        method_label = _background_subtraction_method_label(str(background_subtraction.get("method") or "reviewed_linear_background_subtraction"))
         background_column = str(background_subtraction.get("background_column") or "xps_linear_background")
         corrected_column = str(background_subtraction.get("corrected_intensity_column") or "xps_background_subtracted_intensity")
         if background_column in processed.columns:
@@ -1303,7 +1455,7 @@ def _plot_xps(
                     color=NATURE_LIKE_COLORS["gray"],
                     linewidth=1.0,
                     linestyle="--",
-                    label="Reviewed linear background",
+                    label=f"Reviewed {method_label} background",
                 )
         if corrected_column in processed.columns:
             corrected_mask = pd.to_numeric(processed[corrected_column], errors="coerce").notna()
@@ -1530,7 +1682,7 @@ def process_xps_result(
                     "processing_parameters": parameters,
                 },
             },
-            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records, optional reviewed linear background-subtraction overlays, and traceable calibration/processing parameters.",
+            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records, optional reviewed background-subtraction overlays, and traceable calibration/processing parameters.",
             purpose="xps_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
