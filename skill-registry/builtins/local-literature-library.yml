@@ -67,6 +67,7 @@ ea_skill:
       - supplied_candidate_ranking_and_selection_export
       - ftir_uv_vis_xps_source_candidate_manifest_preparation
       - ftir_uv_vis_xps_source_candidate_manifest_preflight
+      - ready_uv_vis_source_candidate_manifest_to_source_packet_builder_contract
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
       - institution_access_guidance_packet

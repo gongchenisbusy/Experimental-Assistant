@@ -1270,7 +1270,7 @@ def test_literature_prepares_and_preflights_uv_vis_source_candidate_manifest(tmp
     assert manifest["method_scope"] == ["uv_vis"]
     assert manifest["candidates"][0]["candidate_type"] is None
     assert manifest["candidates"][0]["include_in_source_packet"] is False
-    assert "future `ea uv-vis build-source-packet` workflow" in manifest["next_steps"][2]
+    assert "`ea uv-vis build-source-packet" in manifest["next_steps"][2]
 
     draft_preflight = preflight_literature_source_candidate_manifest(
         tmp_path,
@@ -1939,6 +1939,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "search-public" in readme
     assert "prepare-source-candidates" in readme
     assert "preflight-source-candidates" in readme
+    assert "ea uv-vis build-source-packet" in readme
     assert "confirmed_ftir_source_candidates.yml" in readme
     assert "confirmed_uv_vis_source_candidates.yml" in readme
     assert "confirmed_xps_source_candidates.yml" in readme
@@ -1954,6 +1955,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "search-public" in reference
     assert "prepare-source-candidates" in reference
     assert "preflight-source-candidates" in reference
+    assert "ea uv-vis build-source-packet" in reference
     assert "optical_gap_candidate" in reference
     assert "source_candidates_preflight.yml" in reference
     assert "include_in_source_packet: false" in reference
@@ -1972,10 +1974,12 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "prepare-source-candidates" in skill
     assert "preflight-source-candidates" in skill
     assert "confirmed_uv_vis_source_candidates.yml" in skill
+    assert "ea uv-vis build-source-packet" in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "source-candidate manifest preparation/preflight" in literature_record["notes"]
     assert "FTIR/UV-Vis/XPS source-candidate" in literature_record["notes"]
+    assert "ea uv-vis build-source-packet" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
     assert "public_search_candidate_manifest" in manifest["output_artifacts"]
     assert "public_search_state_record" in manifest["output_artifacts"]
@@ -1995,6 +1999,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
     assert "ftir_uv_vis_xps_source_candidate_manifest_preparation" in manifest["current_v0_2_support"]["implemented"]
     assert "ftir_uv_vis_xps_source_candidate_manifest_preflight" in manifest["current_v0_2_support"]["implemented"]
+    assert "ready_uv_vis_source_candidate_manifest_to_source_packet_builder_contract" in manifest["current_v0_2_support"]["implemented"]
     assert "institution_access_guidance_packet" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]

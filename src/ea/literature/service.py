@@ -2479,10 +2479,7 @@ def _source_candidate_builder_next_step(method: str, output_ref: str) -> str:
         return f"After preflight passes, run `ea ftir build-assignment-packet /path/to/ea-project --literature-manifest {output_ref}`."
     if method == "xps":
         return f"After preflight passes, run `ea xps build-source-packet /path/to/ea-project --literature-manifest {output_ref}`."
-    return (
-        "After preflight passes, keep the confirmed UV-Vis manifest as source-backed staging for a future "
-        "`ea uv-vis build-source-packet` workflow; EA v0.2 does not yet build UV-Vis source packets from this manifest."
-    )
+    return f"After preflight passes, run `ea uv-vis build-source-packet /path/to/ea-project --literature-manifest {output_ref}`."
 
 
 def _source_candidate_method_aliases(method: str) -> set[str]:
@@ -2503,7 +2500,7 @@ def _source_candidate_method_aliases(method: str) -> set[str]:
 
 def _source_candidate_preflight_fix_step(method: str) -> str:
     if method == "uv_vis":
-        return "Fix errors and missing required metadata before using this UV-Vis manifest in a future source-packet workflow."
+        return "Fix errors and missing required metadata before running `ea uv-vis build-source-packet`."
     return "Fix errors and missing required metadata before building FTIR/XPS source packets."
 
 

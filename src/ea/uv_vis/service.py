@@ -22,6 +22,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -136,6 +137,23 @@ def _warning(code: str, message: str, severity: str = "low", **details: Any) -> 
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
+
+
+def _relative_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
 
 
 def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
@@ -982,6 +1000,348 @@ def _analyze_features(
             }
         )
     return analysis
+
+
+def _uv_vis_source_candidates(source_packet: Any) -> list[Any]:
+    if isinstance(source_packet, list):
+        return source_packet
+    if isinstance(source_packet, dict):
+        raw_candidates = source_packet.get("candidates") or source_packet.get("source_candidates") or source_packet.get("suggestions") or []
+        return raw_candidates if isinstance(raw_candidates, list) else []
+    return []
+
+
+def _normalize_uv_vis_candidate_type(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _uv_vis_candidate_identity(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or candidate.get("suggestion_id") or "").strip()
+
+
+def _uv_vis_candidate_matches_filters(
+    candidate: dict[str, Any],
+    *,
+    include_candidates: set[str],
+    candidate_types: set[str],
+    optical_targets: set[str],
+) -> bool:
+    if include_candidates and _uv_vis_candidate_identity(candidate) not in include_candidates:
+        return False
+    candidate_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+    if candidate_types and candidate_type not in candidate_types:
+        return False
+    if optical_targets:
+        target_text = " ".join(
+            str(candidate.get(key) or "")
+            for key in ["optical_target", "target", "feature_label", "transition_model", "correction_context_type"]
+        ).lower()
+        if not any(target in target_text for target in optical_targets):
+            return False
+    return True
+
+
+def _uv_vis_source_reference_seeds(
+    source_library: Any,
+    *,
+    referenced_ids: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(source_library, dict):
+        return {}
+    raw_seeds = source_library.get("reference_seeds") or {}
+    if not raw_seeds:
+        return {}
+    if not isinstance(raw_seeds, dict):
+        warnings.append(
+            _warning(
+                "uv_vis_source_reference_seeds_invalid",
+                "UV-Vis source packet reference_seeds were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+        return {}
+    seeds: dict[str, Any] = {}
+    for raw_seed_id, raw_seed in raw_seeds.items():
+        seed_id = str(raw_seed_id).strip()
+        if not seed_id:
+            warnings.append(
+                _warning(
+                    "uv_vis_source_reference_seed_id_invalid",
+                    "A UV-Vis source reference_seed was skipped because its seed id was empty.",
+                    severity="medium",
+                )
+            )
+            continue
+        if referenced_ids and seed_id not in referenced_ids:
+            continue
+        if not isinstance(raw_seed, dict):
+            warnings.append(
+                _warning(
+                    "uv_vis_source_reference_seed_ignored",
+                    "A UV-Vis source reference_seed was skipped because its metadata was not a mapping.",
+                    severity="medium",
+                    seed_id=seed_id,
+                )
+            )
+            continue
+        seeds[seed_id] = deepcopy(raw_seed)
+    return seeds
+
+
+def _uv_vis_source_packet_template_candidates() -> list[dict[str, Any]]:
+    return [
+        {
+            "candidate_id": "uvvis-template-optical-transition-model",
+            "candidate_type": "optical_transition_model",
+            "optical_target": "TODO: target sample/material and spectral regime",
+            "transition_model": "TODO: e.g. direct_allowed, indirect_allowed, Kubelka-Munk context, or source-specific model",
+            "transition_assumption": "TODO: summarize the source-backed model assumption and when it applies.",
+            "tauc_transform": "TODO: absorbance, absorption_coefficient_proxy, Kubelka-Munk, or not_applicable",
+            "source_summary": "TODO: summarize the reference that supports this UV-Vis model context.",
+            "applicability_notes": ["TODO: describe sample geometry, film thickness/scattering/substrate assumptions, and signal mode."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; fill source metadata and model assumptions before using in future UV-Vis suggestions."],
+        },
+        {
+            "candidate_id": "uvvis-template-optical-gap-candidate",
+            "candidate_type": "optical_gap_candidate",
+            "optical_target": "TODO: absorption edge or material phase/context",
+            "reported_energy_eV": None,
+            "energy_window_eV": [None, None],
+            "transition_assumption": "TODO: source-backed transition assumption for the reported gap/window.",
+            "source_summary": "TODO: summarize the source that reports or justifies this optical-gap candidate.",
+            "applicability_notes": ["TODO: describe comparable material, processing, thickness, substrate/background, and measurement mode."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; do not treat the gap/window as a project result without reviewed data and references."],
+        },
+        {
+            "candidate_id": "uvvis-template-optical-feature-assignment",
+            "candidate_type": "optical_feature_assignment",
+            "optical_target": "TODO: excitonic/defect/charge-transfer/absorption feature label",
+            "feature_label": "TODO: descriptive feature label",
+            "reported_energy_eV": None,
+            "wavelength_window_nm": [None, None],
+            "expected_feature": "TODO: absorbance_maximum, shoulder, reflectance_minimum, derivative_extremum, etc.",
+            "source_summary": "TODO: summarize the source that supports this feature assignment candidate.",
+            "applicability_notes": ["TODO: describe material state, sample form, and overlapping feature/correction risks."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; a spectral feature match alone does not prove mechanism or material state."],
+        },
+        {
+            "candidate_id": "uvvis-template-correction-context",
+            "candidate_type": "correction_context_candidate",
+            "optical_target": "TODO: substrate/reference/background/diffuse-reflectance correction context",
+            "correction_context_type": "TODO: substrate, baseline, reference, scattering, diffuse_reflectance, or background",
+            "correction_method": "TODO: source-backed correction or interpretation context; no automatic correction is applied here",
+            "source_summary": "TODO: summarize the source that supports this correction-context candidate.",
+            "applicability_notes": ["TODO: describe when this context applies and what user confirmation is required."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; this packet does not apply numeric corrections or prove correction validity."],
+        },
+    ]
+
+
+def build_uv_vis_source_packet(
+    root: Path,
+    *,
+    project_id: str,
+    library_path: Path | None = None,
+    literature_manifest_path: Path | None = None,
+    output_path: Path | None = None,
+    include_candidates: list[str] | None = None,
+    candidate_types: list[str] | None = None,
+    optical_targets: list[str] | None = None,
+    template: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    selected_source_count = sum(bool(value) for value in [library_path, literature_manifest_path, template])
+    if selected_source_count != 1:
+        raise UVVisProcessingError(
+            "Use exactly one of --library-file, --literature-manifest, or --write-template for UV-Vis source-packet generation"
+        )
+
+    template_mode = template and library_path is None and literature_manifest_path is None
+    literature_mode = literature_manifest_path is not None
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    source_packet_id = next_id(root, "uv_vis_source_packet", day)
+    if output_path is None:
+        if template_mode:
+            output_path = root / "templates" / "uv_vis_source_packet.yml"
+        else:
+            output_path = root / "suggestions" / "uv_vis" / "source-packets" / f"{source_packet_id}.yml"
+    elif not output_path.is_absolute():
+        output_path = root / output_path
+    assert_not_raw_output_path(root, output_path)
+
+    warnings: list[dict[str, Any]] = []
+    library_ref: str | None = None
+    library_kind = "template" if template_mode else "local_file"
+    source_library: Any = {}
+    if template_mode:
+        raw_candidates = _uv_vis_source_packet_template_candidates()
+    elif literature_mode:
+        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        if source_path is None:
+            raise UVVisProcessingError("UV-Vis literature manifest path was not supplied")
+        try:
+            source_library, manifest_warnings = confirmed_source_packet_library(
+                root,
+                manifest_path=source_path,
+                method="uv_vis",
+                method_aliases={
+                    "uv_vis",
+                    "uv-vis",
+                    "uvvis",
+                    "uv_visible",
+                    "optical_absorption",
+                    "uv_vis_source_packet",
+                    "uv_vis_optical_source_packet",
+                },
+            )
+        except SourcePacketManifestError as exc:
+            raise UVVisProcessingError(str(exc)) from exc
+        warnings.extend(manifest_warnings)
+        raw_candidates = _uv_vis_source_candidates(source_library)
+        library_ref = _relative_to_root(root, source_path)
+        library_kind = "confirmed_literature_manifest"
+    else:
+        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        if source_path is None or not source_path.exists():
+            raise UVVisProcessingError(f"UV-Vis source library file not found: {library_path}")
+        library_ref = _relative_to_root(root, source_path)
+        source_library = read_yaml(source_path)
+        raw_candidates = _uv_vis_source_candidates(source_library)
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_uv_vis_candidate_type(item) for item in candidate_types or [] if str(item).strip()}
+    target_set = {str(item).strip().lower() for item in optical_targets or [] if str(item).strip()}
+    selected: list[dict[str, Any]] = []
+    for index, raw_candidate in enumerate(raw_candidates, start=1):
+        if not isinstance(raw_candidate, dict):
+            warnings.append(
+                _warning(
+                    "uv_vis_source_candidate_ignored",
+                    "A UV-Vis source candidate was not a mapping and was skipped while building the source packet.",
+                    severity="medium",
+                    candidate_index=index,
+                )
+            )
+            continue
+        if not _uv_vis_candidate_matches_filters(
+            raw_candidate,
+            include_candidates=include_set,
+            candidate_types=type_set,
+            optical_targets=target_set,
+        ):
+            continue
+        candidate = deepcopy(raw_candidate)
+        normalized_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+        if normalized_type:
+            candidate["candidate_type"] = normalized_type
+        selected.append(candidate)
+
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "uv_vis_source_library_empty",
+                "No UV-Vis source candidates were found in the source library.",
+                severity="medium",
+            )
+        )
+    if raw_candidates and not selected:
+        warnings.append(
+            _warning(
+                "uv_vis_source_no_matches",
+                "No UV-Vis source candidates matched the requested filters.",
+                severity="medium",
+            )
+        )
+
+    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
+    guidance_reference_ids = _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+    reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
+    reference_seeds = _uv_vis_source_reference_seeds(
+        source_library,
+        referenced_ids=set(reference_ids),
+        warnings=warnings,
+    )
+    packet_ref = _relative_to_root(root, output_path)
+    status = "template_requires_user_edit" if template_mode else ("staged_for_future_uv_vis_suggestions" if selected else "no_matching_candidates")
+    packet = {
+        "schema_version": "0.2",
+        "source_packet_id": source_packet_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.uv_vis.source_packet:v0.2",
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
+        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
+        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
+        "reference_seed_count": len(reference_seeds),
+        "reference_seeds": reference_seeds,
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_reference_ids": guidance_reference_ids,
+        "candidate_count": len(selected),
+        "candidates": selected,
+        "filters": {
+            "include_candidates": sorted(include_set),
+            "candidate_types": sorted(type_set),
+            "optical_targets": sorted(target_set),
+        },
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or replace reference_seeds before treating any UV-Vis source candidate as report evidence.",
+            "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, confidence, caveats, and the candidate-specific optical target/model/gap/feature/correction fields.",
+            "Use this packet as staging for a future UV-Vis suggestion/review/report workflow when that workflow is implemented.",
+        ],
+        "boundaries": [
+            "UV-Vis source packets are staging artifacts and do not modify processed spectra, figures, reports, or confirmed project memory.",
+            "reference_seeds are registration hints only; they do not inject report citations, download PDFs, parse full text, apply optical models, or prove optical assignments.",
+            "This source-packet builder is deterministic and does not perform live lookup, article download, full-text parsing, report citation injection, suggestion generation, optical-model or correction auto-application, band-gap proof, transition-mechanism proof, feature-assignment proof, or memory commit.",
+            "A confirmed-literature manifest is a source-candidate manifest only; it does not register references, prove band gaps or transition models, apply Tauc/Kubelka-Munk/correction settings, or validate mechanisms by itself.",
+        ],
+    }
+    write_yaml(output_path, packet)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="uv_vis_source_packet",
+        inputs={"records": [library_ref] if library_ref else [], "files": []},
+        outputs={"records": [packet_ref], "files": []},
+        parameters={
+            "candidate_count": len(selected),
+            "reference_seed_count": len(reference_seeds),
+            "template": template_mode,
+            "source_library_kind": library_kind,
+            "filters": packet["filters"],
+            "auto_applied": False,
+        },
+        warnings=warnings,
+        source_refs=reference_ids,
+        created_at=created_at,
+    )
+    packet["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(output_path, packet)
+    return {
+        "source_packet": str(output_path),
+        "source_packet_id": source_packet_id,
+        "status": status,
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
+        "candidate_count": len(selected),
+        "reference_seed_count": len(reference_seeds),
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
 
 
 def _created_day(created_at: str | None) -> str | None:

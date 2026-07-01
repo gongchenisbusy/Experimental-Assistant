@@ -7,8 +7,8 @@ from pathlib import Path
 import pandas as pd
 
 from ea.cli import main
-from ea.storage import read_markdown_record, read_yaml
-from ea.uv_vis import default_uv_vis_processing_parameters, inspect_uv_vis_file
+from ea.storage import read_markdown_record, read_yaml, write_yaml
+from ea.uv_vis import build_uv_vis_source_packet, default_uv_vis_processing_parameters, inspect_uv_vis_file
 
 
 def _json_output(capsys) -> dict:
@@ -684,6 +684,155 @@ def test_uv_vis_correction_context_records_reviewed_metadata(tmp_path: Path, cap
     assert "不执行自动数值校正" in report_body
 
 
+def test_uv_vis_source_packet_template_contains_expected_candidate_types(tmp_path: Path) -> None:
+    result = build_uv_vis_source_packet(
+        tmp_path,
+        project_id="prj-uv-vis-source-packet-template",
+        template=True,
+        created_at="2026-07-01T20:00:00",
+    )
+
+    packet_path = Path(result["source_packet"])
+    packet = read_yaml(packet_path)
+
+    assert packet_path == tmp_path / "templates" / "uv_vis_source_packet.yml"
+    assert result["status"] == "template_requires_user_edit"
+    assert packet["source"] == "ea.uv_vis.source_packet:v0.2"
+    assert packet["source_library_kind"] == "template"
+    assert packet["candidate_count"] == 4
+    assert {
+        "optical_transition_model",
+        "optical_gap_candidate",
+        "optical_feature_assignment",
+        "correction_context_candidate",
+    } == {candidate["candidate_type"] for candidate in packet["candidates"]}
+    assert "does not perform live lookup" in " ".join(packet["boundaries"])
+    assert (tmp_path / packet["provenance_ref"]).exists()
+
+
+def test_cli_uv_vis_builds_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "uv-vis-source-packet-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV Vis Source Packet",
+            "--slug",
+            "uv-vis-source-packet",
+            "--direction",
+            "source-backed UV-Vis interpretation",
+            "--material",
+            "oxide semiconductor film",
+            "--experiment-type",
+            "UV-Vis source packet staging",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+    manifest_path = workspace / "literature" / "confirmed_uv_vis_source_candidates.yml"
+    write_yaml(
+        manifest_path,
+        {
+            "schema_version": "0.2",
+            "source": "ea.literature.source_candidates:v0.2",
+            "project_id": project_id,
+            "method_scope": ["uv_vis"],
+            "confirmed_for_source_packet": True,
+            "confirmation_status": "confirmed",
+            "reference_seeds": {
+                "ref-uv-gap": {
+                    "title": "Optical gap reporting for oxide semiconductor films",
+                    "authors": ["A. Source"],
+                    "year": 2025,
+                    "doi": "10.1000/uv-gap",
+                },
+                "ref-unused": {
+                    "title": "Unused UV-Vis source",
+                    "authors": ["U. Source"],
+                    "year": 2024,
+                },
+            },
+            "guidance_notes": ["Use comparable sample geometry before discussing UV-Vis optical-gap candidates."],
+            "candidates": [
+                {
+                    "candidate_id": "uv-gap-001",
+                    "method": "uv_vis",
+                    "include_in_source_packet": True,
+                    "candidate_type": "optical_gap_candidate",
+                    "optical_target": "absorption edge screening",
+                    "reported_energy_eV": 3.18,
+                    "energy_window_eV": [3.05, 3.30],
+                    "transition_assumption": "direct-allowed Tauc-style screening context from the cited source",
+                    "source_summary": "Comparable oxide film source reports an optical-gap candidate.",
+                    "applicability_notes": ["Use only after checking substrate/background and transition assumptions."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "medium",
+                    "caveats": ["Source-backed candidate only; not a definitive band-gap proof."],
+                },
+                {
+                    "candidate_id": "uv-transition-001",
+                    "method": "uv_vis",
+                    "include_in_source_packet": True,
+                    "candidate_type": "optical_transition_model",
+                    "optical_target": "transition model",
+                    "transition_model": "direct_allowed",
+                    "transition_assumption": "Use only after the user confirms model context.",
+                    "source_summary": "A source-backed transition-model candidate.",
+                    "applicability_notes": ["Review model assumptions before use."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "low",
+                    "caveats": ["Model staging only."],
+                },
+                {
+                    "candidate_id": "uv-excluded-001",
+                    "method": "uv_vis",
+                    "include_in_source_packet": False,
+                    "candidate_type": "correction_context_candidate",
+                },
+            ],
+        },
+    )
+
+    assert main(
+        [
+            "uv-vis",
+            "build-source-packet",
+            str(workspace),
+            "--literature-manifest",
+            "literature/confirmed_uv_vis_source_candidates.yml",
+            "--candidate-type",
+            "optical_gap_candidate",
+            "--output",
+            "suggestions/uv_vis/source-packets/literature_uv_vis_packet.yml",
+        ]
+    ) == 0
+    output = _json_output(capsys)
+    packet_path = workspace / "suggestions" / "uv_vis" / "source-packets" / "literature_uv_vis_packet.yml"
+    packet = read_yaml(packet_path)
+    provenance = read_yaml(workspace / packet["provenance_ref"])
+
+    assert output["status"] == "staged_for_future_uv_vis_suggestions"
+    assert output["source_library_kind"] == "confirmed_literature_manifest"
+    assert packet["source_library_ref"] == "literature/confirmed_uv_vis_source_candidates.yml"
+    assert packet["source_manifest_ref"] == "literature/confirmed_uv_vis_source_candidates.yml"
+    assert packet["confirmation_status"] == "confirmed"
+    assert packet["candidate_count"] == 1
+    assert packet["candidates"][0]["candidate_id"] == "uv-gap-001"
+    assert packet["candidates"][0]["candidate_type"] == "optical_gap_candidate"
+    assert packet["reference_ids"] == ["ref-uv-gap"]
+    assert packet["reference_seed_count"] == 1
+    assert "ref-uv-gap" in packet["reference_seeds"]
+    assert "ref-unused" not in packet["reference_seeds"]
+    assert packet["filters"]["candidate_types"] == ["optical_gap_candidate"]
+    assert "future UV-Vis suggestion/review/report workflow" in " ".join(packet["next_steps"])
+    assert "does not register references" in " ".join(packet["boundaries"])
+    assert provenance["workflow"] == "uv_vis_source_packet"
+    assert provenance["source_refs"] == ["ref-uv-gap"]
+    assert Path(output["provenance"]).exists()
+
+
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -693,7 +842,9 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea uv-vis inspect" in readme
+    assert "ea uv-vis build-source-packet" in readme
     assert "ea uv-vis process" in skill
+    assert "ea uv-vis build-source-packet" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
@@ -702,6 +853,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "derivative_analysis" in reference_text
     assert "correction_context" in reference_text
     assert "prepare-source-candidates --method uv_vis" in reference_text
+    assert "ea uv-vis build-source-packet" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
@@ -710,3 +862,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "derivative_screening" in uv_vis_record["notes"]
     assert "correction_context_records" in uv_vis_record["notes"]
     assert "source-candidate manifest/preflight" in uv_vis_record["notes"]
+    assert "source_packet building" in uv_vis_record["notes"]

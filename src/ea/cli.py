@@ -82,7 +82,13 @@ from ea.templates import (
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
 from ea.traceability import build_project_trace_view, lookup_trace_record
-from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
+from ea.uv_vis import (
+    UVVisProcessingRequest,
+    build_uv_vis_source_packet,
+    default_uv_vis_processing_parameters,
+    inspect_uv_vis_file,
+    process_uv_vis_result,
+)
 from ea.xps import (
     XPSProcessingRequest,
     build_xps_parameter_source_packet,
@@ -342,6 +348,26 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_report.add_argument("--experiment-ref", action="append", default=[])
     uv_vis_report.add_argument("--sample-ref", action="append", default=[])
     uv_vis_report.add_argument("--reference-id", action="append", default=[])
+    uv_vis_source_packet = uv_vis_sub.add_parser("build-source-packet", help="build a standard UV-Vis source packet")
+    uv_vis_source_packet.add_argument("workspace", type=Path)
+    uv_vis_source_packet.add_argument("--library-file", type=Path)
+    uv_vis_source_packet.add_argument("--literature-manifest", type=Path, help="build from a user-confirmed UV-Vis literature/source-candidate manifest")
+    uv_vis_source_packet.add_argument("--output", type=Path)
+    uv_vis_source_packet.add_argument("--project-id")
+    uv_vis_source_packet.add_argument("--include-candidate", action="append", default=[])
+    uv_vis_source_packet.add_argument(
+        "--candidate-type",
+        action="append",
+        choices=[
+            "optical_transition_model",
+            "optical_gap_candidate",
+            "optical_feature_assignment",
+            "correction_context_candidate",
+        ],
+        default=[],
+    )
+    uv_vis_source_packet.add_argument("--optical-target", action="append", default=[])
+    uv_vis_source_packet.add_argument("--write-template", action="store_true")
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
@@ -1146,7 +1172,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "uv-vis":
         project_id = getattr(args, "project_id", None)
-        if args.uv_vis_command in {"process", "report"} and not project_id:
+        if args.uv_vis_command in {"process", "report", "build-source-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.uv_vis_command == "inspect":
             inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
@@ -1182,6 +1208,21 @@ def main(argv: list[str] | None = None) -> int:
                 reference_ids=args.reference_id,
             )
             _print_json({"report": str(path)})
+            return 0
+        if args.uv_vis_command == "build-source-packet":
+            _print_json(
+                build_uv_vis_source_packet(
+                    args.workspace,
+                    project_id=project_id,
+                    library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    literature_manifest_path=_project_path(args.workspace, args.literature_manifest) if args.literature_manifest else None,
+                    output_path=args.output,
+                    include_candidates=args.include_candidate,
+                    candidate_types=args.candidate_type,
+                    optical_targets=args.optical_target,
+                    template=args.write_template,
+                )
+            )
             return 0
     if args.command == "xps":
         project_id = getattr(args, "project_id", None)

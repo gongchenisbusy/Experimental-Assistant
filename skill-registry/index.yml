@@ -24,7 +24,7 @@ skills:
     status: builtin_v0_2_reference
     category: literature.library
     method: local_literature_library
-    notes: Literature initialization decision, planning, confirmation, explicit public metadata search, supplied-candidate ranking, FTIR/UV-Vis/XPS source-candidate manifest preparation/preflight, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; source-candidate helpers are local deterministic staging and do not search/download/parse full text, register references, inject citations, build source packets, or apply assignments/parameters; UV-Vis preflight validates optical-transition/gap/feature/correction-context candidate metadata for future source-packet work without proving band gaps; Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
+    notes: Literature initialization decision, planning, confirmation, explicit public metadata search, supplied-candidate ranking, FTIR/UV-Vis/XPS source-candidate manifest preparation/preflight, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; source-candidate helpers are local deterministic staging and do not search/download/parse full text, register references, inject citations, generate suggestions, or apply assignments/parameters; ready UV-Vis manifests can feed ea uv-vis build-source-packet for optical-transition/gap/feature/correction-context staging without proving band gaps; Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
   - id: ea.pl-analysis
     manifest: skill-registry/builtins/pl-analysis.yml
     status: builtin_v0_2_reference
@@ -60,7 +60,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: uv_vis
-    notes: Minimal UV-Vis workflow implemented for review-gated optical feature detection, threshold edge estimates, tauc_kubelka_munk_screening, derivative_screening, correction_context_records, literature source-candidate manifest/preflight staging for optical-transition/gap/feature/correction-context candidates, traceable figures, and confidence-labeled reports; formal band-gap or transition conclusions still require reviewed model context, numeric corrections where appropriate, registered references, and future source-packet/suggestion/report integration.
+    notes: Minimal UV-Vis workflow implemented for review-gated optical feature detection, threshold edge estimates, tauc_kubelka_munk_screening, derivative_screening, correction_context_records, literature source-candidate manifest/preflight staging, traceable source_packet building from editable templates, local libraries, or confirmed literature manifests for optical-transition/gap/feature/correction-context candidates, traceable figures, and confidence-labeled reports; UV-Vis source packets are staging artifacts only and formal band-gap or transition conclusions still require reviewed model context, numeric corrections where appropriate, registered references, and future suggestion/report integration.
   - id: ea.xps-analysis
     manifest: skill-registry/builtins/xps-analysis.yml
     status: builtin_v0_2_reference
