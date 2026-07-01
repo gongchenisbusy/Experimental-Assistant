@@ -741,6 +741,16 @@ def _load_ftir_assignment_suggestion_records(root: Path, refs: list[Path] | None
     return records
 
 
+def _load_xps_parameter_suggestion_records(root: Path, refs: list[Path] | None) -> list[dict]:
+    records = []
+    for ref in refs or []:
+        path = ref if ref.is_absolute() else root / ref
+        record = read_yaml(path)
+        record["record_ref"] = _relative_to_root(root, path)
+        records.append(record)
+    return records
+
+
 def _reference_citation(reference_ids: list[str], reference_block: dict) -> str:
     number_by_id = {
         str(item["reference_id"]): int(item["number"])
@@ -830,6 +840,97 @@ def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict)
             lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
     lines.append(
         "- 上述 FTIR assignment suggestions 是 source-backed advisory records；它们可以帮助组织讨论，但不能单独证明化学组成、功能团归属、反应路径或写入 confirmed memory。"
+    )
+    return "\n".join(lines)
+
+
+def _xps_parameter_values_text(candidate: dict) -> str:
+    suggestion_type = str(candidate.get("suggestion_type") or "unknown")
+    if suggestion_type == "spin_orbit_constraint":
+        values = {
+            "constraint_id": candidate.get("constraint_id"),
+            "center_delta_eV": candidate.get("center_delta_eV"),
+            "area_ratio": candidate.get("area_ratio"),
+            "fwhm_ratio": candidate.get("fwhm_ratio"),
+        }
+    elif suggestion_type == "tougaard_parameter":
+        values = {
+            "tougaard_B": candidate.get("tougaard_B"),
+            "tougaard_C_eV2": candidate.get("tougaard_C_eV2"),
+            "integration_direction": candidate.get("integration_direction"),
+        }
+    else:
+        values = {"suggestion_type": suggestion_type}
+    return "；".join(f"{key}={value}" for key, value in values.items() if value not in [None, "", []]) or "未记录"
+
+
+def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -> str:
+    if not records:
+        return (
+            "当前报告未附加 XPS parameter suggestion record。若需要讨论 source-backed spin-orbit、"
+            "Tougaard/background 或 component/bounds/peak-shape 参数候选，请先运行 `ea xps suggest-parameters`，"
+            "再在报告生成时传入对应记录。"
+        )
+    lines: list[str] = []
+    status_rank = {
+        "ready_for_user_review": 0,
+        "needs_reference_registration": 1,
+        "needs_source_metadata": 2,
+        "invalid_missing_required_metadata": 3,
+    }
+    for record in records:
+        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_status = str(record.get("status") or "unknown")
+        suggestion_id = str(record.get("suggestion_id") or "unknown")
+        lines.append(
+            f"- suggestion_record: `{record_ref}`；suggestion_id: `{suggestion_id}`；"
+            f"status: `{record_status}`；candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
+        )
+        candidates = record.get("candidates") or []
+        if not candidates:
+            lines.append("  - 该 suggestion record 未包含 candidate。")
+            continue
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda item: (
+                status_rank.get(str(item.get("status") or ""), 9),
+                str(item.get("candidate_id") or ""),
+            ),
+        )
+        for candidate in sorted_candidates[:8]:
+            reference_ids = [str(item) for item in candidate.get("reference_ids", [])]
+            unresolved_ids = [str(item) for item in candidate.get("unresolved_reference_ids", [])]
+            citation = _reference_citation(reference_ids, reference_block)
+            applicability = _format_report_list(candidate.get("applicability_notes"))
+            caveats = _format_report_list(candidate.get("caveats"))
+            source_summary = str(candidate.get("source_summary") or "未记录")
+            lines.append(
+                "  - `{candidate_id}`: {suggestion_type}{citation}\n"
+                "    - target_parameter_path: `{target}`；review_state: `{status}`；confidence: `{confidence}`；"
+                "parameter_origin: `{origin}`\n"
+                "    - values: {values}\n"
+                "    - source_summary: {source_summary}\n"
+                "    - applicability: {applicability}\n"
+                "    - caveats: {caveats}\n"
+                "    - unresolved_reference_ids: `{unresolved}`".format(
+                    candidate_id=str(candidate.get("candidate_id") or "unknown"),
+                    suggestion_type=str(candidate.get("suggestion_type") or "unknown"),
+                    citation=citation,
+                    target=str(candidate.get("target_parameter_path") or "未记录"),
+                    status=str(candidate.get("status") or "unknown"),
+                    confidence=str(candidate.get("confidence") or "insufficient"),
+                    origin=str(candidate.get("parameter_origin") or "unknown"),
+                    values=_xps_parameter_values_text(candidate),
+                    source_summary=source_summary,
+                    applicability=applicability,
+                    caveats=caveats,
+                    unresolved=", ".join(unresolved_ids) if unresolved_ids else "无",
+                )
+            )
+        if len(sorted_candidates) > 8:
+            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+    lines.append(
+        "- 上述 XPS parameter suggestions 是 source-backed advisory records；它们可以帮助组织 spin-orbit、Tougaard/background、component/bounds/peak-shape 或化学态候选讨论，但不会自动写入 processing parameters，不能单独证明化学态、组成或正式定量。"
     )
     return "\n".join(lines)
 
@@ -1733,6 +1834,7 @@ def generate_xps_report(
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
     reference_ids: list[str] | None = None,
+    parameter_suggestion_paths: list[Path] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(xps_metadata_path)
@@ -1777,10 +1879,19 @@ def generate_xps_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in warnings
     ) or "未记录高风险 warning。"
-    reference_block = build_report_reference_block(root, reference_ids)
+    parameter_suggestion_records = _load_xps_parameter_suggestion_records(root, parameter_suggestion_paths)
+    registered_references = _registered_reference_ids(root)
+    suggestion_reference_ids = [
+        str(reference_id)
+        for record in parameter_suggestion_records
+        for reference_id in record.get("reference_ids", [])
+        if str(reference_id) in registered_references
+    ]
+    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
     citation_text = reference_block["inline_citation"]
     literature_note = f"相关解释应与已登记文献、标准谱库或项目参考谱对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准谱库或项目参考谱引用。"
     interpretation_text = _xps_interpretation_text(metadata, citation_text)
+    parameter_suggestion_text = _xps_parameter_suggestion_text(parameter_suggestion_records, reference_block)
     figure_rel = outputs["figure"]
     figure_embed = f"![XPS spectrum](../{figure_rel})"
     body = f"""# XPS 分析报告
@@ -1848,6 +1959,10 @@ def generate_xps_report(
 
 {interpretation_text}
 
+## Source-backed XPS parameter suggestions
+
+{parameter_suggestion_text}
+
 ## 谨慎解释
 
 在当前数据范围内，自动 XPS peak 只能支持“谱图结构筛查”。不能仅凭本次自动检峰直接确认化学态、价态、元素组成、表面污染、充电校正正确性或拟合组分；正式 XPS 结论需要用户确认校准参考、背景模型、spin-orbit/峰形/约束、灵敏度因子和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
@@ -1889,7 +2004,7 @@ def generate_xps_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(xps_metadata_path.relative_to(root))],
+            "records": [str(xps_metadata_path.relative_to(root)), *[_relative_to_root(root, path) for path in parameter_suggestion_paths or []]],
             "files": [
                 value
                 for value in [
@@ -1908,7 +2023,11 @@ def generate_xps_report(
             ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={
+            "include_next_step_suggestions": False,
+            "language": "zh",
+            "parameter_suggestion_refs": [_relative_to_root(root, path) for path in parameter_suggestion_paths or []],
+        },
         review_refs=[],
         warnings=warnings,
         created_at=created_at,

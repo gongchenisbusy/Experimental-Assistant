@@ -355,6 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
     xps_report.add_argument("--experiment-ref", action="append", default=[])
     xps_report.add_argument("--sample-ref", action="append", default=[])
     xps_report.add_argument("--reference-id", action="append", default=[])
+    xps_report.add_argument("--parameter-suggestion", action="append", type=Path, default=[])
     xps_suggest = xps_sub.add_parser("suggest-parameters", help="record source-backed XPS parameter suggestions without applying them")
     xps_suggest.add_argument("workspace", type=Path)
     xps_suggest.add_argument("--source-file", required=True, type=Path)
@@ -1141,6 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,
+                parameter_suggestion_paths=[_project_path(args.workspace, path) for path in args.parameter_suggestion],
             )
             _print_json({"report": str(path)})
             return 0

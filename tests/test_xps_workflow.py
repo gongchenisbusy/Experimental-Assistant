@@ -15,6 +15,39 @@ def _json_output(capsys) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
+def _register_xps_spin_orbit_reference_seed(workspace: Path, project_id: str, capsys) -> None:
+    reference_seed_packet = workspace / "xps_spin_orbit_reference_seed.yml"
+    reference_seed_packet.write_text(
+        """
+reference_seeds:
+  ref-xps-spin-orbit-001:
+    citation: "User-reviewed XPS spin-orbit reference note. Example Journal (2026)."
+    title: "User-reviewed XPS spin-orbit reference note"
+    year: 2026
+    url: "https://example.org/xps-spin-orbit-reference-note"
+    source_type: manual
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                reference_seed_packet.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    reference_seed_output = _json_output(capsys)
+    assert reference_seed_output["imported_count"] == 1
+
+
 def _write_xps_fixture(path: Path) -> Path:
     lines = [
         "# x_unit = eV",
@@ -1134,6 +1167,7 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     project = _json_output(capsys)
     project_frontmatter, _ = read_markdown_record(Path(project["project"]))
     project_id = project_frontmatter["project_id"]
+    _register_xps_spin_orbit_reference_seed(workspace, project_id, capsys)
 
     assert main(
         [
@@ -1249,6 +1283,50 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     assert xps["outputs"]["component_fit"] in figure_record["source_data_refs"]
     assert xps["outputs"]["component_fit_table"] in figure_record["source_data_refs"]
 
+    suggestion_source = workspace / "xps_spin_orbit_parameter_source.yml"
+    suggestion_source.write_text(
+        """
+candidates:
+  - candidate_id: xps-param-fe2p-spin-report-001
+    suggestion_type: spin_orbit_constraint
+    element: Fe
+    core_level: 2p
+    constraint_id: xps-spin-fe2p-001
+    center_delta_eV: 13.4
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    parameter_origin: user_confirmed_source_suggested
+    source_summary: Fe 2p spin-orbit screening values from the registered XPS reference used for the reviewed component-fit screening.
+    applicability_notes:
+      - Applies only to this reviewed Fe 2p screening model and does not prove chemical state.
+    reference_ids:
+      - ref-xps-spin-orbit-001
+    confidence: low
+    caveats:
+      - Candidate constraint only; report discussion does not apply parameters.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "xps",
+                "suggest-parameters",
+                str(workspace),
+                "--source-file",
+                suggestion_source.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+                "--related-record",
+                xps_metadata.relative_to(workspace).as_posix(),
+            ]
+        )
+        == 0
+    )
+    suggestion_output = _json_output(capsys)
+    assert suggestion_output["status"] == "ready_for_user_review"
+
     assert main(
         [
             "xps",
@@ -1262,14 +1340,26 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
             "sample-xps-spin-001",
             "--experiment-ref",
             "exp-xps-spin-001",
+            "--parameter-suggestion",
+            Path(suggestion_output["record"]).relative_to(workspace).as_posix(),
         ]
     ) == 0
     report_output = _json_output(capsys)
-    _, report_body = read_markdown_record(Path(report_output["report"]))
+    report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "ref-xps-spin-orbit-001" in report_frontmatter["reference_ids"]
     assert "spin-orbit constraints" in report_body
     assert "source-backed" in report_body
     assert "xps-spin-fe2p-001" in report_body
     assert "dependent" in report_body
+    assert "## Source-backed XPS parameter suggestions" in report_body
+    assert "xps-param-fe2p-spin-report-001" in report_body
+    assert "spin_orbit_constraint[1]" in report_body
+    assert "target_parameter_path: `component_fit.spin_orbit_constraints`" in report_body
+    assert "review_state: `ready_for_user_review`" in report_body
+    assert "Fe 2p spin-orbit screening values" in report_body
+    assert "不会自动写入 processing parameters" in report_body
+    assert "不能单独证明化学态" in report_body
+    assert "User-reviewed XPS spin-orbit reference note" in report_body
     assert "不静默选择" in report_body or "screening" in report_body
 
 
@@ -1731,6 +1821,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "ea xps process" in skill
     assert "ea xps build-source-packet" in skill
     assert "ea xps suggest-parameters" in skill
+    assert "--parameter-suggestion" in skill
     assert "register-seeds" in skill
     assert "references/xps-workflow.md" in skill
     assert xps_reference.exists()
@@ -1745,6 +1836,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
+    assert "--parameter-suggestion" in xps_reference_text
+    assert "source-backed parameter suggestion section" in xps_reference_text
     assert "region_records" in xps_reference_text
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
@@ -1760,6 +1853,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "reference_seeds" in xps_record["notes"]
     assert "register-seeds" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
+    assert "--parameter-suggestion" in xps_record["notes"]
     assert "spin_orbit_constraints" in xps_record["notes"]
     assert "region_records" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
