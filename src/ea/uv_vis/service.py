@@ -2616,6 +2616,23 @@ def _feature_ids(features: pd.DataFrame) -> list[str]:
     return [str(value) for value in features["feature_id"].tolist() if str(value).strip()]
 
 
+def _feature_records(features: pd.DataFrame) -> list[dict[str, Any]]:
+    if features.empty:
+        return []
+    records: list[dict[str, Any]] = []
+    for index, (_, feature) in enumerate(features.iterrows(), start=1):
+        feature_id = str(feature.get("feature_id") or f"feature-{index:03d}").strip()
+        records.append(
+            {
+                "feature_index": index,
+                "feature_id": feature_id,
+                "energy_eV": _finite_float(feature.get("energy_eV")),
+                "wavelength_nm": _finite_float(feature.get("wavelength_nm")),
+            }
+        )
+    return records
+
+
 def _uv_vis_comparison_entry(
     root: Path,
     *,
@@ -2673,6 +2690,7 @@ def _uv_vis_comparison_entry(
         "feature_ids": _feature_ids(features),
         "feature_positions_eV": _feature_values(features, "energy_eV"),
         "feature_positions_nm": _feature_values(features, "wavelength_nm"),
+        "features": _feature_records(features),
         "edge_energy_eV": _finite_float(edge.get("energy_eV")),
         "edge_wavelength_nm": _finite_float(edge.get("wavelength_nm")),
         "edge_confidence": str(edge.get("confidence") or "not_recorded"),
@@ -2775,16 +2793,240 @@ def _descriptive_statistics(
     }
 
 
+def _positive_match_tolerance(value: float | None, label: str) -> float | None:
+    if value is None:
+        return None
+    number = _finite_float(value)
+    if number is None or number <= 0:
+        raise UVVisProcessingError(f"{label} must be a positive finite number when feature matching is requested")
+    return number
+
+
+def _feature_group_statistics(values: list[float]) -> dict[str, Any]:
+    array = np.asarray(values, dtype=float)
+    return {
+        "count": int(array.size),
+        "mean": float(np.mean(array)),
+        "std_population": float(np.std(array, ddof=0)),
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+    }
+
+
+def _feature_match_members(entries: list[dict[str, Any]], axis_key: str) -> list[dict[str, Any]]:
+    members: list[dict[str, Any]] = []
+    for entry in entries:
+        for feature in entry.get("features", []):
+            axis_value = _finite_float(feature.get(axis_key))
+            if axis_value is None:
+                continue
+            members.append(
+                {
+                    "metadata_ref": str(entry.get("metadata_ref") or ""),
+                    "result_id": str(entry.get("result_id") or ""),
+                    "uv_vis_result_id": str(entry.get("uv_vis_result_id") or ""),
+                    "sample_refs": _coerce_string_list(entry.get("sample_refs")),
+                    "feature_id": str(feature.get("feature_id") or ""),
+                    "feature_index": feature.get("feature_index"),
+                    "axis_value": axis_value,
+                    "energy_eV": _finite_float(feature.get("energy_eV")),
+                    "wavelength_nm": _finite_float(feature.get("wavelength_nm")),
+                }
+            )
+    return sorted(members, key=lambda item: item["axis_value"])
+
+
+def _feature_match_group_record(
+    *,
+    group_id: str,
+    axis_key: str,
+    members: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    values = [float(member["axis_value"]) for member in members]
+    metadata_refs = sorted({str(member.get("metadata_ref") or "") for member in members if member.get("metadata_ref")})
+    result_ids = sorted({str(member.get("result_id") or "") for member in members if member.get("result_id")})
+    sample_refs = sorted({sample_ref for member in members for sample_ref in _coerce_string_list(member.get("sample_refs"))})
+    duplicate_metadata_refs = sorted(
+        {
+            metadata_ref
+            for metadata_ref in metadata_refs
+            if sum(1 for member in members if member.get("metadata_ref") == metadata_ref) > 1
+        }
+    )
+    if duplicate_metadata_refs:
+        warnings.append(
+            _warning(
+                "uv_vis_feature_matching_duplicate_record_member",
+                "A reviewed UV-Vis feature-match group contains more than one feature from the same metadata record.",
+                severity="medium",
+                group_id=group_id,
+                metadata_refs=duplicate_metadata_refs,
+            )
+        )
+    distinct_record_count = len(metadata_refs)
+    status = "multi_record_candidate_match" if distinct_record_count >= 2 else "single_record_context"
+    confidence = "low" if distinct_record_count >= 2 else "insufficient_replicate_context"
+    return {
+        "group_id": group_id,
+        "axis_key": axis_key,
+        "status": status,
+        "confidence": confidence,
+        "confidence_reason": "Grouped by reviewed numeric tolerance only; not an optical feature assignment or transition proof.",
+        "feature_ids": [str(member.get("feature_id") or "") for member in members if member.get("feature_id")],
+        "metadata_refs": metadata_refs,
+        "result_ids": result_ids,
+        "sample_refs": sample_refs,
+        "duplicate_metadata_refs": duplicate_metadata_refs,
+        "members": members,
+        "statistics": _feature_group_statistics(values),
+        "boundary": "Reviewed tolerance grouping only; this does not prove common optical origin, band gap, transition mechanism, correction validity, sample ranking, or replicate equivalence.",
+    }
+
+
+def _feature_match_axis_groups(
+    entries: list[dict[str, Any]],
+    *,
+    axis_key: str,
+    tolerance: float,
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    members = _feature_match_members(entries, axis_key)
+    if not members:
+        return {
+            "status": "no_matchable_features",
+            "axis_key": axis_key,
+            "tolerance": tolerance,
+            "confidence": "insufficient_data",
+            "group_count": 0,
+            "multi_record_group_count": 0,
+            "groups": [],
+        }
+
+    pending_groups: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_center: float | None = None
+    for member in members:
+        axis_value = float(member["axis_value"])
+        if not current:
+            current = [member]
+            current_center = axis_value
+            continue
+        if current_center is not None and abs(axis_value - current_center) <= tolerance:
+            current.append(member)
+            current_center = float(np.mean([float(item["axis_value"]) for item in current]))
+        else:
+            pending_groups.append(current)
+            current = [member]
+            current_center = axis_value
+    if current:
+        pending_groups.append(current)
+
+    axis_slug = axis_key.replace("_", "-")
+    groups = [
+        _feature_match_group_record(
+            group_id=f"uvvis-feature-match-{axis_slug}-{index:03d}",
+            axis_key=axis_key,
+            members=group_members,
+            warnings=warnings,
+        )
+        for index, group_members in enumerate(pending_groups, start=1)
+    ]
+    return {
+        "status": "feature_match_groups_recorded",
+        "axis_key": axis_key,
+        "tolerance": tolerance,
+        "grouping_method": "sorted_greedy_center_with_reviewed_tolerance",
+        "confidence": "low",
+        "confidence_reason": "Feature grouping uses a user-reviewed numeric tolerance and existing feature tables only.",
+        "member_count": len(members),
+        "group_count": len(groups),
+        "multi_record_group_count": sum(1 for group in groups if group["status"] == "multi_record_candidate_match"),
+        "groups": groups,
+        "boundary": "Axis-specific feature grouping is advisory and does not assign optical transitions or prove band gaps.",
+    }
+
+
+def _build_feature_matching_record(
+    entries: list[dict[str, Any]],
+    *,
+    energy_tolerance_eV: float | None,
+    wavelength_tolerance_nm: float | None,
+    review_ref: str | None,
+    review: dict[str, Any] | None,
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if energy_tolerance_eV is None and wavelength_tolerance_nm is None:
+        return {
+            "enabled": False,
+            "status": "disabled",
+            "reason": "No reviewed feature-match tolerance was provided; feature positions remain listed per record only.",
+        }
+
+    axes: dict[str, Any] = {}
+    if energy_tolerance_eV is not None:
+        axes["energy_eV"] = _feature_match_axis_groups(entries, axis_key="energy_eV", tolerance=energy_tolerance_eV, warnings=warnings)
+    if wavelength_tolerance_nm is not None:
+        axes["wavelength_nm"] = _feature_match_axis_groups(
+            entries,
+            axis_key="wavelength_nm",
+            tolerance=wavelength_tolerance_nm,
+            warnings=warnings,
+        )
+    group_count = sum(int(axis.get("group_count") or 0) for axis in axes.values())
+    status = "reviewed_feature_matching_recorded" if group_count else "no_matchable_features"
+    return {
+        "enabled": True,
+        "status": status,
+        "review_ref": review_ref,
+        "review_target_type": str((review or {}).get("target_type") or ""),
+        "review_target_ref": str((review or {}).get("target_ref") or ""),
+        "tolerances": {
+            "energy_eV": energy_tolerance_eV,
+            "wavelength_nm": wavelength_tolerance_nm,
+        },
+        "axes": axes,
+        "group_count": group_count,
+        "multi_record_group_count": sum(int(axis.get("multi_record_group_count") or 0) for axis in axes.values()),
+        "confidence": "low",
+        "confidence_reason": "Feature matching is based on explicit reviewed tolerance parameters and existing feature tables.",
+        "boundaries": [
+            "Reviewed feature matching reads existing UV-Vis feature tables only.",
+            "It does not reprocess raw data, silently group peaks, apply optical models or corrections, inject citations, create ReviewRecords, write memory, rank samples, or prove optical assignments.",
+            "Groups are candidate alignment aids for discussion and traceability; scientific conclusions require source-backed interpretation and user review.",
+        ],
+    }
+
+
 def compare_uv_vis_replicates(
     root: Path,
     *,
     project_id: str,
     metadata_paths: list[Path],
     comparison_label: str | None = None,
+    feature_match_tolerance_eV: float | None = None,
+    feature_match_tolerance_nm: float | None = None,
+    feature_match_review_ref: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     if len(metadata_paths) < 2:
         raise UVVisProcessingError("UV-Vis replicate comparison requires at least two --metadata records")
+
+    energy_tolerance_eV = _positive_match_tolerance(feature_match_tolerance_eV, "feature_match_tolerance_eV")
+    wavelength_tolerance_nm = _positive_match_tolerance(feature_match_tolerance_nm, "feature_match_tolerance_nm")
+    feature_matching_requested = energy_tolerance_eV is not None or wavelength_tolerance_nm is not None
+    feature_match_review: dict[str, Any] | None = None
+    if feature_matching_requested:
+        if not feature_match_review_ref:
+            raise UVVisProcessingError("Reviewed UV-Vis feature matching requires --feature-match-review-ref")
+        feature_match_review = require_confirmed_review(root, feature_match_review_ref)
+        review_target_type = str(feature_match_review.get("target_type") or "")
+        if review_target_type and review_target_type not in {"uv_vis_feature_matching", "uv_vis_replicate_feature_matching"}:
+            raise UVVisProcessingError(
+                f"ReviewRecord {feature_match_review_ref} target_type is {review_target_type}, not uv_vis_feature_matching"
+            )
+    elif feature_match_review_ref:
+        raise UVVisProcessingError("--feature-match-review-ref was provided, but no feature-match tolerance was set")
 
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
@@ -2825,6 +3067,14 @@ def compare_uv_vis_replicates(
         entries.append(entry)
         input_files.extend(data_refs)
 
+    feature_matching = _build_feature_matching_record(
+        entries,
+        energy_tolerance_eV=energy_tolerance_eV,
+        wavelength_tolerance_nm=wavelength_tolerance_nm,
+        review_ref=feature_match_review_ref,
+        review=feature_match_review,
+        warnings=warnings,
+    )
     statistics = {
         "edge_energy_eV": _descriptive_statistics(entries, metric="edge_energy_eV", value_key="edge_energy_eV", basis_keys=["signal_mode"]),
         "edge_wavelength_nm": _descriptive_statistics(entries, metric="edge_wavelength_nm", value_key="edge_wavelength_nm", basis_keys=["signal_mode"]),
@@ -2841,8 +3091,16 @@ def compare_uv_vis_replicates(
             basis_keys=["signal_mode", "feature_detection_method"],
         ),
         "feature_positions": {
-            "status": "not_statistically_matched",
-            "reason": "Detected feature positions are listed per record but are not averaged because EA v0.2 does not match individual optical features across spectra in this comparison workflow.",
+            "status": "reviewed_feature_matching_recorded" if feature_matching["enabled"] else "not_statistically_matched",
+            "review_ref": feature_match_review_ref,
+            "axes": sorted(feature_matching.get("axes", {}).keys()) if feature_matching["enabled"] else [],
+            "group_count": feature_matching.get("group_count", 0),
+            "reason": (
+                "Detected feature positions were grouped only on axes with explicit reviewed tolerances."
+                if feature_matching["enabled"]
+                else "Detected feature positions are listed per record but are not averaged because no reviewed matching tolerance was provided."
+            ),
+            "boundary": "Feature-position groups are advisory tolerance records, not optical assignments, transition proofs, sample rankings, or replicate-equivalence proofs.",
         },
     }
     missing_data = {
@@ -2904,18 +3162,20 @@ def compare_uv_vis_replicates(
         "table_ref": table_ref,
         "entries": entries,
         "statistics": statistics,
+        "feature_matching": feature_matching,
         "missing_data": missing_data,
         "outputs": {
             "record": record_ref,
             "table": table_ref,
         },
         "warnings": warnings,
-        "review_refs": review_refs,
+        "review_refs": sorted({*review_refs, *([feature_match_review_ref] if feature_match_review_ref else [])}),
         "source_refs": source_refs,
         "boundaries": [
             "UV-Vis replicate comparison reads existing processed UV-Vis metadata and output tables only.",
-            "It does not reprocess raw data, infer replicate grouping silently, apply optical corrections, create ReviewRecords, inject source-backed interpretation candidates, write memory, or prove band gaps, transition mechanisms, feature assignments, correction validity, or sample ranking.",
+            "It does not reprocess raw data, infer replicate grouping silently, apply optical corrections, create ReviewRecords, inject source-backed interpretation candidates, write memory, or prove band gaps, transition mechanisms, feature assignments, correction validity, replicate equivalence, or sample ranking.",
             "Statistics are descriptive summaries for comparable screening values only; not-comparable metrics remain labeled with basis differences and missing-data reasons.",
+            "Feature matching is disabled by default and runs only with explicit reviewed tolerance parameters plus a confirmed review ref.",
         ],
     }
     write_yaml(record_path, comparison_record)
@@ -2929,8 +3189,12 @@ def compare_uv_vis_replicates(
             "comparison_label": comparison_label,
             "input_count": len(entries),
             "statistics": sorted(statistics.keys()),
+            "feature_matching_enabled": bool(feature_matching["enabled"]),
+            "feature_match_tolerance_eV": energy_tolerance_eV,
+            "feature_match_tolerance_nm": wavelength_tolerance_nm,
+            "feature_match_review_ref": feature_match_review_ref,
         },
-        review_refs=review_refs,
+        review_refs=comparison_record["review_refs"],
         source_refs=source_refs,
         warnings=warnings,
         scripts=[{"path": "src/ea/uv_vis/service.py", "version": "0.2.0"}],
@@ -2945,6 +3209,7 @@ def compare_uv_vis_replicates(
         "status": comparison_record["status"],
         "input_count": len(entries),
         "statistics": statistics,
+        "feature_matching": feature_matching,
         "warnings": warnings,
         "provenance": str(provenance_path),
     }

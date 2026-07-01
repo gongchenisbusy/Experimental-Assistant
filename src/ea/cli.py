@@ -397,6 +397,9 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_compare.add_argument("--metadata", required=True, action="append", type=Path)
     uv_vis_compare.add_argument("--project-id")
     uv_vis_compare.add_argument("--comparison-label")
+    uv_vis_compare.add_argument("--feature-match-tolerance-ev", type=float)
+    uv_vis_compare.add_argument("--feature-match-tolerance-nm", type=float)
+    uv_vis_compare.add_argument("--feature-match-review-ref")
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
@@ -1295,6 +1298,9 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     metadata_paths=[_project_path(args.workspace, path) for path in args.metadata],
                     comparison_label=args.comparison_label,
+                    feature_match_tolerance_eV=args.feature_match_tolerance_ev,
+                    feature_match_tolerance_nm=args.feature_match_tolerance_nm,
+                    feature_match_review_ref=args.feature_match_review_ref,
                 )
             )
             return 0

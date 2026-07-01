@@ -1412,11 +1412,86 @@ def test_cli_uv_vis_compare_replicates_records_descriptive_statistics(tmp_path: 
     assert math.isclose(edge_stats["std_population"], 0.1)
     assert math.isclose(comparison["statistics"]["tauc_intercept_energy_eV"]["mean"], 2.1)
     assert comparison["statistics"]["feature_positions"]["status"] == "not_statistically_matched"
+    assert comparison["feature_matching"]["status"] == "disabled"
+    assert comparison["entries"][0]["features"][0]["feature_id"] == "uvvis-feature-1a"
     assert comparison["missing_data"]["edge_energy_eV"] == []
     assert "does not reprocess raw data" in " ".join(comparison["boundaries"])
     assert provenance["workflow"] == "uv_vis_replicate_comparison"
     assert provenance["inputs"]["records"] == metadata_refs
     assert sorted(provenance["review_refs"]) == ["review-uv-vis-001", "review-uv-vis-002"]
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_feature_matching",
+            "--target-ref",
+            "processed/comparisons/uv_vis",
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "feature_match_tolerance_eV=0.05 for UV-Vis replicate feature matching",
+        ]
+    ) == 0
+    matching_review = _json_output(capsys)
+
+    assert main(
+        [
+            "uv-vis",
+            "compare-replicates",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--metadata",
+            metadata_refs[0],
+            "--metadata",
+            metadata_refs[0],
+            "--metadata",
+            metadata_refs[1],
+            "--comparison-label",
+            "reviewed feature matching with duplicate input",
+            "--feature-match-tolerance-ev",
+            "0.05",
+            "--feature-match-review-ref",
+            matching_review["review_id"],
+        ]
+    ) == 0
+    matched_output = _json_output(capsys)
+    matched_comparison = read_yaml(Path(matched_output["record"]))
+    matched_provenance = read_yaml(Path(matched_output["provenance"]))
+    matching = matched_comparison["feature_matching"]
+    energy_axis = matching["axes"]["energy_eV"]
+    multi_record_group = next(group for group in energy_axis["groups"] if group["status"] == "multi_record_candidate_match")
+    warning_codes = [warning["code"] for warning in matched_comparison["warnings"]]
+
+    assert matched_output["status"] == "comparison_with_warnings"
+    assert matching["enabled"] is True
+    assert matching["review_ref"] == matching_review["review_id"]
+    assert matching["review_target_type"] == "uv_vis_feature_matching"
+    assert matching["tolerances"]["energy_eV"] == 0.05
+    assert matching["tolerances"]["wavelength_nm"] is None
+    assert sorted(matching["axes"]) == ["energy_eV"]
+    assert matching["multi_record_group_count"] == 1
+    assert energy_axis["grouping_method"] == "sorted_greedy_center_with_reviewed_tolerance"
+    assert multi_record_group["confidence"] == "low"
+    assert multi_record_group["statistics"]["count"] == 3
+    assert math.isclose(multi_record_group["statistics"]["mean"], (2.20 + 2.20 + 2.22) / 3.0)
+    assert metadata_refs[0] in multi_record_group["duplicate_metadata_refs"]
+    assert "uvvis-feature-1b" in multi_record_group["feature_ids"]
+    assert "uvvis-feature-2a" in multi_record_group["feature_ids"]
+    assert any(member["metadata_ref"] == metadata_refs[1] for member in multi_record_group["members"])
+    assert "uv_vis_comparison_duplicate_metadata" in warning_codes
+    assert "uv_vis_feature_matching_duplicate_record_member" in warning_codes
+    assert matched_comparison["statistics"]["feature_positions"]["status"] == "reviewed_feature_matching_recorded"
+    assert matched_comparison["statistics"]["feature_positions"]["review_ref"] == matching_review["review_id"]
+    assert matching_review["review_id"] in matched_comparison["review_refs"]
+    assert matching_review["review_id"] in matched_provenance["review_refs"]
+    assert matched_provenance["parameters"]["feature_matching_enabled"] is True
+    assert matched_provenance["parameters"]["feature_match_tolerance_eV"] == 0.05
+    assert "does not reprocess raw data" in " ".join(matching["boundaries"])
+    assert "prove optical assignments" in " ".join(matching["boundaries"])
 
 
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
@@ -1433,6 +1508,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis prepare-review" in readme
     assert "ea uv-vis propose-memory" in readme
     assert "ea uv-vis compare-replicates" in readme
+    assert "--feature-match-tolerance-ev" in readme
     assert "--interpretation-suggestion" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
@@ -1440,6 +1516,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis prepare-review" in skill
     assert "ea uv-vis propose-memory" in skill
     assert "ea uv-vis compare-replicates" in skill
+    assert "--feature-match-review-ref" in skill
     assert "--interpretation-review-ref" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
@@ -1454,6 +1531,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis prepare-review" in reference_text
     assert "ea uv-vis propose-memory" in reference_text
     assert "ea uv-vis compare-replicates" in reference_text
+    assert "uv_vis_feature_matching" in reference_text
     assert "--interpretation-suggestion" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text

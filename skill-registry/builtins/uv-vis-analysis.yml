@@ -155,6 +155,21 @@ ea_skill:
         - std_population
         - min
         - max
+      reviewed_feature_matching:
+        implemented: true
+        optional: true
+        command_flags:
+          - --feature-match-tolerance-ev
+          - --feature-match-tolerance-nm
+          - --feature-match-review-ref
+        requires_confirmed_review_record: true
+        review_target_type: uv_vis_feature_matching
+        output_records:
+          - axis_specific_candidate_feature_groups
+          - per_group_members_with_feature_ids_sample_result_metadata_refs
+          - group_statistics
+          - duplicate_record_warnings
+        confidence_boundary: reviewed_tolerance_candidate_grouping_only
       confidence_boundary: descriptive_statistics_only
     supported_x_units:
       - nm
@@ -167,5 +182,6 @@ ea_skill:
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
       - correction-context records preserve reviewed metadata but do not apply automatic numeric correction
       - source packets, interpretation suggestions, and review packages preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not create ReviewRecords, inject report citations, write memory, or apply optical models/corrections; reviewed report and memory proposal integrations only read confirmed ReviewRecords and registered references, and memory proposal writes draft candidates only
-      - replicate comparison records summarize processed metadata with descriptive statistics only; they do not reprocess raw data, infer replicate grouping silently, prove optical conclusions, or rank samples
+      - replicate comparison records summarize processed metadata with descriptive statistics; reviewed feature matching is optional and requires explicit tolerance parameters plus a confirmed uv_vis_feature_matching ReviewRecord
+      - reviewed feature matching records candidate groups only; it does not reprocess raw data, silently match features, infer replicate grouping, prove optical conclusions, or rank samples
       - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references

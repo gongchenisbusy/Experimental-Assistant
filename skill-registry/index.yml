@@ -75,11 +75,14 @@ skills:
       references and unresolved-reference warnings, review-gated draft
       interpretation memory_candidate proposals via ea uv-vis propose-memory,
       replicate_comparison records via ea uv-vis compare-replicates with
-      descriptive statistics from processed metadata only, traceable figures,
+      descriptive statistics from processed metadata plus optional reviewed
+      feature matching through explicit eV/nm tolerances and a confirmed
+      uv_vis_feature_matching ReviewRecord, traceable figures,
       and confidence-labeled reports; formal band-gap or transition conclusions,
       ReviewRecord creation by report/memory commands, optical model/correction
-      auto-application, raw reprocessing or hidden replicate grouping by comparison
-      commands, and confirmed memory commit still require later reviewed workflows.
+      auto-application, raw reprocessing, hidden replicate grouping, hidden
+      feature matching by comparison commands, sample ranking, and confirmed
+      memory commit still require later reviewed workflows.
   - id: ea.xps-analysis
     manifest: skill-registry/builtins/xps-analysis.yml
     status: builtin_v0_2_reference
