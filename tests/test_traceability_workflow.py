@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ea.cli import main
 from ea.storage import read_yaml, write_markdown_record, write_yaml
-from ea.traceability import build_project_trace_view
+from ea.traceability import build_project_trace_view, lookup_trace_record
 
 
 def _write_trace_fixture(root: Path) -> None:
@@ -541,6 +541,103 @@ def test_public_uv_vis_example_trace_links_screening_outputs(tmp_path: Path) -> 
     ) in edges
 
 
+def test_lookup_trace_record_resolves_public_uv_vis_report_and_figure_ids(tmp_path: Path) -> None:
+    root = Path("examples/public-uv-vis-project")
+    report_lookup = lookup_trace_record(
+        root,
+        "rpt-public-uv-vis-example-20260605-001",
+        output_path=tmp_path / "report_lookup_trace.yml",
+        markdown_output_path=tmp_path / "report_lookup_trace.md",
+        created_at="2026-07-01T18:10:00",
+    )
+    figure_lookup = lookup_trace_record(
+        root,
+        "fig-public-uv-vis-example-uv-vis-20260605-001",
+        output_path=tmp_path / "figure_lookup_trace.yml",
+        markdown_output_path=tmp_path / "figure_lookup_trace.md",
+        created_at="2026-07-01T18:11:00",
+    )
+
+    report_ref = "reports/rpt-public-uv-vis-example-20260605-001.md"
+    figure_ref = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/"
+        "fig-public-uv-vis-example-uv-vis-20260605-001.png"
+    )
+    tauc_table = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv"
+    )
+    derivative_table = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv"
+    )
+    correction_context = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml"
+    )
+
+    assert report_lookup["status"] == "found"
+    assert report_lookup["canonical_ref"] == report_ref
+    assert report_lookup["node"]["path_exists"] is True
+    report_outgoing = {(item["relation"], item["to"]["id"]) for item in report_lookup["related"]["outgoing"]}
+    assert ("includes_figure", figure_ref) in report_outgoing
+    assert ("uses_result", "result:res-public-uv-vis-example-uv-vis-20260605-001") in report_outgoing
+    assert ("has_provenance", "provenance/prov-20260605-005.yml") in report_outgoing
+
+    assert figure_lookup["status"] == "found"
+    assert figure_lookup["canonical_ref"] == figure_ref
+    assert figure_lookup["node"]["path_exists"] is True
+    figure_incoming = {(item["relation"], item["from"]["id"]) for item in figure_lookup["related"]["incoming"]}
+    figure_outgoing = {(item["relation"], item["to"]["id"]) for item in figure_lookup["related"]["outgoing"]}
+    assert ("includes_figure", report_ref) in figure_incoming
+    assert ("rendered_in_report", report_ref) in figure_outgoing
+    assert ("uses_source_data", tauc_table) in figure_outgoing
+    assert ("uses_source_data", derivative_table) in figure_outgoing
+    assert ("uses_source_data", correction_context) in figure_outgoing
+
+
+def test_lookup_trace_record_resolves_processed_result_ids(tmp_path: Path) -> None:
+    root = Path("examples/public-uv-vis-project")
+
+    lookup = lookup_trace_record(
+        root,
+        "res-public-uv-vis-example-uv-vis-20260605-001",
+        output_path=tmp_path / "result_lookup_trace.yml",
+        markdown_output_path=tmp_path / "result_lookup_trace.md",
+        created_at="2026-07-01T18:12:00",
+    )
+
+    assert lookup["status"] == "found"
+    assert lookup["canonical_ref"] == "result:res-public-uv-vis-example-uv-vis-20260605-001"
+    incoming = {(item["relation"], item["from"]["id"]) for item in lookup["related"]["incoming"]}
+    assert (
+        "visualizes_result",
+        (
+            "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+            "res-public-uv-vis-example-uv-vis-20260605-001/"
+            "fig-public-uv-vis-example-uv-vis-20260605-001.png"
+        ),
+    ) in incoming
+    assert ("uses_result", "reports/rpt-public-uv-vis-example-20260605-001.md") in incoming
+
+
+def test_trace_view_focus_accepts_bare_processed_result_id(tmp_path: Path) -> None:
+    root = Path("examples/public-uv-vis-project")
+
+    result = build_project_trace_view(
+        root,
+        focus_ref="res-public-uv-vis-example-uv-vis-20260605-001",
+        output_path=tmp_path / "result_focus_trace.yml",
+        markdown_output_path=tmp_path / "result_focus_trace.md",
+        created_at="2026-07-01T18:13:00",
+    )
+
+    assert result["canonical_focus_ref"] == "result:res-public-uv-vis-example-uv-vis-20260605-001"
+    trace = read_yaml(Path(result["trace_path"]))
+    assert "result:res-public-uv-vis-example-uv-vis-20260605-001" in {node["id"] for node in trace["nodes"]}
+
+
 def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
     _write_trace_fixture(tmp_path)
 
@@ -570,6 +667,36 @@ def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
     assert "reports/rpt-trace-20260701-001.md" in node_ids
 
 
+def test_cli_trace_lookup_prints_compact_record_neighbors(tmp_path: Path, capsys) -> None:
+    _write_trace_fixture(tmp_path)
+
+    assert (
+        main(
+            [
+                "trace",
+                "lookup",
+                str(tmp_path),
+                "fig-trace-ftir-001",
+                "--output",
+                str(tmp_path / "traceability" / "lookup_trace.yml"),
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["status"] == "found"
+    assert output["canonical_ref"] == "figures/fig-trace-ftir-001.png"
+    assert output["node"]["path_exists"] is True
+    incoming = {(item["relation"], item["from"]["id"]) for item in output["related"]["incoming"]}
+    outgoing = {(item["relation"], item["to"]["id"]) for item in output["related"]["outgoing"]}
+    assert ("includes_figure", "reports/rpt-trace-20260701-001.md") in incoming
+    assert ("visualizes_result", "result:res-trace-ftir-001") in outgoing
+    assert ("uses_source_data", "processed/sample-trace-001/ftir/source.csv") in outgoing
+    assert output["trace_ref"] == "traceability/lookup_trace.yml"
+    assert output["markdown_ref"] == "traceability/lookup_trace.md"
+
+
 def test_traceability_docs_and_registry_are_discoverable() -> None:
     root = Path.cwd()
     readme = (root / "README.md").read_text(encoding="utf-8")
@@ -579,20 +706,26 @@ def test_traceability_docs_and_registry_are_discoverable() -> None:
     manifest = read_yaml(root / "skill-registry" / "builtins" / "project-traceability.yml")["ea_skill"]
 
     assert "ea trace view" in readme
+    assert "ea trace lookup" in readme
     assert "traceability/project_trace.yml" in readme
     assert "registered references, reference seeds, built-in/source-library refs" in readme
     assert "build report-memory traceability views" in skill
     assert "ea trace view" in skill
+    assert "ea trace lookup" in skill
     assert "registered references, reference seeds, built-in/source-library refs" in skill
     assert "ea trace view" in onboarding
+    assert "ea trace lookup" in onboarding
     assert "registered references, reference seeds, built-in/source-library refs" in onboarding
     trace_record = next(item for item in registry["skills"] if item["id"] == "ea.project-traceability")
     assert "Project traceability view implemented" in trace_record["notes"]
     assert "reference seeds" in trace_record["notes"]
+    assert "ea trace lookup" in trace_record["notes"]
     assert "traceability_view" in manifest["output_artifacts"]
     assert "traceability_markdown" in manifest["output_artifacts"]
+    assert "trace_lookup_json" in manifest["output_artifacts"]
     assert "literature_reference_index" in manifest["input_artifacts"]
     assert "project_trace_view_yaml_and_markdown" in manifest["current_v0_2_support"]["implemented"]
+    assert "compact_trace_lookup_json" in manifest["current_v0_2_support"]["implemented"]
     assert "registered_reference_and_reference_seed_edges" in manifest["current_v0_2_support"]["implemented"]
     assert "source_library_reference_edges" in manifest["current_v0_2_support"]["implemented"]
     assert "no_memory_commit" in manifest["current_v0_2_support"]["boundaries"]

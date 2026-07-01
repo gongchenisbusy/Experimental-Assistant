@@ -175,6 +175,23 @@ class TraceBuilder:
             current = record.setdefault("metadata", {})
             current.update({key: value for key, value in metadata.items() if value not in (None, "", [], {})})
         self.aliases[node_id] = node_id
+        if ":" in node_id:
+            prefix, bare_id = node_id.split(":", 1)
+            typed_prefixes = {
+                "experiment",
+                "figure",
+                "memory",
+                "memory_candidate",
+                "provenance",
+                "raw",
+                "reference",
+                "report",
+                "result",
+                "sample",
+                "source_library",
+            }
+            if prefix in typed_prefixes:
+                self.aliases.setdefault(bare_id, node_id)
         return node_id
 
     def add_alias(self, alias: str, node_id: str) -> None:
@@ -197,6 +214,16 @@ class TraceBuilder:
             return self.aliases.get(ref, f"report:{ref}")
         if ref.startswith("fig-"):
             return self.aliases.get(ref, f"figure:{ref}")
+        if ref.startswith("res-"):
+            return self.aliases.get(ref, _id_ref("result", ref))
+        if ref.startswith("char-") or ref.startswith("raw-"):
+            return self.aliases.get(ref, _id_ref("raw", ref))
+        if ref.startswith("sample-"):
+            return self.aliases.get(ref, _id_ref("sample", ref))
+        if ref.startswith("exp-"):
+            return self.aliases.get(ref, _id_ref("experiment", ref))
+        if ref.startswith("ref-"):
+            return self.aliases.get(ref, _reference_ref(ref))
         if ref.startswith("memcand-"):
             return self.aliases.get(ref, f"memory_candidate:{ref}")
         if ref.startswith("mem-"):
@@ -607,24 +634,7 @@ def _render_markdown(trace: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_project_trace_view(
-    root: Path,
-    *,
-    focus_ref: str | None = None,
-    output_path: Path | None = None,
-    markdown_output_path: Path | None = None,
-    created_at: str | None = None,
-) -> dict[str, Any]:
-    root = root.resolve()
-    created_at = created_at or EARecord.now_iso()
-    trace_id = f"trace-{created_at[:10].replace('-', '')}-{created_at[11:19].replace(':', '')}"
-    output_path = output_path or root / "traceability" / "project_trace.yml"
-    markdown_output_path = markdown_output_path or output_path.with_suffix(".md")
-    if not output_path.is_absolute():
-        output_path = root / output_path
-    if not markdown_output_path.is_absolute():
-        markdown_output_path = root / markdown_output_path
-
+def _build_trace_builder(root: Path) -> TraceBuilder:
     builder = TraceBuilder(root)
     _load_references(root, builder)
     _load_reports(root, builder)
@@ -634,7 +644,17 @@ def build_project_trace_view(
     _load_suggestion_artifacts(root, builder)
     _load_provenance(root, builder)
     _normalize_aliases(builder)
+    return builder
 
+
+def _trace_payload(
+    *,
+    root: Path,
+    builder: TraceBuilder,
+    focus_ref: str | None,
+    created_at: str,
+) -> dict[str, Any]:
+    trace_id = f"trace-{created_at[:10].replace('-', '')}-{created_at[11:19].replace(':', '')}"
     nodes, edges, canonical_focus = _filter_focus(builder.nodes, builder.edges, focus_ref, builder.aliases)
     node_list = sorted(nodes.values(), key=lambda item: (item.get("kind", ""), item.get("id", "")))
     edge_list = sorted(edges, key=lambda item: (item["from"], item["relation"], item["to"]))
@@ -642,7 +662,7 @@ def build_project_trace_view(
     relation_counts = Counter(edge["relation"] for edge in edge_list)
     missing_nodes = sorted(node["id"] for node in node_list if node.get("exists") is False)
 
-    trace = {
+    return {
         "schema_version": "0.2",
         "source": "ea.traceability.project_trace_view:v0.2",
         "trace_id": trace_id,
@@ -663,20 +683,157 @@ def build_project_trace_view(
         "missing_nodes": missing_nodes,
         "boundaries": TRACE_BOUNDARIES,
     }
+
+
+def _normalize_trace_output_paths(
+    root: Path,
+    *,
+    output_path: Path | None = None,
+    markdown_output_path: Path | None = None,
+) -> tuple[Path, Path]:
+    output_path = output_path or root / "traceability" / "project_trace.yml"
+    markdown_output_path = markdown_output_path or output_path.with_suffix(".md")
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    if not markdown_output_path.is_absolute():
+        markdown_output_path = root / markdown_output_path
+    return output_path, markdown_output_path
+
+
+def _write_trace_outputs(root: Path, trace: dict[str, Any], output_path: Path, markdown_output_path: Path) -> None:
     write_yaml(output_path, trace)
     markdown_output_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_output_path.write_text(_render_markdown(trace), encoding="utf-8")
+
+
+def build_project_trace_view(
+    root: Path,
+    *,
+    focus_ref: str | None = None,
+    output_path: Path | None = None,
+    markdown_output_path: Path | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    created_at = created_at or EARecord.now_iso()
+    output_path, markdown_output_path = _normalize_trace_output_paths(
+        root,
+        output_path=output_path,
+        markdown_output_path=markdown_output_path,
+    )
+
+    builder = _build_trace_builder(root)
+    trace = _trace_payload(root=root, builder=builder, focus_ref=focus_ref, created_at=created_at)
+    _write_trace_outputs(root, trace, output_path, markdown_output_path)
     return {
-        "trace_id": trace_id,
+        "trace_id": trace["trace_id"],
         "status": trace["status"],
         "trace_path": str(output_path),
         "trace_ref": _project_ref(root, output_path),
         "markdown_path": str(markdown_output_path),
         "markdown_ref": _project_ref(root, markdown_output_path),
-        "node_count": len(node_list),
-        "edge_count": len(edge_list),
-        "missing_node_count": len(missing_nodes),
+        "node_count": trace["summary"]["node_count"],
+        "edge_count": trace["summary"]["edge_count"],
+        "missing_node_count": trace["summary"]["missing_node_count"],
         "focus_ref": focus_ref,
-        "canonical_focus_ref": canonical_focus,
+        "canonical_focus_ref": trace["canonical_focus_ref"],
+        "boundaries": TRACE_BOUNDARIES,
+    }
+
+
+def _node_lookup_payload(root: Path, node: dict[str, Any] | None, node_id: str) -> dict[str, Any]:
+    node = node or {"id": node_id, "kind": "unresolved_ref", "label": node_id}
+    payload = {
+        "id": node.get("id") or node_id,
+        "kind": node.get("kind"),
+        "label": node.get("label"),
+        "status": node.get("status"),
+        "path": node.get("path"),
+        "source": node.get("source"),
+        "metadata": node.get("metadata") or {},
+    }
+    path_ref = node.get("path") or (node_id if _looks_like_path(node_id) else "")
+    if path_ref:
+        absolute_path = _project_path(root, str(path_ref))
+        payload["path"] = str(path_ref)
+        payload["absolute_path"] = str(absolute_path)
+        payload["path_exists"] = absolute_path.exists()
+    elif "exists" in node:
+        payload["path_exists"] = bool(node["exists"])
+    return {key: value for key, value in payload.items() if value not in (None, "", [], {})}
+
+
+def _lookup_neighbors(
+    root: Path,
+    canonical_ref: str,
+    nodes: dict[str, dict[str, Any]],
+    edges: list[dict[str, str]],
+) -> dict[str, Any]:
+    incoming: list[dict[str, Any]] = []
+    outgoing: list[dict[str, Any]] = []
+    for edge in edges:
+        if edge["to"] == canonical_ref:
+            incoming.append(
+                {
+                    "relation": edge["relation"],
+                    "from": _node_lookup_payload(root, nodes.get(edge["from"]), edge["from"]),
+                }
+            )
+        if edge["from"] == canonical_ref:
+            outgoing.append(
+                {
+                    "relation": edge["relation"],
+                    "to": _node_lookup_payload(root, nodes.get(edge["to"]), edge["to"]),
+                }
+            )
+    return {
+        "incoming_count": len(incoming),
+        "outgoing_count": len(outgoing),
+        "incoming": sorted(incoming, key=lambda item: (item["relation"], item["from"]["id"])),
+        "outgoing": sorted(outgoing, key=lambda item: (item["relation"], item["to"]["id"])),
+    }
+
+
+def lookup_trace_record(
+    root: Path,
+    record_ref: str,
+    *,
+    output_path: Path | None = None,
+    markdown_output_path: Path | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    created_at = created_at or EARecord.now_iso()
+    output_path, markdown_output_path = _normalize_trace_output_paths(
+        root,
+        output_path=output_path,
+        markdown_output_path=markdown_output_path,
+    )
+
+    builder = _build_trace_builder(root)
+    trace = _trace_payload(root=root, builder=builder, focus_ref=None, created_at=created_at)
+    _write_trace_outputs(root, trace, output_path, markdown_output_path)
+
+    canonical_ref = builder.canonical(record_ref)
+    node = builder.nodes.get(canonical_ref)
+    status = "found" if node is not None else "not_found"
+    return {
+        "schema_version": "0.2",
+        "source": "ea.traceability.lookup_trace_record:v0.2",
+        "status": status,
+        "query": record_ref,
+        "canonical_ref": canonical_ref,
+        "node": _node_lookup_payload(root, node, canonical_ref) if node else None,
+        "related": (
+            _lookup_neighbors(root, canonical_ref, builder.nodes, builder.edges)
+            if node
+            else {"incoming_count": 0, "outgoing_count": 0, "incoming": [], "outgoing": []}
+        ),
+        "trace_id": trace["trace_id"],
+        "trace_status": trace["status"],
+        "trace_path": str(output_path),
+        "trace_ref": _project_ref(root, output_path),
+        "markdown_path": str(markdown_output_path),
+        "markdown_ref": _project_ref(root, markdown_output_path),
         "boundaries": TRACE_BOUNDARIES,
     }

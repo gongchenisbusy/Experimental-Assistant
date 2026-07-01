@@ -81,7 +81,7 @@ from ea.templates import (
     write_processing_parameters_template,
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
-from ea.traceability import build_project_trace_view
+from ea.traceability import build_project_trace_view, lookup_trace_record
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
 from ea.xps import (
     XPSProcessingRequest,
@@ -687,6 +687,11 @@ def build_parser() -> argparse.ArgumentParser:
     trace_view.add_argument("--focus")
     trace_view.add_argument("--output", type=Path)
     trace_view.add_argument("--markdown-output", type=Path)
+    trace_lookup = trace_sub.add_parser("lookup", help="resolve one report/figure/result/reference/review/suggestion/memory ID through the trace graph")
+    trace_lookup.add_argument("workspace", type=Path)
+    trace_lookup.add_argument("record_ref")
+    trace_lookup.add_argument("--output", type=Path)
+    trace_lookup.add_argument("--markdown-output", type=Path)
 
     figure = sub.add_parser("lookup-figure", help="look up a figure by figure_id")
     figure.add_argument("workspace", type=Path)
@@ -1737,6 +1742,22 @@ def main(argv: list[str] | None = None) -> int:
                 build_project_trace_view(
                     args.workspace,
                     focus_ref=args.focus,
+                    output_path=output_path,
+                    markdown_output_path=markdown_output_path,
+                )
+            )
+            return 0
+        if args.trace_command == "lookup":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_output_path = args.markdown_output
+            if markdown_output_path and not markdown_output_path.is_absolute():
+                markdown_output_path = args.workspace / markdown_output_path
+            _print_json(
+                lookup_trace_record(
+                    args.workspace,
+                    args.record_ref,
                     output_path=output_path,
                     markdown_output_path=markdown_output_path,
                 )

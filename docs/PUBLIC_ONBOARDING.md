@@ -191,9 +191,10 @@ Before handing a project to another user or agent, run:
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea trace view /path/to/ea-project
+ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
 ```
 
-`ea trace view` writes `traceability/project_trace.yml` and `.md`, linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `--focus reports/<report-id>.md` or another project record ref when the handoff should show one connected chain. It is a read-only audit view except for its own trace files; it does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
+`ea trace view` writes `traceability/project_trace.yml` and `.md`, linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `--focus reports/<report-id>.md` or another project record ref when the handoff should show one connected chain. Use `ea trace lookup <workspace> <id-or-ref>` when the user provides a report, figure, result, source-packet, suggestion, reference, review, provenance, or memory ID and needs the canonical local path plus immediate evidence neighbors. Trace view/lookup are read-only audit helpers except for their own trace files; they do not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
 
 For a single report handoff:
 

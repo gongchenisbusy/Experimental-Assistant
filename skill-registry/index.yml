@@ -36,7 +36,7 @@ skills:
     status: builtin_v0_2_reference
     category: project.traceability
     method: project_trace_view
-    notes: Project traceability view implemented via ea trace view, writing traceability/project_trace.yml and Markdown by linking reports, figures, source packets, source-backed suggestions, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory; focus refs render connected subgraphs, and the helper is read-only except for its own audit files with no report mutation, review creation, memory commit, reference registration, citation injection, source-packet/suggestion generation, or scientific proof claims.
+    notes: Project traceability view implemented via ea trace view, writing traceability/project_trace.yml and Markdown by linking reports, figures, source packets, source-backed suggestions, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory; focus refs render connected subgraphs, ea trace lookup resolves one ID/ref to its canonical local node plus immediate evidence neighbors, and the helpers are read-only except for their own audit files with no report mutation, review creation, memory commit, reference registration, citation injection, source-packet/suggestion generation, or scientific proof claims.
   - id: ea.raman-analysis
     manifest: skill-registry/builtins/raman-analysis.yml
     status: builtin_v0_2_reference

@@ -17,6 +17,7 @@ ea_skill:
   output_artifacts:
     - traceability_view
     - traceability_markdown
+    - trace_lookup_json
     - report_section
     - provenance_record
   review_gates:
@@ -37,6 +38,7 @@ ea_skill:
     implemented:
       - project_trace_view_yaml_and_markdown
       - focus_ref_connected_subgraph
+      - compact_trace_lookup_json
       - report_figure_result_reference_edges
       - registered_reference_and_reference_seed_edges
       - source_library_reference_edges
