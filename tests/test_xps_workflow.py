@@ -1391,7 +1391,7 @@ candidates:
     assert record["candidates"][2]["status"] == "needs_reference_registration"
     assert "ref-missing-001" in record["candidates"][2]["unresolved_reference_ids"]
     assert "Ask the user to review ready candidates" in " ".join(record["next_steps"])
-    assert "does not run network lookup" in " ".join(record["boundaries"])
+    assert "does not run live network lookup itself" in " ".join(record["boundaries"])
     assert (workspace / record["provenance_ref"]).exists()
     assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration"}
     assert set(table["auto_applied"]) == {False}
@@ -1513,7 +1513,7 @@ candidates:
     assert packet["candidate_count"] == 2
     assert packet["candidates"][0]["parameter_origin"] == "source_suggested"
     assert packet["filters"]["include_candidates"] == ["xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"]
-    assert "does not run network lookup" in " ".join(packet["boundaries"])
+    assert "does not run live network lookup" in " ".join(packet["boundaries"])
     assert (workspace / packet["provenance_ref"]).exists()
 
     assert main(

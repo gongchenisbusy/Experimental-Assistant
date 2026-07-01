@@ -752,7 +752,7 @@ def build_xps_parameter_source_packet(
         ],
         "boundaries": [
             "Source packets are staging artifacts and do not apply values to XPS processing parameters.",
-            "EA does not run network lookup, parse full text, choose components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition from this packet.",
+            "This source-packet builder does not run live network lookup or parse full text itself; values may originate from user-provided data, local libraries, or separately confirmed literature/search connectors, but this packet does not choose components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
         ],
     }
     write_yaml(output_path, packet)
@@ -996,12 +996,13 @@ def suggest_xps_parameters(
         "warnings": warnings,
         "next_steps": [
             "Register or correct unresolved reference_ids before using source-backed values.",
+            "If no suitable source packet exists, create one from a reviewed local library, project literature record, or user-confirmed literature/search workflow before review.",
             "Ask the user to review ready candidates before copying any values into XPS processing parameters.",
             "When accepted, copy spin-orbit candidates into component_fit.spin_orbit_constraints or Tougaard candidates into background_subtraction parameters with review refs.",
         ],
         "boundaries": [
             "Suggestion records are advisory and auto_applied is always false.",
-            "EA does not run network lookup, select components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition from this record.",
+            "This suggestion-record step does not run live network lookup itself; it validates supplied source packets/reference IDs and does not select components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
         ],
     }
     output_dir.mkdir(parents=True, exist_ok=True)
