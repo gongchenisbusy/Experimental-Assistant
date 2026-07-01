@@ -5,6 +5,7 @@ from ea.xps.service import (
     default_xps_processing_parameters,
     inspect_xps_file,
     process_xps_result,
+    suggest_xps_parameters,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "default_xps_processing_parameters",
     "inspect_xps_file",
     "process_xps_result",
+    "suggest_xps_parameters",
 ]

@@ -65,6 +65,10 @@ class XPSProcessingRequest:
     parameter_review_ref: str
 
 
+XPS_PARAMETER_SUGGESTION_TYPES = {"spin_orbit_constraint", "tougaard_parameter"}
+XPS_PARAMETER_ORIGINS = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
+
+
 def default_xps_processing_parameters() -> dict[str, Any]:
     return {
         "baseline_correction": {
@@ -173,6 +177,13 @@ def _warning(code: str, message: str, severity: str = "low", **details: Any) -> 
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
+
+
+def _relative_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
@@ -482,6 +493,332 @@ def _coerce_string_list(value: Any) -> list[str]:
     if isinstance(value, list | tuple):
         return [str(item) for item in value if str(item).strip()]
     return [str(value)]
+
+
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _candidate_number(value: Any, *names: str) -> float | None:
+    for name in names:
+        if not isinstance(value, dict) or value.get(name) is None:
+            continue
+        try:
+            number = float(value.get(name))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(number):
+            return number
+    return None
+
+
+def _normalize_parameter_origin(value: Any, warnings: list[dict[str, Any]], *, candidate_id: str) -> str:
+    origin = str(value or "source_suggested").strip().lower().replace(" ", "_")
+    if origin in XPS_PARAMETER_ORIGINS:
+        return origin
+    warnings.append(
+        _warning(
+            "xps_parameter_suggestion_origin_normalized",
+            "XPS parameter suggestion parameter_origin was not recognized and was recorded as source_suggested.",
+            severity="low",
+            candidate_id=candidate_id,
+            supplied_parameter_origin=origin,
+        )
+    )
+    return "source_suggested"
+
+
+def _xps_parameter_suggestion_columns() -> list[str]:
+    return [
+        "candidate_id",
+        "suggestion_type",
+        "target_parameter_path",
+        "status",
+        "requires_user_review",
+        "auto_applied",
+        "parameter_origin",
+        "source_summary",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "confidence",
+        "element",
+        "core_level",
+        "constraint_id",
+        "anchor_component_id",
+        "dependent_component_id",
+        "center_delta_eV",
+        "area_ratio",
+        "fwhm_ratio",
+        "tougaard_B",
+        "tougaard_C_eV2",
+        "integration_direction",
+        "missing_fields",
+        "caveats",
+    ]
+
+
+def _normalize_xps_parameter_candidate(
+    raw_candidate: Any,
+    *,
+    suggestion_id: str,
+    number: int,
+    registered_references: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(raw_candidate, dict):
+        candidate_id = f"{suggestion_id}-cand-{number:03d}"
+        warnings.append(
+            _warning(
+                "xps_parameter_suggestion_ignored",
+                "An XPS parameter suggestion candidate was not a mapping and was recorded as invalid.",
+                severity="medium",
+                candidate_id=candidate_id,
+            )
+        )
+        return {
+            "candidate_id": candidate_id,
+            "suggestion_type": "unknown",
+            "status": "invalid_candidate_mapping",
+            "requires_user_review": True,
+            "auto_applied": False,
+            "missing_fields": ["candidate_mapping"],
+        }
+
+    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("suggestion_id") or f"{suggestion_id}-cand-{number:03d}")
+    suggestion_type = str(raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type") or "").strip().lower()
+    suggestion_type = suggestion_type.replace("-", "_").replace(" ", "_")
+    reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
+    applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
+    caveats = _coerce_string_list(raw_candidate.get("caveats"))
+    parameter_origin = _normalize_parameter_origin(raw_candidate.get("parameter_origin"), warnings, candidate_id=candidate_id)
+    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
+    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    missing_fields: list[str] = []
+
+    if suggestion_type not in XPS_PARAMETER_SUGGESTION_TYPES:
+        missing_fields.append("suggestion_type")
+    if not source_summary:
+        missing_fields.append("source_summary")
+    if not reference_ids:
+        missing_fields.append("reference_ids")
+    if not applicability_notes:
+        missing_fields.append("applicability_notes")
+
+    candidate: dict[str, Any] = {
+        "candidate_id": candidate_id,
+        "suggestion_type": suggestion_type or "unknown",
+        "requires_user_review": True,
+        "auto_applied": False,
+        "parameter_origin": parameter_origin,
+        "source_summary": source_summary,
+        "reference_ids": reference_ids,
+        "unresolved_reference_ids": unresolved_reference_ids,
+        "applicability_notes": applicability_notes,
+        "confidence": confidence,
+        "element": str(raw_candidate.get("element") or "").strip() or None,
+        "core_level": str(raw_candidate.get("core_level") or "").strip() or None,
+        "caveats": caveats,
+    }
+
+    if suggestion_type == "spin_orbit_constraint":
+        center_delta = _candidate_number(raw_candidate, "center_delta_eV", "dependent_center_delta_eV", "center_offset_eV")
+        area_ratio = _candidate_number(raw_candidate, "area_ratio", "dependent_area_ratio")
+        fwhm_ratio = _candidate_number(raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio")
+        if center_delta is None:
+            missing_fields.append("center_delta_eV")
+        if area_ratio is None:
+            missing_fields.append("area_ratio")
+        if fwhm_ratio is None:
+            missing_fields.append("fwhm_ratio")
+        if area_ratio is not None and area_ratio <= 0:
+            missing_fields.append("positive_area_ratio")
+        if fwhm_ratio is not None and fwhm_ratio <= 0:
+            missing_fields.append("positive_fwhm_ratio")
+        candidate.update(
+            {
+                "target_parameter_path": "component_fit.spin_orbit_constraints",
+                "constraint_id": str(raw_candidate.get("constraint_id") or candidate_id),
+                "anchor_component_id": str(raw_candidate.get("anchor_component_id") or "").strip() or None,
+                "dependent_component_id": str(raw_candidate.get("dependent_component_id") or "").strip() or None,
+                "center_delta_eV": center_delta,
+                "area_ratio": area_ratio,
+                "fwhm_ratio": fwhm_ratio,
+            }
+        )
+    elif suggestion_type == "tougaard_parameter":
+        tougaard_b = _candidate_number(raw_candidate, "tougaard_B", "B", "b1")
+        tougaard_c = _candidate_number(raw_candidate, "tougaard_C_eV2", "C_eV2", "C")
+        if tougaard_b is None and tougaard_c is None:
+            missing_fields.append("tougaard_B_or_tougaard_C_eV2")
+        if tougaard_b is not None and tougaard_b <= 0:
+            missing_fields.append("positive_tougaard_B")
+        if tougaard_c is not None and tougaard_c <= 0:
+            missing_fields.append("positive_tougaard_C_eV2")
+        candidate.update(
+            {
+                "target_parameter_path": "background_subtraction.tougaard",
+                "tougaard_B": tougaard_b,
+                "tougaard_C_eV2": tougaard_c,
+                "integration_direction": str(raw_candidate.get("integration_direction") or "").strip() or None,
+            }
+        )
+    else:
+        candidate["target_parameter_path"] = None
+
+    if missing_fields:
+        status = "invalid_missing_required_metadata"
+    elif unresolved_reference_ids:
+        status = "needs_reference_registration"
+    else:
+        status = "ready_for_user_review"
+    candidate["status"] = status
+    candidate["missing_fields"] = missing_fields
+    if unresolved_reference_ids:
+        warnings.append(
+            _warning(
+                "xps_parameter_suggestion_reference_unresolved",
+                "An XPS parameter suggestion cites reference_ids that are not registered in the project reference index.",
+                severity="medium",
+                candidate_id=candidate_id,
+                unresolved_reference_ids=unresolved_reference_ids,
+            )
+        )
+    if missing_fields:
+        warnings.append(
+            _warning(
+                "xps_parameter_suggestion_missing_metadata",
+                "An XPS parameter suggestion is missing required source/applicability or parameter metadata.",
+                severity="medium",
+                candidate_id=candidate_id,
+                missing_fields=missing_fields,
+            )
+        )
+    return candidate
+
+
+def suggest_xps_parameters(
+    root: Path,
+    *,
+    project_id: str,
+    source_path: Path,
+    related_records: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_packet = read_yaml(source_path)
+    if isinstance(source_packet, list):
+        raw_candidates = source_packet
+    elif isinstance(source_packet, dict):
+        raw_candidates = source_packet.get("candidates") or source_packet.get("parameters") or source_packet.get("suggestions") or []
+    else:
+        raw_candidates = []
+    if not isinstance(raw_candidates, list):
+        raw_candidates = []
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    suggestion_id = next_id(root, "suggestion", day)
+    output_dir = root / "suggestions" / "xps" / suggestion_id
+    record_path = output_dir / "xps_parameter_suggestions.yml"
+    table_path = output_dir / "xps_parameter_suggestions.csv"
+    for path in [record_path, table_path]:
+        assert_not_raw_output_path(root, path)
+
+    warnings: list[dict[str, Any]] = []
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "xps_parameter_suggestion_empty_source",
+                "No XPS parameter candidates were found in the source packet.",
+                severity="medium",
+            )
+        )
+    registered_references = _registered_reference_ids(root)
+    candidates = [
+        _normalize_xps_parameter_candidate(
+            candidate,
+            suggestion_id=suggestion_id,
+            number=index,
+            registered_references=registered_references,
+            warnings=warnings,
+        )
+        for index, candidate in enumerate(raw_candidates, start=1)
+    ]
+    table = pd.DataFrame(candidates, columns=_xps_parameter_suggestion_columns())
+    for column in ["reference_ids", "unresolved_reference_ids", "applicability_notes", "missing_fields", "caveats"]:
+        if column in table.columns:
+            table[column] = table[column].apply(lambda value: "; ".join(value) if isinstance(value, list) else value)
+
+    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
+    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
+    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    status = "ready_for_user_review" if ready_count else ("needs_reference_registration" if unresolved_count else "needs_source_metadata")
+    source_ref = _relative_to_root(root, source_path)
+    record_ref = _relative_to_root(root, record_path)
+    table_ref = _relative_to_root(root, table_path)
+    related_records = related_records or []
+    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    record = {
+        "schema_version": "0.2",
+        "suggestion_id": suggestion_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.xps.parameter_suggestions:v0.2",
+        "source_packet_ref": source_ref,
+        "table_ref": table_ref,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "invalid_count": invalid_count,
+        "candidates": candidates,
+        "related_records": related_records,
+        "reference_ids": all_reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or correct unresolved reference_ids before using source-backed values.",
+            "Ask the user to review ready candidates before copying any values into XPS processing parameters.",
+            "When accepted, copy spin-orbit candidates into component_fit.spin_orbit_constraints or Tougaard candidates into background_subtraction parameters with review refs.",
+        ],
+        "boundaries": [
+            "Suggestion records are advisory and auto_applied is always false.",
+            "EA does not run network lookup, select components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition from this record.",
+        ],
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(table_path, index=False)
+    write_yaml(record_path, record)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="xps_parameter_suggestion",
+        inputs={"records": [source_ref, *related_records], "files": []},
+        outputs={"records": [record_ref, table_ref], "files": []},
+        parameters={"candidate_count": len(candidates), "auto_applied": False},
+        warnings=warnings,
+        source_refs=all_reference_ids,
+        created_at=created_at,
+    )
+    record["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(record_path, record)
+    return {
+        "suggestion_id": suggestion_id,
+        "record": str(record_path),
+        "table": str(table_path),
+        "status": status,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "invalid_count": invalid_count,
+        "warnings": warnings,
+    }
 
 
 def _has_record_payload(value: Any) -> bool:

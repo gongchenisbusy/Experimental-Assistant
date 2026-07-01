@@ -1271,6 +1271,133 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     assert "不自动选择" in report_body or "screening" in report_body
 
 
+def test_cli_records_source_backed_xps_parameter_suggestions(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "cli-xps-parameter-suggestion-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Parameter Suggestions",
+            "--slug",
+            "cli-xps-parameter-suggestions",
+            "--direction",
+            "XPS source-backed parameter suggestion workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "references",
+            "add",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--citation",
+            "NIST XPS database entry and user-reviewed method note for Fe 2p and Tougaard U2 screening parameters.",
+            "--title",
+            "User-reviewed XPS reference parameter note",
+            "--url",
+            "https://example.org/xps-reference-note",
+            "--source-type",
+            "manual",
+        ]
+    ) == 0
+    reference = _json_output(capsys)
+    ref_id = Path(reference["reference"]).stem
+
+    source_packet = workspace / "xps_parameter_source.yml"
+    source_packet.write_text(
+        f"""
+candidates:
+  - candidate_id: xps-param-fe2p-spin-001
+    suggestion_type: spin_orbit_constraint
+    element: Fe
+    core_level: 2p
+    constraint_id: xps-spin-fe2p-source-001
+    center_delta_eV: 13.4
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    parameter_origin: source_suggested
+    source_summary: Fe 2p spin-orbit screening values from the registered project XPS reference.
+    applicability_notes:
+      - Applies only if the user confirms Fe 2p anchor/dependent component IDs and reviewed bounds.
+    reference_ids:
+      - {ref_id}
+    confidence: low
+    caveats:
+      - Candidate constraint only; not chemical-state proof.
+  - candidate_id: xps-param-tougaard-u2-001
+    suggestion_type: tougaard_parameter
+    tougaard_C_eV2: 1643.0
+    integration_direction: toward_higher_binding_energy
+    parameter_origin: source_suggested
+    source_summary: Tougaard U2 C value from the registered project XPS reference.
+    applicability_notes:
+      - Requires user-reviewed background region and B scale before subtraction.
+    reference_ids:
+      - {ref_id}
+    confidence: low
+  - candidate_id: xps-param-unregistered-ref-001
+    suggestion_type: spin_orbit_constraint
+    center_delta_eV: 5.0
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    parameter_origin: source_suggested
+    source_summary: Candidate with a deliberately missing reference record.
+    applicability_notes:
+      - Used to verify unresolved reference handling.
+    reference_ids:
+      - ref-missing-001
+    confidence: low
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert main(
+        [
+            "xps",
+            "suggest-parameters",
+            str(workspace),
+            "--source-file",
+            source_packet.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--related-record",
+            "raw/xps/example-metadata.yml",
+        ]
+    ) == 0
+    output = _json_output(capsys)
+    assert output["status"] == "ready_for_user_review"
+    assert output["candidate_count"] == 3
+    assert output["ready_for_user_review_count"] == 2
+    assert output["needs_reference_registration_count"] == 1
+
+    record = read_yaml(Path(output["record"]))
+    table = pd.read_csv(Path(output["table"]))
+    assert record["source"] == "ea.xps.parameter_suggestions:v0.2"
+    assert record["ready_for_user_review_count"] == 2
+    assert record["needs_reference_registration_count"] == 1
+    assert record["candidates"][0]["auto_applied"] is False
+    assert record["candidates"][0]["target_parameter_path"] == "component_fit.spin_orbit_constraints"
+    assert record["candidates"][1]["target_parameter_path"] == "background_subtraction.tougaard"
+    assert record["candidates"][2]["status"] == "needs_reference_registration"
+    assert "ref-missing-001" in record["candidates"][2]["unresolved_reference_ids"]
+    assert "Ask the user to review ready candidates" in " ".join(record["next_steps"])
+    assert "does not run network lookup" in " ".join(record["boundaries"])
+    assert (workspace / record["provenance_ref"]).exists()
+    assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration"}
+    assert set(table["auto_applied"]) == {False}
+    assert "processed" not in output["record"]
+
+
 def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-region-records.txt")
     parameters = _region_records_parameters()
@@ -1434,6 +1561,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_quantification" in xps_reference_text
     assert "component_fit" in xps_reference_text
     assert "spin_orbit_constraints" in xps_reference_text
+    assert "suggest-parameters" in xps_reference_text
+    assert "xps_parameter_suggestions" in xps_reference_text
     assert "region_records" in xps_reference_text
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
@@ -1443,6 +1572,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
+    assert "parameter_suggestions" in xps_record["notes"]
     assert "spin_orbit_constraints" in xps_record["notes"]
     assert "region_records" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]

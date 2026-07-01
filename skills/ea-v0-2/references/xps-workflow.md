@@ -8,17 +8,19 @@ Required gates:
 2. Ask for or verify x/y columns and x-axis unit (`eV` or `unknown`).
 3. Ask for or verify binding-energy calibration before analysis. Record `energy_shift_eV`, `calibration_reference`, and `calibration_review_ref`.
 4. Ask for or verify processing parameters before analysis.
-5. If component quantification, background-model documentation, numeric background subtraction, component-fit screening, or multi-region project organization is requested, ask the user to confirm `component_quantification`, `background_model`, `background_subtraction`, `component_fit`, and/or `region_records` parameters: reviewed component IDs/labels, survey/core-level/project-region roles, elements/core levels, binding-energy/background windows, calibration group IDs, linked background/fitting/quantification output refs, subtraction method, anchor points/windows, Shirley iteration settings when used, Tougaard U2 `B`/`C_eV2`/integration direction when used, integration baseline, model/background notes, selected intensity/background columns, component-fit peak shapes, initial values, bounds, optional reviewed `spin_orbit_constraints` with anchor/dependent IDs, signed center delta, area ratio, FWHM ratio, parameter origin, source summary, applicability notes, reference IDs, fit-quality thresholds, software/tool provenance, and sensitivity factors when atomic-percent screening is desired.
-6. Keep raw data untouched; write processed outputs outside `raw/`.
-7. Record baseline handling, smoothing, normalization, detected screening peaks, optional component screening, optional reviewed background-model record, optional reviewed background-subtraction record, optional reviewed component-fit screening record, optional reviewed multi-region record, generated figure, report, and provenance.
-8. Treat automatic peaks, reviewed background-subtracted columns, component screening estimates, reviewed component-fit outputs, and multi-region records as screening/provenance evidence. Use calibration context, background model, peak model, references, and user review before writing chemical-state conclusions.
-9. Write memory candidates only after user confirmation.
+5. If source-backed XPS parameter suggestions are requested, run `ea xps suggest-parameters` on a user/project-supplied source packet before copying any values into processing parameters; ask the user to review candidate values and register missing references.
+6. If component quantification, background-model documentation, numeric background subtraction, component-fit screening, or multi-region project organization is requested, ask the user to confirm `component_quantification`, `background_model`, `background_subtraction`, `component_fit`, and/or `region_records` parameters: reviewed component IDs/labels, survey/core-level/project-region roles, elements/core levels, binding-energy/background windows, calibration group IDs, linked background/fitting/quantification output refs, subtraction method, anchor points/windows, Shirley iteration settings when used, Tougaard U2 `B`/`C_eV2`/integration direction when used, integration baseline, model/background notes, selected intensity/background columns, component-fit peak shapes, initial values, bounds, optional reviewed `spin_orbit_constraints` with anchor/dependent IDs, signed center delta, area ratio, FWHM ratio, parameter origin, source summary, applicability notes, reference IDs, fit-quality thresholds, software/tool provenance, and sensitivity factors when atomic-percent screening is desired.
+7. Keep raw data untouched; write processed outputs outside `raw/`.
+8. Record baseline handling, smoothing, normalization, detected screening peaks, optional parameter suggestion records, optional component screening, optional reviewed background-model record, optional reviewed background-subtraction record, optional reviewed component-fit screening record, optional reviewed multi-region record, generated figure, report, and provenance.
+9. Treat automatic peaks, source-backed parameter suggestions, reviewed background-subtracted columns, component screening estimates, reviewed component-fit outputs, and multi-region records as screening/provenance evidence. Use calibration context, background model, peak model, references, and user review before writing chemical-state conclusions.
+10. Write memory candidates only after user confirmation.
 
 Current v0.2 XPS support:
 
 - Raw import uses `ea raw import --characterization-type xps`.
 - Inspection identifies common XPS files by path/name, binding-energy metadata, and binding-energy-like ranges.
 - Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, disabled-by-default `component_quantification` screening from reviewed binding-energy windows, disabled-by-default `background_model` records for reviewed Shirley/Tougaard/linear/local-minimum/rolling-quantile choices, disabled-by-default `background_subtraction` numeric linear, Shirley, or Tougaard U2 subtraction inside reviewed regions with reviewed anchor points/windows, disabled-by-default `component_fit` screening from reviewed regions, explicit components, peak shapes, initial values, bounds, selected intensity/background columns, optional reviewed `spin_orbit_constraints` with source-backed parameter metadata when applicable, references, caveats, and fit-quality thresholds, and disabled-by-default `region_records` for reviewed survey/core-level/project-region organization and provenance.
+- `ea xps suggest-parameters` records source-backed `spin_orbit_constraint` and `tougaard_parameter` candidates from user/project-supplied source packets under `suggestions/xps/` without applying them to processing parameters.
 - Processed CSV files include `binding_energy_raw`, calibrated `binding_energy_eV`, `raw_intensity`, optional `baseline_signal`, optional `smoothed_intensity`, and `processed_intensity`.
 - When `background_subtraction.enabled` is true with method `reviewed_linear_background_subtraction`, `reviewed_shirley_background_subtraction`, or `reviewed_tougaard_u2_background_subtraction`, processed CSV files also include the reviewed background column, background-subtracted intensity column, and region ID column for the supplied binding-energy windows.
 - When `component_fit.enabled` is true with method `reviewed_component_fit_screening`, processed CSV files also include the reviewed component-fit intensity column, residual column, and fit-region ID column only for supplied binding-energy windows.
@@ -28,6 +30,7 @@ Current v0.2 XPS support:
 - When `background_model.enabled` is true, EA writes `xps_background.yml` with reviewed background region/model choices, windows, software/tool refs, reference IDs, reviewer notes, caveats, and whether the background had already been applied outside EA.
 - When `background_subtraction.enabled` is true, EA writes `xps_background_subtraction.yml` with reviewed subtraction method, regions, left/right anchors, optional Shirley iterations/convergence, optional Tougaard U2 `B`/`C_eV2`/kernel/integration-direction metadata, output columns, references, warnings, caveats, and confidence.
 - When `component_fit.enabled` is true, EA writes `xps_component_fit.yml` and `xps_component_fit.csv` with reviewed component IDs, peak shapes, initial/fitted values, bounds, optional reviewed spin-orbit constraint metadata, fit-quality metrics, reference IDs, caveats, confidence, and record/table refs.
+- When `suggest-parameters` is run, EA writes `xps_parameter_suggestions.yml` and `xps_parameter_suggestions.csv` with candidate status, target parameter path, source summary, applicability notes, reference IDs, unresolved-reference warnings, and `auto_applied: false`.
 - When `region_records.enabled` is true, EA writes `xps_region_records.yml` and `xps_region_records.csv` with reviewed region roles, binding-energy windows, calibration group IDs, linked output refs, reference IDs, caveats, confidence, and record/table refs.
 - Reports include an embedded XPS figure, original figure path, calibration/background section, peak table, optional component screening table, optional component-fit section/table, optional multi-region section/table, confidence-labeled possible interpretations, file links, References, and provenance.
 - XPS component quantification is screening-only. XPS background model records are provenance only. XPS background subtraction is reviewed numeric preprocessing only. XPS component fitting, including reviewed `spin_orbit_constraints`, is reviewed screening-level numerical modeling only. XPS region records are project organization/provenance only. EA does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, automatic endpoint/background/component/bounds/peak-shape selection, automatic survey-core-level alignment, silent charge-correction sharing, automatic Tougaard parameter fitting, QUASES/depth-profile modeling, use of unsourced spin-orbit constants, or unreviewed spin-orbit constrained fitting.
@@ -40,9 +43,46 @@ ea xps inspect /path/to/ea-project raw/xps/char-20260630-001/raw-xps.txt
 ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=binding_energy_eV, y=intensity, unit=eV"
 ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
 ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
+ea xps suggest-parameters /path/to/ea-project --source-file xps_parameter_source.yml --related-record raw/xps/char-20260630-001/metadata.yml
 ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-001 --calibration-review-ref review-20260630-002 --parameter-review-ref review-20260630-003 --sample-ref sample-001
 ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
+
+Optional source-backed parameter suggestion source packet:
+
+```yaml
+candidates:
+  - candidate_id: xps-param-fe2p-spin-001
+    suggestion_type: spin_orbit_constraint
+    element: Fe
+    core_level: 2p
+    constraint_id: xps-spin-fe2p-source-001
+    center_delta_eV: 13.4
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    parameter_origin: source_suggested
+    source_summary: Fe 2p spin-orbit screening values from a registered project XPS reference.
+    applicability_notes:
+      - Applies only if the user confirms Fe 2p anchor/dependent component IDs and reviewed bounds.
+    reference_ids:
+      - ref-xps-spin-orbit-001
+    confidence: low
+    caveats:
+      - Candidate constraint only; not chemical-state proof.
+  - candidate_id: xps-param-tougaard-u2-001
+    suggestion_type: tougaard_parameter
+    tougaard_C_eV2: 1643.0
+    integration_direction: toward_higher_binding_energy
+    parameter_origin: source_suggested
+    source_summary: Tougaard U2 parameter candidate from a registered project XPS reference.
+    applicability_notes:
+      - Requires a user-reviewed background region and method choice before subtraction.
+    reference_ids:
+      - ref-xps-tougaard-001
+    confidence: low
+```
+
+Parameter suggestion records can make EA useful as an assistant without pretending that every value came directly from the user. They validate metadata and preserve traceability, but remain advisory until the user reviews them and copies accepted values into processing parameters with the relevant review refs.
 
 Optional reviewed component screening parameters can be supplied with `--parameters-json` or `--parameters-file`:
 
@@ -335,4 +375,4 @@ region_records:
 
 Region records write `xps_region_records.yml` and `xps_region_records.csv`. They organize reviewed survey/core-level/project-region context and linked output refs, but do not align spectra, share charge correction automatically, calculate formal multi-region composition, prove chemical states, or rank samples.
 
-Future XPS work should add standard reference libraries, source-backed parameter suggestion workflows, replicate/statistical comparisons, broader formal spin-orbit protocols beyond one-level anchor/dependent pairs, broader Tougaard variants with sourced parameter guidance, and user-confirmed memory-candidate generation from report interpretations.
+Future XPS work should add standard reference libraries, broader automated source connectors for suggestion packets, replicate/statistical comparisons, broader formal spin-orbit protocols beyond one-level anchor/dependent pairs, broader Tougaard variants with sourced parameter guidance, and user-confirmed memory-candidate generation from report interpretations.
