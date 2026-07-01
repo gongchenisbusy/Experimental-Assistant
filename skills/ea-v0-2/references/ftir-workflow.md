@@ -25,6 +25,7 @@ Current v0.2 FTIR support:
 - When `context_record.enabled` is reviewed, EA writes `ftir_context.yml` with instrument/accessory, atmosphere, sample preparation, background, reference, correction notes, confidence, source, boundary, and record ref.
 - `ea ftir build-assignment-packet` creates standard FTIR assignment source packets from the built-in `generic_materials` seed library, project-local candidate libraries, or editable templates; local-literature or confirmed search connectors may generate the same packet schema.
 - `ea ftir suggest-assignments` records source-backed band-assignment candidates under `suggestions/ftir/` by matching candidate wavenumber windows to detected FTIR bands without applying them to processing outputs or memory.
+- `ea ftir propose-memory` turns user-reviewed ready assignment suggestions into draft memory candidates, preserving suggestion/table/provenance refs, matched band IDs/wavenumbers, source summaries, applicability notes, caveats, and reference IDs. It does not commit memory.
 - Built-in band-family windows cover broad regions only, such as O-H/N-H stretching, C-H stretching, carbonyl/amide-adjacent regions, fingerprint regions, and low-wavenumber metal-oxygen regions. They do not identify compounds by themselves.
 - Reports include an embedded FTIR figure, original figure path, band tables, optional context record summary/link, optional source-backed assignment suggestion sections, confidence-labeled possible interpretations, file links, References, and provenance.
 - `context_record` is disabled by default. Enable it only after the user reviews instrument/accessory, atmosphere, sample preparation, background/reference, and correction-note metadata. This record is metadata/provenance only; EA does not apply automatic background/reference/ATR/atmosphere correction from it in v0.2.
@@ -44,6 +45,8 @@ ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_ma
 ea references register-seeds /path/to/ea-project --source-packet suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
+ea review add /path/to/ea-project --target-type ftir_assignment_suggestions --target-ref suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed FTIR assignment suggestion candidates"
+ea ftir propose-memory /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --review-ref review-20260630-003
 ```
 
 Built-in FTIR assignment seed library:
@@ -105,4 +108,4 @@ context_record:
     - EA records context only; no automatic FTIR correction is applied.
 ```
 
-Future FTIR work should add larger curated reference-spectrum libraries, replicate comparison, peak-shape fitting where justified, stronger material-specific assignment libraries, and user-confirmed memory-candidate generation from report interpretations.
+Future FTIR work should add larger curated reference-spectrum libraries, replicate comparison, peak-shape fitting where justified, stronger material-specific assignment libraries, and richer memory-candidate grouping/review helpers for multi-candidate interpretation sets.

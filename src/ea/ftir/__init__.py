@@ -7,6 +7,7 @@ from ea.ftir.service import (
     default_ftir_processing_parameters,
     inspect_ftir_file,
     process_ftir_result,
+    propose_ftir_assignment_memory_candidates,
     suggest_ftir_assignments,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "default_ftir_processing_parameters",
     "inspect_ftir_file",
     "process_ftir_result",
+    "propose_ftir_assignment_memory_candidates",
     "suggest_ftir_assignments",
 ]

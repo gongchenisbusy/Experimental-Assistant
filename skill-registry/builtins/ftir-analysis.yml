@@ -52,6 +52,7 @@ ea_skill:
       - ea ftir report
       - ea ftir build-assignment-packet
       - ea ftir suggest-assignments
+      - ea ftir propose-memory
     processing:
       - optional rolling-quantile baseline correction
       - optional Savitzky-Golay smoothing
@@ -76,6 +77,7 @@ ea_skill:
       record_format: yaml_and_csv
       reference_seed_registration_helper: ea references register-seeds
       report_integration: optional_via_assignment_suggestion_argument
+      memory_candidate_bridge: ea ftir propose-memory
       reference_seeds_required_for_builtin_sources: true
       required_candidate_fields:
         - assignment_label
@@ -89,5 +91,6 @@ ea_skill:
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
       - source-backed assignment suggestions match reviewed candidate windows to detected bands and can be shown in reports, but remain advisory until user review
+      - propose-memory writes draft memory candidates only and does not commit confirmed memory
       - context records preserve reviewed method metadata but do not apply automatic background/reference correction
       - formal functional-group or composition conclusions require project chemistry, reference spectra or literature, and user review

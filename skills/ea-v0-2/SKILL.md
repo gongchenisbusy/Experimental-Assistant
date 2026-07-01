@@ -63,6 +63,8 @@ ea ftir build-assignment-packet /path/to/ea-project
 ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
+ea review add /path/to/ea-project --target-type ftir_assignment_suggestions --target-ref suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed FTIR assignment suggestion candidates"
+ea ftir propose-memory /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --review-ref review-20260630-009
 ea raw import /path/to/ea-project /path/to/raw-uv-vis.txt --characterization-type uv_vis --sample-ref sample-001 --experiment-ref exp-001
 ea uv-vis inspect /path/to/ea-project raw/uv_vis/char-20260630-001/raw-uv-vis.txt
 ea review add /path/to/ea-project --target-type uv_vis_columns --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavelength_nm, y=absorbance, unit=nm, signal_mode=absorbance"

@@ -631,6 +631,64 @@ candidates:
     assert "不能单独证明化学组成" in report_body
     assert "Example FTIR reference spectrum note." in report_body
 
+    suggestion_ref = Path(suggestion_output["record"]).relative_to(workspace).as_posix()
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "ftir_assignment_suggestions",
+            "--target-ref",
+            suggestion_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "用户确认 carbonyl candidate 可作为后续讨论的 FTIR source-backed 解释候选。",
+        ]
+    ) == 0
+    suggestion_review = _json_output(capsys)
+
+    assert main(
+        [
+            "ftir",
+            "propose-memory",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--suggestion",
+            suggestion_ref,
+            "--review-ref",
+            suggestion_review["review_id"],
+        ]
+    ) == 0
+    memory_output = _json_output(capsys)
+    assert memory_output["status"] == "memory_candidates_proposed"
+    assert memory_output["proposed_count"] == 1
+    assert memory_output["skipped_count"] == 2
+    assert memory_output["provenance_ref"]
+    assert "does not commit confirmed memory" in " ".join(memory_output["boundaries"])
+    skipped_reasons = {item["candidate_id"]: item["details"] for item in memory_output["skipped"] if item["reason"] == "not_memory_candidate_eligible"}
+    assert "unresolved_reference_ids" in skipped_reasons["ftir-assignment-ch-001"]
+    assert "status:no_feature_match" in skipped_reasons["ftir-assignment-no-match-001"]
+
+    memory_candidate_path = Path(memory_output["memory_candidates"][0]["memory_candidate"])
+    memory_frontmatter, memory_body = read_markdown_record(memory_candidate_path)
+    assert memory_frontmatter["status"] == "draft"
+    assert memory_frontmatter["category"] == "interpretation"
+    assert memory_frontmatter["confidence"] == "medium"
+    assert suggestion_ref in memory_frontmatter["source_refs"]
+    assert record["table_ref"] in memory_frontmatter["source_refs"]
+    assert reference_id in memory_frontmatter["source_refs"]
+    assert record["provenance_ref"] in memory_frontmatter["provenance_refs"]
+    assert memory_frontmatter["review_refs"] == []
+    assert "ftir-assignment-carbonyl-001" in memory_body
+    assert "ester/carbonyl C=O stretching" in memory_body
+    assert reference_id in memory_body
+    assert "does not by itself prove chemical composition" in memory_body
+    candidate_index = read_yaml(workspace / "memory" / "candidates" / "index.yml")
+    assert memory_frontmatter["memory_candidate_id"] in candidate_index["candidates"]
+
     assert main(["ftir", "build-assignment-packet", str(workspace), "--project-id", project_id, "--write-template"]) == 0
     template_output = _json_output(capsys)
     template = read_yaml(Path(template_output["source_packet"]))
@@ -712,6 +770,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "ea ftir inspect" in readme
     assert "ea ftir process" in skill
     assert "ea ftir suggest-assignments" in skill
+    assert "ea ftir propose-memory" in skill
     assert "--assignment-suggestion" in skill
     assert "--builtin-library" in skill
     assert "register-seeds" in skill
@@ -722,6 +781,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "context_record" in reference_text
     assert "build-assignment-packet" in reference_text
     assert "suggest-assignments" in reference_text
+    assert "propose-memory" in reference_text
     assert "--assignment-suggestion" in reference_text
     assert "generic_materials" in reference_text
     assert "register-seeds" in reference_text
@@ -729,5 +789,6 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
     assert "assignment_suggestions" in ftir_record["notes"]
+    assert "memory_candidate proposals" in ftir_record["notes"]
     assert "built_in_assignment_library" in ftir_record["notes"]
     assert "reference_seed registration" in ftir_record["notes"]
