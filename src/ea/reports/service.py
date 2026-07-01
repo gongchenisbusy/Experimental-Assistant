@@ -7,6 +7,7 @@ import pandas as pd
 from ea.figures import update_figure_report_ref
 from ea.provenance import write_provenance_entry
 from ea.references import build_report_reference_block, format_inline_citation
+from ea.review import require_confirmed_review
 from ea.schema import ReportRecord
 from ea.schema.models import EARecord
 from ea.standards import infer_project_slug
@@ -751,6 +752,61 @@ def _load_xps_parameter_suggestion_records(root: Path, refs: list[Path] | None) 
     return records
 
 
+def _normalize_report_target_ref(root: Path, value: object) -> str:
+    target = str(value or "").strip()
+    if not target:
+        return ""
+    target_path = Path(target)
+    if target_path.is_absolute():
+        return _relative_to_root(root, target_path)
+    return _relative_to_root(root, root / target_path)
+
+
+def _load_uv_vis_interpretation_suggestion_records(
+    root: Path,
+    refs: list[Path] | None,
+    review_refs: list[str] | None,
+    *,
+    uv_vis_metadata_path: Path,
+    project_id: str,
+) -> list[dict]:
+    refs = refs or []
+    review_refs = review_refs or []
+    if not refs:
+        return []
+    if len(refs) != len(review_refs):
+        raise ValueError("Each --interpretation-suggestion requires one matching --interpretation-review-ref.")
+
+    metadata_ref = _relative_to_root(root, uv_vis_metadata_path)
+    records: list[dict] = []
+    for ref, review_ref in zip(refs, review_refs, strict=True):
+        path = ref if ref.is_absolute() else root / ref
+        record = read_yaml(path)
+        if record.get("source") != "ea.uv_vis.interpretation_suggestions:v0.2":
+            raise ValueError(f"Not a UV-Vis interpretation suggestion record: {ref}")
+        record_ref = _relative_to_root(root, path)
+        record_project_id = str(record.get("project_id") or "")
+        if record_project_id and project_id and record_project_id != project_id:
+            raise ValueError(f"UV-Vis suggestion project_id {record_project_id} does not match report project_id {project_id}.")
+        suggestion_metadata_ref = str(record.get("uv_vis_metadata_ref") or "")
+        if suggestion_metadata_ref and suggestion_metadata_ref != metadata_ref:
+            raise ValueError(f"UV-Vis suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}.")
+
+        review = require_confirmed_review(root, review_ref)
+        review_target_type = str(review.get("target_type") or "")
+        review_target_ref = _normalize_report_target_ref(root, review.get("target_ref"))
+        if review_target_type != "uv_vis_interpretation_suggestions" or review_target_ref != record_ref:
+            raise ValueError(
+                f"ReviewRecord {review_ref} targets {review_target_type}:{review.get('target_ref')}, "
+                f"not UV-Vis interpretation suggestion {record_ref}."
+            )
+        record["record_ref"] = record_ref
+        record["review_ref"] = review_ref
+        record["reviewed_content"] = review.get("reviewed_content") or review.get("user_original_text")
+        records.append(record)
+    return records
+
+
 def _reference_citation(reference_ids: list[str], reference_block: dict) -> str:
     number_by_id = {
         str(item["reference_id"]): int(item["number"])
@@ -773,6 +829,133 @@ def _format_report_list(values: object, *, limit: int = 3) -> str:
         suffix = f"；另有 {len(items) - limit} 项" if len(items) > limit else ""
         return "；".join(shown) + suffix
     return str(values)
+
+
+def _uv_vis_candidate_values_text(candidate: dict) -> str:
+    fields = [
+        ("reported_energy_eV", candidate.get("reported_energy_eV")),
+        ("energy_window_eV", candidate.get("energy_window_eV")),
+        ("wavelength_window_nm", candidate.get("wavelength_window_nm")),
+        ("transition_model", candidate.get("transition_model")),
+        ("transition_assumption", candidate.get("transition_assumption")),
+        ("tauc_transform", candidate.get("tauc_transform")),
+        ("expected_feature", candidate.get("expected_feature")),
+        ("correction_context_type", candidate.get("correction_context_type")),
+        ("correction_method", candidate.get("correction_method")),
+    ]
+    parts = [f"{key}={_format_report_list(value)}" for key, value in fields if value not in (None, "", [], {})]
+    return "；".join(parts) if parts else "未记录可展示的 UV-Vis interpretation values"
+
+
+def _uv_vis_report_use_status(candidate: dict, unresolved_reference_ids: list[str]) -> str:
+    status = str(candidate.get("status") or "unknown")
+    if status == "ready_for_user_review" and not unresolved_reference_ids and not candidate.get("missing_fields"):
+        return "reviewed_interpretation_context"
+    if unresolved_reference_ids:
+        return "warning_unresolved_references"
+    if status == "no_evidence_match":
+        return "context_no_evidence_match"
+    if status.startswith("invalid") or candidate.get("missing_fields"):
+        return "excluded_invalid_or_incomplete"
+    return "context_not_used_as_evidence"
+
+
+def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block: dict) -> str:
+    if not records:
+        return (
+            "当前报告未附加 reviewed UV-Vis interpretation suggestion record。若需要讨论 source-backed band gap、"
+            "transition model、feature assignment 或 correction context 候选，请先运行 `ea uv-vis suggest-interpretations`、"
+            "`ea uv-vis prepare-review` 和 `ea review add`，再在报告生成时传入对应 suggestion 与 ReviewRecord。"
+        )
+    lines: list[str] = []
+    status_rank = {
+        "ready_for_user_review": 0,
+        "needs_reference_registration": 1,
+        "no_evidence_match": 2,
+        "invalid_missing_required_metadata": 3,
+    }
+    reference_ids_in_report = {
+        str(item["reference_id"])
+        for item in reference_block.get("numbered_references", [])
+    }
+    for record in records:
+        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_status = str(record.get("status") or "unknown")
+        suggestion_id = str(record.get("suggestion_id") or "unknown")
+        review_ref = str(record.get("review_ref") or "未记录")
+        reviewed_content = str(record.get("reviewed_content") or "未记录 reviewed_content")
+        lines.append(
+            f"- suggestion_record: `{record_ref}`；suggestion_id: `{suggestion_id}`；review_ref: `{review_ref}`；"
+            f"status: `{record_status}`；candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
+        )
+        lines.append(f"  - review summary: {reviewed_content}")
+        candidates = record.get("candidates") or []
+        if not candidates:
+            lines.append("  - 该 suggestion record 未包含 candidate。")
+            continue
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda item: (
+                status_rank.get(str(item.get("status") or ""), 9),
+                str(item.get("candidate_id") or ""),
+            ),
+        )
+        for candidate in sorted_candidates[:8]:
+            reference_ids = [str(item) for item in candidate.get("reference_ids", []) if str(item).strip()]
+            unresolved_ids = [
+                str(item)
+                for item in [
+                    *(candidate.get("unresolved_reference_ids") or []),
+                    *[ref for ref in reference_ids if ref not in reference_ids_in_report],
+                ]
+                if str(item).strip()
+            ]
+            unresolved_ids = _ordered_unique(unresolved_ids)
+            citation = _reference_citation(reference_ids, reference_block)
+            status = str(candidate.get("status") or "unknown")
+            report_use = _uv_vis_report_use_status(candidate, unresolved_ids)
+            matched_features = _format_report_list(candidate.get("matched_feature_ids"))
+            matched_energies = _format_report_list(candidate.get("matched_energies_eV"))
+            matched_wavelengths = _format_report_list(candidate.get("matched_wavelengths_nm"))
+            evidence_refs = _format_report_list(candidate.get("evidence_refs"))
+            applicability = _format_report_list(candidate.get("applicability_notes"))
+            caveats = _format_report_list(candidate.get("caveats"))
+            source_summary = str(candidate.get("source_summary") or "未记录")
+            lines.append(
+                "  - `{candidate_id}`: {candidate_type} / {optical_target}{citation}\n"
+                "    - report_use: `{report_use}`；review_state: `{status}`；confidence: `{confidence}`；evidence_status: `{evidence_status}`\n"
+                "    - values: {values}\n"
+                "    - matched_features: `{matched_features}`；matched_energies_eV: `{matched_energies}`；matched_wavelengths_nm: `{matched_wavelengths}`\n"
+                "    - evidence_refs: `{evidence_refs}`\n"
+                "    - source_summary: {source_summary}\n"
+                "    - applicability: {applicability}\n"
+                "    - caveats: {caveats}\n"
+                "    - unresolved_reference_ids: `{unresolved}`".format(
+                    candidate_id=str(candidate.get("candidate_id") or "unknown"),
+                    candidate_type=str(candidate.get("candidate_type") or "unknown"),
+                    optical_target=str(candidate.get("optical_target") or "未记录 optical_target"),
+                    citation=citation,
+                    report_use=report_use,
+                    status=status,
+                    confidence=str(candidate.get("confidence") or "insufficient"),
+                    evidence_status=str(candidate.get("evidence_status") or "unknown"),
+                    values=_uv_vis_candidate_values_text(candidate),
+                    matched_features=matched_features,
+                    matched_energies=matched_energies,
+                    matched_wavelengths=matched_wavelengths,
+                    evidence_refs=evidence_refs,
+                    source_summary=source_summary,
+                    applicability=applicability,
+                    caveats=caveats,
+                    unresolved=", ".join(unresolved_ids) if unresolved_ids else "无",
+                )
+            )
+        if len(sorted_candidates) > 8:
+            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+    lines.append(
+        "- 上述 UV-Vis interpretation suggestions 是 reviewed source-backed advisory records；它们可以帮助组织 band gap、transition model、feature assignment 或 correction context 讨论，但不会自动应用 Tauc/Kubelka-Munk/derivative/correction 模型，不能单独证明带隙、跃迁机制、缺陷态、样品厚度效应或光学机制，也不会写入 confirmed memory。"
+    )
+    return "\n".join(lines)
 
 
 def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict) -> str:
@@ -1306,6 +1489,8 @@ def generate_uv_vis_report(
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
     reference_ids: list[str] | None = None,
+    interpretation_suggestion_paths: list[Path] | None = None,
+    interpretation_review_refs: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(uv_vis_metadata_path)
@@ -1343,10 +1528,25 @@ def generate_uv_vis_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in warnings
     ) or "未记录高风险 warning。"
-    reference_block = build_report_reference_block(root, reference_ids)
+    interpretation_suggestion_records = _load_uv_vis_interpretation_suggestion_records(
+        root,
+        interpretation_suggestion_paths,
+        interpretation_review_refs,
+        uv_vis_metadata_path=uv_vis_metadata_path,
+        project_id=project_id,
+    )
+    registered_references = _registered_reference_ids(root)
+    suggestion_reference_ids = [
+        str(reference_id)
+        for record in interpretation_suggestion_records
+        for reference_id in record.get("reference_ids", [])
+        if str(reference_id) in registered_references
+    ]
+    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
     citation_text = reference_block["inline_citation"]
     literature_note = f"相关解释应与已登记文献或项目参考谱对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或项目参考谱引用。"
     interpretation_text = _uv_vis_interpretation_text(metadata, citation_text)
+    interpretation_suggestion_text = _uv_vis_interpretation_suggestion_text(interpretation_suggestion_records, reference_block)
     figure_rel = outputs["figure"]
     figure_embed = f"![UV-Vis spectrum](../{figure_rel})"
     body = f"""# UV-Vis 分析报告
@@ -1400,6 +1600,10 @@ def generate_uv_vis_report(
 
 {interpretation_text}
 
+## Reviewed source-backed UV-Vis interpretation suggestions
+
+{interpretation_suggestion_text}
+
 ## 谨慎解释
 
 在当前数据范围内，自动 UV-Vis 特征和阈值 edge 只能支持“光学响应筛查”。不能仅凭本次处理结果直接确认带隙、跃迁类型、缺陷态、膜厚效应或吸收机制；正式 Tauc/derivative/Kubelka-Munk 等分析需要用户确认模型、样品形态和文献依据。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
@@ -1437,7 +1641,11 @@ def generate_uv_vis_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(uv_vis_metadata_path.relative_to(root))],
+            "records": [
+                str(uv_vis_metadata_path.relative_to(root)),
+                *[_relative_to_root(root, path) for path in interpretation_suggestion_paths or []],
+                *[f"reviews/{review_ref}.yml" for review_ref in interpretation_review_refs or []],
+            ],
             "files": [
                 value
                 for value in [
@@ -1452,8 +1660,13 @@ def generate_uv_vis_report(
             ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
-        review_refs=[],
+        parameters={
+            "include_next_step_suggestions": False,
+            "language": "zh",
+            "interpretation_suggestion_refs": [_relative_to_root(root, path) for path in interpretation_suggestion_paths or []],
+            "interpretation_review_refs": interpretation_review_refs or [],
+        },
+        review_refs=interpretation_review_refs or [],
         warnings=warnings,
         created_at=created_at,
     )

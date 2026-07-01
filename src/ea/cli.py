@@ -350,6 +350,8 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_report.add_argument("--experiment-ref", action="append", default=[])
     uv_vis_report.add_argument("--sample-ref", action="append", default=[])
     uv_vis_report.add_argument("--reference-id", action="append", default=[])
+    uv_vis_report.add_argument("--interpretation-suggestion", action="append", default=[], type=Path)
+    uv_vis_report.add_argument("--interpretation-review-ref", action="append", default=[])
     uv_vis_source_packet = uv_vis_sub.add_parser("build-source-packet", help="build a standard UV-Vis source packet")
     uv_vis_source_packet.add_argument("workspace", type=Path)
     uv_vis_source_packet.add_argument("--library-file", type=Path)
@@ -1219,6 +1221,8 @@ def main(argv: list[str] | None = None) -> int:
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,
+                interpretation_suggestion_paths=[_project_path(args.workspace, path) for path in args.interpretation_suggestion],
+                interpretation_review_refs=args.interpretation_review_ref,
             )
             _print_json({"report": str(path)})
             return 0

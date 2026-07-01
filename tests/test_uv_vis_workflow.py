@@ -873,14 +873,25 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     tauc_path = result_dir / "uv_vis_tauc.csv"
     derivative_path = result_dir / "uv_vis_derivative.csv"
     correction_path = result_dir / "uv_vis_correction_context.yml"
+    processed_path = result_dir / "uv_vis_processed.csv"
+    figure_path = result_dir / "uv_vis_plot.png"
     metadata_path = result_dir / "uv_vis_metadata.yml"
     features_ref = features_path.relative_to(workspace).as_posix()
     tauc_ref = tauc_path.relative_to(workspace).as_posix()
     derivative_ref = derivative_path.relative_to(workspace).as_posix()
     correction_ref = correction_path.relative_to(workspace).as_posix()
+    processed_ref = processed_path.relative_to(workspace).as_posix()
+    figure_ref = figure_path.relative_to(workspace).as_posix()
     metadata_ref = metadata_path.relative_to(workspace).as_posix()
 
     result_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"wavelength_nm": 590.0, "raw_signal": 0.2, "processed_signal": 1.0},
+            {"wavelength_nm": 600.0, "raw_signal": 0.18, "processed_signal": 0.9},
+        ]
+    ).to_csv(processed_path, index=False)
+    figure_path.write_bytes(b"not-a-real-png-for-report-link-test")
     pd.DataFrame(
         [
             {
@@ -922,9 +933,16 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
             "result_id": "res-uv-vis-source-suggestion",
             "uv_vis_result_id": "res-uv-vis-source-suggestion",
             "sample_refs": ["sample-uv-suggestion-001"],
+            "x_column": "wavelength_nm",
+            "y_column": "absorbance",
+            "x_unit": "nm",
+            "signal_mode": "absorbance",
+            "processing_parameters": default_uv_vis_processing_parameters(),
             "outputs": {
                 "metadata": metadata_ref,
                 "peak_table": features_ref,
+                "processed_csv": processed_ref,
+                "figure": figure_ref,
                 "tauc_table": tauc_ref,
                 "derivative_table": derivative_ref,
                 "correction_context": correction_ref,
@@ -1140,6 +1158,61 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     assert "uv-gap-invalid" in review_package_markdown
     assert "does not apply UV-Vis optical models" in review_package_markdown
 
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_interpretation_suggestions",
+            "--target-ref",
+            suggestion_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "用户确认 ready UV-Vis interpretation candidates 可作为报告讨论中的 source-backed 解释候选。",
+        ]
+    ) == 0
+    suggestion_review = _json_output(capsys)
+
+    assert main(
+        [
+            "uv-vis",
+            "report",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--metadata",
+            metadata_ref,
+            "--sample-ref",
+            "sample-uv-suggestion-001",
+            "--experiment-ref",
+            "exp-uv-suggestion-001",
+            "--interpretation-suggestion",
+            suggestion_ref,
+            "--interpretation-review-ref",
+            suggestion_review["review_id"],
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "ref-uv-gap" in report_frontmatter["reference_ids"]
+    assert "ref-missing" not in report_frontmatter["reference_ids"]
+    report_provenance = read_yaml(workspace / "provenance" / f"{report_frontmatter['provenance_refs'][0]}.yml")
+    assert suggestion_review["review_id"] in report_provenance["review_refs"]
+    assert suggestion_ref in report_provenance["inputs"]["records"]
+    assert "## Reviewed source-backed UV-Vis interpretation suggestions" in report_body
+    assert "review_ref:" in report_body
+    assert "absorption edge screening[1]" in report_body
+    assert "report_use: `reviewed_interpretation_context`" in report_body
+    assert "warning_unresolved_references" in report_body
+    assert "context_no_evidence_match" in report_body
+    assert "excluded_invalid_or_incomplete" in report_body
+    assert "ref-missing" in report_body
+    assert "does not apply any numeric correction" in report_body
+    assert "Optical gap reporting for oxide films" in report_body
+    assert "不能单独证明带隙" in report_body
+
 
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
@@ -1153,10 +1226,12 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis build-source-packet" in readme
     assert "ea uv-vis suggest-interpretations" in readme
     assert "ea uv-vis prepare-review" in readme
+    assert "--interpretation-suggestion" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
     assert "ea uv-vis suggest-interpretations" in skill
     assert "ea uv-vis prepare-review" in skill
+    assert "--interpretation-review-ref" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
@@ -1168,6 +1243,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis build-source-packet" in reference_text
     assert "ea uv-vis suggest-interpretations" in reference_text
     assert "ea uv-vis prepare-review" in reference_text
+    assert "--interpretation-suggestion" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
@@ -1179,3 +1255,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "source_packet building" in uv_vis_record["notes"]
     assert "interpretation_suggestions" in uv_vis_record["notes"]
     assert "review packages" in uv_vis_record["notes"]
+    assert "reviewed report integration" in uv_vis_record["notes"]

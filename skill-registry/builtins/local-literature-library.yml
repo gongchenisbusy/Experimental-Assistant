@@ -70,6 +70,7 @@ ea_skill:
       - ready_uv_vis_source_candidate_manifest_to_source_packet_builder_contract
       - ready_uv_vis_source_packet_to_interpretation_suggestion_contract
       - ready_uv_vis_interpretation_suggestion_to_review_package_contract
+      - reviewed_uv_vis_interpretation_suggestion_to_report_contract
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
       - institution_access_guidance_packet
