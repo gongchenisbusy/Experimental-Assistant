@@ -86,6 +86,7 @@ from ea.xps import (
     default_xps_processing_parameters,
     inspect_xps_file,
     process_xps_result,
+    propose_xps_parameter_memory_candidates,
     suggest_xps_parameters,
 )
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
@@ -362,6 +363,13 @@ def build_parser() -> argparse.ArgumentParser:
     xps_suggest.add_argument("--source-file", required=True, type=Path)
     xps_suggest.add_argument("--project-id")
     xps_suggest.add_argument("--related-record", action="append", default=[])
+    xps_memory = xps_sub.add_parser("propose-memory", help="propose draft memory candidates from reviewed XPS parameter suggestions")
+    xps_memory.add_argument("workspace", type=Path)
+    xps_memory.add_argument("--suggestion", required=True, type=Path)
+    xps_memory.add_argument("--review-ref", required=True)
+    xps_memory.add_argument("--project-id")
+    xps_memory.add_argument("--candidate-id", action="append", default=[])
+    xps_memory.add_argument("--allow-non-ready", action="store_true")
     xps_source_packet = xps_sub.add_parser("build-source-packet", help="build a standard XPS parameter source packet")
     xps_source_packet.add_argument("workspace", type=Path)
     xps_source_packet.add_argument("--library-file", type=Path)
@@ -1108,7 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xps":
         project_id = getattr(args, "project_id", None)
-        if args.xps_command in {"process", "report", "suggest-parameters", "build-source-packet"} and not project_id:
+        if args.xps_command in {"process", "report", "suggest-parameters", "propose-memory", "build-source-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xps_command == "inspect":
             inspection = asdict(inspect_xps_file(_project_path(args.workspace, args.spectrum)))
@@ -1155,6 +1163,18 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.xps_command == "propose-memory":
+            _print_json(
+                propose_xps_parameter_memory_candidates(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    review_ref=args.review_ref,
+                    candidate_ids=args.candidate_id,
+                    allow_non_ready=args.allow_non_ready,
                 )
             )
             return 0

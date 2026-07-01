@@ -1490,6 +1490,74 @@ candidates:
     assert set(table["auto_applied"]) == {False}
     assert "processed" not in output["record"]
 
+    suggestion_ref = Path(output["record"]).relative_to(workspace).as_posix()
+    assert (
+        main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                "xps_parameter_suggestions",
+                "--target-ref",
+                suggestion_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                "用户确认 ready XPS source-backed 参数候选可作为后续方法讨论的草稿记忆候选。",
+            ]
+        )
+        == 0
+    )
+    suggestion_review = _json_output(capsys)
+
+    assert (
+        main(
+            [
+                "xps",
+                "propose-memory",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--suggestion",
+                suggestion_ref,
+                "--review-ref",
+                suggestion_review["review_id"],
+            ]
+        )
+        == 0
+    )
+    memory_output = _json_output(capsys)
+    assert memory_output["status"] == "memory_candidates_proposed"
+    assert memory_output["proposed_count"] == 2
+    assert memory_output["skipped_count"] == 1
+    assert memory_output["provenance_ref"]
+    assert "does not commit confirmed memory" in " ".join(memory_output["boundaries"])
+    assert "do not by themselves apply" in " ".join(memory_output["boundaries"])
+    skipped_reasons = {item["candidate_id"]: item["details"] for item in memory_output["skipped"] if item["reason"] == "not_memory_candidate_eligible"}
+    assert "unresolved_reference_ids" in skipped_reasons["xps-param-unregistered-ref-001"]
+
+    proposed_ids = {item["candidate_id"] for item in memory_output["memory_candidates"]}
+    assert proposed_ids == {"xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"}
+    memory_candidate_path = Path(memory_output["memory_candidates"][0]["memory_candidate"])
+    memory_frontmatter, memory_body = read_markdown_record(memory_candidate_path)
+    assert memory_frontmatter["status"] == "draft"
+    assert memory_frontmatter["category"] == "method_note"
+    assert memory_frontmatter["confidence"] == "low"
+    assert suggestion_ref in memory_frontmatter["source_refs"]
+    assert record["table_ref"] in memory_frontmatter["source_refs"]
+    assert record["source_packet_ref"] in memory_frontmatter["source_refs"]
+    assert "raw/xps/example-metadata.yml" in memory_frontmatter["source_refs"]
+    assert ref_id in memory_frontmatter["source_refs"]
+    assert record["provenance_ref"] in memory_frontmatter["provenance_refs"]
+    assert memory_frontmatter["review_refs"] == []
+    assert "xps-param-" in memory_body
+    assert "target parameter path" in memory_body
+    assert "source-backed XPS parameter candidate only" in memory_body
+    assert "does not copy values into processing parameters" in memory_body
+    candidate_index = read_yaml(workspace / "memory" / "candidates" / "index.yml")
+    assert memory_frontmatter["memory_candidate_id"] in candidate_index["candidates"]
+
 
 def test_cli_builds_xps_parameter_source_packet_from_library(tmp_path: Path, capsys) -> None:
     workspace = tmp_path / "cli-xps-source-packet-project"
@@ -1924,6 +1992,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "ea xps process" in skill
     assert "ea xps build-source-packet" in skill
     assert "ea xps suggest-parameters" in skill
+    assert "ea xps propose-memory" in skill
     assert "--builtin-library" in skill
     assert "generic_xps_parameters" in skill
     assert "--parameter-suggestion" in skill
@@ -1942,6 +2011,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "generic_xps_parameters" in xps_reference_text
     assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
+    assert "propose-memory" in xps_reference_text
+    assert "draft method-note memory candidates" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
     assert "--parameter-suggestion" in xps_reference_text
     assert "source-backed parameter suggestion section" in xps_reference_text
@@ -1962,6 +2033,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "generic_xps_parameters" in xps_record["notes"]
     assert "register-seeds" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
+    assert "propose-memory" in xps_record["notes"]
+    assert "draft memory_candidate proposals" in xps_record["notes"]
     assert "--parameter-suggestion" in xps_record["notes"]
     assert "spin_orbit_constraints" in xps_record["notes"]
     assert "region_records" in xps_record["notes"]
