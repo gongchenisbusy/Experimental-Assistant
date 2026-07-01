@@ -15,6 +15,8 @@ RAMAN_EXAMPLE_ROOT = Path("examples/public-raman-project")
 RAMAN_EXAMPLE_MANIFEST = RAMAN_EXAMPLE_ROOT / "example_manifest.yml"
 FTIR_EXAMPLE_ROOT = Path("examples/public-ftir-assignment-project")
 FTIR_EXAMPLE_MANIFEST = FTIR_EXAMPLE_ROOT / "example_manifest.yml"
+UV_VIS_EXAMPLE_ROOT = Path("examples/public-uv-vis-project")
+UV_VIS_EXAMPLE_MANIFEST = UV_VIS_EXAMPLE_ROOT / "example_manifest.yml"
 XPS_EXAMPLE_ROOT = Path("examples/public-xps-be-project")
 XPS_EXAMPLE_MANIFEST = XPS_EXAMPLE_ROOT / "example_manifest.yml"
 FORBIDDEN_PUBLIC_DEFAULTS = [
@@ -215,6 +217,61 @@ def test_packaged_public_ftir_assignment_example_is_public_safe_and_evaluable() 
             assert forbidden not in text, path
 
 
+def test_packaged_public_uv_vis_example_is_public_safe_and_evaluable() -> None:
+    manifest = read_yaml(UV_VIS_EXAMPLE_MANIFEST)
+
+    assert manifest["example_type"] == "packaged_public_project"
+    assert manifest["project_id"] == "prj-public-uv-vis-example"
+    assert manifest["public_boundary"]["uses_developer_machine_defaults"] is False
+    assert manifest["public_boundary"]["zotero_enabled"] is False
+    assert manifest["public_boundary"]["browser_assist_enabled"] is False
+    assert manifest["workflow_boundary"]["source_backed_suggestion_workflow"] is False
+    assert manifest["workflow_boundary"]["proves_band_gap_or_transition"] is False
+    assert manifest["workflow_boundary"]["proves_defect_or_thickness_effect"] is False
+    assert manifest["workflow_boundary"]["applies_numeric_substrate_or_background_correction"] is False
+    assert manifest["workflow_boundary"]["writes_confirmed_memory"] is False
+    assert manifest["screening_summary"]["tauc_status"] == "screening_fit_recorded"
+    assert manifest["screening_summary"]["derivative_status"] == "screening_derivative_recorded"
+    assert manifest["screening_summary"]["correction_context_status"] == "reviewed_correction_context_recorded"
+    assert manifest["validation"]["healthcheck_status"] == "pass"
+    assert manifest["validation"]["evaluation_status"] == "pass"
+    for rel in manifest["key_artifacts"].values():
+        assert (UV_VIS_EXAMPLE_ROOT / rel).exists(), rel
+
+    uv_vis = read_yaml(UV_VIS_EXAMPLE_ROOT / manifest["key_artifacts"]["uv_vis_metadata"])
+    report = (UV_VIS_EXAMPLE_ROOT / manifest["key_artifacts"]["report"]).read_text(encoding="utf-8")
+    correction_context = read_yaml(UV_VIS_EXAMPLE_ROOT / manifest["key_artifacts"]["correction_context"])
+
+    assert uv_vis["peak_analysis"]["tauc_analysis"]["status"] == "screening_fit_recorded"
+    assert abs(uv_vis["peak_analysis"]["tauc_analysis"]["intercept_energy_eV"] - 2.05) < 0.05
+    assert "Screening Tauc/Kubelka-Munk fit only" in uv_vis["peak_analysis"]["tauc_analysis"]["boundary"]
+    assert uv_vis["peak_analysis"]["derivative_analysis"]["status"] == "screening_derivative_recorded"
+    assert "screening-only" in uv_vis["peak_analysis"]["derivative_analysis"]["boundary"]
+    assert uv_vis["peak_analysis"]["correction_context"]["status"] == "reviewed_correction_context_recorded"
+    assert "metadata/provenance record only" in uv_vis["peak_analysis"]["correction_context"]["boundary"]
+    assert correction_context["record_ref"] == manifest["key_artifacts"]["correction_context"]
+    assert "Tauc/Kubelka-Munk screening" in report
+    assert "Derivative screening" in report
+    assert "Correction context 记录" in report
+    assert "不等同于最终 optical band gap" in report
+    assert "不执行自动数值校正" in report
+    assert "尚未绑定外部文献或项目参考谱" in report
+
+    healthcheck = run_healthcheck(UV_VIS_EXAMPLE_ROOT)
+    assert healthcheck["status"] == "pass"
+    assert healthcheck["findings"] == []
+
+    evaluation = run_project_evaluation(UV_VIS_EXAMPLE_ROOT, write_report=False, created_at="2026-06-05T11:30:00")
+    assert evaluation["status"] == "pass"
+    assert evaluation["error_count"] == 0
+    assert evaluation["warning_count"] == 0
+
+    for path in _text_files(UV_VIS_EXAMPLE_ROOT):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
+            assert forbidden not in text, path
+
+
 def test_packaged_example_builders_create_evaluable_projects(tmp_path: Path) -> None:
     builder = _load_builder_module("build_packaged_example_project.py")
     output = tmp_path / "public-raman-project"
@@ -250,6 +307,19 @@ def test_packaged_example_builders_create_evaluable_projects(tmp_path: Path) -> 
     assert (ftir_output / "example_manifest.yml").exists()
     assert run_healthcheck(ftir_output)["status"] == "pass"
 
+    uv_vis_builder = _load_builder_module("build_public_uv_vis_example_project.py")
+    uv_vis_output = tmp_path / "public-uv-vis-project"
+
+    uv_vis_summary = uv_vis_builder.build_example(uv_vis_output, force=True)
+
+    assert uv_vis_summary["healthcheck_status"] == "pass"
+    assert uv_vis_summary["evaluation_status"] == "pass"
+    assert uv_vis_summary["tauc_status"] == "screening_fit_recorded"
+    assert uv_vis_summary["derivative_status"] == "screening_derivative_recorded"
+    assert uv_vis_summary["correction_context_status"] == "reviewed_correction_context_recorded"
+    assert (uv_vis_output / "example_manifest.yml").exists()
+    assert run_healthcheck(uv_vis_output)["status"] == "pass"
+
 
 def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Path) -> None:
     manifest = build_release_manifest(Path.cwd())
@@ -266,6 +336,12 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
     assert "examples/public-ftir-assignment-project/suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml" in paths
     assert "examples/public-ftir-assignment-project/memory/candidates/memcand-20260604-001.md" in paths
     assert "examples/public-ftir-assignment-project/source-inputs/raw/polymer-silica-ftir-public-fixture.txt" in paths
+    assert "examples/public-uv-vis-project/example_manifest.yml" in paths
+    assert "examples/public-uv-vis-project/EA_PROJECT.md" in paths
+    assert "examples/public-uv-vis-project/reports/rpt-public-uv-vis-example-20260605-001.md" in paths
+    assert "examples/public-uv-vis-project/processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv" in paths
+    assert "examples/public-uv-vis-project/processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv" in paths
+    assert "examples/public-uv-vis-project/source-inputs/raw/semiconductor-film-uv-vis-public-fixture.txt" in paths
     assert "examples/public-xps-be-project/example_manifest.yml" in paths
     assert "examples/public-xps-be-project/EA_PROJECT.md" in paths
     assert "examples/public-xps-be-project/reports/rpt-public-xps-be-example-20260603-001.md" in paths
@@ -293,6 +369,17 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
             in names
         )
         assert "ea-release-example-test/examples/public-ftir-assignment-project/memory/candidates/memcand-20260604-001.md" in names
+        assert "ea-release-example-test/examples/public-uv-vis-project/example_manifest.yml" in names
+        assert "ea-release-example-test/examples/public-uv-vis-project/EA_PROJECT.md" in names
+        assert "ea-release-example-test/examples/public-uv-vis-project/README.md" in names
+        assert (
+            "ea-release-example-test/examples/public-uv-vis-project/processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv"
+            in names
+        )
+        assert (
+            "ea-release-example-test/examples/public-uv-vis-project/processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv"
+            in names
+        )
         assert "ea-release-example-test/examples/public-xps-be-project/example_manifest.yml" in names
         assert "ea-release-example-test/examples/public-xps-be-project/EA_PROJECT.md" in names
         assert "ea-release-example-test/examples/public-xps-be-project/README.md" in names

@@ -1,0 +1,3 @@
+feature_id,position,position_unit,wavelength_nm,energy_eV,raw_signal,processed_signal,detection_height,prominence,method,signal_mode,feature_type,assignment_confidence,assignment_source,notes
+uvvis-feature-001,2.734,eV,453.490118507681,2.734,0.38353689,0.9695467482608612,0.9695467482608612,0.11500885906067415,scipy_find_peaks,absorbance,absorbance_maximum,low,ea.uv_vis.feature_detection:v0.2,automatic optical-feature screening; requires method and literature review
+uvvis-feature-002,3.262,eV,380.08644512568975,3.262,0.3955837,1.0,1.0,0.08719479594331103,scipy_find_peaks,absorbance,absorbance_maximum,low,ea.uv_vis.feature_detection:v0.2,automatic optical-feature screening; requires method and literature review

@@ -1,0 +1,8 @@
+review_id: review-20260605-003
+target_type: uv_vis_parameters
+target_ref: raw/uv_vis/char-20260605-001/metadata.yml
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-05T11:13:00'
+user_original_text: 可以，保存
+reviewed_content_hash: 5d4582fff5308fdd8015b8e412b4717275c39d81ad9fe794c868da997db57eef

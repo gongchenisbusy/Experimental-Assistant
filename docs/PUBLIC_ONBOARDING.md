@@ -21,7 +21,7 @@ ea --help
 
 For normal use without test tools, install the package in the user's preferred Python environment and run `ea --help` to confirm the console entry point is available.
 
-The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
+The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; `examples/public-uv-vis-project/`, a public-safe UV-Vis reviewed optical-screening artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
 
 ## 2. Create A First Project
 
@@ -51,6 +51,8 @@ ea healthcheck examples/public-raman-project
 ea eval project examples/public-raman-project --no-write
 ea healthcheck examples/public-ftir-assignment-project
 ea eval project examples/public-ftir-assignment-project --no-write
+ea healthcheck examples/public-uv-vis-project
+ea eval project examples/public-uv-vis-project --no-write
 ea healthcheck examples/public-xps-be-project
 ea eval project examples/public-xps-be-project --no-write
 ```

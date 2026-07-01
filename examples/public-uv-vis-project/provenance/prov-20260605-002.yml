@@ -1,0 +1,21 @@
+provenance_id: prov-20260605-002
+workflow: experiment_log_save
+created_at: '2026-06-05T11:05:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files: []
+outputs:
+  records:
+  - experiments/exp-20260605-001.md
+  files: []
+parameters:
+  structured_by: ea-experiment-log
+  review_gate: required
+review_refs:
+- review-20260605-001
+warnings: []
+source_refs:
+- user_original_text
+scripts: []

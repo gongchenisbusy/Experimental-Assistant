@@ -1,0 +1,18 @@
+open_item_id: openitem-20260605-001
+created_at: '2026-06-05T11:00:00'
+item_type: literature_library_decision
+description: 'Literature library is recommended for project `prj-public-uv-vis-example`
+  but was not enabled during initialization. Ask the user whether to deploy a local
+  literature library before broad literature search or full-text acquisition. If yes,
+  confirm scope (`narrow`, `ordinary`, or `review`), access mode (`index_only`, `open_access_only`,
+  or `user_authenticated`), selected top N, and any user-supplied Zotero, browser,
+  cache, proxy/VPN, or institution-access settings. Do not infer developer-machine
+  paths or credentials. Suggested next command: `ea literature plan /path/to/ea-project
+  --scope ordinary --access-mode open_access_only`.'
+related_records:
+- EA_PROJECT.md
+- .ea/project_config.yml
+priority: medium
+status: open
+source_refs:
+- EA_PROJECT.md

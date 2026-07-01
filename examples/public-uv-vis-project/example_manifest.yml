@@ -1,0 +1,46 @@
+schema_version: '0.2'
+example_id: public-uv-vis-project
+example_type: packaged_public_project
+project_id: prj-public-uv-vis-example
+report_id: rpt-public-uv-vis-example-20260605-001
+result_id: res-public-uv-vis-example-uv-vis-20260605-001
+figure_id: fig-public-uv-vis-example-uv-vis-20260605-001
+public_boundary:
+  uses_developer_machine_defaults: false
+  zotero_enabled: false
+  browser_assist_enabled: false
+  institution_access: null
+  private_cache_required: false
+workflow_boundary:
+  source_backed_suggestion_workflow: false
+  proves_band_gap_or_transition: false
+  proves_defect_or_thickness_effect: false
+  applies_numeric_substrate_or_background_correction: false
+  writes_confirmed_memory: false
+key_artifacts:
+  project: EA_PROJECT.md
+  rule_card: PROJECT_RULE_CARD.md
+  source_input: source-inputs/raw/semiconductor-film-uv-vis-public-fixture.txt
+  raw_metadata: raw/uv_vis/char-20260605-001/metadata.yml
+  raw_file: raw/uv_vis/char-20260605-001/semiconductor-film-uv-vis-public-fixture.txt
+  sample: samples/sample-example-semiconductor-film-uv-vis-001.md
+  experiment: experiments/exp-20260605-001.md
+  uv_vis_metadata: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_metadata.yml
+  processed_csv: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_processed.csv
+  feature_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_features.csv
+  tauc_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv
+  derivative_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv
+  correction_context: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml
+  figure: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/fig-public-uv-vis-example-uv-vis-20260605-001.png
+  report: reports/rpt-public-uv-vis-example-20260605-001.md
+screening_summary:
+  tauc_status: screening_fit_recorded
+  tauc_intercept_energy_eV: 2.046579028739749
+  derivative_status: screening_derivative_recorded
+  correction_context_status: reviewed_correction_context_recorded
+validation:
+  healthcheck_status: pass
+  healthcheck_errors: 0
+  evaluation_status: pass
+  evaluation_errors: 0
+regenerate: python3 scripts/build_public_uv_vis_example_project.py --force

@@ -486,6 +486,61 @@ def test_public_ftir_example_trace_links_source_backed_assignments(tmp_path: Pat
     ) in edges
 
 
+def test_public_uv_vis_example_trace_links_screening_outputs(tmp_path: Path) -> None:
+    root = Path("examples/public-uv-vis-project")
+
+    result = build_project_trace_view(
+        root,
+        output_path=tmp_path / "public_uv_vis_trace.yml",
+        markdown_output_path=tmp_path / "public_uv_vis_trace.md",
+        created_at="2026-07-01T18:00:00",
+    )
+    trace = read_yaml(Path(result["trace_path"]))
+    node_ids = {node["id"] for node in trace["nodes"]}
+    edges = {(edge["from"], edge["relation"], edge["to"]) for edge in trace["edges"]}
+
+    report = "reports/rpt-public-uv-vis-example-20260605-001.md"
+    figure = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/"
+        "fig-public-uv-vis-example-uv-vis-20260605-001.png"
+    )
+    tauc_table = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv"
+    )
+    derivative_table = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv"
+    )
+    correction_context = (
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/"
+        "res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml"
+    )
+
+    assert result["status"] == "complete"
+    assert report in node_ids
+    assert figure in node_ids
+    assert tauc_table in node_ids
+    assert derivative_table in node_ids
+    assert correction_context in node_ids
+    assert (report, "includes_figure", figure) in edges
+    assert (
+        report,
+        "uses_result",
+        "result:res-public-uv-vis-example-uv-vis-20260605-001",
+    ) in edges
+    assert (report, "has_provenance", "provenance/prov-20260605-005.yml") in edges
+    assert (figure, "uses_source_data", tauc_table) in edges
+    assert (figure, "uses_source_data", derivative_table) in edges
+    assert (figure, "uses_source_data", correction_context) in edges
+    assert (
+        "provenance/prov-20260605-004.yml",
+        "output_record",
+        "processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_metadata.yml",
+    ) in edges
+
+
 def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
     _write_trace_fixture(tmp_path)
 

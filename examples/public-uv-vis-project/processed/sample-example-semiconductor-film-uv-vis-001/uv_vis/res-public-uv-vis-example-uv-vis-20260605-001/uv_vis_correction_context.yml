@@ -1,0 +1,39 @@
+enabled: true
+status: reviewed_correction_context_recorded
+method: reviewed_metadata_record
+assignment_source: ea.uv_vis.correction_context:v0.2
+confidence: low
+reviewed_context_fields:
+- sample_geometry
+- substrate
+- reference
+- background
+- diffuse_reflectance
+- correction_notes
+sample_geometry:
+  sample_form: thin_film
+  path_length: not_applicable
+substrate:
+  material: quartz
+  status: reviewed
+  subtraction: not_applied
+reference:
+  reference_type: blank_quartz
+  reference_ref: synthetic public blank context
+  status: reviewed
+background:
+  background_ref: synthetic instrument dark baseline context
+  status: reviewed
+  numeric_correction: not_applied_by_ea
+diffuse_reflectance:
+  integrating_sphere: false
+  kubelka_munk_context: not_used
+correction_notes:
+- No substrate, reference, or background numeric correction is applied by EA in this
+  public example.
+- Correction context is recorded only to make interpretation assumptions visible.
+warnings: []
+boundary: UV-Vis correction context is a metadata/provenance record only; no automatic
+  substrate, reference, background, or diffuse-reflectance numeric correction was
+  applied.
+record_ref: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml

@@ -1,0 +1,259 @@
+schema_version: '0.2'
+created_at: '2026-06-05T11:16:00'
+updated_at: '2026-06-05T11:16:00'
+status: warning
+source_refs: []
+provenance_refs:
+- prov-20260605-004
+review_refs:
+- review-20260605-002
+- review-20260605-003
+uv_vis_result_id: res-public-uv-vis-example-uv-vis-20260605-001
+result_id: res-public-uv-vis-example-uv-vis-20260605-001
+project_id: prj-public-uv-vis-example
+characterization_file_ref: char-20260605-001
+sample_refs:
+- sample-example-semiconductor-film-uv-vis-001
+x_column: energy_eV
+y_column: absorbance
+x_unit: eV
+signal_mode: absorbance
+processing_parameters:
+  smoothing:
+    enabled: false
+    method: savitzky_golay
+    window_length: 9
+    polyorder: 2
+  normalization:
+    enabled: true
+    method: max_abs
+  feature_detection:
+    method: scipy_find_peaks
+    prominence: auto
+    distance: auto
+    max_features: 10
+    source: ea.uv_vis.feature_detection:v0.2
+  edge_estimate:
+    enabled: true
+    method: normalized_threshold
+    threshold_fraction: 0.5
+    source: ea.uv_vis.edge_threshold:v0.2
+  tauc_analysis:
+    enabled: true
+    method: linear_window
+    transform: absorbance
+    transition: direct_allowed
+    exponent: 2.0
+    fit_window_eV:
+    - 2.18
+    - 2.52
+    min_points: 16
+    min_r2_for_low_confidence: 0.9
+    source: ea.uv_vis.tauc_screening:v0.2
+  derivative_analysis:
+    enabled: true
+    method: numpy_gradient
+    axis: energy_eV
+    min_points: 20
+    source: ea.uv_vis.derivative_screening:v0.2
+  correction_context:
+    enabled: true
+    method: reviewed_metadata_record
+    source: ea.uv_vis.correction_context:v0.2
+    sample_geometry:
+      sample_form: thin_film
+      path_length: not_applicable
+    substrate:
+      material: quartz
+      status: reviewed
+      subtraction: not_applied
+    reference:
+      reference_type: blank_quartz
+      reference_ref: synthetic public blank context
+      status: reviewed
+    background:
+      background_ref: synthetic instrument dark baseline context
+      status: reviewed
+      numeric_correction: not_applied_by_ea
+    diffuse_reflectance:
+      integrating_sphere: false
+      kubelka_munk_context: not_used
+    correction_notes:
+    - No substrate, reference, or background numeric correction is applied by EA in
+      this public example.
+    - Correction context is recorded only to make interpretation assumptions visible.
+outputs:
+  figure: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/fig-public-uv-vis-example-uv-vis-20260605-001.png
+  peak_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_features.csv
+  processed_csv: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_processed.csv
+  metadata: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_metadata.yml
+  tauc_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv
+  derivative_table: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv
+  correction_context: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml
+peak_analysis:
+  feature_count: 2
+  strongest_features:
+  - feature_id: uvvis-feature-001
+    position: 2.734
+    position_unit: eV
+    wavelength_nm: 453.490118507681
+    energy_eV: 2.734
+    assignment_source: ea.uv_vis.feature_detection:v0.2
+  - feature_id: uvvis-feature-002
+    position: 3.262
+    position_unit: eV
+    wavelength_nm: 380.08644512568975
+    energy_eV: 3.262
+    assignment_source: ea.uv_vis.feature_detection:v0.2
+  edge_estimate:
+    method: normalized_threshold
+    threshold_fraction: 0.5
+    wavelength_nm: 554.4910483005366
+    energy_eV: 2.236
+    confidence: low
+    assignment_source: ea.uv_vis.edge_threshold:v0.2
+  tauc_analysis:
+    status: screening_fit_recorded
+    method: linear_window
+    transform: absorbance
+    transition: direct_allowed
+    exponent: 2.0
+    fit_window_eV:
+    - 2.18
+    - 2.52
+    fit_point_count: 57
+    min_points: 16
+    confidence: low
+    assignment_source: ea.uv_vis.tauc_screening:v0.2
+    slope: 1.0888061575353591
+    intercept: -2.228327848374574
+    r2: 0.9994978650980172
+    intercept_energy_eV: 2.046579028739749
+    warnings: []
+    boundary: Screening Tauc/Kubelka-Munk fit only; not a definitive band-gap assignment.
+    table_ref: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv
+  derivative_analysis:
+    enabled: true
+    method: numpy_gradient
+    axis: energy_eV
+    axis_unit: eV
+    assignment_source: ea.uv_vis.derivative_screening:v0.2
+    confidence: low
+    boundary: UV-Vis derivative extrema and inflection hints are screening-only; they
+      are not definitive band-gap, transition-type, defect-state, thickness, or mechanism
+      assignments.
+    status: screening_derivative_recorded
+    point_count: 440
+    zero_crossing_count: 4
+    max_positive_slope:
+      axis: energy_eV
+      axis_unit: eV
+      axis_value: 2.056
+      wavelength_nm: 603.0359844357976
+      energy_eV: 2.056
+      processed_signal: 0.12118785480797112
+      first_derivative: 10.881677295264026
+      second_derivative: -157.53145288847838
+    min_negative_slope:
+      axis: energy_eV
+      axis_unit: eV
+      axis_value: 2.806
+      wavelength_nm: 441.8538788310762
+      energy_eV: 2.806
+      processed_signal: 0.9203995766256295
+      first_derivative: -1.0064157513736518
+      second_derivative: -0.004915380601417496
+    max_abs_slope:
+      axis: energy_eV
+      axis_unit: eV
+      axis_value: 2.056
+      wavelength_nm: 603.0359844357976
+      energy_eV: 2.056
+      processed_signal: 0.12118785480797112
+      first_derivative: 10.881677295264026
+      second_derivative: -157.53145288847838
+    warnings: []
+    table_ref: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv
+  correction_context:
+    enabled: true
+    status: reviewed_correction_context_recorded
+    method: reviewed_metadata_record
+    assignment_source: ea.uv_vis.correction_context:v0.2
+    confidence: low
+    reviewed_context_fields:
+    - sample_geometry
+    - substrate
+    - reference
+    - background
+    - diffuse_reflectance
+    - correction_notes
+    sample_geometry:
+      sample_form: thin_film
+      path_length: not_applicable
+    substrate:
+      material: quartz
+      status: reviewed
+      subtraction: not_applied
+    reference:
+      reference_type: blank_quartz
+      reference_ref: synthetic public blank context
+      status: reviewed
+    background:
+      background_ref: synthetic instrument dark baseline context
+      status: reviewed
+      numeric_correction: not_applied_by_ea
+    diffuse_reflectance:
+      integrating_sphere: false
+      kubelka_munk_context: not_used
+    correction_notes:
+    - No substrate, reference, or background numeric correction is applied by EA in
+      this public example.
+    - Correction context is recorded only to make interpretation assumptions visible.
+    warnings: []
+    boundary: UV-Vis correction context is a metadata/provenance record only; no automatic
+      substrate, reference, background, or diffuse-reflectance numeric correction
+      was applied.
+    record_ref: processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml
+  possible_interpretations:
+  - text: Detected UV-Vis feature(s) are consistent with optical absorption/attenuation
+      structure in the reviewed spectrum; treat them as screening evidence, not a
+      band-gap or mechanism claim.
+    confidence: low
+    evidence:
+    - uvvis-feature-001
+    - uvvis-feature-002
+    assignment_source: ea.uv_vis.feature_detection:v0.2
+  - text: A threshold-based optical edge estimate was recorded for orientation only;
+      formal band-gap analysis requires user-confirmed method context such as Tauc
+      model, sample geometry, and references.
+    confidence: low
+    evidence:
+    - edge_estimate
+    assignment_source: ea.uv_vis.edge_threshold:v0.2
+  - text: A screening absorbance Tauc/Kubelka-Munk linear-window intercept was recorded
+      at 2.047 eV. Treat this as reviewed-model screening evidence only, not a definitive
+      optical band gap.
+    confidence: low
+    evidence:
+    - tauc_analysis
+    assignment_source: ea.uv_vis.tauc_screening:v0.2
+  - text: A UV-Vis derivative screening table was recorded; the strongest first-derivative
+      magnitude occurs near 2.056 eV. Treat derivative extrema as shoulder/edge orientation
+      only, not a definitive optical transition or band-gap conclusion.
+    confidence: low
+    evidence:
+    - derivative_analysis
+    assignment_source: ea.uv_vis.derivative_screening:v0.2
+  - text: Reviewed UV-Vis correction context was recorded for sample_geometry, substrate,
+      reference, background, diffuse_reflectance, correction_notes. Use it to interpret
+      optical features and screening fits, but do not treat the metadata record as
+      a numeric correction or a standalone mechanism claim.
+    confidence: low
+    evidence:
+    - correction_context
+    assignment_source: ea.uv_vis.correction_context:v0.2
+figure_id: fig-public-uv-vis-example-uv-vis-20260605-001
+warnings:
+- code: uv_vis_normalization_applied
+  message: UV-Vis signal normalized by processing parameters.
+  severity: low

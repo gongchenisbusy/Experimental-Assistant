@@ -1,0 +1,8 @@
+review_id: review-20260605-001
+target_type: experiment_record
+target_ref: experiments/exp-20260605-001.md
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-05T11:05:00'
+user_original_text: 可以，保存
+reviewed_content_hash: 2486ce60a66cc8232144bdd4ad62702968d2c3b199abb7250da60b7f2e25acae

@@ -1,0 +1,24 @@
+schema_version: '0.2'
+source_refs: []
+provenance_refs:
+- prov-20260605-003
+review_refs: []
+characterization_id: char-20260605-001
+project_id: prj-public-uv-vis-example
+sample_refs:
+- sample-example-semiconductor-film-uv-vis-001
+characterization_type: uv_vis
+original_source_path: source-inputs/raw/semiconductor-film-uv-vis-public-fixture.txt
+project_raw_path: raw/uv_vis/char-20260605-001/semiconductor-film-uv-vis-public-fixture.txt
+sha256: 363166c1ac75caccf6127cb31dc23df1914b0572469834419753766f81c41558
+file_size_bytes: 8444
+imported_at: '2026-06-05T11:10:00'
+import_status: imported
+original_filename: semiconductor-film-uv-vis-public-fixture.txt
+aliases: []
+instrument_metadata: {}
+column_candidates: []
+experiment_refs:
+- exp-20260605-001
+original_mtime: 1780657440.0
+warnings: []

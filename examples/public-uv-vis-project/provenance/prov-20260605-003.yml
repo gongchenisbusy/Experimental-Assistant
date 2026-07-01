@@ -1,0 +1,21 @@
+provenance_id: prov-20260605-003
+workflow: raw_file_import
+created_at: '2026-06-05T11:10:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files:
+  - source-inputs/raw/semiconductor-film-uv-vis-public-fixture.txt
+outputs:
+  records:
+  - raw/uv_vis/char-20260605-001/metadata.yml
+  files:
+  - raw/uv_vis/char-20260605-001/semiconductor-film-uv-vis-public-fixture.txt
+parameters:
+  import_status: imported
+  sha256: 363166c1ac75caccf6127cb31dc23df1914b0572469834419753766f81c41558
+review_refs: []
+warnings: []
+source_refs: []
+scripts: []

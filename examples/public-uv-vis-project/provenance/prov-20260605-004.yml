@@ -1,0 +1,100 @@
+provenance_id: prov-20260605-004
+workflow: uv_vis_processing
+created_at: '2026-06-05T11:16:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - raw/uv_vis/char-20260605-001/metadata.yml
+  files:
+  - raw/uv_vis/char-20260605-001/semiconductor-film-uv-vis-public-fixture.txt
+outputs:
+  records:
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_metadata.yml
+  files:
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_processed.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_features.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/fig-public-uv-vis-example-uv-vis-20260605-001.png
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml
+parameters:
+  x_column: energy_eV
+  y_column: absorbance
+  x_unit: eV
+  signal_mode: absorbance
+  processing_parameters:
+    smoothing:
+      enabled: false
+      method: savitzky_golay
+      window_length: 9
+      polyorder: 2
+    normalization:
+      enabled: true
+      method: max_abs
+    feature_detection:
+      method: scipy_find_peaks
+      prominence: auto
+      distance: auto
+      max_features: 10
+      source: ea.uv_vis.feature_detection:v0.2
+    edge_estimate:
+      enabled: true
+      method: normalized_threshold
+      threshold_fraction: 0.5
+      source: ea.uv_vis.edge_threshold:v0.2
+    tauc_analysis:
+      enabled: true
+      method: linear_window
+      transform: absorbance
+      transition: direct_allowed
+      exponent: 2.0
+      fit_window_eV:
+      - 2.18
+      - 2.52
+      min_points: 16
+      min_r2_for_low_confidence: 0.9
+      source: ea.uv_vis.tauc_screening:v0.2
+    derivative_analysis:
+      enabled: true
+      method: numpy_gradient
+      axis: energy_eV
+      min_points: 20
+      source: ea.uv_vis.derivative_screening:v0.2
+    correction_context:
+      enabled: true
+      method: reviewed_metadata_record
+      source: ea.uv_vis.correction_context:v0.2
+      sample_geometry:
+        sample_form: thin_film
+        path_length: not_applicable
+      substrate:
+        material: quartz
+        status: reviewed
+        subtraction: not_applied
+      reference:
+        reference_type: blank_quartz
+        reference_ref: synthetic public blank context
+        status: reviewed
+      background:
+        background_ref: synthetic instrument dark baseline context
+        status: reviewed
+        numeric_correction: not_applied_by_ea
+      diffuse_reflectance:
+        integrating_sphere: false
+        kubelka_munk_context: not_used
+      correction_notes:
+      - No substrate, reference, or background numeric correction is applied by EA
+        in this public example.
+      - Correction context is recorded only to make interpretation assumptions visible.
+review_refs:
+- review-20260605-002
+- review-20260605-003
+warnings:
+- code: uv_vis_normalization_applied
+  message: UV-Vis signal normalized by processing parameters.
+  severity: low
+source_refs: []
+scripts:
+- path: src/ea/uv_vis/service.py
+  version: 0.2.0

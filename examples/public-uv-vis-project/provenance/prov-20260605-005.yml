@@ -1,0 +1,29 @@
+provenance_id: prov-20260605-005
+workflow: report_generation
+created_at: '2026-06-05T11:24:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_metadata.yml
+  files:
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_processed.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_features.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_tauc.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_derivative.csv
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/uv_vis_correction_context.yml
+  - processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/fig-public-uv-vis-example-uv-vis-20260605-001.png
+outputs:
+  records:
+  - reports/rpt-public-uv-vis-example-20260605-001.md
+  files: []
+parameters:
+  include_next_step_suggestions: false
+  language: zh
+review_refs: []
+warnings:
+- code: uv_vis_normalization_applied
+  message: UV-Vis signal normalized by processing parameters.
+  severity: low
+source_refs: []
+scripts: []
