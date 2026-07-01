@@ -8,6 +8,8 @@
 
 EA 报告应帮助研究者快速判断数据是否可靠、处理是否可复现、结论是否有证据支撑。报告不应只写“无法确定”，而应在科学谨慎的前提下列出可支持的推论、替代解释和可信度。
 
+报告中的谨慎应体现为证据分层，而不是拒绝使用可查证的科学知识。若项目背景、样品/方法上下文和来源足够明确，EA 可以主动加入 source-backed 参数、谱峰/能级/物相候选、模型窗口、处理建议或替代解释，并用 `[1][2]` 等文献序号和报告末尾 References 对应；这些内容必须标明来源、适用性、review 状态和可信度，且不能在未确认时静默变成处理参数、拟合约束、扣背景参数、charge correction、项目记忆或证明性结论。
+
 图片风格默认采用接近 Nature 期刊图件的干净学术风格：白底、少装饰、清晰坐标、可读字体、必要标注、颜色克制、导出质量足够。不同目标期刊可以在后续增加 profile。
 
 ## 2. ID 设计
@@ -120,7 +122,7 @@ XPS：
 - 必须记录 binding-energy calibration 或 charge correction 的用户确认信息，例如参考峰、能量位移和确认来源。
 - y 轴说明 counts、normalized intensity、reviewed background-subtracted intensity 或 reviewed component-fit intensity；若显示扣背景曲线，必须能追溯到用户确认的 `background_subtraction` 方法、区域、锚点/窗口和方法参数，例如 Shirley 迭代设置或 Tougaard U2 的 kernel、`B`、`C_eV2`、integration direction。
 - 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰或单次拟合直接推出。
-- 若样品背景、元素/能区、处理目标和参考来源足够明确，EA 可以主动整理 source-backed 的 spin-orbit 能量差、面积比、FWHM/宽度比、Tougaard/Shirley/background 参数、component bounds、peak-shape 候选或化学态解释候选；报告必须把它们标为候选依据，写清来源、适用性、review 状态和可信度。
+- 若样品背景、元素/能区、处理目标和参考来源足够明确，EA 可以主动查找并整理 source-backed 的 spin-orbit 能量差、面积比、FWHM/宽度比、Tougaard/Shirley/background 参数、component bounds、peak-shape 候选、binding-energy 窗口或化学态解释候选；报告必须把它们标为候选依据，写清来源、适用性、review 状态和可信度。
 - 若使用 `ea xps suggest-parameters` 生成的 source-backed 参数建议，报告只能把它们作为候选依据讨论；必须标注 suggestion ID、candidate ID、source summary、applicability notes、reference IDs 和 review 状态，且不能把未确认候选值自动写入拟合或扣背景参数。
 - 若有 reviewed component fitting，报告中必须写明 fit region、component ID、峰形、初值、bounds、所用 intensity/background column、fit-quality 指标、参考依据和可信度；若使用 reviewed `spin_orbit_constraints`，还必须写明 constraint ID、anchor/dependent component、signed center delta、area ratio、FWHM ratio、`parameter_origin`、source summary、applicability notes、reference IDs 和确认状态。来源支持的候选参数可以进入分析讨论，但不能在缺少来源和适用性记录时作为拟合约束。图和报告必须能通过 component/report ID 追溯到 `xps_component_fit.yml`、`xps_component_fit.csv`、processed CSV 和原始数据。
 - 若有 reviewed multi-region records，报告中必须写明 survey/core-level/project-region 角色、binding-energy window、calibration group、linked output refs、参考依据和可信度；这些记录只用于组织和溯源，不能直接推出跨区定量组成、charge correction 有效性或化学态。

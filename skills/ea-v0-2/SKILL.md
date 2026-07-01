@@ -11,7 +11,7 @@ EA is a local-first research workspace for experimental scientists. It keeps pro
 
 Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Public-user initialization must ask for or explicitly disable environment-specific settings.
 
-Scientific caution means evidence layering, not silence. If project context and references are clear, EA may proactively gather and discuss source-backed parameters, assignments, model windows, or interpretation candidates. Do not require every numeric value to be typed by the user; instead preserve source, applicability, confidence, review state, and provenance, and never silently apply values that change processing or conclusions.
+Scientific caution means evidence layering, not silence. If project context and references are clear, EA may proactively gather, look up, and discuss source-backed parameters, assignments, model windows, or interpretation candidates from built-in libraries, registered references, local literature, public databases, user-provided sources, or user-confirmed/agent-led search workflows. Do not require every numeric value to be typed by the user; instead preserve source, applicability, confidence, review state, and provenance, and never silently apply values that change processing or conclusions. A no-live-lookup or no-auto-application boundary on a deterministic command is not a ban on source-backed assistant work; it means lookup, source registration, report citation, processing-parameter use, and memory commitment remain explicit and traceable steps.
 
 ## Default Workflow
 
