@@ -78,6 +78,36 @@ def _component_quantification_parameters() -> dict:
             },
         ],
     }
+    parameters["background_model"] = {
+        "enabled": True,
+        "method": "reviewed_background_record",
+        "source": "ea.xps.background_model:v0.2",
+        "applied_to_processed_data": False,
+        "software": {"name": "instrument export", "version": "reviewed"},
+        "regions": [
+            {
+                "region_id": "xps-bg-c1s-001",
+                "label": "C 1s Shirley background choice",
+                "background_type": "shirley",
+                "binding_energy_window_eV": [280.0, 292.0],
+                "parameters": {"endpoint_strategy": "reviewed_component_edges"},
+                "reference_ids": ["ref-xps-background-001"],
+                "reviewer_notes": ["User confirmed Shirley background choice for C 1s interpretation."],
+                "caveats": ["EA records this model choice only; no numeric Shirley subtraction was applied."],
+                "confidence": "low",
+            },
+            {
+                "region_id": "xps-bg-o1s-001",
+                "label": "O 1s Tougaard background choice",
+                "background_type": "tougaard",
+                "binding_energy_window_eV": [526.0, 538.0],
+                "parameters": {"parameter_source": "external fitting software"},
+                "reference_ids": ["ref-xps-background-001"],
+                "reviewer_notes": ["User confirmed Tougaard background model should be documented for future fitting."],
+                "confidence": "low",
+            },
+        ],
+    }
     return parameters
 
 
@@ -243,9 +273,20 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert component_summary["status"] == "rsf_normalized_screening"
     assert component_summary["quantified_component_count"] == 3
     assert component_summary["rsf_complete"] is True
+    background_record = xps["peak_analysis"]["background_model"]
+    assert background_record["status"] == "reviewed_background_model_recorded"
+    assert background_record["region_count"] == 2
+    assert "does not automatically perform Shirley/Tougaard" in background_record["boundary"]
+    assert xps["outputs"]["background_model"].endswith("xps_background.yml")
+    saved_background = read_yaml(workspace / xps["outputs"]["background_model"])
+    assert saved_background["record_ref"] == xps["outputs"]["background_model"]
+    assert {region["background_type"] for region in saved_background["regions"]} == {"shirley", "tougaard"}
+    assert saved_background["regions"][0]["applied_to_processed_data"] is False
+    assert saved_background["reference_ids"] == ["ref-xps-background-001"]
     assert xps["peak_analysis"]["possible_interpretations"]
     assert (workspace / xps["outputs"]["peak_table"]).exists()
     assert (workspace / xps["outputs"]["component_table"]).exists()
+    assert (workspace / xps["outputs"]["background_model"]).exists()
     components = pd.read_csv(workspace / xps["outputs"]["component_table"])
     assert set(components["component_id"]) == {"xps-c1s-001", "xps-o1s-001", "xps-fe2p-001"}
     assert components["relative_atomic_percent_screening"].notna().all()
@@ -258,6 +299,7 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert xps["outputs"]["processed_csv"] in figure_record["source_data_refs"]
     assert xps["outputs"]["peak_table"] in figure_record["source_data_refs"]
     assert xps["outputs"]["component_table"] in figure_record["source_data_refs"]
+    assert xps["outputs"]["background_model"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -277,6 +319,10 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     report_output = _json_output(capsys)
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "xps_analysis"
+    assert "## XPS background model record" in report_body
+    assert "xps-bg-c1s-001" in report_body
+    assert "shirley" in report_body
+    assert "tougaard" in report_body
     assert "## XPS peak 参数" in report_body
     assert "## XPS component quantification screening" in report_body
     assert "xps-c1s-001" in report_body
@@ -310,6 +356,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_reference_text = xps_reference.read_text(encoding="utf-8")
     assert "calibration_review_ref" in xps_reference_text
     assert "component_quantification" in xps_reference_text
+    assert "background_model" in xps_reference_text
     assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
+    assert "background_model_records" in xps_record["notes"]

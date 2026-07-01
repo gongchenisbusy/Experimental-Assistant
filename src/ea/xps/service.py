@@ -94,6 +94,17 @@ def default_xps_processing_parameters() -> dict[str, Any]:
             "source": "ea.xps.component_quantification:v0.2",
             "components": [],
         },
+        "background_model": {
+            "enabled": False,
+            "method": "reviewed_background_record",
+            "source": "ea.xps.background_model:v0.2",
+            "regions": [],
+            "applied_to_processed_data": False,
+            "software": {},
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -414,6 +425,188 @@ def _component_sensitivity_factor(component: dict[str, Any]) -> float | None:
     return coerced if coerced > 0 else None
 
 
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _has_record_payload(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_record_payload(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_record_payload(item) for item in value)
+    return True
+
+
+def _background_window(region: dict[str, Any]) -> tuple[float | None, float | None]:
+    value = region.get("binding_energy_window_eV") or region.get("window_eV") or region.get("energy_window_eV")
+    if isinstance(value, list | tuple) and len(value) >= 2:
+        low, high = value[0], value[1]
+    else:
+        low = region.get("binding_energy_min_eV")
+        high = region.get("binding_energy_max_eV")
+    try:
+        low_value = float(low)
+        high_value = float(high)
+    except (TypeError, ValueError):
+        return None, None
+    return min(low_value, high_value), max(low_value, high_value)
+
+
+def _reviewed_background_region(
+    region: dict[str, Any],
+    *,
+    number: int,
+    source: str,
+    default_applied: bool,
+    default_software: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    region_id = str(region.get("region_id") or region.get("id") or f"xps-background-region-{number:03d}")
+    background_type = str(region.get("background_type") or region.get("model_type") or region.get("model") or "unspecified").strip().lower().replace(" ", "_")
+    allowed = {"shirley", "tougaard", "linear", "local_minimum", "rolling_quantile", "instrument_applied", "other", "unspecified"}
+    if background_type not in allowed:
+        warnings.append(
+            _warning(
+                "xps_background_model_type_unrecognized",
+                "A reviewed XPS background model type was preserved but is not one of the built-in vocabulary values.",
+                severity="low",
+                region_id=region_id,
+                background_type=background_type,
+            )
+        )
+    low, high = _background_window(region)
+    applied = bool(region.get("applied_to_processed_data", default_applied))
+    confidence = str(region.get("confidence") or "low").strip().lower()
+    if confidence not in {"high", "medium", "low", "insufficient"}:
+        warnings.append(
+            _warning(
+                "xps_background_confidence_normalized",
+                "XPS background model confidence was not one of high/medium/low/insufficient and was normalized to low.",
+                severity="low",
+                region_id=region_id,
+                supplied_confidence=confidence,
+            )
+        )
+        confidence = "low"
+    return (
+        {
+            "region_id": region_id,
+            "label": str(region.get("label") or region_id),
+            "background_type": background_type,
+            "binding_energy_min_eV": low,
+            "binding_energy_max_eV": high,
+            "applied_to_processed_data": applied,
+            "parameters": deepcopy(region.get("parameters") or region.get("model_parameters") or {}),
+            "software": deepcopy(region.get("software") or default_software),
+            "reference_ids": _coerce_string_list(region.get("reference_ids")),
+            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "caveats": _coerce_string_list(region.get("caveats")),
+            "confidence": confidence,
+            "status": "reviewed_background_region_recorded",
+            "assignment_source": source,
+            "boundary": (
+                "This XPS background region records a user-reviewed background model choice and provenance only; "
+                "EA v0.2 does not automatically apply Shirley/Tougaard subtraction or prove chemical-state/composition claims from this record."
+            ),
+        },
+        warnings,
+    )
+
+
+def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("background_model", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "reviewed_background_record")
+    source = str(params.get("source") or "ea.xps.background_model:v0.2")
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "confidence": "insufficient",
+        "region_count": 0,
+        "regions": [],
+        "reference_ids": [],
+        "boundary": (
+            "XPS background model records preserve user-reviewed model/provenance choices only. EA v0.2 does not automatically perform "
+            "Shirley/Tougaard background subtraction, spin-orbit constrained fitting, formal composition, or chemical-state proof from this record."
+        ),
+    }
+    if method != "reviewed_background_record":
+        warning = _warning("xps_background_model_method_unsupported", "XPS background model method is not supported by EA v0.2.", severity="medium", method=method)
+        warnings.append(warning)
+        record.update({"status": "skipped_unsupported_method", "warnings": warnings})
+        return record, warnings
+
+    raw_regions = params.get("regions", [])
+    if not isinstance(raw_regions, list):
+        raw_regions = []
+        warnings.append(
+            _warning(
+                "xps_background_regions_ignored",
+                "XPS background_model regions were ignored because they were not supplied as a list.",
+                severity="medium",
+            )
+        )
+    if not raw_regions and _has_record_payload(params.get("background_type") or params.get("model_type") or params.get("model")):
+        raw_regions = [params]
+    if not raw_regions:
+        warning = _warning("xps_background_regions_missing", "background_model was enabled, but no reviewed background regions were supplied.", severity="medium")
+        warnings.append(warning)
+        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        return record, warnings
+
+    default_software = deepcopy(params.get("software") or {})
+    default_applied = bool(params.get("applied_to_processed_data", False))
+    regions: list[dict[str, Any]] = []
+    for number, region in enumerate(raw_regions, start=1):
+        if not isinstance(region, dict):
+            warnings.append(
+                _warning(
+                    "xps_background_region_ignored",
+                    "A reviewed XPS background region was ignored because it was not a mapping.",
+                    severity="medium",
+                    region_number=number,
+                )
+            )
+            continue
+        background_region, region_warnings = _reviewed_background_region(
+            region,
+            number=number,
+            source=source,
+            default_applied=default_applied,
+            default_software=default_software,
+        )
+        regions.append(background_region)
+        warnings.extend(region_warnings)
+
+    reference_ids = sorted({reference_id for region in regions for reference_id in region.get("reference_ids", [])})
+    record.update(
+        {
+            "status": "reviewed_background_model_recorded" if regions else "no_background_regions_recorded",
+            "confidence": "low" if regions else "insufficient",
+            "region_count": len(regions),
+            "regions": regions,
+            "reference_ids": reference_ids,
+            "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+            "caveats": _coerce_string_list(params.get("caveats")),
+            "warnings": warnings,
+        }
+    )
+    return record, warnings
+
+
 def _apply_component_quantification(
     processed: pd.DataFrame, parameters: dict[str, Any]
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
@@ -622,7 +815,12 @@ def _apply_component_quantification(
     return table, summary, warnings
 
 
-def _analyze_peaks(peaks: pd.DataFrame, request: XPSProcessingRequest, component_summary: dict[str, Any] | None = None) -> dict[str, Any]:
+def _analyze_peaks(
+    peaks: pd.DataFrame,
+    request: XPSProcessingRequest,
+    component_summary: dict[str, Any] | None = None,
+    background_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
         "strongest_peaks": [],
@@ -680,6 +878,17 @@ def _analyze_peaks(peaks: pd.DataFrame, request: XPSProcessingRequest, component
                     "evidence": evidence,
                     "assignment_source": component_summary.get("assignment_source", "ea.xps.component_quantification:v0.2"),
                     "component_quantification_status": status,
+                }
+            )
+    if background_record:
+        analysis["background_model"] = background_record
+        if background_record.get("status") == "reviewed_background_model_recorded":
+            analysis["possible_interpretations"].append(
+                {
+                    "text": "Reviewed XPS background model records were saved for the relevant binding-energy region(s). Use them to interpret component screening and future fitting, but do not treat the record as automatic Shirley/Tougaard subtraction, spin-orbit constrained fitting, composition, or chemical-state proof.",
+                    "confidence": background_record.get("confidence", "low"),
+                    "evidence": ["background_model"],
+                    "assignment_source": background_record.get("assignment_source", "ea.xps.background_model:v0.2"),
                 }
             )
     return analysis
@@ -750,7 +959,8 @@ def process_xps_result(
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     peaks = _detect_peaks(processed, parameters, request.x_unit)
     components, component_summary, component_warnings = _apply_component_quantification(processed, parameters)
-    peak_analysis = _analyze_peaks(peaks, request, component_summary)
+    background_record, background_warnings = _record_background_model(parameters)
+    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -764,16 +974,28 @@ def process_xps_result(
     processed_csv = output_dir / "xps_processed.csv"
     peaks_csv = output_dir / "xps_peaks.csv"
     components_csv = output_dir / "xps_components.csv"
+    background_yml = output_dir / "xps_background.yml"
     figure_name = f"{figure_id}.png" if figure_id else "xps_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "xps_metadata.yml"
-    for output in [processed_csv, peaks_csv, components_csv, figure, result_metadata]:
+    for output in [processed_csv, peaks_csv, components_csv, background_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     peaks.to_csv(peaks_csv, index=False)
     components.to_csv(components_csv, index=False)
+    background_ref: str | None = None
+    if background_record is not None:
+        background_ref = str(background_yml.relative_to(root))
+        background_record["record_ref"] = background_ref
+        write_yaml(background_yml, background_record)
+        if peak_analysis.get("background_model"):
+            peak_analysis["background_model"]["record_ref"] = background_ref
+        for item in peak_analysis.get("possible_interpretations", []):
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [background_ref if value == "background_model" else value for value in evidence]
     _plot_xps(processed, peaks, components, figure, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -783,6 +1005,16 @@ def process_xps_result(
         warnings.append(_warning("xps_calibration_reference_missing", "No XPS calibration reference text was recorded.", severity="medium"))
     warnings.extend(processing_warnings)
     warnings.extend(component_warnings)
+    warnings.extend(background_warnings)
+    outputs = {
+        "figure": str(figure.relative_to(root)),
+        "peak_table": str(peaks_csv.relative_to(root)),
+        "component_table": str(components_csv.relative_to(root)),
+        "processed_csv": str(processed_csv.relative_to(root)),
+        "metadata": str(result_metadata.relative_to(root)),
+    }
+    if background_ref:
+        outputs["background_model"] = background_ref
     result = XPSProcessingResult(
         xps_result_id=result_id,
         result_id=result_id,
@@ -796,13 +1028,7 @@ def process_xps_result(
         energy_shift_eV=float(request.energy_shift_eV),
         calibration_reference=request.calibration_reference,
         processing_parameters=parameters,
-        outputs={
-            "figure": str(figure.relative_to(root)),
-            "peak_table": str(peaks_csv.relative_to(root)),
-            "component_table": str(components_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
-        },
+        outputs=outputs,
         peak_analysis=peak_analysis,
         figure_id=figure_id,
         warnings=warnings,
@@ -821,10 +1047,15 @@ def process_xps_result(
         outputs={
             "records": [str(result_metadata.relative_to(root))],
             "files": [
-                str(processed_csv.relative_to(root)),
-                str(peaks_csv.relative_to(root)),
-                str(components_csv.relative_to(root)),
-                str(figure.relative_to(root)),
+                value
+                for value in [
+                    str(processed_csv.relative_to(root)),
+                    str(peaks_csv.relative_to(root)),
+                    str(components_csv.relative_to(root)),
+                    background_ref,
+                    str(figure.relative_to(root)),
+                ]
+                if value
             ],
         },
         parameters={
@@ -865,13 +1096,18 @@ def process_xps_result(
                     "processing_parameters": parameters,
                 },
             },
-            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component windows when supplied, and traceable calibration/processing parameters.",
+            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records when supplied, and traceable calibration/processing parameters.",
             purpose="xps_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
-                str(processed_csv.relative_to(root)),
-                str(peaks_csv.relative_to(root)),
-                str(components_csv.relative_to(root)),
+                value
+                for value in [
+                    str(processed_csv.relative_to(root)),
+                    str(peaks_csv.relative_to(root)),
+                    str(components_csv.relative_to(root)),
+                    background_ref,
+                ]
+                if value
             ],
         )
     return result_metadata

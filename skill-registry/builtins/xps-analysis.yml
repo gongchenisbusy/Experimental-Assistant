@@ -10,6 +10,7 @@ ea_skill:
     - user_review_state
   output_artifacts:
     - processed_result
+    - background_model_record
     - figure_record
     - report_section
     - provenance_record
@@ -55,13 +56,29 @@ ea_skill:
     implemented_outputs:
       - processed_csv
       - peak_table
+      - background_model_record
       - component_table
       - figure_record
       - markdown_report
       - provenance_record
       - component_quantification_screening
+      - background_model_records
+    background_model_records:
+      source: ea.xps.background_model:v0.2
+      default_enabled: false
+      supported_background_types:
+        - shirley
+        - tougaard
+        - linear
+        - local_minimum
+        - rolling_quantile
+        - instrument_applied
+        - other
+      output_artifacts:
+        - xps_background.yml
+      boundary: reviewed_model_provenance_only_no_automatic_shirley_tougaard_subtraction_spin_orbit_fitting_composition_or_chemical_state_proof
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
-      - Shirley/Tougaard backgrounds, spin-orbit constrained fitting, and formal multi-region quantification remain future work
+      - numeric Shirley/Tougaard background subtraction, spin-orbit constrained fitting, and formal multi-region quantification remain future work

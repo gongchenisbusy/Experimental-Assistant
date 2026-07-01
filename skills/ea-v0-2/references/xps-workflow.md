@@ -8,9 +8,9 @@ Required gates:
 2. Ask for or verify x/y columns and x-axis unit (`eV` or `unknown`).
 3. Ask for or verify binding-energy calibration before analysis. Record `energy_shift_eV`, `calibration_reference`, and `calibration_review_ref`.
 4. Ask for or verify processing parameters before analysis.
-5. If component quantification is requested, ask the user to confirm `component_quantification` parameters: reviewed component IDs/labels, elements/core levels, binding-energy windows, integration baseline, model/background notes, and sensitivity factors when atomic-percent screening is desired.
+5. If component quantification or background-model documentation is requested, ask the user to confirm `component_quantification` and/or `background_model` parameters: reviewed component IDs/labels, elements/core levels, binding-energy/background windows, integration baseline, model/background notes, software/tool provenance, and sensitivity factors when atomic-percent screening is desired.
 6. Keep raw data untouched; write processed outputs outside `raw/`.
-7. Record baseline handling, smoothing, normalization, detected screening peaks, optional component screening, generated figure, report, and provenance.
+7. Record baseline handling, smoothing, normalization, detected screening peaks, optional component screening, optional reviewed background-model record, generated figure, report, and provenance.
 8. Treat automatic peaks and component screening estimates as screening evidence. Use calibration context, background model, peak model, references, and user review before writing chemical-state conclusions.
 9. Write memory candidates only after user confirmation.
 
@@ -18,12 +18,13 @@ Current v0.2 XPS support:
 
 - Raw import uses `ea raw import --characterization-type xps`.
 - Inspection identifies common XPS files by path/name, binding-energy metadata, and binding-energy-like ranges.
-- Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, and disabled-by-default `component_quantification` screening from reviewed binding-energy windows.
+- Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, disabled-by-default `component_quantification` screening from reviewed binding-energy windows, and disabled-by-default `background_model` records for reviewed Shirley/Tougaard/linear/local-minimum/rolling-quantile choices.
 - Processed CSV files include `binding_energy_raw`, calibrated `binding_energy_eV`, `raw_intensity`, optional `baseline_signal`, optional `smoothed_intensity`, and `processed_intensity`.
 - Peak tables include `binding_energy_eV`, raw energy, prominence, component model status, possible assignment, assignment confidence, and assignment source.
 - When `component_quantification.enabled` is true, EA writes `xps_components.csv` with reviewed component windows, integrated area, relative area percent, sensitivity factor, RSF-corrected area, and `relative_atomic_percent_screening` when all included components have valid positive sensitivity factors.
-- Reports include an embedded XPS figure, original figure path, calibration section, peak table, optional component screening table, confidence-labeled possible interpretations, file links, References, and provenance.
-- XPS component quantification is screening-only. EA does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, Shirley/Tougaard background modeling, or spin-orbit constrained fitting.
+- When `background_model.enabled` is true, EA writes `xps_background.yml` with reviewed background region/model choices, windows, software/tool refs, reference IDs, reviewer notes, caveats, and whether the background had already been applied outside EA.
+- Reports include an embedded XPS figure, original figure path, calibration/background section, peak table, optional component screening table, confidence-labeled possible interpretations, file links, References, and provenance.
+- XPS component quantification is screening-only. XPS background model records are provenance only. EA does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, automatic Shirley/Tougaard subtraction, or spin-orbit constrained fitting.
 
 CLI path:
 
@@ -57,4 +58,33 @@ component_quantification:
       background: local_minimum
 ```
 
-Future XPS work should add user-confirmed Shirley/Tougaard background modes, constrained peak fitting, spin-orbit pair handling, standard reference libraries, multi-region project records, replicate/statistical comparisons, and user-confirmed memory-candidate generation from report interpretations.
+Optional reviewed background-model parameters:
+
+```yaml
+background_model:
+  enabled: true
+  method: reviewed_background_record
+  source: ea.xps.background_model:v0.2
+  applied_to_processed_data: false
+  software:
+    name: instrument export
+    version: reviewed
+  regions:
+    - region_id: xps-bg-c1s-001
+      label: C 1s Shirley background choice
+      background_type: shirley
+      binding_energy_window_eV: [280.0, 292.0]
+      parameters:
+        endpoint_strategy: reviewed_component_edges
+      reference_ids:
+        - ref-xps-background-001
+      reviewer_notes:
+        - User confirmed Shirley background choice for C 1s interpretation.
+      caveats:
+        - EA records this model choice only; no numeric Shirley subtraction was applied.
+      confidence: low
+```
+
+Background model records preserve reviewed model/provenance choices. They do not make EA apply Shirley/Tougaard subtraction, fit spin-orbit constrained peaks, calculate final composition, or prove chemical states.
+
+Future XPS work should add numeric user-confirmed Shirley/Tougaard subtraction workflows, constrained peak fitting, spin-orbit pair handling, standard reference libraries, multi-region project records, replicate/statistical comparisons, and user-confirmed memory-candidate generation from report interpretations.

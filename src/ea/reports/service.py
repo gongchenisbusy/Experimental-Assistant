@@ -1302,6 +1302,54 @@ def _xps_component_table(root: Path, component_table_ref: str | None) -> str:
     return "\n".join(rows)
 
 
+def _xps_background_model_text(metadata: dict) -> str:
+    background = (metadata.get("peak_analysis") or {}).get("background_model") or {}
+    if not background:
+        return "当前没有启用或记录 XPS background model record。"
+    status = background.get("status", "unknown")
+    count = background.get("region_count", 0)
+    confidence = background.get("confidence", "insufficient")
+    source = background.get("assignment_source", "ea.xps.background_model:v0.2")
+    record_ref = background.get("record_ref", "未生成")
+    references = background.get("reference_ids") or []
+    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    return (
+        f"Reviewed XPS background model record 状态为 `{status}`；region count: `{count}`；record: `{record_ref}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
+        "该记录保存用户审核的 Shirley/Tougaard/linear/local-minimum/rolling-quantile 等背景模型选择、区域和来源；"
+        "本阶段不自动执行 Shirley/Tougaard 扣背景、不进行 spin-orbit constrained fitting，也不证明化学态或组成。"
+    )
+
+
+def _xps_background_model_table(metadata: dict) -> str:
+    background = (metadata.get("peak_analysis") or {}).get("background_model") or {}
+    regions = background.get("regions") or []
+    if not regions:
+        return "当前没有可展示的 XPS background model region。"
+    rows = [
+        "| region_id | type | window (eV) | applied to processed data | confidence | references |",
+        "|---|---|---:|---|---|---|",
+    ]
+    for region in regions[:12]:
+        if not isinstance(region, dict):
+            continue
+        low = region.get("binding_energy_min_eV")
+        high = region.get("binding_energy_max_eV")
+        references = region.get("reference_ids") or []
+        reference_text = ", ".join(str(ref) for ref in references) if references else "n/a"
+        rows.append(
+            "| {region_id} | {background_type} | {window} | {applied} | {confidence} | {references} |".format(
+                region_id=region.get("region_id", "n/a"),
+                background_type=region.get("background_type", "n/a"),
+                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                applied=region.get("applied_to_processed_data", False),
+                confidence=region.get("confidence", "insufficient"),
+                references=reference_text,
+            )
+        )
+    return "\n".join(rows)
+
+
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
     shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
@@ -1366,6 +1414,8 @@ def generate_xps_report(
     peak_table = _xps_peak_table(root, outputs["peak_table"])
     component_summary = _xps_component_summary(metadata)
     component_table = _xps_component_table(root, outputs.get("component_table"))
+    background_summary = _xps_background_model_text(metadata)
+    background_table = _xps_background_model_table(metadata)
     calibration_text = _xps_calibration_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
@@ -1394,6 +1444,12 @@ def generate_xps_report(
 ## 数据列、校准与处理参数
 
 用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，XPS x 轴单位记录为 `{metadata['x_unit']}`。{calibration_text}处理参数为 `{metadata['processing_parameters']}`。
+
+## XPS background model record
+
+{background_summary}
+
+{background_table}
 
 ## 图谱
 
@@ -1432,6 +1488,7 @@ def generate_xps_report(
 - processed CSV: `{outputs['processed_csv']}`
 - peak table: `{outputs['peak_table']}`
 - component table: `{outputs.get('component_table', '未生成')}`
+{f"- background model: `{outputs['background_model']}`" if outputs.get('background_model') else "- background model: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1455,7 +1512,7 @@ def generate_xps_report(
         workflow="report_generation",
         inputs={
             "records": [str(xps_metadata_path.relative_to(root))],
-            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("component_table"), outputs["figure"]] if value],
+            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("component_table"), outputs.get("background_model"), outputs["figure"]] if value],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
