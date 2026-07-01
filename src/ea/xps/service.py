@@ -565,6 +565,225 @@ def _xps_parameter_suggestion_columns() -> list[str]:
     ]
 
 
+def _normalize_xps_suggestion_type(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _xps_parameter_source_candidates(source_packet: Any) -> list[Any]:
+    if isinstance(source_packet, list):
+        return source_packet
+    if isinstance(source_packet, dict):
+        raw_candidates = source_packet.get("candidates") or source_packet.get("parameters") or source_packet.get("suggestions") or []
+        return raw_candidates if isinstance(raw_candidates, list) else []
+    return []
+
+
+def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
+    return [
+        {
+            "candidate_id": "xps-param-template-spin-orbit-001",
+            "suggestion_type": "spin_orbit_constraint",
+            "element": "TODO",
+            "core_level": "TODO",
+            "constraint_id": "xps-spin-template-001",
+            "anchor_component_id": "TODO-anchor-component-id",
+            "dependent_component_id": "TODO-dependent-component-id",
+            "center_delta_eV": None,
+            "area_ratio": None,
+            "fwhm_ratio": None,
+            "parameter_origin": "source_suggested",
+            "source_summary": "TODO: summarize the source that supports the spin-orbit separation/ratio values.",
+            "applicability_notes": [
+                "TODO: describe the sample, oxidation/chemical-state assumptions, region, background, and bounds where this candidate applies."
+            ],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; fill numeric values and source metadata before running suggest-parameters."],
+        },
+        {
+            "candidate_id": "xps-param-template-tougaard-001",
+            "suggestion_type": "tougaard_parameter",
+            "tougaard_B": None,
+            "tougaard_C_eV2": None,
+            "integration_direction": "toward_higher_binding_energy",
+            "parameter_origin": "source_suggested",
+            "source_summary": "TODO: summarize the source that supports the Tougaard parameter candidate.",
+            "applicability_notes": ["TODO: describe the reviewed background region and material/system where this candidate applies."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; fill numeric values and source metadata before running suggest-parameters."],
+        },
+    ]
+
+
+def _candidate_identity(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or candidate.get("suggestion_id") or "").strip()
+
+
+def _candidate_matches_filters(
+    candidate: dict[str, Any],
+    *,
+    include_candidates: set[str],
+    suggestion_types: set[str],
+    elements: set[str],
+    core_levels: set[str],
+) -> bool:
+    if include_candidates and _candidate_identity(candidate) not in include_candidates:
+        return False
+    if suggestion_types and _normalize_xps_suggestion_type(candidate.get("suggestion_type") or candidate.get("parameter_type") or candidate.get("type")) not in suggestion_types:
+        return False
+    if elements and str(candidate.get("element") or "").strip().lower() not in elements:
+        return False
+    if core_levels and str(candidate.get("core_level") or "").strip().lower() not in core_levels:
+        return False
+    return True
+
+
+def build_xps_parameter_source_packet(
+    root: Path,
+    *,
+    project_id: str,
+    library_path: Path | None = None,
+    output_path: Path | None = None,
+    include_candidates: list[str] | None = None,
+    suggestion_types: list[str] | None = None,
+    elements: list[str] | None = None,
+    core_levels: list[str] | None = None,
+    template: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    if not library_path and not template:
+        raise XPSProcessingError("Provide --library-file or --write-template for XPS source-packet generation")
+
+    template_mode = template and library_path is None
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    source_packet_id = next_id(root, "xps_source_packet", day)
+    if output_path is None:
+        if template_mode:
+            output_path = root / "templates" / "xps_parameter_source_packet.yml"
+        else:
+            output_path = root / "suggestions" / "xps" / "source-packets" / f"{source_packet_id}.yml"
+    elif not output_path.is_absolute():
+        output_path = root / output_path
+    assert_not_raw_output_path(root, output_path)
+
+    warnings: list[dict[str, Any]] = []
+    library_ref: str | None = None
+    if template_mode:
+        raw_candidates = _xps_parameter_source_template_candidates()
+    else:
+        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        if source_path is None or not source_path.exists():
+            raise XPSProcessingError(f"XPS parameter library file not found: {library_path}")
+        library_ref = _relative_to_root(root, source_path)
+        raw_candidates = _xps_parameter_source_candidates(read_yaml(source_path))
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_xps_suggestion_type(item) for item in suggestion_types or [] if str(item).strip()}
+    element_set = {str(item).strip().lower() for item in elements or [] if str(item).strip()}
+    core_level_set = {str(item).strip().lower() for item in core_levels or [] if str(item).strip()}
+    selected: list[dict[str, Any]] = []
+    for index, raw_candidate in enumerate(raw_candidates, start=1):
+        if not isinstance(raw_candidate, dict):
+            warnings.append(
+                _warning(
+                    "xps_parameter_source_candidate_ignored",
+                    "An XPS parameter source candidate was not a mapping and was skipped while building the source packet.",
+                    severity="medium",
+                    candidate_index=index,
+                )
+            )
+            continue
+        if not _candidate_matches_filters(
+            raw_candidate,
+            include_candidates=include_set,
+            suggestion_types=type_set,
+            elements=element_set,
+            core_levels=core_level_set,
+        ):
+            continue
+        candidate = deepcopy(raw_candidate)
+        candidate.setdefault("parameter_origin", "source_suggested")
+        selected.append(candidate)
+
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "xps_parameter_source_library_empty",
+                "No XPS parameter candidates were found in the source library.",
+                severity="medium",
+            )
+        )
+    if raw_candidates and not selected:
+        warnings.append(
+            _warning(
+                "xps_parameter_source_no_matches",
+                "No XPS parameter candidates matched the requested filters.",
+                severity="medium",
+            )
+        )
+
+    reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    packet_ref = _relative_to_root(root, output_path)
+    status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_parameters" if selected else "no_matching_candidates")
+    packet = {
+        "schema_version": "0.2",
+        "source_packet_id": source_packet_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.xps.parameter_source_packet:v0.2",
+        "source_library_ref": library_ref,
+        "candidate_count": len(selected),
+        "candidates": selected,
+        "filters": {
+            "include_candidates": sorted(include_set),
+            "suggestion_types": sorted(type_set),
+            "elements": sorted(element_set),
+            "core_levels": sorted(core_level_set),
+        },
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric fields.",
+            "Run `ea xps suggest-parameters` on this packet to create traceable suggestion records before copying values into processing parameters.",
+        ],
+        "boundaries": [
+            "Source packets are staging artifacts and do not apply values to XPS processing parameters.",
+            "EA does not run network lookup, parse full text, choose components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition from this packet.",
+        ],
+    }
+    write_yaml(output_path, packet)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="xps_parameter_source_packet",
+        inputs={"records": [library_ref] if library_ref else [], "files": []},
+        outputs={"records": [packet_ref], "files": []},
+        parameters={
+            "candidate_count": len(selected),
+            "template": template_mode,
+            "filters": packet["filters"],
+            "auto_applied": False,
+        },
+        warnings=warnings,
+        source_refs=reference_ids,
+        created_at=created_at,
+    )
+    packet["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(output_path, packet)
+    return {
+        "source_packet": str(output_path),
+        "source_packet_id": source_packet_id,
+        "status": status,
+        "candidate_count": len(selected),
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
+
+
 def _normalize_xps_parameter_candidate(
     raw_candidate: Any,
     *,
@@ -593,8 +812,7 @@ def _normalize_xps_parameter_candidate(
         }
 
     candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("suggestion_id") or f"{suggestion_id}-cand-{number:03d}")
-    suggestion_type = str(raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type") or "").strip().lower()
-    suggestion_type = suggestion_type.replace("-", "_").replace(" ", "_")
+    suggestion_type = _normalize_xps_suggestion_type(raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type"))
     reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
     applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
     caveats = _coerce_string_list(raw_candidate.get("caveats"))
@@ -714,14 +932,7 @@ def suggest_xps_parameters(
     created_at: str | None = None,
 ) -> dict[str, Any]:
     source_packet = read_yaml(source_path)
-    if isinstance(source_packet, list):
-        raw_candidates = source_packet
-    elif isinstance(source_packet, dict):
-        raw_candidates = source_packet.get("candidates") or source_packet.get("parameters") or source_packet.get("suggestions") or []
-    else:
-        raw_candidates = []
-    if not isinstance(raw_candidates, list):
-        raw_candidates = []
+    raw_candidates = _xps_parameter_source_candidates(source_packet)
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
     suggestion_id = next_id(root, "suggestion", day)

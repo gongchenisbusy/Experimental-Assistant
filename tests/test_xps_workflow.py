@@ -1398,6 +1398,148 @@ candidates:
     assert "processed" not in output["record"]
 
 
+def test_cli_builds_xps_parameter_source_packet_from_library(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "cli-xps-source-packet-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Source Packet",
+            "--slug",
+            "cli-xps-source-packet",
+            "--direction",
+            "XPS parameter source packet workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "references",
+            "add",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--citation",
+            "User-curated XPS reference note with source-backed Fe 2p and Tougaard candidates.",
+            "--title",
+            "Project XPS parameter note",
+            "--url",
+            "https://example.org/project-xps-parameter-note",
+            "--source-type",
+            "manual",
+        ]
+    ) == 0
+    reference = _json_output(capsys)
+    ref_id = Path(reference["reference"]).stem
+
+    library = workspace / "project_xps_parameter_library.yml"
+    library.write_text(
+        f"""
+schema_version: "0.2"
+library_id: project-xps-library
+candidates:
+  - candidate_id: xps-param-fe2p-spin-001
+    suggestion_type: spin_orbit_constraint
+    element: Fe
+    core_level: 2p
+    constraint_id: xps-spin-fe2p-source-001
+    center_delta_eV: 13.4
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    source_summary: Fe 2p spin-orbit screening values from the project source library.
+    applicability_notes:
+      - Applies only after reviewed Fe 2p component IDs, bounds, and background are confirmed.
+    reference_ids:
+      - {ref_id}
+    confidence: low
+  - candidate_id: xps-param-tougaard-u2-001
+    suggestion_type: tougaard_parameter
+    tougaard_C_eV2: 1643.0
+    integration_direction: toward_higher_binding_energy
+    parameter_origin: source_suggested
+    source_summary: Tougaard U2 C candidate from the project source library.
+    applicability_notes:
+      - Requires a reviewed background region and user-confirmed B scale before subtraction.
+    reference_ids:
+      - {ref_id}
+    confidence: low
+  - candidate_id: xps-param-o1s-spin-ignored
+    suggestion_type: spin_orbit_constraint
+    element: O
+    core_level: 1s
+    center_delta_eV: 1.0
+    area_ratio: 1.0
+    fwhm_ratio: 1.0
+    source_summary: Filtered-out candidate.
+    applicability_notes:
+      - Used only to verify filtering.
+    reference_ids:
+      - {ref_id}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert main(
+        [
+            "xps",
+            "build-source-packet",
+            str(workspace),
+            "--library-file",
+            library.relative_to(workspace).as_posix(),
+            "--output",
+            "suggestions/xps/source-packets/fe2p_packet.yml",
+            "--project-id",
+            project_id,
+            "--include-candidate",
+            "xps-param-fe2p-spin-001",
+            "--include-candidate",
+            "xps-param-tougaard-u2-001",
+        ]
+    ) == 0
+    packet_output = _json_output(capsys)
+    assert packet_output["status"] == "ready_for_suggest_parameters"
+    assert packet_output["candidate_count"] == 2
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet["source"] == "ea.xps.parameter_source_packet:v0.2"
+    assert packet["source_library_ref"] == library.relative_to(workspace).as_posix()
+    assert packet["candidate_count"] == 2
+    assert packet["candidates"][0]["parameter_origin"] == "source_suggested"
+    assert packet["filters"]["include_candidates"] == ["xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"]
+    assert "does not run network lookup" in " ".join(packet["boundaries"])
+    assert (workspace / packet["provenance_ref"]).exists()
+
+    assert main(
+        [
+            "xps",
+            "suggest-parameters",
+            str(workspace),
+            "--source-file",
+            Path(packet_output["source_packet"]).relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+        ]
+    ) == 0
+    suggestion_output = _json_output(capsys)
+    assert suggestion_output["status"] == "ready_for_user_review"
+    assert suggestion_output["ready_for_user_review_count"] == 2
+
+    assert main(["xps", "build-source-packet", str(workspace), "--project-id", project_id, "--write-template"]) == 0
+    template_output = _json_output(capsys)
+    template_packet = read_yaml(Path(template_output["source_packet"]))
+    assert template_output["status"] == "template_requires_user_edit"
+    assert template_packet["candidate_count"] == 2
+    assert template_packet["source_packet_id"].startswith("xps_source_packet-")
+    assert template_packet["candidates"][0]["center_delta_eV"] is None
+
+
 def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-region-records.txt")
     parameters = _region_records_parameters()
@@ -1561,6 +1703,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_quantification" in xps_reference_text
     assert "component_fit" in xps_reference_text
     assert "spin_orbit_constraints" in xps_reference_text
+    assert "build-source-packet" in xps_reference_text
+    assert "xps_parameter_source_packet" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
     assert "region_records" in xps_reference_text
@@ -1572,6 +1716,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
+    assert "parameter_source_packets" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
     assert "spin_orbit_constraints" in xps_record["notes"]
     assert "region_records" in xps_record["notes"]

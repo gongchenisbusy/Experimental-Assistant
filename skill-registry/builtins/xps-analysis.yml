@@ -12,6 +12,7 @@ ea_skill:
     - processed_result
     - background_model_record
     - background_subtraction_record
+    - parameter_source_packet
     - parameter_suggestion_record
     - parameter_suggestion_table
     - component_fit_record
@@ -55,6 +56,7 @@ ea_skill:
     implemented: true
     commands:
       - ea xps inspect
+      - ea xps build-source-packet
       - ea xps suggest-parameters
       - ea xps process
       - ea xps report
@@ -74,6 +76,7 @@ ea_skill:
       - background_subtraction_linear_preprocessing
       - background_subtraction_shirley_preprocessing
       - background_subtraction_tougaard_u2_preprocessing
+      - source_backed_parameter_source_packets
       - source_backed_parameter_suggestions
       - reviewed_component_fit_screening
       - reviewed_region_records
@@ -81,12 +84,16 @@ ea_skill:
       source: ea.xps.parameter_suggestions:v0.2
       default_enabled: false
       input_artifacts:
+        - project_local_parameter_candidate_library
+        - editable_parameter_source_packet_template
         - user_or_project_supplied_source_packet
         - registered_reference_ids_when_available
       supported_suggestion_types:
         - spin_orbit_constraint
         - tougaard_parameter
       output_artifacts:
+        - suggestions/xps/source-packets/<source_packet_id>.yml
+        - templates/xps_parameter_source_packet.yml
         - suggestions/xps/<suggestion_id>/xps_parameter_suggestions.yml
         - suggestions/xps/<suggestion_id>/xps_parameter_suggestions.csv
       boundary: advisory_only_no_network_lookup_no_auto_application_no_component_background_selection_no_chemical_state_or_composition_proof
@@ -190,6 +197,7 @@ ea_skill:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
+      - source_backed_parameter_source_packets stage local candidate-library metadata only; they do not validate references, parse full text, run web lookup, auto-apply values, or choose models
       - source_backed_parameter_suggestions validate user/project-supplied source packets and registered references before review, but do not run network lookup, auto-apply values, choose models, or prove chemistry/composition
       - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, and formal multi-region quantification remain future work
       - reviewed_component_fit_screening uses explicit reviewed components, peak shapes, initial values, bounds, selected intensity columns, and optional reviewed spin_orbit_constraints with parameter_origin/source metadata when values are source-backed; chemical-state proof, composition proof, automatic background/component selection, unsourced constants, and unreviewed constrained fitting remain out of scope

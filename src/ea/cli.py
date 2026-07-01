@@ -70,7 +70,14 @@ from ea.templates import (
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
-from ea.xps import XPSProcessingRequest, default_xps_processing_parameters, inspect_xps_file, process_xps_result, suggest_xps_parameters
+from ea.xps import (
+    XPSProcessingRequest,
+    build_xps_parameter_source_packet,
+    default_xps_processing_parameters,
+    inspect_xps_file,
+    process_xps_result,
+    suggest_xps_parameters,
+)
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
 
@@ -320,6 +327,16 @@ def build_parser() -> argparse.ArgumentParser:
     xps_suggest.add_argument("--source-file", required=True, type=Path)
     xps_suggest.add_argument("--project-id")
     xps_suggest.add_argument("--related-record", action="append", default=[])
+    xps_source_packet = xps_sub.add_parser("build-source-packet", help="build a standard XPS parameter source packet")
+    xps_source_packet.add_argument("workspace", type=Path)
+    xps_source_packet.add_argument("--library-file", type=Path)
+    xps_source_packet.add_argument("--output", type=Path)
+    xps_source_packet.add_argument("--project-id")
+    xps_source_packet.add_argument("--include-candidate", action="append", default=[])
+    xps_source_packet.add_argument("--suggestion-type", action="append", choices=["spin_orbit_constraint", "tougaard_parameter"], default=[])
+    xps_source_packet.add_argument("--element", action="append", default=[])
+    xps_source_packet.add_argument("--core-level", action="append", default=[])
+    xps_source_packet.add_argument("--write-template", action="store_true")
 
     electrochemistry = sub.add_parser("electrochemistry", help="Electrochemistry inspection, processing, and report helpers")
     electrochemistry_sub = electrochemistry.add_subparsers(dest="electrochemistry_command", required=True)
@@ -1009,7 +1026,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xps":
         project_id = getattr(args, "project_id", None)
-        if args.xps_command in {"process", "report", "suggest-parameters"} and not project_id:
+        if args.xps_command in {"process", "report", "suggest-parameters", "build-source-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xps_command == "inspect":
             inspection = asdict(inspect_xps_file(_project_path(args.workspace, args.spectrum)))
@@ -1055,6 +1072,21 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.xps_command == "build-source-packet":
+            _print_json(
+                build_xps_parameter_source_packet(
+                    args.workspace,
+                    project_id=project_id,
+                    library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    output_path=args.output,
+                    include_candidates=args.include_candidate,
+                    suggestion_types=args.suggestion_type,
+                    elements=args.element,
+                    core_levels=args.core_level,
+                    template=args.write_template,
                 )
             )
             return 0
