@@ -101,6 +101,12 @@ ea_skill:
       supported_suggestion_types:
         - spin_orbit_constraint
         - tougaard_parameter
+      built_in_candidate_scope:
+        - Fe 2p, Si 2p, Cu 2p starter spin-orbit constraints
+        - Ti 2p, Ni 2p, Co 2p, Zn 2p transition-metal starter spin-orbit constraints
+        - Mo 3d and W 4f chalcogenide/oxide-relevant starter spin-orbit constraints
+        - S 2p and P 2p non-metal starter spin-orbit constraints
+        - Tougaard U2-style background starting point
       output_artifacts:
         - suggestions/xps/source-packets/<source_packet_id>.yml
         - templates/xps_parameter_source_packet.yml

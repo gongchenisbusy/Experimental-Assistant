@@ -1932,15 +1932,31 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert packet_output["status"] == "ready_for_suggest_parameters"
     assert packet_output["source_library_kind"] == "built_in"
     assert packet_output["source_library_ref"] == "builtin:generic_xps_parameters"
-    assert packet_output["candidate_count"] >= 4
-    assert packet_output["reference_seed_count"] >= 7
+    assert packet_output["candidate_count"] >= 12
+    assert packet_output["reference_seed_count"] >= 15
     assert packet["source_library_kind"] == "built_in"
     assert packet["source_library_ref"] == "builtin:generic_xps_parameters"
     assert "builtin-xps-charge-reference-guide-2020" in packet["guidance_reference_ids"]
     assert "builtin-xps-charge-reference-guide-2020" in packet["reference_seeds"]
+    assert "builtin-xps-thermo-ti" in packet["reference_seeds"]
+    assert "builtin-xps-thermo-mo" in packet["reference_seeds"]
+    assert "builtin-xps-thermo-s" in packet["reference_seeds"]
     assert "silently apply adventitious-carbon" in " ".join(packet["guidance_notes"])
-    assert any(candidate["candidate_id"] == "xps-builtin-fe2p-spin-orbit-metal-screening" for candidate in packet["candidates"])
-    assert any(candidate["candidate_id"] == "xps-builtin-tougaard-u2-typical-background-screening" for candidate in packet["candidates"])
+    candidates = {candidate["candidate_id"]: candidate for candidate in packet["candidates"]}
+    assert "xps-builtin-fe2p-spin-orbit-metal-screening" in candidates
+    assert "xps-builtin-tougaard-u2-typical-background-screening" in candidates
+    assert "xps-builtin-ti2p-oxide-spin-orbit-screening" in candidates
+    assert "xps-builtin-ni2p-spin-orbit-metal-screening" in candidates
+    assert "xps-builtin-co2p-spin-orbit-metal-screening" in candidates
+    assert "xps-builtin-zn2p-spin-orbit-screening" in candidates
+    assert "xps-builtin-mo3d-spin-orbit-screening" in candidates
+    assert "xps-builtin-w4f-spin-orbit-screening" in candidates
+    assert "xps-builtin-s2p-spin-orbit-generic-screening" in candidates
+    assert "xps-builtin-p2p-spin-orbit-generic-screening" in candidates
+    assert candidates["xps-builtin-mo3d-spin-orbit-screening"]["area_ratio"] == 0.6667
+    assert candidates["xps-builtin-w4f-spin-orbit-screening"]["area_ratio"] == 0.75
+    assert candidates["xps-builtin-s2p-spin-orbit-generic-screening"]["center_delta_eV"] == 1.16
+    assert "not a sulfide/sulfate/elemental sulfur assignment" in " ".join(candidates["xps-builtin-s2p-spin-orbit-generic-screening"]["caveats"])
     assert "built-in or local reference_seeds" in " ".join(packet["next_steps"])
     assert "registration hints only" in " ".join(packet["boundaries"])
     assert "does not perform unconfirmed live network lookup" in " ".join(packet["boundaries"])
@@ -1972,6 +1988,9 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
         "builtin-xps-charge-reference-guide-2020",
         "builtin-xps-background-guide-2021",
         "builtin-xps-thermo-fe",
+        "builtin-xps-thermo-ti",
+        "builtin-xps-thermo-mo",
+        "builtin-xps-thermo-s",
     }
 
     assert main(["xps", "suggest-parameters", str(workspace), "--source-file", packet_ref, "--project-id", project_id]) == 0
@@ -2005,6 +2024,35 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert filtered_packet["candidates"][0]["candidate_id"] == "xps-builtin-si2p-spin-orbit-elemental-screening"
     assert filtered_packet["filters"]["elements"] == ["si"]
     assert filtered_packet["filters"]["core_levels"] == ["2p"]
+
+    assert (
+        main(
+            [
+                "xps",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "generic_xps_parameters",
+                "--element",
+                "S",
+                "--core-level",
+                "2p",
+            ]
+        )
+        == 0
+    )
+    sulfur_filtered_output = _json_output(capsys)
+    sulfur_filtered_packet = read_yaml(Path(sulfur_filtered_output["source_packet"]))
+    assert sulfur_filtered_output["candidate_count"] == 1
+    assert sulfur_filtered_packet["candidates"][0]["candidate_id"] == "xps-builtin-s2p-spin-orbit-generic-screening"
+    assert set(sulfur_filtered_packet["reference_ids"]) == {
+        "builtin-xps-handbook-1995",
+        "builtin-xps-nist-srd20",
+        "builtin-xps-thermo-s",
+        "builtin-xps-charge-reference-guide-2020",
+    }
 
 
 def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:

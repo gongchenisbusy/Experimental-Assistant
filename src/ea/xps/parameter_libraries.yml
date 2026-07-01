@@ -60,6 +60,70 @@ libraries:
         url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/metalloid/silicon.html"
         source_type: web
         notes: "Vendor educational reference seed for Si 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-ti:
+        citation: "Thermo Fisher Scientific. Titanium XPS periodic table reference page."
+        title: "Titanium XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/titanium.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Ti 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-ni:
+        citation: "Thermo Fisher Scientific. Nickel XPS periodic table reference page."
+        title: "Nickel XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/nickel.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Ni 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-co:
+        citation: "Thermo Fisher Scientific. Cobalt XPS periodic table reference page."
+        title: "Cobalt XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/cobalt.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Co 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-zn:
+        citation: "Thermo Fisher Scientific. Zinc XPS periodic table reference page."
+        title: "Zinc XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/zinc.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Zn 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-mo:
+        citation: "Thermo Fisher Scientific. Molybdenum XPS periodic table reference page."
+        title: "Molybdenum XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/molybdenum.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Mo 3d screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-w:
+        citation: "Thermo Fisher Scientific. Tungsten XPS periodic table reference page."
+        title: "Tungsten XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/tungsten.html"
+        source_type: web
+        notes: "Vendor educational reference seed for W 4f screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-s:
+        citation: "Thermo Fisher Scientific. Sulfur XPS periodic table reference page."
+        title: "Sulfur XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/sulfur.html"
+        source_type: web
+        notes: "Vendor educational reference seed for S 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-p:
+        citation: "Thermo Fisher Scientific. Phosphorus XPS periodic table reference page."
+        title: "Phosphorus XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/phosphorus.html"
+        source_type: web
+        notes: "Vendor educational reference seed for P 2p screening context; replace with project-specific references when possible."
       builtin-xps-background-guide-2021:
         citation: "Tougaard, S. Practical guide to the use of backgrounds in quantitative XPS. Journal of Vacuum Science & Technology A 39, 011201 (2021)."
         title: "Practical guide to the use of backgrounds in quantitative XPS"
@@ -169,6 +233,174 @@ libraries:
         caveats:
           - Cu 2p satellites and Auger parameters often matter for chemical-state interpretation.
           - This is not a Cu(0)/Cu(I)/Cu(II) assignment.
+      - candidate_id: xps-builtin-ti2p-oxide-spin-orbit-screening
+        suggestion_type: spin_orbit_constraint
+        element: Ti
+        core_level: 2p
+        constraint_id: xps-spin-ti2p-oxide-screening
+        center_delta_eV: 5.7
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Ti 2p oxide-family screening example. The vendor reference reports Ti 2p spin-orbit separations that vary with chemical state, including about 5.7 eV for oxide, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio near 1:2.
+        applicability_notes:
+          - Use only when the user confirms Ti 2p anchor/dependent component identities, reviewed bounds, background model, and whether oxide-like Ti 2p treatment is appropriate.
+          - Review Ti metal, nitride, oxide, mixed-valence, satellite, and Coster-Kronig broadening context before using equal-width constraints.
+        reference_ids:
+          - builtin-xps-thermo-ti
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Ti 2p splitting and widths can vary with chemical state and fitting convention.
+          - This is not a Ti oxidation-state assignment.
+      - candidate_id: xps-builtin-ni2p-spin-orbit-metal-screening
+        suggestion_type: spin_orbit_constraint
+        element: Ni
+        core_level: 2p
+        constraint_id: xps-spin-ni2p-metal-screening
+        center_delta_eV: 17.3
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Ni 2p metal screening example. The vendor reference reports a Ni 2p metal spin-orbit separation near 17.3 eV, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio near 1:2.
+        applicability_notes:
+          - Use only after the user reviews Ni metal/oxide/hydroxide context, satellite structure, multiplet splitting, background, and component bounds.
+          - Treat Ni 2p chemical-state interpretation as a separate review problem that often needs satellites and references.
+        reference_ids:
+          - builtin-xps-thermo-ni
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Ni 2p spectra can have strong satellites and multiplet structure.
+          - This is not a Ni(0)/Ni(II)/Ni(III) assignment.
+      - candidate_id: xps-builtin-co2p-spin-orbit-metal-screening
+        suggestion_type: spin_orbit_constraint
+        element: Co
+        core_level: 2p
+        constraint_id: xps-spin-co2p-metal-screening
+        center_delta_eV: 14.99
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Co 2p metal screening example. The vendor reference reports a Co 2p metal spin-orbit separation near 14.99 eV, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio near 1:2.
+        applicability_notes:
+          - Use only when Co 2p component identities, Auger overlap risk, satellites, multiplet structure, background, and bounds are reviewed.
+          - Mixed oxides, hydroxides, and cobaltate systems need project-specific references before interpretation.
+        reference_ids:
+          - builtin-xps-thermo-co
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Co 2p regions can overlap weaker Co LMM Auger features and satellites.
+          - This is not a Co chemical-state assignment.
+      - candidate_id: xps-builtin-zn2p-spin-orbit-screening
+        suggestion_type: spin_orbit_constraint
+        element: Zn
+        core_level: 2p
+        constraint_id: xps-spin-zn2p-screening
+        center_delta_eV: 23.0
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Zn 2p screening example. The vendor reference reports significantly split Zn 2p spin-orbit components around 23 eV, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio near 1:2.
+        applicability_notes:
+          - Use only when the user confirms Zn 2p anchor/dependent components and whether the wide doublet should be constrained in the current region.
+          - Review O 1s, Auger parameters, and project references before any ZnO, hydroxide, carbonate, or vacancy interpretation.
+        reference_ids:
+          - builtin-xps-thermo-zn
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Zn 2p binding-energy shifts can be small across some Zn chemical states.
+          - This is not a Zn chemical-state or oxygen-defect assignment.
+      - candidate_id: xps-builtin-mo3d-spin-orbit-screening
+        suggestion_type: spin_orbit_constraint
+        element: Mo
+        core_level: 3d
+        constraint_id: xps-spin-mo3d-screening
+        center_delta_eV: 3.15
+        area_ratio: 0.6667
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Mo 3d screening example. The vendor reference reports well-separated Mo 3d spin-orbit components near 3.15 eV; d-level degeneracy supports a 3d3/2-to-3d5/2 area ratio near 2:3.
+        applicability_notes:
+          - Use only when Mo 3d5/2 and 3d3/2 components are reviewed as a paired doublet for the current chemical environment.
+          - Review metal/oxide/sulfide phase context, asymmetric versus symmetric peak shape, and X-ray or sputter-induced reduction before interpretation.
+        reference_ids:
+          - builtin-xps-thermo-mo
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Multiple Mo oxides/sulfides and reduced species can coexist and overlap.
+          - This is not a Mo oxidation-state assignment.
+      - candidate_id: xps-builtin-w4f-spin-orbit-screening
+        suggestion_type: spin_orbit_constraint
+        element: W
+        core_level: 4f
+        constraint_id: xps-spin-w4f-screening
+        center_delta_eV: 2.17
+        area_ratio: 0.75
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: W 4f screening example. The vendor reference reports well-separated W 4f spin-orbit components near 2.17 eV; f-level degeneracy supports a 4f5/2-to-4f7/2 area ratio near 3:4.
+        applicability_notes:
+          - Use only when W 4f7/2 and W 4f5/2 components are reviewed as a doublet and the region is separated from W metal loss or overlapping features.
+          - Review metal/oxide context, asymmetric metal peak shape, and project-specific WOx references before interpretation.
+        reference_ids:
+          - builtin-xps-thermo-w
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - W metal loss features and W oxide peaks can overlap.
+          - This is not a W oxidation-state assignment.
+      - candidate_id: xps-builtin-s2p-spin-orbit-generic-screening
+        suggestion_type: spin_orbit_constraint
+        element: S
+        core_level: 2p
+        constraint_id: xps-spin-s2p-generic-screening
+        center_delta_eV: 1.16
+        area_ratio: 0.511
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: S 2p generic screening example. The vendor reference reports closely spaced S 2p spin-orbit components near 1.16 eV with an intensity ratio near 0.511 for 2p1/2 relative to 2p3/2.
+        applicability_notes:
+          - Use only when spectral resolution, pass energy, and chemical-state complexity make an explicit S 2p doublet constraint useful.
+          - Multi-state sulfur materials should be fit as reviewed doublet families, not isolated single peaks.
+        reference_ids:
+          - builtin-xps-thermo-s
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - S 2p components can be unresolved or appear as asymmetric envelopes depending on sample and instrument.
+          - This is not a sulfide/sulfate/elemental sulfur assignment.
+      - candidate_id: xps-builtin-p2p-spin-orbit-generic-screening
+        suggestion_type: spin_orbit_constraint
+        element: P
+        core_level: 2p
+        constraint_id: xps-spin-p2p-generic-screening
+        center_delta_eV: 0.87
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: P 2p generic screening example. The vendor reference reports closely spaced P 2p spin-orbit components near 0.87 eV; general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio near 1:2.
+        applicability_notes:
+          - Use only when the user reviews whether P 2p splitting is resolvable for the current pass energy, chemistry, and peak width.
+          - Review Zn 3s or other overlaps when relevant before assigning phosphorus chemical states.
+        reference_ids:
+          - builtin-xps-thermo-p
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - P 2p components may not be visibly resolved in some phosphates or broad spectra.
+          - This is not a phosphide/phosphate/organophosphorus assignment.
       - candidate_id: xps-builtin-tougaard-u2-typical-background-screening
         suggestion_type: tougaard_parameter
         tougaard_B: 2866.0
