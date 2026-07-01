@@ -1270,6 +1270,155 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     assert memory_frontmatter["memory_candidate_id"] in candidate_index["candidates"]
 
 
+def test_cli_uv_vis_compare_replicates_records_descriptive_statistics(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "uv-vis-comparison-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV Vis Comparison",
+            "--slug",
+            "uv-vis-comparison",
+            "--direction",
+            "UV-Vis replicate comparison",
+            "--material",
+            "oxide semiconductor film",
+            "--experiment-type",
+            "UV-Vis replicate measurements",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    metadata_refs = []
+    for number, edge_energy, edge_wavelength, tauc_energy in [
+        (1, 2.0, 620.0, 2.05),
+        (2, 2.2, 563.6, 2.15),
+    ]:
+        result_id = f"res-uv-vis-comparison-{number:03d}"
+        result_dir = workspace / "processed" / f"sample-uv-compare-{number:03d}" / "uv_vis" / result_id
+        feature_path = result_dir / "uv_vis_features.csv"
+        processed_path = result_dir / "uv_vis_processed.csv"
+        derivative_path = result_dir / "uv_vis_derivative.csv"
+        correction_path = result_dir / "uv_vis_correction_context.yml"
+        metadata_path = result_dir / "uv_vis_metadata.yml"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {"feature_id": f"uvvis-feature-{number}a", "energy_eV": edge_energy + 0.02, "wavelength_nm": edge_wavelength - 4.0},
+                {"feature_id": f"uvvis-feature-{number}b", "energy_eV": edge_energy + 0.20, "wavelength_nm": edge_wavelength - 40.0},
+            ]
+        ).to_csv(feature_path, index=False)
+        pd.DataFrame([{"wavelength_nm": edge_wavelength, "processed_signal": 1.0}]).to_csv(processed_path, index=False)
+        pd.DataFrame([{"energy_eV": edge_energy, "first_derivative": 0.4}]).to_csv(derivative_path, index=False)
+        write_yaml(
+            correction_path,
+            {
+                "status": "reviewed_correction_context_recorded",
+                "reviewed_context_fields": ["substrate"],
+                "confidence": "low",
+            },
+        )
+        feature_ref = feature_path.relative_to(workspace).as_posix()
+        processed_ref = processed_path.relative_to(workspace).as_posix()
+        derivative_ref = derivative_path.relative_to(workspace).as_posix()
+        correction_ref = correction_path.relative_to(workspace).as_posix()
+        metadata_ref = metadata_path.relative_to(workspace).as_posix()
+        write_yaml(
+            metadata_path,
+            {
+                "schema_version": "0.2",
+                "source": "ea.uv_vis.processing_result:v0.2",
+                "project_id": project_id,
+                "result_id": result_id,
+                "uv_vis_result_id": result_id,
+                "characterization_file_ref": f"char-uv-vis-{number:03d}",
+                "sample_refs": [f"sample-uv-compare-{number:03d}"],
+                "status": "success",
+                "x_unit": "nm",
+                "signal_mode": "absorbance",
+                "processing_parameters": {"feature_detection": {"method": "scipy_find_peaks"}},
+                "outputs": {
+                    "metadata": metadata_ref,
+                    "peak_table": feature_ref,
+                    "processed_csv": processed_ref,
+                    "derivative_table": derivative_ref,
+                    "correction_context": correction_ref,
+                },
+                "peak_analysis": {
+                    "feature_count": 2,
+                    "edge_estimate": {
+                        "energy_eV": edge_energy,
+                        "wavelength_nm": edge_wavelength,
+                        "confidence": "low",
+                    },
+                    "tauc_analysis": {
+                        "status": "screening_fit_recorded",
+                        "intercept_energy_eV": tauc_energy,
+                        "transition": "direct_allowed",
+                        "transform": "absorbance",
+                        "confidence": "low",
+                    },
+                    "derivative_analysis": {
+                        "status": "screening_derivative_recorded",
+                        "confidence": "low",
+                    },
+                    "correction_context": {
+                        "status": "reviewed_correction_context_recorded",
+                        "reviewed_context_fields": ["substrate"],
+                        "confidence": "low",
+                    },
+                },
+                "review_refs": [f"review-uv-vis-{number:03d}"],
+                "provenance_refs": [f"prov-uv-vis-{number:03d}"],
+            },
+        )
+        metadata_refs.append(metadata_ref)
+
+    assert main(
+        [
+            "uv-vis",
+            "compare-replicates",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--metadata",
+            metadata_refs[0],
+            "--metadata",
+            metadata_refs[1],
+            "--comparison-label",
+            "oxide film replicate set",
+        ]
+    ) == 0
+    output = _json_output(capsys)
+    comparison = read_yaml(Path(output["record"]))
+    table = pd.read_csv(output["table"])
+    provenance = read_yaml(Path(output["provenance"]))
+
+    assert output["status"] == "comparison_recorded"
+    assert comparison["source"] == "ea.uv_vis.replicate_comparison:v0.2"
+    assert comparison["input_count"] == 2
+    assert comparison["comparison_label"] == "oxide film replicate set"
+    assert comparison["outputs"]["record"].startswith("processed/comparisons/uv_vis/")
+    assert "raw/" not in comparison["outputs"]["record"]
+    assert table.shape[0] == 2
+    assert table["edge_energy_eV"].tolist() == [2.0, 2.2]
+    edge_stats = comparison["statistics"]["edge_energy_eV"]
+    assert edge_stats["status"] == "descriptive_statistics_recorded"
+    assert edge_stats["count"] == 2
+    assert math.isclose(edge_stats["mean"], 2.1)
+    assert math.isclose(edge_stats["std_population"], 0.1)
+    assert math.isclose(comparison["statistics"]["tauc_intercept_energy_eV"]["mean"], 2.1)
+    assert comparison["statistics"]["feature_positions"]["status"] == "not_statistically_matched"
+    assert comparison["missing_data"]["edge_energy_eV"] == []
+    assert "does not reprocess raw data" in " ".join(comparison["boundaries"])
+    assert provenance["workflow"] == "uv_vis_replicate_comparison"
+    assert provenance["inputs"]["records"] == metadata_refs
+    assert sorted(provenance["review_refs"]) == ["review-uv-vis-001", "review-uv-vis-002"]
+
+
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -1283,12 +1432,14 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis suggest-interpretations" in readme
     assert "ea uv-vis prepare-review" in readme
     assert "ea uv-vis propose-memory" in readme
+    assert "ea uv-vis compare-replicates" in readme
     assert "--interpretation-suggestion" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
     assert "ea uv-vis suggest-interpretations" in skill
     assert "ea uv-vis prepare-review" in skill
     assert "ea uv-vis propose-memory" in skill
+    assert "ea uv-vis compare-replicates" in skill
     assert "--interpretation-review-ref" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
@@ -1302,6 +1453,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis suggest-interpretations" in reference_text
     assert "ea uv-vis prepare-review" in reference_text
     assert "ea uv-vis propose-memory" in reference_text
+    assert "ea uv-vis compare-replicates" in reference_text
     assert "--interpretation-suggestion" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
@@ -1316,3 +1468,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "review packages" in uv_vis_record["notes"]
     assert "reviewed report integration" in uv_vis_record["notes"]
     assert "memory_candidate proposals" in uv_vis_record["notes"]
+    assert "replicate_comparison" in uv_vis_record["notes"]

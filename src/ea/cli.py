@@ -85,6 +85,7 @@ from ea.traceability import build_project_trace_view, lookup_trace_record
 from ea.uv_vis import (
     UVVisProcessingRequest,
     build_uv_vis_source_packet,
+    compare_uv_vis_replicates,
     default_uv_vis_processing_parameters,
     inspect_uv_vis_file,
     prepare_uv_vis_interpretation_review_package,
@@ -391,6 +392,11 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_memory.add_argument("--project-id")
     uv_vis_memory.add_argument("--candidate-id", action="append", default=[])
     uv_vis_memory.add_argument("--allow-non-ready", action="store_true")
+    uv_vis_compare = uv_vis_sub.add_parser("compare-replicates", help="compare multiple processed UV-Vis metadata records with descriptive statistics")
+    uv_vis_compare.add_argument("workspace", type=Path)
+    uv_vis_compare.add_argument("--metadata", required=True, action="append", type=Path)
+    uv_vis_compare.add_argument("--project-id")
+    uv_vis_compare.add_argument("--comparison-label")
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
@@ -1195,7 +1201,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "uv-vis":
         project_id = getattr(args, "project_id", None)
-        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review", "propose-memory"} and not project_id:
+        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review", "propose-memory", "compare-replicates"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.uv_vis_command == "inspect":
             inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
@@ -1279,6 +1285,16 @@ def main(argv: list[str] | None = None) -> int:
                     review_ref=args.review_ref,
                     candidate_ids=args.candidate_id,
                     allow_non_ready=args.allow_non_ready,
+                )
+            )
+            return 0
+        if args.uv_vis_command == "compare-replicates":
+            _print_json(
+                compare_uv_vis_replicates(
+                    args.workspace,
+                    project_id=project_id,
+                    metadata_paths=[_project_path(args.workspace, path) for path in args.metadata],
+                    comparison_label=args.comparison_label,
                 )
             )
             return 0

@@ -2530,6 +2530,426 @@ def prepare_uv_vis_interpretation_review_package(
     }
 
 
+def _finite_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _warning_codes(values: Any) -> list[str]:
+    codes: list[str] = []
+    if not isinstance(values, list):
+        return codes
+    for item in values:
+        if isinstance(item, dict):
+            code = str(item.get("code") or "").strip()
+            if code:
+                codes.append(code)
+        elif str(item).strip():
+            codes.append(str(item))
+    return codes
+
+
+def _read_uv_vis_feature_table(
+    root: Path,
+    *,
+    metadata: dict[str, Any],
+    metadata_ref: str,
+    warnings: list[dict[str, Any]],
+) -> pd.DataFrame:
+    outputs = metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
+    peak_table_ref = outputs.get("peak_table")
+    if not peak_table_ref:
+        warnings.append(
+            _warning(
+                "uv_vis_comparison_feature_table_not_recorded",
+                "UV-Vis comparison could not read feature positions because outputs.peak_table was not recorded.",
+                severity="medium",
+                metadata_ref=metadata_ref,
+            )
+        )
+        return pd.DataFrame()
+    peak_table_path = root / str(peak_table_ref)
+    if not peak_table_path.exists():
+        warnings.append(
+            _warning(
+                "uv_vis_comparison_feature_table_missing",
+                "UV-Vis comparison could not read feature positions because the referenced peak table is missing.",
+                severity="medium",
+                metadata_ref=metadata_ref,
+                peak_table_ref=str(peak_table_ref),
+            )
+        )
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(peak_table_path)
+    except Exception as exc:  # pragma: no cover - defensive guard for malformed user CSVs
+        warnings.append(
+            _warning(
+                "uv_vis_comparison_feature_table_unreadable",
+                "UV-Vis comparison could not read the referenced feature table.",
+                severity="medium",
+                metadata_ref=metadata_ref,
+                peak_table_ref=str(peak_table_ref),
+                error=str(exc),
+            )
+        )
+        return pd.DataFrame()
+
+
+def _feature_values(features: pd.DataFrame, column: str) -> list[float]:
+    if features.empty or column not in features.columns:
+        return []
+    values: list[float] = []
+    for value in features[column].tolist():
+        number = _finite_float(value)
+        if number is not None:
+            values.append(number)
+    return values
+
+
+def _feature_ids(features: pd.DataFrame) -> list[str]:
+    if features.empty or "feature_id" not in features.columns:
+        return []
+    return [str(value) for value in features["feature_id"].tolist() if str(value).strip()]
+
+
+def _uv_vis_comparison_entry(
+    root: Path,
+    *,
+    metadata_path: Path,
+    metadata_ref: str,
+    project_id: str,
+    index: int,
+    warnings: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[str]]:
+    metadata = read_yaml(metadata_path)
+    metadata_project_id = str(metadata.get("project_id") or "").strip()
+    if metadata_project_id and project_id and metadata_project_id != project_id:
+        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis metadata {metadata_ref} has {metadata_project_id}, request has {project_id}")
+    if not metadata.get("uv_vis_result_id") and not metadata.get("result_id"):
+        raise UVVisProcessingError(f"Not a UV-Vis processed metadata record: {metadata_ref}")
+
+    outputs = metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
+    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
+    edge = peak_analysis.get("edge_estimate") if isinstance(peak_analysis.get("edge_estimate"), dict) else {}
+    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
+    derivative = peak_analysis.get("derivative_analysis") if isinstance(peak_analysis.get("derivative_analysis"), dict) else {}
+    correction = peak_analysis.get("correction_context") if isinstance(peak_analysis.get("correction_context"), dict) else {}
+    processing_parameters = metadata.get("processing_parameters") if isinstance(metadata.get("processing_parameters"), dict) else {}
+    feature_parameters = processing_parameters.get("feature_detection") if isinstance(processing_parameters.get("feature_detection"), dict) else {}
+    features = _read_uv_vis_feature_table(root, metadata=metadata, metadata_ref=metadata_ref, warnings=warnings)
+    feature_count = metadata.get("peak_analysis", {}).get("feature_count") if isinstance(metadata.get("peak_analysis"), dict) else None
+    try:
+        feature_count_value = int(feature_count) if feature_count is not None else int(len(features))
+    except (TypeError, ValueError):
+        feature_count_value = int(len(features))
+
+    data_refs = [
+        str(value)
+        for value in [
+            outputs.get("peak_table"),
+            outputs.get("processed_csv"),
+            outputs.get("tauc_table"),
+            outputs.get("derivative_table"),
+            outputs.get("correction_context"),
+        ]
+        if value
+    ]
+    entry = {
+        "entry_index": index,
+        "metadata_ref": metadata_ref,
+        "result_id": str(metadata.get("result_id") or ""),
+        "uv_vis_result_id": str(metadata.get("uv_vis_result_id") or metadata.get("result_id") or ""),
+        "characterization_file_ref": str(metadata.get("characterization_file_ref") or ""),
+        "sample_refs": _coerce_string_list(metadata.get("sample_refs")),
+        "status": str(metadata.get("status") or "unknown"),
+        "x_unit": str(metadata.get("x_unit") or "unknown"),
+        "signal_mode": str(metadata.get("signal_mode") or "unknown"),
+        "feature_detection_method": str(feature_parameters.get("method") or "unknown"),
+        "feature_count": feature_count_value,
+        "feature_ids": _feature_ids(features),
+        "feature_positions_eV": _feature_values(features, "energy_eV"),
+        "feature_positions_nm": _feature_values(features, "wavelength_nm"),
+        "edge_energy_eV": _finite_float(edge.get("energy_eV")),
+        "edge_wavelength_nm": _finite_float(edge.get("wavelength_nm")),
+        "edge_confidence": str(edge.get("confidence") or "not_recorded"),
+        "tauc_status": str(tauc.get("status") or "not_recorded"),
+        "tauc_intercept_energy_eV": _finite_float(tauc.get("intercept_energy_eV")),
+        "tauc_transition": str(tauc.get("transition") or "not_recorded"),
+        "tauc_transform": str(tauc.get("transform") or "not_recorded"),
+        "tauc_confidence": str(tauc.get("confidence") or "not_recorded"),
+        "derivative_available": bool(outputs.get("derivative_table") or derivative),
+        "derivative_status": str(derivative.get("status") or "not_recorded"),
+        "correction_context_available": bool(outputs.get("correction_context") or correction),
+        "correction_context_status": str(correction.get("status") or "not_recorded"),
+        "warning_codes": _warning_codes(metadata.get("warnings")),
+        "review_refs": _coerce_string_list(metadata.get("review_refs")),
+        "provenance_refs": _coerce_string_list(metadata.get("provenance_refs")),
+        "source_refs": _coerce_string_list(metadata.get("source_refs")),
+        "associated_output_refs": data_refs,
+    }
+    return entry, data_refs
+
+
+def _csv_join(value: Any) -> Any:
+    if isinstance(value, list | tuple):
+        return "; ".join(str(item) for item in value)
+    return value
+
+
+def _basis_values(entries: list[dict[str, Any]], value_key: str, basis_keys: list[str]) -> list[dict[str, Any]]:
+    basis: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    for entry in entries:
+        if entry.get(value_key) is None:
+            continue
+        key = tuple(str(entry.get(basis_key) or "unknown") for basis_key in basis_keys)
+        if key in seen:
+            continue
+        seen.add(key)
+        basis.append({basis_key: key[index] for index, basis_key in enumerate(basis_keys)})
+    return basis
+
+
+def _numeric_missing_data(entries: list[dict[str, Any]], value_key: str, metric: str) -> list[dict[str, str]]:
+    missing: list[dict[str, str]] = []
+    for entry in entries:
+        if entry.get(value_key) is not None:
+            continue
+        missing.append(
+            {
+                "metadata_ref": str(entry.get("metadata_ref") or ""),
+                "result_id": str(entry.get("result_id") or ""),
+                "reason": f"{metric}_missing_or_non_numeric",
+            }
+        )
+    return missing
+
+
+def _descriptive_statistics(
+    entries: list[dict[str, Any]],
+    *,
+    metric: str,
+    value_key: str,
+    basis_keys: list[str],
+) -> dict[str, Any]:
+    values = [_finite_float(entry.get(value_key)) for entry in entries]
+    values = [value for value in values if value is not None]
+    missing = _numeric_missing_data(entries, value_key, metric)
+    basis = _basis_values(entries, value_key, basis_keys)
+    if not values:
+        return {
+            "metric": metric,
+            "status": "no_numeric_values",
+            "count": 0,
+            "basis_keys": basis_keys,
+            "basis_values": basis,
+            "missing_data": missing,
+        }
+    if len(basis) > 1:
+        return {
+            "metric": metric,
+            "status": "not_comparable",
+            "count": len(values),
+            "basis_keys": basis_keys,
+            "basis_values": basis,
+            "missing_data": missing,
+            "reason": "Numeric values were present, but comparison basis values differ.",
+        }
+    array = np.asarray(values, dtype=float)
+    return {
+        "metric": metric,
+        "status": "descriptive_statistics_recorded",
+        "count": int(array.size),
+        "mean": float(np.mean(array)),
+        "std_population": float(np.std(array, ddof=0)),
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+        "basis_keys": basis_keys,
+        "basis_values": basis,
+        "missing_data": missing,
+        "boundary": "Descriptive statistics only; not a proof of band gap, transition type, optical mechanism, sample ranking, or replicate equivalence.",
+    }
+
+
+def compare_uv_vis_replicates(
+    root: Path,
+    *,
+    project_id: str,
+    metadata_paths: list[Path],
+    comparison_label: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    if len(metadata_paths) < 2:
+        raise UVVisProcessingError("UV-Vis replicate comparison requires at least two --metadata records")
+
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    comparison_id = next_id(root, "uv_vis_comparison", day)
+    output_dir = root / "processed" / "comparisons" / "uv_vis" / comparison_id
+    record_path = output_dir / "uv_vis_comparison.yml"
+    table_path = output_dir / "uv_vis_comparison.csv"
+    for path in [record_path, table_path]:
+        assert_not_raw_output_path(root, path)
+
+    warnings: list[dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
+    input_metadata_refs: list[str] = []
+    input_files: list[str] = []
+    seen_metadata_refs: set[str] = set()
+    for index, metadata_path in enumerate(metadata_paths, start=1):
+        resolved_path = metadata_path if metadata_path.is_absolute() else root / metadata_path
+        metadata_ref = _relative_to_root(root, resolved_path)
+        if metadata_ref in seen_metadata_refs:
+            warnings.append(
+                _warning(
+                    "uv_vis_comparison_duplicate_metadata",
+                    "The same UV-Vis metadata record was supplied more than once.",
+                    severity="medium",
+                    metadata_ref=metadata_ref,
+                )
+            )
+        seen_metadata_refs.add(metadata_ref)
+        input_metadata_refs.append(metadata_ref)
+        entry, data_refs = _uv_vis_comparison_entry(
+            root,
+            metadata_path=resolved_path,
+            metadata_ref=metadata_ref,
+            project_id=project_id,
+            index=index,
+            warnings=warnings,
+        )
+        entries.append(entry)
+        input_files.extend(data_refs)
+
+    statistics = {
+        "edge_energy_eV": _descriptive_statistics(entries, metric="edge_energy_eV", value_key="edge_energy_eV", basis_keys=["signal_mode"]),
+        "edge_wavelength_nm": _descriptive_statistics(entries, metric="edge_wavelength_nm", value_key="edge_wavelength_nm", basis_keys=["signal_mode"]),
+        "tauc_intercept_energy_eV": _descriptive_statistics(
+            entries,
+            metric="tauc_intercept_energy_eV",
+            value_key="tauc_intercept_energy_eV",
+            basis_keys=["signal_mode", "tauc_transition", "tauc_transform"],
+        ),
+        "feature_count": _descriptive_statistics(
+            entries,
+            metric="feature_count",
+            value_key="feature_count",
+            basis_keys=["signal_mode", "feature_detection_method"],
+        ),
+        "feature_positions": {
+            "status": "not_statistically_matched",
+            "reason": "Detected feature positions are listed per record but are not averaged because EA v0.2 does not match individual optical features across spectra in this comparison workflow.",
+        },
+    }
+    missing_data = {
+        "edge_energy_eV": statistics["edge_energy_eV"]["missing_data"],
+        "edge_wavelength_nm": statistics["edge_wavelength_nm"]["missing_data"],
+        "tauc_intercept_energy_eV": statistics["tauc_intercept_energy_eV"]["missing_data"],
+        "feature_count": statistics["feature_count"]["missing_data"],
+    }
+    table_rows = [
+        {
+            "entry_index": entry["entry_index"],
+            "metadata_ref": entry["metadata_ref"],
+            "result_id": entry["result_id"],
+            "sample_refs": _csv_join(entry["sample_refs"]),
+            "status": entry["status"],
+            "x_unit": entry["x_unit"],
+            "signal_mode": entry["signal_mode"],
+            "feature_detection_method": entry["feature_detection_method"],
+            "feature_count": entry["feature_count"],
+            "feature_ids": _csv_join(entry["feature_ids"]),
+            "feature_positions_eV": _csv_join(entry["feature_positions_eV"]),
+            "feature_positions_nm": _csv_join(entry["feature_positions_nm"]),
+            "edge_energy_eV": entry["edge_energy_eV"],
+            "edge_wavelength_nm": entry["edge_wavelength_nm"],
+            "edge_confidence": entry["edge_confidence"],
+            "tauc_intercept_energy_eV": entry["tauc_intercept_energy_eV"],
+            "tauc_transition": entry["tauc_transition"],
+            "tauc_transform": entry["tauc_transform"],
+            "tauc_confidence": entry["tauc_confidence"],
+            "derivative_available": entry["derivative_available"],
+            "derivative_status": entry["derivative_status"],
+            "correction_context_available": entry["correction_context_available"],
+            "correction_context_status": entry["correction_context_status"],
+            "warning_codes": _csv_join(entry["warning_codes"]),
+            "review_refs": _csv_join(entry["review_refs"]),
+            "provenance_refs": _csv_join(entry["provenance_refs"]),
+        }
+        for entry in entries
+    ]
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(table_rows).to_csv(table_path, index=False)
+    record_ref = _relative_to_root(root, record_path)
+    table_ref = _relative_to_root(root, table_path)
+    review_refs = sorted({review_ref for entry in entries for review_ref in entry.get("review_refs", [])})
+    source_refs = sorted({source_ref for entry in entries for source_ref in entry.get("source_refs", [])})
+    comparison_record = {
+        "schema_version": "0.2",
+        "comparison_id": comparison_id,
+        "project_id": project_id,
+        "method": "uv_vis",
+        "status": "comparison_with_warnings" if warnings else "comparison_recorded",
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.uv_vis.replicate_comparison:v0.2",
+        "comparison_label": comparison_label,
+        "input_count": len(entries),
+        "input_metadata_refs": input_metadata_refs,
+        "table_ref": table_ref,
+        "entries": entries,
+        "statistics": statistics,
+        "missing_data": missing_data,
+        "outputs": {
+            "record": record_ref,
+            "table": table_ref,
+        },
+        "warnings": warnings,
+        "review_refs": review_refs,
+        "source_refs": source_refs,
+        "boundaries": [
+            "UV-Vis replicate comparison reads existing processed UV-Vis metadata and output tables only.",
+            "It does not reprocess raw data, infer replicate grouping silently, apply optical corrections, create ReviewRecords, inject source-backed interpretation candidates, write memory, or prove band gaps, transition mechanisms, feature assignments, correction validity, or sample ranking.",
+            "Statistics are descriptive summaries for comparable screening values only; not-comparable metrics remain labeled with basis differences and missing-data reasons.",
+        ],
+    }
+    write_yaml(record_path, comparison_record)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="uv_vis_replicate_comparison",
+        inputs={"records": input_metadata_refs, "files": sorted(set(input_files))},
+        outputs={"records": [record_ref, table_ref], "files": []},
+        parameters={
+            "comparison_id": comparison_id,
+            "comparison_label": comparison_label,
+            "input_count": len(entries),
+            "statistics": sorted(statistics.keys()),
+        },
+        review_refs=review_refs,
+        source_refs=source_refs,
+        warnings=warnings,
+        scripts=[{"path": "src/ea/uv_vis/service.py", "version": "0.2.0"}],
+        created_at=created_at,
+    )
+    comparison_record["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(record_path, comparison_record)
+    return {
+        "comparison_id": comparison_id,
+        "record": str(record_path),
+        "table": str(table_path),
+        "status": comparison_record["status"],
+        "input_count": len(entries),
+        "statistics": statistics,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
+
+
 def _created_day(created_at: str | None) -> str | None:
     return created_at[:10] if created_at else None
 

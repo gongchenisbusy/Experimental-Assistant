@@ -15,6 +15,7 @@ ea_skill:
     - correction_context_record
     - source_packet
     - interpretation_suggestion_record
+    - replicate_comparison_record
     - figure_record
     - report_section
     - provenance_record
@@ -55,6 +56,7 @@ ea_skill:
       - ea uv-vis prepare-review
       - ea uv-vis report --interpretation-suggestion
       - ea uv-vis propose-memory
+      - ea uv-vis compare-replicates
     supported_signal_modes:
       - absorbance
       - transmittance
@@ -139,6 +141,21 @@ ea_skill:
         - no_evidence_match
         - invalid_or_incomplete
       confidence_boundary: draft_interpretation_memory_candidate_only
+    replicate_comparison:
+      implemented: true
+      command: ea uv-vis compare-replicates
+      input_records:
+        - processed_uv_vis_metadata
+      outputs:
+        - uv_vis_comparison.yml
+        - uv_vis_comparison.csv
+      statistics:
+        - count
+        - mean
+        - std_population
+        - min
+        - max
+      confidence_boundary: descriptive_statistics_only
     supported_x_units:
       - nm
       - eV
@@ -150,4 +167,5 @@ ea_skill:
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
       - correction-context records preserve reviewed metadata but do not apply automatic numeric correction
       - source packets, interpretation suggestions, and review packages preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not create ReviewRecords, inject report citations, write memory, or apply optical models/corrections; reviewed report and memory proposal integrations only read confirmed ReviewRecords and registered references, and memory proposal writes draft candidates only
+      - replicate comparison records summarize processed metadata with descriptive statistics only; they do not reprocess raw data, infer replicate grouping silently, prove optical conclusions, or rank samples
       - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references
