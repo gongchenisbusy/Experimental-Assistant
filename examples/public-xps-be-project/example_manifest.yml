@@ -6,6 +6,10 @@ report_id: rpt-public-xps-be-example-20260603-001
 result_id: res-public-xps-be-example-xps-20260603-001
 figure_id: fig-public-xps-be-example-xps-20260603-001
 suggestion_id: suggestion-20260603-001
+o1s_suggestion_id: suggestion-20260603-002
+suggestion_ids:
+- suggestion-20260603-001
+- suggestion-20260603-002
 public_boundary:
   uses_developer_machine_defaults: false
   zotero_enabled: false
@@ -35,10 +39,17 @@ key_artifacts:
   review_package: suggestions/xps/suggestion-20260603-001/review_package.yml
   review_package_markdown: suggestions/xps/suggestion-20260603-001/review_package.md
   suggestion_review: reviews/review-20260603-005.yml
+  o1s_source_packet: suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml
+  o1s_suggestion_record: suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
+  o1s_suggestion_table: suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.csv
+  o1s_review_package: suggestions/xps/suggestion-20260603-002/review_package.yml
+  o1s_review_package_markdown: suggestions/xps/suggestion-20260603-002/review_package.md
+  o1s_suggestion_review: reviews/review-20260603-006.yml
   report: reports/rpt-public-xps-be-example-20260603-001.md
   memory_candidates:
   - memory/candidates/memcand-20260603-001.md
   - memory/candidates/memcand-20260603-002.md
+  - memory/candidates/memcand-20260603-003.md
   reference_index: literature/references/index.yml
 validation:
   healthcheck_status: pass

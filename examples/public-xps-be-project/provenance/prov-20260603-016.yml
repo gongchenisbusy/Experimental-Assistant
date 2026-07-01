@@ -1,0 +1,30 @@
+provenance_id: prov-20260603-016
+workflow: xps_parameter_memory_candidate_proposal
+created_at: '2026-06-03T09:30:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
+  files: []
+outputs:
+  records:
+  - memory/candidates/memcand-20260603-003.md
+  - memory/candidates/index.yml
+  files: []
+parameters:
+  suggestion_id: suggestion-20260603-002
+  requested_candidate_ids:
+  - xps-builtin-o1s-silica-organic-co-binding-energy-candidate
+  allow_non_ready: false
+  proposed_count: 1
+  skipped_count: 0
+review_refs:
+- review-20260603-006
+warnings: []
+source_refs:
+- suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
+- suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.csv
+- suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml
+- processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+scripts: []

@@ -365,14 +365,25 @@ def test_public_xps_example_trace_links_source_backed_references(tmp_path: Path)
 
     assert result["status"] == "complete"
     assert "source_library:builtin:generic_xps_parameters" in node_ids
+    assert "source_library:builtin:oxide_o1s_binding_energy" in node_ids
     assert "reference:builtin-xps-thermo-c" in node_ids
     assert "reference:builtin-xps-thermo-si" in node_ids
+    assert "reference:builtin-xps-thermo-o" in node_ids
+    assert "reference:builtin-xps-cardiff-o1s-reference" in node_ids
+    assert "reference:builtin-xps-o1s-oxygen-vacancy-critical-2025" in node_ids
     assert nodes["reference:builtin-xps-thermo-c"]["path"] == "literature/references/builtin-xps-thermo-c.yml"
     assert "thermofisher.com" in nodes["reference:builtin-xps-thermo-c"]["metadata"]["url"]
+    assert nodes["reference:builtin-xps-thermo-o"]["path"] == "literature/references/builtin-xps-thermo-o.yml"
+    assert "thermofisher.com" in nodes["reference:builtin-xps-thermo-o"]["metadata"]["url"]
     assert (
         "suggestions/xps/source-packets/xps_binding_energy_candidates.yml",
         "from_source_library",
         "source_library:builtin:generic_xps_parameters",
+    ) in edges
+    assert (
+        "suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml",
+        "from_source_library",
+        "source_library:builtin:oxide_o1s_binding_energy",
     ) in edges
     assert (
         "suggestions/xps/source-packets/xps_binding_energy_candidates.yml",
@@ -380,9 +391,19 @@ def test_public_xps_example_trace_links_source_backed_references(tmp_path: Path)
         "reference:builtin-xps-thermo-c",
     ) in edges
     assert (
+        "suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml",
+        "has_reference_seed",
+        "reference:builtin-xps-thermo-o",
+    ) in edges
+    assert (
         "suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml",
         "candidate_uses_reference",
         "reference:builtin-xps-thermo-c",
+    ) in edges
+    assert (
+        "suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml",
+        "candidate_uses_reference",
+        "reference:builtin-xps-thermo-o",
     ) in edges
     assert (
         "reports/rpt-public-xps-be-example-20260603-001.md",
@@ -390,9 +411,24 @@ def test_public_xps_example_trace_links_source_backed_references(tmp_path: Path)
         "reference:builtin-xps-thermo-c",
     ) in edges
     assert (
+        "reports/rpt-public-xps-be-example-20260603-001.md",
+        "cites_reference",
+        "reference:builtin-xps-thermo-o",
+    ) in edges
+    assert (
         "memory/candidates/memcand-20260603-001.md",
         "has_source",
         "reference:builtin-xps-thermo-c",
+    ) in edges
+    assert (
+        "memory/candidates/memcand-20260603-003.md",
+        "has_source",
+        "reference:builtin-xps-thermo-o",
+    ) in edges
+    assert (
+        "reviews/review-20260603-006.yml",
+        "reviews_target",
+        "suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml",
     ) in edges
 
 

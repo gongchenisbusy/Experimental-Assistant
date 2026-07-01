@@ -1,0 +1,8 @@
+review_id: review-20260603-006
+target_type: xps_parameter_suggestions
+target_ref: suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-03T09:27:00'
+user_original_text: 可以，保存
+reviewed_content_hash: 07a01332cd4be976186a5e3095802af69496b5cf5fae643f34aa50cb4f09d02d

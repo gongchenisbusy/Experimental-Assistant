@@ -60,9 +60,10 @@ The example contains a minimal review-gated XPS workflow:
 - column, calibration, and parameter review records;
 - processed XPS metadata, CSV, peak table, and figure;
 - a built-in `binding_energy_candidate` source packet for C 1s and Si 2p starter discussion;
-- registered source seeds, an XPS parameter suggestion record, and grouped review package;
+- an optional O 1s / oxide-surface source packet from `oxide_o1s_binding_energy`;
+- registered source seeds, XPS parameter suggestion records, and grouped review packages;
 - one XPS report displaying advisory source-backed BE candidates with registered references;
-- draft interpretation memory candidates generated only after a confirmed suggestion review.
+- draft interpretation memory candidates generated only after confirmed suggestion reviews.
 
 Run local checks from the repository root:
 
@@ -253,14 +254,54 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
         reviewed_content="User reviewed built-in C 1s/Si 2p binding-energy candidates as advisory interpretation discussion only.",
         reviewed_at="2026-06-03T09:22:00",
     )
+
+    o1s_packet_output = build_xps_parameter_source_packet(
+        output,
+        project_id=project_id,
+        builtin_library="oxide_o1s_binding_energy",
+        suggestion_types=["binding_energy_candidate"],
+        output_path=Path("suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml"),
+        created_at="2026-06-03T09:23:00",
+    )
+    o1s_source_packet_path = Path(o1s_packet_output["source_packet"])
+    o1s_source_packet_ref = o1s_source_packet_path.relative_to(output).as_posix()
+    register_reference_seeds(
+        output,
+        Path(o1s_source_packet_ref),
+        project_id=project_id,
+        created_at="2026-06-03T09:24:00",
+    )
+    o1s_suggestion_output = suggest_xps_parameters(
+        output,
+        project_id=project_id,
+        source_path=o1s_source_packet_path,
+        related_records=[xps_metadata_path.relative_to(output).as_posix()],
+        created_at="2026-06-03T09:25:00",
+    )
+    o1s_suggestion_path = Path(o1s_suggestion_output["record"])
+    o1s_suggestion_ref = o1s_suggestion_path.relative_to(output).as_posix()
+    o1s_review_package_output = prepare_xps_parameter_review_package(
+        output,
+        project_id=project_id,
+        suggestion_path=o1s_suggestion_path,
+        created_at="2026-06-03T09:26:00",
+    )
+    o1s_suggestion_review = write_review_record(
+        output,
+        target_type="xps_parameter_suggestions",
+        target_ref=o1s_suggestion_ref,
+        user_response="可以，保存",
+        reviewed_content="User reviewed optional O 1s oxide-surface binding-energy candidates as advisory interpretation discussion only.",
+        reviewed_at="2026-06-03T09:27:00",
+    )
     report_path = generate_xps_report(
         output,
         project_id=project_id,
         xps_metadata_path=xps_metadata_path,
         related_experiments=[experiment_id],
         related_samples=[SAMPLE_ID],
-        parameter_suggestion_paths=[suggestion_path],
-        created_at="2026-06-03T09:24:00",
+        parameter_suggestion_paths=[suggestion_path, o1s_suggestion_path],
+        created_at="2026-06-03T09:28:00",
     )
     memory_output = propose_xps_parameter_memory_candidates(
         output,
@@ -271,7 +312,17 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
             "xps-builtin-c1s-adventitious-cc-binding-energy-candidate",
             "xps-builtin-si2p-sio2-binding-energy-candidate",
         ],
-        created_at="2026-06-03T09:26:00",
+        created_at="2026-06-03T09:29:00",
+    )
+    o1s_memory_output = propose_xps_parameter_memory_candidates(
+        output,
+        project_id=project_id,
+        suggestion_path=o1s_suggestion_path,
+        review_ref=o1s_suggestion_review.stem,
+        candidate_ids=[
+            "xps-builtin-o1s-silica-organic-co-binding-energy-candidate",
+        ],
+        created_at="2026-06-03T09:30:00",
     )
 
     xps_metadata = read_yaml(xps_metadata_path)
@@ -288,6 +339,8 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
         "result_id": xps_metadata["xps_result_id"],
         "figure_id": xps_metadata["figure_id"],
         "suggestion_id": suggestion_output["suggestion_id"],
+        "o1s_suggestion_id": o1s_suggestion_output["suggestion_id"],
+        "suggestion_ids": [suggestion_output["suggestion_id"], o1s_suggestion_output["suggestion_id"]],
         "public_boundary": {
             "uses_developer_machine_defaults": False,
             "zotero_enabled": False,
@@ -319,8 +372,17 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
             "review_package": Path(review_package_output["review_package"]).relative_to(output).as_posix(),
             "review_package_markdown": Path(review_package_output["review_package_markdown"]).relative_to(output).as_posix(),
             "suggestion_review": _relative(suggestion_review, output),
+            "o1s_source_packet": o1s_source_packet_ref,
+            "o1s_suggestion_record": o1s_suggestion_ref,
+            "o1s_suggestion_table": read_yaml(o1s_suggestion_path)["table_ref"],
+            "o1s_review_package": Path(o1s_review_package_output["review_package"]).relative_to(output).as_posix(),
+            "o1s_review_package_markdown": Path(o1s_review_package_output["review_package_markdown"]).relative_to(output).as_posix(),
+            "o1s_suggestion_review": _relative(o1s_suggestion_review, output),
             "report": _relative(report_path, output),
-            "memory_candidates": [item["memory_candidate_ref"] for item in memory_output["memory_candidates"]],
+            "memory_candidates": [
+                *[item["memory_candidate_ref"] for item in memory_output["memory_candidates"]],
+                *[item["memory_candidate_ref"] for item in o1s_memory_output["memory_candidates"]],
+            ],
             "reference_index": "literature/references/index.yml",
         },
         "validation": {
@@ -345,7 +407,8 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
         "result_id": xps_metadata["xps_result_id"],
         "figure_id": xps_metadata["figure_id"],
         "suggestion_id": suggestion_output["suggestion_id"],
-        "memory_candidate_count": len(memory_output["memory_candidates"]),
+        "o1s_suggestion_id": o1s_suggestion_output["suggestion_id"],
+        "memory_candidate_count": len(memory_output["memory_candidates"]) + len(o1s_memory_output["memory_candidates"]),
         "healthcheck_status": healthcheck["status"],
         "evaluation_status": evaluation["status"],
     }

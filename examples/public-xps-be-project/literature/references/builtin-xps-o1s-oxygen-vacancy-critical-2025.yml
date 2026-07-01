@@ -1,0 +1,23 @@
+schema_version: '0.2'
+created_at: '2026-06-03T09:24:00'
+updated_at: '2026-06-03T09:24:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-xps-o1s-oxygen-vacancy-critical-2025
+project_id: prj-public-xps-be-example
+citation: Easton, C. D.; Morgan, D. J. Critical examination of the use of x-ray photoelectron
+  spectroscopy (XPS) O 1s to characterize oxygen vacancies in catalytic materials
+  and beyond. Journal of Vacuum Science & Technology A 43, 053205 (2025).
+title: Critical examination of the use of x-ray photoelectron spectroscopy (XPS) O
+  1s to characterize oxygen vacancies in catalytic materials and beyond
+authors:
+- Christopher D. Easton
+- David J. Morgan
+year: 2025
+venue: Journal of Vacuum Science & Technology A
+doi: 10.1116/6.0004686
+url: https://doi.org/10.1116/6.0004686
+source_type: manual
+notes: Caution seed for oxygen-vacancy interpretation; register before using as report
+  evidence.

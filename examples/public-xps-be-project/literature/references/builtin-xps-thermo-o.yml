@@ -1,0 +1,16 @@
+schema_version: '0.2'
+created_at: '2026-06-03T09:24:00'
+updated_at: '2026-06-03T09:24:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-xps-thermo-o
+project_id: prj-public-xps-be-example
+citation: Thermo Fisher Scientific. Oxygen XPS periodic table reference page.
+title: Oxygen XPS periodic table reference page
+authors:
+- Thermo Fisher Scientific
+url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/oxygen.html
+source_type: web
+notes: Vendor educational reference seed for O 1s binding-energy screening context;
+  replace with project-specific references when possible.

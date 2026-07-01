@@ -1,0 +1,35 @@
+provenance_id: prov-20260603-012
+workflow: memory_candidate_proposal
+created_at: '2026-06-03T09:29:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
+  - suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+  - builtin-xps-thermo-c
+  - builtin-xps-charge-reference-guide-2020
+  files: []
+outputs:
+  records:
+  - memory/candidates/memcand-20260603-001.md
+  - memory/candidates/index.yml
+  files: []
+parameters:
+  category: interpretation
+  confidence: medium
+  status: draft
+  provenance_refs:
+  - provenance/prov-20260603-006.yml
+review_refs: []
+warnings: []
+source_refs:
+- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
+- suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+- processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+- builtin-xps-thermo-c
+- builtin-xps-charge-reference-guide-2020
+scripts: []

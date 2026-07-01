@@ -30,3 +30,43 @@ references:
     url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/metalloid/silicon.html
     local_path: null
     source_type: web
+  builtin-xps-cardiff-o1s-reference:
+    reference_id: builtin-xps-cardiff-o1s-reference
+    path: literature/references/builtin-xps-cardiff-o1s-reference.yml
+    project_id: prj-public-xps-be-example
+    citation: Cardiff University XPS Analysis. Oxygen reference page.
+    doi: null
+    url: https://sites.cardiff.ac.uk/xpsaccess/reference/oxygen/
+    local_path: null
+    source_type: web
+  builtin-xps-o1s-metal-oxide-insight-2025:
+    reference_id: builtin-xps-o1s-metal-oxide-insight-2025
+    path: literature/references/builtin-xps-o1s-metal-oxide-insight-2025.yml
+    project_id: prj-public-xps-be-example
+    citation: 'Graf, A.; Isaacs, M. A.; Morgan, D. J. Insight Notes: Considerations
+      in the XPS Analysis of O1s Spectra for Metal Oxides. Surface and Interface Analysis
+      (2025).'
+    doi: 10.1002/sia.70036
+    url: https://doi.org/10.1002/sia.70036
+    local_path: null
+    source_type: manual
+  builtin-xps-o1s-oxygen-vacancy-critical-2025:
+    reference_id: builtin-xps-o1s-oxygen-vacancy-critical-2025
+    path: literature/references/builtin-xps-o1s-oxygen-vacancy-critical-2025.yml
+    project_id: prj-public-xps-be-example
+    citation: Easton, C. D.; Morgan, D. J. Critical examination of the use of x-ray
+      photoelectron spectroscopy (XPS) O 1s to characterize oxygen vacancies in catalytic
+      materials and beyond. Journal of Vacuum Science & Technology A 43, 053205 (2025).
+    doi: 10.1116/6.0004686
+    url: https://doi.org/10.1116/6.0004686
+    local_path: null
+    source_type: manual
+  builtin-xps-thermo-o:
+    reference_id: builtin-xps-thermo-o
+    path: literature/references/builtin-xps-thermo-o.yml
+    project_id: prj-public-xps-be-example
+    citation: Thermo Fisher Scientific. Oxygen XPS periodic table reference page.
+    doi: null
+    url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/oxygen.html
+    local_path: null
+    source_type: web

@@ -16,3 +16,7 @@ reports:
     - builtin-xps-charge-reference-guide-2020
     - builtin-xps-thermo-c
     - builtin-xps-thermo-si
+    - builtin-xps-cardiff-o1s-reference
+    - builtin-xps-o1s-metal-oxide-insight-2025
+    - builtin-xps-o1s-oxygen-vacancy-critical-2025
+    - builtin-xps-thermo-o

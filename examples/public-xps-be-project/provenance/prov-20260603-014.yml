@@ -1,0 +1,32 @@
+provenance_id: prov-20260603-014
+workflow: xps_parameter_memory_candidate_proposal
+created_at: '2026-06-03T09:29:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  files: []
+outputs:
+  records:
+  - memory/candidates/memcand-20260603-001.md
+  - memory/candidates/memcand-20260603-002.md
+  - memory/candidates/index.yml
+  files: []
+parameters:
+  suggestion_id: suggestion-20260603-001
+  requested_candidate_ids:
+  - xps-builtin-c1s-adventitious-cc-binding-energy-candidate
+  - xps-builtin-si2p-sio2-binding-energy-candidate
+  allow_non_ready: false
+  proposed_count: 2
+  skipped_count: 0
+review_refs:
+- review-20260603-005
+warnings: []
+source_refs:
+- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
+- suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+- processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+scripts: []

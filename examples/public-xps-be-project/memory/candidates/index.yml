@@ -36,3 +36,23 @@ candidates:
     - provenance/prov-20260603-006.yml
     review_refs: []
     committed_memory_id: null
+  memcand-20260603-003:
+    memory_candidate_id: memcand-20260603-003
+    path: memory/candidates/memcand-20260603-003.md
+    project_id: prj-public-xps-be-example
+    status: draft
+    category: interpretation
+    confidence: low
+    source_refs:
+    - suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
+    - suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.csv
+    - suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml
+    - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+    - builtin-xps-thermo-o
+    - builtin-xps-cardiff-o1s-reference
+    - builtin-xps-o1s-metal-oxide-insight-2025
+    - builtin-xps-charge-reference-guide-2020
+    provenance_refs:
+    - provenance/prov-20260603-009.yml
+    review_refs: []
+    committed_memory_id: null

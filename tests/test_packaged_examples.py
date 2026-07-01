@@ -82,6 +82,9 @@ def test_packaged_public_xps_be_example_is_public_safe_and_evaluable() -> None:
     assert manifest["workflow_boundary"]["auto_calibrates_or_charge_corrects"] is False
     assert manifest["workflow_boundary"]["proves_chemical_state_or_composition"] is False
     assert manifest["workflow_boundary"]["writes_confirmed_memory"] is False
+    assert manifest["suggestion_id"] == "suggestion-20260603-001"
+    assert manifest["o1s_suggestion_id"] == "suggestion-20260603-002"
+    assert manifest["suggestion_ids"] == ["suggestion-20260603-001", "suggestion-20260603-002"]
     assert manifest["validation"]["healthcheck_status"] == "pass"
     assert manifest["validation"]["evaluation_status"] == "pass"
     for rel in manifest["key_artifacts"].values():
@@ -92,15 +95,35 @@ def test_packaged_public_xps_be_example_is_public_safe_and_evaluable() -> None:
             assert (XPS_EXAMPLE_ROOT / rel).exists(), rel
 
     suggestion = read_yaml(XPS_EXAMPLE_ROOT / manifest["key_artifacts"]["suggestion_record"])
+    o1s_source_packet = read_yaml(XPS_EXAMPLE_ROOT / manifest["key_artifacts"]["o1s_source_packet"])
+    o1s_suggestion = read_yaml(XPS_EXAMPLE_ROOT / manifest["key_artifacts"]["o1s_suggestion_record"])
     report = (XPS_EXAMPLE_ROOT / manifest["key_artifacts"]["report"]).read_text(encoding="utf-8")
-    memory_candidate = (XPS_EXAMPLE_ROOT / manifest["key_artifacts"]["memory_candidates"][0]).read_text(encoding="utf-8")
+    memory_candidates = [
+        (XPS_EXAMPLE_ROOT / rel).read_text(encoding="utf-8")
+        for rel in manifest["key_artifacts"]["memory_candidates"]
+    ]
     assert suggestion["ready_for_user_review_count"] == 5
     assert {candidate["suggestion_type"] for candidate in suggestion["candidates"]} == {"binding_energy_candidate"}
+    assert o1s_source_packet["source_library_ref"] == "builtin:oxide_o1s_binding_energy"
+    assert o1s_source_packet["candidate_count"] == 4
+    assert o1s_suggestion["ready_for_user_review_count"] == 4
+    assert {candidate["suggestion_type"] for candidate in o1s_suggestion["candidates"]} == {
+        "binding_energy_candidate"
+    }
+    assert "builtin-xps-thermo-o" in o1s_suggestion["reference_ids"]
     assert "Source-backed XPS parameter suggestions" in report
+    assert "suggestion-20260603-002" in report
+    assert o1s_suggestion["source_packet_ref"] == "suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml"
+    assert "xps-builtin-o1s-silica-organic-co-binding-energy-candidate" in report
+    assert "Not an oxygen-vacancy proof" in report
     assert "binding_energy_candidate" in report
-    assert "[1]" in report and "[2]" in report and "[3]" in report
-    assert "does not copy values into processing parameters" in memory_candidate
-    assert "prove chemical state/composition" in memory_candidate
+    assert "[1]" in report and "[2]" in report and "[3]" in report and "[7]" in report
+    assert any(
+        "xps-builtin-o1s-silica-organic-co-binding-energy-candidate" in text
+        for text in memory_candidates
+    )
+    assert all("does not copy values into processing parameters" in text for text in memory_candidates)
+    assert all("prove chemical state/composition" in text for text in memory_candidates)
 
     healthcheck = run_healthcheck(XPS_EXAMPLE_ROOT)
     assert healthcheck["status"] == "pass"
@@ -135,7 +158,8 @@ def test_packaged_example_builders_create_evaluable_projects(tmp_path: Path) -> 
 
     assert xps_summary["healthcheck_status"] == "pass"
     assert xps_summary["evaluation_status"] == "pass"
-    assert xps_summary["memory_candidate_count"] == 2
+    assert xps_summary["o1s_suggestion_id"] == "suggestion-20260603-002"
+    assert xps_summary["memory_candidate_count"] == 3
     assert (xps_output / "example_manifest.yml").exists()
     assert run_healthcheck(xps_output)["status"] == "pass"
 
@@ -152,6 +176,9 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
     assert "examples/public-xps-be-project/EA_PROJECT.md" in paths
     assert "examples/public-xps-be-project/reports/rpt-public-xps-be-example-20260603-001.md" in paths
     assert "examples/public-xps-be-project/suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml" in paths
+    assert "examples/public-xps-be-project/suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml" in paths
+    assert "examples/public-xps-be-project/suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml" in paths
+    assert "examples/public-xps-be-project/memory/candidates/memcand-20260603-003.md" in paths
     assert "examples/public-xps-be-project/source-inputs/raw/si-sio2-xps-public-fixture.txt" in paths
 
     package = write_release_package(Path.cwd(), output=tmp_path / "release.zip", archive_root="ea-release-example-test")
@@ -163,3 +190,12 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
         assert "ea-release-example-test/examples/public-xps-be-project/example_manifest.yml" in names
         assert "ea-release-example-test/examples/public-xps-be-project/EA_PROJECT.md" in names
         assert "ea-release-example-test/examples/public-xps-be-project/README.md" in names
+        assert (
+            "ea-release-example-test/examples/public-xps-be-project/suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml"
+            in names
+        )
+        assert (
+            "ea-release-example-test/examples/public-xps-be-project/suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml"
+            in names
+        )
+        assert "ea-release-example-test/examples/public-xps-be-project/memory/candidates/memcand-20260603-003.md" in names

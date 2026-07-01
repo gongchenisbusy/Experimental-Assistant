@@ -1,35 +1,28 @@
 provenance_id: prov-20260603-010
-workflow: memory_candidate_proposal
+workflow: xps_parameter_review_package
 created_at: '2026-06-03T09:26:00'
 skill_name: ea-core
 skill_version: 0.2.0
 inputs:
   records:
-  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
-  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
-  - suggestions/xps/source-packets/xps_binding_energy_candidates.yml
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
-  - builtin-xps-thermo-si
-  - builtin-xps-charge-reference-guide-2020
+  - suggestions/xps/suggestion-20260603-002/xps_parameter_suggestions.yml
   files: []
 outputs:
   records:
-  - memory/candidates/memcand-20260603-002.md
-  - memory/candidates/index.yml
+  - suggestions/xps/suggestion-20260603-002/review_package.yml
+  - suggestions/xps/suggestion-20260603-002/review_package.md
   files: []
 parameters:
-  category: interpretation
-  confidence: low
-  status: draft
-  provenance_refs:
-  - provenance/prov-20260603-006.yml
+  suggestion_id: suggestion-20260603-002
+  requested_candidate_ids: []
+  selected_candidate_count: 4
+  auto_applied: false
 review_refs: []
 warnings: []
 source_refs:
-- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
-- suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
-- suggestions/xps/source-packets/xps_binding_energy_candidates.yml
-- processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
-- builtin-xps-thermo-si
+- builtin-xps-cardiff-o1s-reference
 - builtin-xps-charge-reference-guide-2020
+- builtin-xps-o1s-metal-oxide-insight-2025
+- builtin-xps-o1s-oxygen-vacancy-critical-2025
+- builtin-xps-thermo-o
 scripts: []

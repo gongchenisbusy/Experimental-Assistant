@@ -9,9 +9,10 @@ The example contains a minimal review-gated XPS workflow:
 - column, calibration, and parameter review records;
 - processed XPS metadata, CSV, peak table, and figure;
 - a built-in `binding_energy_candidate` source packet for C 1s and Si 2p starter discussion;
-- registered source seeds, an XPS parameter suggestion record, and grouped review package;
+- an optional O 1s / oxide-surface source packet from `oxide_o1s_binding_energy`;
+- registered source seeds, XPS parameter suggestion records, and grouped review packages;
 - one XPS report displaying advisory source-backed BE candidates with registered references;
-- draft interpretation memory candidates generated only after a confirmed suggestion review.
+- draft interpretation memory candidates generated only after confirmed suggestion reviews.
 
 Run local checks from the repository root:
 

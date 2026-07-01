@@ -1,0 +1,295 @@
+schema_version: '0.2'
+source_packet_id: xps_source_packet-20260603-002
+project_id: prj-public-xps-be-example
+status: ready_for_suggest_parameters
+created_at: '2026-06-03T09:23:00'
+updated_at: '2026-06-03T09:23:00'
+source: ea.xps.parameter_source_packet:v0.2
+source_library_kind: built_in
+source_library_ref: builtin:oxide_o1s_binding_energy
+source_manifest_ref: null
+confirmation_status: null
+reference_seed_count: 5
+reference_seeds:
+  builtin-xps-thermo-o:
+    citation: Thermo Fisher Scientific. Oxygen XPS periodic table reference page.
+    title: Oxygen XPS periodic table reference page
+    author:
+    - Thermo Fisher Scientific
+    url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/oxygen.html
+    source_type: web
+    notes: Vendor educational reference seed for O 1s binding-energy screening context;
+      replace with project-specific references when possible.
+  builtin-xps-cardiff-o1s-reference:
+    citation: Cardiff University XPS Analysis. Oxygen reference page.
+    title: Oxygen reference page
+    author:
+    - Cardiff University XPS Analysis
+    url: https://sites.cardiff.ac.uk/xpsaccess/reference/oxygen/
+    source_type: web
+    notes: Public O 1s reference-page seed listing common oxide, carbonate, silica,
+      alumina, and organic oxygen ranges with interpretation cautions.
+  builtin-xps-o1s-metal-oxide-insight-2025:
+    citation: 'Graf, A.; Isaacs, M. A.; Morgan, D. J. Insight Notes: Considerations
+      in the XPS Analysis of O1s Spectra for Metal Oxides. Surface and Interface Analysis
+      (2025).'
+    title: 'Insight Notes: Considerations in the XPS Analysis of O1s Spectra for Metal
+      Oxides'
+    author:
+    - A. Graf
+    - M. A. Isaacs
+    - D. J. Morgan
+    year: 2025
+    venue: Surface and Interface Analysis
+    doi: 10.1002/sia.70036
+    url: https://doi.org/10.1002/sia.70036
+    source_type: manual
+    notes: Open-access O 1s metal-oxide interpretation guidance seed; emphasizes calibration,
+      sample history, overlap, and avoiding over-interpretation.
+  builtin-xps-o1s-oxygen-vacancy-critical-2025:
+    citation: Easton, C. D.; Morgan, D. J. Critical examination of the use of x-ray
+      photoelectron spectroscopy (XPS) O 1s to characterize oxygen vacancies in catalytic
+      materials and beyond. Journal of Vacuum Science & Technology A 43, 053205 (2025).
+    title: Critical examination of the use of x-ray photoelectron spectroscopy (XPS)
+      O 1s to characterize oxygen vacancies in catalytic materials and beyond
+    author:
+    - Christopher D. Easton
+    - David J. Morgan
+    year: 2025
+    venue: Journal of Vacuum Science & Technology A
+    doi: 10.1116/6.0004686
+    url: https://doi.org/10.1116/6.0004686
+    source_type: manual
+    notes: Caution seed for oxygen-vacancy interpretation; register before using as
+      report evidence.
+  builtin-xps-charge-reference-guide-2020:
+    citation: 'Baer, D. R.; Artyushkova, K.; Cohen, H.; Easton, C. D.; Engelhard,
+      M.; Gengenbach, T. R.; Greczynski, G.; Mack, P.; Morgan, D. J.; Roberts, A.
+      XPS guide: Charge neutralization and binding energy referencing for insulating
+      samples. Journal of Vacuum Science & Technology A 38, 031204 (2020).'
+    title: 'XPS guide: Charge neutralization and binding energy referencing for insulating
+      samples'
+    author:
+    - Donald R. Baer
+    - Kateryna Artyushkova
+    - Hagai Cohen
+    - Christopher D. Easton
+    - Mark Engelhard
+    - Thomas R. Gengenbach
+    - Grzegorz Greczynski
+    - Paul Mack
+    - David J. Morgan
+    - Adam Roberts
+    year: 2020
+    venue: Journal of Vacuum Science & Technology A
+    doi: 10.1116/6.0000057
+    url: https://doi.org/10.1116/6.0000057
+    source_type: manual
+    notes: Charge neutralization and binding-energy referencing guidance seed; this
+      library does not apply charge correction.
+guidance_notes:
+- O 1s oxide-surface candidates are interpretation starters for reviewed source packets,
+  not automatic chemical-state assignments.
+- Use sample history, C 1s, relevant metal core levels, calibration metadata, background
+  choice, peak width, and project references before treating any O 1s component as
+  report evidence.
+- The 531-532 eV O 1s region is especially overlap-prone; do not label it as oxygen
+  vacancies without independent, project-specific evidence and review.
+guidance_reference_ids:
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-o1s-metal-oxide-insight-2025
+- builtin-xps-o1s-oxygen-vacancy-critical-2025
+candidate_count: 4
+candidates:
+- candidate_id: xps-builtin-o1s-lattice-oxide-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  element: O
+  core_level: 1s
+  chemical_state_label: Lattice oxygen / metal oxide O 1s candidate
+  expected_binding_energy_eV: 529.8
+  binding_energy_window_eV:
+  - 529.0
+  - 531.0
+  calibration_reference: Candidate assumes reviewed O 1s energy calibration; source
+    examples commonly reference C 1s at 284.8 eV, but the project must document its
+    actual charge-neutralization and BE-referencing procedure and should cross-check
+    a relevant metal core level when possible.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    differential charging and incorrect BE correction can move O 1s intensity between
+    candidate regions.
+  parameter_origin: source_suggested
+  source_summary: Thermo and Cardiff public O 1s references list metal oxide / M-O
+    O 1s around 529-530 eV, while recent O 1s guidance describes lattice oxygen in
+    transition-metal oxides around 529.5-531 eV and stresses calibration and corroborating
+    evidence.
+  applicability_notes:
+  - Use only when a metal oxide or oxide-surface context is plausible and the user
+    has reviewed sample handling, calibration, background, and metal core-level context.
+  - Treat a lattice-oxide candidate as an interpretation hypothesis for report discussion,
+    not as an automatic oxide stoichiometry or phase assignment.
+  overlap_notes:
+  - O 1s may overlap Na KLL, Sb 3d, Pd 3p, or V 2p regions depending on the sample.
+  - The high-binding-energy side of oxide O 1s can overlap hydroxyl, carbonate, adsorbed
+    water, organic oxygen, loss features, or asymmetric conducting-oxide line shapes.
+  reference_ids:
+  - builtin-xps-thermo-o
+  - builtin-xps-cardiff-o1s-reference
+  - builtin-xps-o1s-metal-oxide-insight-2025
+  - builtin-xps-charge-reference-guide-2020
+  confidence: medium
+  caveats:
+  - Not a standalone proof of oxide phase, oxide stoichiometry, oxide thickness, oxygen
+    deficiency, or catalytic activity.
+  - Requires project-specific metal core-level, C 1s, calibration, and sample-history
+    evidence before final assignment.
+- candidate_id: xps-builtin-o1s-hydroxyl-adsorbed-oxygen-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  element: O
+  core_level: 1s
+  chemical_state_label: Hydroxyl / adsorbed oxygen-like O 1s candidate
+  expected_binding_energy_eV: 531.5
+  binding_energy_window_eV:
+  - 531.0
+  - 532.2
+  calibration_reference: Candidate assumes reviewed O 1s calibration and charge compensation;
+    compare with lattice O 1s, C 1s, and relevant metal core levels before interpretation.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    poor charge correction or differential charging can mimic a higher-BE shoulder.
+  parameter_origin: source_suggested
+  source_summary: Recent O 1s guidance describes hydroxide / adsorbed oxygen contributions
+    near 531-532 eV, while warning that this region overlaps carbonate, organics,
+    water, and oxygen-vacancy labels used in the literature.
+  applicability_notes:
+  - Use when sample storage, air/water exposure, surface treatment, or reaction environment
+    makes hydroxylated or adsorbed oxygen species plausible.
+  - Ask for C 1s, metal core-level, vacuum/transfer history, and any in situ or ex
+    situ context before promoting the candidate in a report.
+  overlap_notes:
+  - Carbonate, organic C=O/C-O, adsorbed water, silica/silicone contamination, and
+    some fitted defect labels can occupy similar O 1s ranges.
+  - If the candidate is being used to discuss oxygen vacancies, require independent
+    evidence and keep the O 1s evidence low-confidence unless the experiment is specifically
+    designed for that question.
+  reference_ids:
+  - builtin-xps-o1s-metal-oxide-insight-2025
+  - builtin-xps-o1s-oxygen-vacancy-critical-2025
+  - builtin-xps-charge-reference-guide-2020
+  confidence: low
+  caveats:
+  - Not an oxygen-vacancy proof.
+  - Not a standalone hydroxyl quantification; fitting model, FWHM, background, sample
+    history, and corroborating spectra must be reviewed.
+- candidate_id: xps-builtin-o1s-carbonate-carbonyl-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  element: O
+  core_level: 1s
+  chemical_state_label: Carbonate / carbonyl-like O 1s candidate
+  expected_binding_energy_eV: 531.8
+  binding_energy_window_eV:
+  - 531.0
+  - 532.5
+  calibration_reference: Candidate assumes the O 1s and C 1s energy scales have been
+    reviewed; carbonate discussion should be cross-checked against a C 1s carbonate/carboxylate-like
+    contribution near 289-290 eV when available.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    document the project BE reference and charge neutralization before report use.
+  parameter_origin: source_suggested
+  source_summary: Thermo and Cardiff list metal carbonate O 1s around 531-532 eV,
+    and Thermo also places organic C=O near 531.5-532 eV; Cardiff guidance recommends
+    checking C 1s near 289-290 eV for carbonate evidence.
+  applicability_notes:
+  - Use when sample exposure, carbonate precursor, ambient aging, CO2/H2O exposure,
+    or C 1s evidence makes carbonate or carbonyl-like oxygen plausible.
+  - Treat carbonate and carbonyl as competing explanations unless project chemistry
+    or registered references separate them.
+  overlap_notes:
+  - Hydroxyl, adsorbed oxygen, organic oxygen, and carbonate contributions can overlap
+    strongly around 531-532 eV.
+  - O 1s alone generally cannot separate carbonate from carbonyl/organic oxygen without
+    C 1s and sample-context evidence.
+  reference_ids:
+  - builtin-xps-thermo-o
+  - builtin-xps-cardiff-o1s-reference
+  - builtin-xps-o1s-metal-oxide-insight-2025
+  - builtin-xps-charge-reference-guide-2020
+  confidence: low
+  caveats:
+  - Not a standalone carbonate, carbonyl, or contamination proof.
+  - Do not quantify carbonate versus hydroxyl from O 1s without a reviewed fitting
+    protocol and corroborating C 1s evidence.
+- candidate_id: xps-builtin-o1s-silica-organic-co-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  element: O
+  core_level: 1s
+  chemical_state_label: Silica / organic C-O high-BE O 1s candidate
+  expected_binding_energy_eV: 532.9
+  binding_energy_window_eV:
+  - 532.5
+  - 533.5
+  calibration_reference: Candidate assumes reviewed O 1s calibration; compare with
+    Si 2p, C 1s, instrument/sample contamination history, and any project-approved
+    charge-reference method before interpretation.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    insulating silica or polymer/organic surfaces require documented charge-neutralization
+    and BE-referencing choices.
+  parameter_origin: source_suggested
+  source_summary: Thermo and Cardiff list SiO2 O 1s near 532.9 eV and organic C-O
+    oxygen near about 533 eV; Thermo cautions that water and organic contamination
+    can overlap directly with SiO2 in O 1s.
+  applicability_notes:
+  - Use when silica, silicate, silicone/lab contamination, polymer, adsorbed organic
+    oxygen, or high-BE O 1s context is plausible.
+  - Cross-check Si 2p and C 1s before choosing between silica-like and organic C-O
+    interpretations.
+  overlap_notes:
+  - SiO2, organic C-O, adsorbed water, silicone contamination, and high-BE shoulders
+    can overlap in this range.
+  - High-BE O 1s intensity can also be affected by loss features or line-shape asymmetry
+    in some conducting oxides.
+  reference_ids:
+  - builtin-xps-thermo-o
+  - builtin-xps-cardiff-o1s-reference
+  - builtin-xps-o1s-metal-oxide-insight-2025
+  - builtin-xps-charge-reference-guide-2020
+  confidence: low
+  caveats:
+  - Not a standalone proof of SiO2, silicate, organic C-O, adsorbed water, or contamination
+    source.
+  - Requires project-specific Si 2p/C 1s evidence, background/fitting review, and
+    sample-history context before final assignment.
+filters:
+  include_candidates: []
+  suggestion_types:
+  - binding_energy_candidate
+  elements: []
+  core_levels: []
+reference_ids:
+- builtin-xps-cardiff-o1s-reference
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-o1s-metal-oxide-insight-2025
+- builtin-xps-o1s-oxygen-vacancy-critical-2025
+- builtin-xps-thermo-o
+warnings: []
+next_steps:
+- If this packet includes built-in or local reference_seeds, or confirmed-literature
+  reference_seeds, run `ea references register-seeds` or replace those seed IDs with
+  registered project references before treating suggestions as report evidence.
+- Review and edit this packet until every candidate has source_summary, applicability_notes,
+  reference_ids, and required numeric or binding-energy/calibration-assumption fields
+  for its suggestion_type.
+- Run `ea xps suggest-parameters` on this packet to create traceable suggestion records
+  before copying values into processing parameters.
+boundaries:
+- Source packets are staging artifacts and do not apply values to XPS processing parameters.
+- reference_seeds are registration hints only; they do not inject report citations,
+  download PDFs, apply XPS parameters, prove chemical states, or calculate composition.
+- This source-packet builder is a deterministic staging step and does not perform
+  unconfirmed live network lookup or parse full text during the command. Values may
+  originate from user-provided data, local libraries, project literature records,
+  or separately confirmed literature/search connectors, and EA may use those sources
+  to prepare candidates. The packet still does not auto-choose or apply components/backgrounds/bounds/peak
+  shapes, apply fitting, prove chemical states, or calculate composition.
+- Confirmed-literature manifests are source-candidate manifests only; they do not
+  register references, inject report citations, apply XPS parameters, fit backgrounds/components,
+  prove chemical states, or calculate composition.
+provenance_ref: provenance/prov-20260603-008.yml

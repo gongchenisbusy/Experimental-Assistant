@@ -1,30 +1,35 @@
 provenance_id: prov-20260603-008
-workflow: report_generation
-created_at: '2026-06-03T09:24:00'
+workflow: xps_parameter_source_packet
+created_at: '2026-06-03T09:23:00'
 skill_name: ea-core
 skill_version: 0.2.0
 inputs:
   records:
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
-  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
-  files:
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_processed.csv
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_peaks.csv
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_components.csv
-  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/fig-public-xps-be-example-xps-20260603-001.png
+  - builtin:oxide_o1s_binding_energy
+  files: []
 outputs:
   records:
-  - reports/rpt-public-xps-be-example-20260603-001.md
+  - suggestions/xps/source-packets/xps_o1s_oxide_candidates.yml
   files: []
 parameters:
-  include_next_step_suggestions: false
-  language: zh
-  parameter_suggestion_refs:
-  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  candidate_count: 4
+  reference_seed_count: 5
+  template: false
+  builtin_library: oxide_o1s_binding_energy
+  source_library_kind: built_in
+  filters:
+    include_candidates: []
+    suggestion_types:
+    - binding_energy_candidate
+    elements: []
+    core_levels: []
+  auto_applied: false
 review_refs: []
-warnings:
-- code: xps_normalization_applied
-  message: XPS intensity normalized by processing parameters.
-  severity: low
-source_refs: []
+warnings: []
+source_refs:
+- builtin-xps-cardiff-o1s-reference
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-o1s-metal-oxide-insight-2025
+- builtin-xps-o1s-oxygen-vacancy-critical-2025
+- builtin-xps-thermo-o
 scripts: []
