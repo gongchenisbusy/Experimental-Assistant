@@ -61,6 +61,7 @@ from ea.materials import (
     get_material_profile,
     summarize_pl_assignment_libraries,
     summarize_raman_assignment_libraries,
+    summarize_xrd_assignment_libraries,
 )
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
@@ -271,6 +272,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     xrd = sub.add_parser("xrd", help="XRD inspection, processing, and report helpers")
     xrd_sub = xrd.add_subparsers(dest="xrd_command", required=True)
+    xrd_list_libraries = xrd_sub.add_parser("list-assignment-libraries", help="list built-in XRD assignment libraries and candidates")
+    xrd_list_libraries.add_argument("--material", action="append", default=[])
+    xrd_list_libraries.add_argument("--feature", action="append", default=[])
+    xrd_list_libraries.add_argument("--two-theta-min-deg", type=float)
+    xrd_list_libraries.add_argument("--two-theta-max-deg", type=float)
+    xrd_list_libraries.add_argument("--d-spacing-min-angstrom", type=float)
+    xrd_list_libraries.add_argument("--d-spacing-max-angstrom", type=float)
     xrd_inspect = xrd_sub.add_parser("inspect", help="inspect a diffraction file and suggest XRD columns/unit")
     xrd_inspect.add_argument("workspace", type=Path)
     xrd_inspect.add_argument("pattern", type=Path)
@@ -1166,6 +1174,18 @@ def main(argv: list[str] | None = None) -> int:
         project_id = getattr(args, "project_id", None)
         if args.xrd_command in {"process", "report"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
+        if args.xrd_command == "list-assignment-libraries":
+            _print_json(
+                summarize_xrd_assignment_libraries(
+                    materials=args.material,
+                    features=args.feature,
+                    two_theta_min_deg=args.two_theta_min_deg,
+                    two_theta_max_deg=args.two_theta_max_deg,
+                    d_spacing_min_angstrom=args.d_spacing_min_angstrom,
+                    d_spacing_max_angstrom=args.d_spacing_max_angstrom,
+                )
+            )
+            return 0
         if args.xrd_command == "inspect":
             inspection = asdict(inspect_xrd_file(_project_path(args.workspace, args.pattern)))
             inspection["path"] = str(inspection["path"])

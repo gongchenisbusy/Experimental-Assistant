@@ -14,6 +14,7 @@ from ea.materials import (
     match_xrd_peaks,
     summarize_pl_assignment_libraries,
     summarize_raman_assignment_libraries,
+    summarize_xrd_assignment_libraries,
 )
 from ea.storage import write_markdown_record
 
@@ -327,6 +328,87 @@ def test_cli_lists_pl_assignment_libraries_and_reports_no_matches(capsys) -> Non
                 "500",
                 "--wavelength-max-nm",
                 "550",
+            ]
+        )
+        == 0
+    )
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["libraries"][0]["material_profiles"] == []
+    assert no_match["next_commands"]["inspect_material_profile"] == []
+
+
+def test_xrd_assignment_library_summary_filters_source_backed_candidates() -> None:
+    summary = summarize_xrd_assignment_libraries(
+        materials=["hBN"],
+        features=["002"],
+        two_theta_min_deg=26.4,
+        two_theta_max_deg=27.0,
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["method"] == "xrd"
+    assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
+    assert summary["library_version"] == "0.2.1"
+    assert summary["total_candidate_count"] == 1
+    assert summary["matching_candidate_count"] == 1
+    assert summary["available_two_theta_range_deg"] == [26.0, 27.4]
+    assert summary["available_d_spacing_range_angstrom"] == [3.25, 3.45]
+    assert summary["matching_reference_hint_keys"] == ["ahmad-2021-hbn-xrd"]
+    assert summary["filters"]["resolved_materials"] == ["hbn"]
+
+    profile = summary["libraries"][0]["material_profiles"][0]
+    assert profile["material_id"] == "hbn"
+    assert profile["assignment_source"] == "ea.materials.builtin:hbn:xrd:v0.2"
+    assert profile["axis_unit"] == "2theta_deg"
+    assert profile["reference_hints"][0]["doi"] == "10.3390/cryst11030222"
+    assert profile["reference_hints"][0]["url"] == "https://doi.org/10.3390/cryst11030222"
+
+    candidate = profile["candidates"][0]
+    assert candidate["candidate_id"] == "xrd-builtin-hbn-hbn_002_layered_reflection"
+    assert candidate["two_theta_window_deg"] == [26.0, 27.4]
+    assert candidate["d_spacing_window_angstrom"] == [3.25, 3.45]
+    assert candidate["source_backed"] is True
+    assert candidate["auto_applied"] is False
+    assert candidate["requires_user_review"] is True
+    assert "ea materials assignments hbn --method xrd" in summary["next_commands"]["inspect_material_profile"]
+    assert any("does not run live literature search" in boundary for boundary in summary["boundaries"])
+    assert any("do not prove phase identity" in boundary for boundary in summary["boundaries"])
+
+
+def test_cli_lists_xrd_assignment_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "xrd",
+                "list-assignment-libraries",
+                "--material",
+                "ws2",
+                "--d-spacing-min-angstrom",
+                "6.0",
+                "--d-spacing-max-angstrom",
+                "6.3",
+            ]
+        )
+        == 0
+    )
+    ready = _json_output(capsys)
+    assert ready["status"] == "ready"
+    assert ready["matching_candidate_count"] == 1
+    assert ready["libraries"][0]["material_profiles"][0]["candidates"][0]["candidate_id"] == "xrd-builtin-ws2-ws2_002_layered_reflection"
+
+    assert (
+        main(
+            [
+                "xrd",
+                "list-assignment-libraries",
+                "--material",
+                "hbn",
+                "--two-theta-min-deg",
+                "13",
+                "--two-theta-max-deg",
+                "15",
             ]
         )
         == 0

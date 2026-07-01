@@ -546,6 +546,207 @@ def summarize_pl_assignment_libraries(
     }
 
 
+def _xrd_range_window(rule: Mapping[str, Any], key: str) -> list[float] | None:
+    values = rule.get(key)
+    if not isinstance(values, list) or len(values) != 2:
+        return None
+    lower = _finite_float(values[0])
+    upper = _finite_float(values[1])
+    if lower is None or upper is None:
+        return None
+    return [min(lower, upper), max(lower, upper)]
+
+
+def _xrd_candidate_summary(
+    *,
+    material_id: str,
+    profile: Mapping[str, Any],
+    method_profile: Mapping[str, Any],
+    rule: Mapping[str, Any],
+    reference_hints: list[dict[str, Any]],
+) -> dict[str, Any]:
+    two_theta_window = _xrd_range_window(rule, "two_theta_deg_range")
+    d_spacing_window = _xrd_range_window(rule, "d_spacing_angstrom_range")
+    return {
+        "candidate_id": f"xrd-builtin-{material_id}-{rule.get('feature')}",
+        "material_id": material_id,
+        "material_display_name": profile.get("display_name", material_id),
+        "feature": rule.get("feature"),
+        "label": rule.get("label"),
+        "two_theta_window_deg": two_theta_window,
+        "d_spacing_window_angstrom": d_spacing_window,
+        "assignment_source": method_profile.get("assignment_source"),
+        "reference_hint_keys": [hint.get("key") for hint in reference_hints if hint.get("key")],
+        "source_backed": bool(reference_hints),
+        "auto_applied": False,
+        "requires_user_review": True,
+        "notes": rule.get("notes"),
+    }
+
+
+def summarize_xrd_assignment_libraries(
+    *,
+    materials: list[str] | None = None,
+    features: list[str] | None = None,
+    two_theta_min_deg: float | None = None,
+    two_theta_max_deg: float | None = None,
+    d_spacing_min_angstrom: float | None = None,
+    d_spacing_max_angstrom: float | None = None,
+) -> dict[str, Any]:
+    """Summarize built-in XRD assignment profiles without creating project artifacts."""
+
+    library = _library()
+    material_filters = [value for value in (materials or []) if value]
+    feature_filters = [value for value in (features or []) if value]
+    resolved_materials: list[str] = []
+    if material_filters:
+        unknown: list[str] = []
+        for material in material_filters:
+            resolved = resolve_material_id(material)
+            if resolved:
+                resolved_materials.append(resolved)
+            else:
+                unknown.append(material)
+        if unknown:
+            available = ", ".join(record["material_id"] for record in available_materials())
+            raise KeyError(f"Unknown material assignment profile: {', '.join(unknown)}. Available materials: {available}")
+    feature_filter_keys = {_normalise_key(feature) for feature in feature_filters}
+
+    all_candidates: list[dict[str, Any]] = []
+    matching_profiles: list[dict[str, Any]] = []
+    matching_reference_keys: set[str] = set()
+    available_features: set[str] = set()
+    available_two_theta_windows: list[list[float]] = []
+    available_d_spacing_windows: list[list[float]] = []
+
+    for material_id, profile in sorted(library["materials"].items()):
+        methods = profile.get("methods") or {}
+        method_profile = methods.get("xrd")
+        if not method_profile:
+            continue
+        if resolved_materials and material_id not in resolved_materials:
+            continue
+        reference_hints = _reference_hints_for_method(profile, "xrd")
+        matching_candidates: list[dict[str, Any]] = []
+        for rule in method_profile.get("feature_rules", []):
+            feature = str(rule.get("feature") or "")
+            label = str(rule.get("label") or "")
+            available_features.add(feature)
+            two_theta_window = _xrd_range_window(rule, "two_theta_deg_range")
+            d_spacing_window = _xrd_range_window(rule, "d_spacing_angstrom_range")
+            if two_theta_window is not None:
+                available_two_theta_windows.append(two_theta_window)
+            if d_spacing_window is not None:
+                available_d_spacing_windows.append(d_spacing_window)
+            candidate = _xrd_candidate_summary(
+                material_id=material_id,
+                profile=profile,
+                method_profile=method_profile,
+                rule=rule,
+                reference_hints=reference_hints,
+            )
+            all_candidates.append(candidate)
+
+            if feature_filter_keys and not (
+                _normalise_key(feature) in feature_filter_keys
+                or any(key and key in _normalise_key(feature) for key in feature_filter_keys)
+                or any(key and key in _normalise_key(label) for key in feature_filter_keys)
+            ):
+                continue
+            if not _window_overlaps(two_theta_window, two_theta_min_deg, two_theta_max_deg):
+                continue
+            if not _window_overlaps(d_spacing_window, d_spacing_min_angstrom, d_spacing_max_angstrom):
+                continue
+            matching_candidates.append(candidate)
+            matching_reference_keys.update(candidate["reference_hint_keys"])
+
+        if not matching_candidates:
+            continue
+
+        matching_profiles.append(
+            {
+                "material_id": material_id,
+                "display_name": profile.get("display_name", material_id),
+                "formula": profile.get("formula"),
+                "assignment_source": method_profile.get("assignment_source"),
+                "candidate_count": len(method_profile.get("feature_rules", [])),
+                "matching_candidate_count": len(matching_candidates),
+                "axis_unit": method_profile.get("axis_unit"),
+                "reference_hints": reference_hints,
+                "caveats": list(profile.get("caveats", [])),
+                "candidates": matching_candidates,
+            }
+        )
+
+    total_count = len(all_candidates)
+    matching_count = sum(len(profile["candidates"]) for profile in matching_profiles)
+    available_two_theta_range = None
+    if available_two_theta_windows:
+        available_two_theta_range = [
+            min(window[0] for window in available_two_theta_windows),
+            max(window[1] for window in available_two_theta_windows),
+        ]
+    available_d_spacing_range = None
+    if available_d_spacing_windows:
+        available_d_spacing_range = [
+            min(window[0] for window in available_d_spacing_windows),
+            max(window[1] for window in available_d_spacing_windows),
+        ]
+
+    next_commands: dict[str, Any] = {
+        "inspect_material_profile": [
+            f"ea materials assignments {profile['material_id']} --method xrd" for profile in matching_profiles
+        ],
+        "process_xrd": "ea xrd process /path/to/ea-project --metadata raw/xrd/<characterization_id>/metadata.yml --x-column <x> --y-column <y> --x-unit 2theta_deg --column-review-ref <review-id> --parameter-review-ref <review-id>",
+        "generate_report": "ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/<result_id>/xrd_metadata.yml --reference-id <registered-reference-id>",
+        "register_references": "ea references add /path/to/ea-project --citation <citation> --doi <doi> --source-type manual",
+    }
+    if matching_count == 0:
+        next_commands["inspect_material_profile"] = []
+
+    return {
+        "schema_version": "0.2",
+        "source": "ea.materials.xrd_assignment_library_discovery:v0.2",
+        "status": "ready" if matching_count else "no_matching_candidates",
+        "method": "xrd",
+        "available_builtin_libraries": ["builtin_material_assignments"],
+        "library_version": library.get("library_version", "unknown"),
+        "material_count": len(matching_profiles),
+        "total_candidate_count": total_count,
+        "matching_candidate_count": matching_count,
+        "available_materials": [record for record in available_materials() if "xrd" in record.get("methods", [])],
+        "available_features": sorted(feature for feature in available_features if feature),
+        "available_two_theta_range_deg": available_two_theta_range,
+        "available_d_spacing_range_angstrom": available_d_spacing_range,
+        "matching_reference_hint_keys": sorted(key for key in matching_reference_keys if key),
+        "filters": {
+            "materials": material_filters,
+            "resolved_materials": resolved_materials,
+            "features": feature_filters,
+            "two_theta_min_deg": two_theta_min_deg,
+            "two_theta_max_deg": two_theta_max_deg,
+            "d_spacing_min_angstrom": d_spacing_min_angstrom,
+            "d_spacing_max_angstrom": d_spacing_max_angstrom,
+        },
+        "libraries": [
+            {
+                "library_id": "builtin_material_assignments",
+                "library_ref": f"builtin:ea.materials.assignments:{library.get('library_version', 'unknown')}",
+                "method": "xrd",
+                "candidate_count": total_count,
+                "matching_candidate_count": matching_count,
+                "material_profiles": matching_profiles,
+            }
+        ],
+        "next_commands": next_commands,
+        "boundaries": [
+            "This discovery command reads bundled XRD material-assignment metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download or parse articles, register references, inject report citations, create ReviewRecords, write memory, process diffraction patterns, match peaks, or apply assignments.",
+            "XRD discovery candidates and any source-backed hints remain screening aids; they do not prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality without project context, registered references, and user review.",
+        ],
+    }
+
+
 def _finite_float(value: Any) -> float | None:
     try:
         number = float(value)

@@ -10,6 +10,7 @@ from ea.materials.service import (
     resolve_material_id,
     summarize_pl_assignment_libraries,
     summarize_raman_assignment_libraries,
+    summarize_xrd_assignment_libraries,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "resolve_material_id",
     "summarize_pl_assignment_libraries",
     "summarize_raman_assignment_libraries",
+    "summarize_xrd_assignment_libraries",
 ]
