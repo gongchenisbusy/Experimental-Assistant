@@ -32,6 +32,7 @@ from ea.ftir import (
     process_ftir_result,
     propose_ftir_assignment_memory_candidates,
     suggest_ftir_assignments,
+    summarize_ftir_assignment_libraries,
 )
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
@@ -275,6 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     ftir = sub.add_parser("ftir", help="FTIR inspection, processing, and report helpers")
     ftir_sub = ftir.add_subparsers(dest="ftir_command", required=True)
+    ftir_list_libraries = ftir_sub.add_parser("list-assignment-libraries", help="list built-in FTIR assignment libraries and candidates")
+    ftir_list_libraries.add_argument("--builtin-library", action="append", choices=builtin_ftir_assignment_libraries(), default=[])
+    ftir_list_libraries.add_argument("--include-candidate", action="append", default=[])
+    ftir_list_libraries.add_argument("--assignment-type", action="append", default=[])
+    ftir_list_libraries.add_argument("--material-scope", action="append", default=[])
+    ftir_list_libraries.add_argument("--wavenumber-min-cm1", type=float)
+    ftir_list_libraries.add_argument("--wavenumber-max-cm1", type=float)
     ftir_inspect = ftir_sub.add_parser("inspect", help="inspect an infrared spectrum file and suggest FTIR columns/unit")
     ftir_inspect.add_argument("workspace", type=Path)
     ftir_inspect.add_argument("spectrum", type=Path)
@@ -1138,6 +1146,18 @@ def main(argv: list[str] | None = None) -> int:
             inspection = asdict(inspect_ftir_file(_project_path(args.workspace, args.spectrum)))
             inspection["path"] = str(inspection["path"])
             _print_json(inspection)
+            return 0
+        if args.ftir_command == "list-assignment-libraries":
+            _print_json(
+                summarize_ftir_assignment_libraries(
+                    builtin_libraries=args.builtin_library,
+                    include_candidates=args.include_candidate,
+                    assignment_types=args.assignment_type,
+                    material_scopes=args.material_scope,
+                    wavenumber_min_cm1=args.wavenumber_min_cm1,
+                    wavenumber_max_cm1=args.wavenumber_max_cm1,
+                )
+            )
             return 0
         if args.ftir_command == "process":
             parameters = _ftir_processing_parameters(args, args.workspace)

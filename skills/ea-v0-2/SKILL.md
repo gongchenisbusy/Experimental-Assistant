@@ -63,6 +63,7 @@ ea review add /path/to/ea-project --target-type ftir_columns --target-ref raw/ft
 ea review add /path/to/ea-project --target-type ftir_parameters --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default FTIR parameters confirmed"
 ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metadata.yml --x-column wavenumber --y-column absorbance --x-unit cm^-1 --signal-mode absorbance --column-review-ref review-20260630-007 --parameter-review-ref review-20260630-008 --sample-ref sample-001
 ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
+ea ftir list-assignment-libraries --builtin-library generic_materials --assignment-type inorganic_ion --material-scope oxide --wavenumber-min-cm1 1300 --wavenumber-max-cm1 1500
 ea ftir build-assignment-packet /path/to/ea-project
 ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml

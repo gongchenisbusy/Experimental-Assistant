@@ -406,6 +406,211 @@ def _candidate_matches_filters(
     return True
 
 
+def _material_scope_terms(value: Any) -> list[str]:
+    terms: list[str] = []
+    for item in _coerce_string_list(value):
+        for part in str(item).replace(",", ";").split(";"):
+            term = part.strip()
+            if term:
+                terms.append(term)
+    return terms
+
+
+def _candidate_window_overlaps(candidate: dict[str, Any], lower: float | None, upper: float | None) -> bool:
+    if lower is None and upper is None:
+        return True
+    candidate_lower, candidate_upper = _candidate_window(candidate)
+    if candidate_lower is None or candidate_upper is None:
+        return False
+    if lower is not None and candidate_upper < lower:
+        return False
+    if upper is not None and candidate_lower > upper:
+        return False
+    return True
+
+
+def _ftir_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str, Any]:
+    lower, upper = _candidate_window(raw_candidate)
+    return {
+        "candidate_id": _candidate_identity(raw_candidate),
+        "assignment_type": _normalize_assignment_type(raw_candidate.get("assignment_type") or raw_candidate.get("type")),
+        "assignment_label": str(
+            raw_candidate.get("assignment_label")
+            or raw_candidate.get("functional_group")
+            or raw_candidate.get("band_assignment")
+            or ""
+        ).strip()
+        or None,
+        "band_label": str(raw_candidate.get("band_label") or raw_candidate.get("assignment_label") or "").strip() or None,
+        "wavenumber_window_cm1": [lower, upper] if lower is not None and upper is not None else [],
+        "expected_feature": _normalize_expected_feature(raw_candidate.get("expected_feature")),
+        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
+        "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
+        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
+        "material_scope": str(raw_candidate.get("material_scope") or "").strip() or None,
+        "material_scope_terms": _material_scope_terms(raw_candidate.get("material_scope")),
+        "sample_scope": str(raw_candidate.get("sample_scope") or "").strip() or None,
+        "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
+        "caveats": _coerce_string_list(raw_candidate.get("caveats")),
+        "auto_applied": False,
+        "requires_user_review": True,
+    }
+
+
+def _ftir_discovery_build_source_command(library_id: str, filters: dict[str, Any], candidate_ids: list[str]) -> str:
+    parts = ["ea ftir build-assignment-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+    include_candidates = list(filters["include_candidates"])
+    if not include_candidates and (filters["wavenumber_min_cm1"] is not None or filters["wavenumber_max_cm1"] is not None):
+        include_candidates = list(candidate_ids)
+    for candidate_id in include_candidates:
+        parts.extend(["--include-candidate", candidate_id])
+    for assignment_type in filters["assignment_types"]:
+        parts.extend(["--assignment-type", assignment_type])
+    for material_scope in filters["material_scopes"]:
+        parts.extend(["--material-scope", material_scope])
+    return " ".join(parts)
+
+
+def summarize_ftir_assignment_libraries(
+    *,
+    builtin_libraries: list[str] | None = None,
+    include_candidates: list[str] | None = None,
+    assignment_types: list[str] | None = None,
+    material_scopes: list[str] | None = None,
+    wavenumber_min_cm1: float | None = None,
+    wavenumber_max_cm1: float | None = None,
+) -> dict[str, Any]:
+    """Summarize built-in FTIR assignment libraries without creating project artifacts."""
+
+    libraries = _builtin_ftir_assignment_libraries()
+    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    if requested_library_ids:
+        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        if unknown:
+            available = ", ".join(sorted(libraries)) or "none"
+            raise FTIRProcessingError(f"Unknown built-in FTIR assignment library: {', '.join(unknown)}. Available libraries: {available}")
+        library_ids = sorted(dict.fromkeys(requested_library_ids))
+    else:
+        library_ids = sorted(libraries)
+
+    range_lower = wavenumber_min_cm1
+    range_upper = wavenumber_max_cm1
+    if range_lower is not None and range_upper is not None and range_lower > range_upper:
+        range_lower, range_upper = range_upper, range_lower
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_assignment_type(item) for item in assignment_types or [] if str(item).strip()}
+    material_set = {str(item).strip().lower() for item in material_scopes or [] if str(item).strip()}
+    filters = {
+        "builtin_libraries": library_ids,
+        "include_candidates": sorted(include_set),
+        "assignment_types": sorted(type_set),
+        "material_scopes": sorted(material_set),
+        "wavenumber_min_cm1": range_lower,
+        "wavenumber_max_cm1": range_upper,
+    }
+
+    summaries: list[dict[str, Any]] = []
+    total_candidate_count = 0
+    matching_candidate_count = 0
+    all_assignment_types: set[str] = set()
+    all_material_scopes: set[str] = set()
+    matching_reference_ids: set[str] = set()
+    global_min: float | None = None
+    global_max: float | None = None
+
+    for library_id in library_ids:
+        library = libraries[library_id]
+        raw_candidates = [candidate for candidate in _ftir_assignment_source_candidates(library) if isinstance(candidate, dict)]
+        total_candidate_count += len(raw_candidates)
+        matching_raw_candidates = [
+            candidate
+            for candidate in raw_candidates
+            if _candidate_matches_filters(
+                candidate,
+                include_candidates=include_set,
+                assignment_types=type_set,
+                material_scopes=material_set,
+            )
+            and _candidate_window_overlaps(candidate, range_lower, range_upper)
+        ]
+        candidate_summaries = [_ftir_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        matching_candidate_count += len(candidate_summaries)
+        type_counts: dict[str, int] = {}
+        library_material_scopes: set[str] = set()
+        library_min: float | None = None
+        library_max: float | None = None
+        for candidate in raw_candidates:
+            assignment_type = _normalize_assignment_type(candidate.get("assignment_type") or candidate.get("type"))
+            if assignment_type:
+                type_counts[assignment_type] = type_counts.get(assignment_type, 0) + 1
+                all_assignment_types.add(assignment_type)
+            for scope in _material_scope_terms(candidate.get("material_scope")):
+                library_material_scopes.add(scope)
+                all_material_scopes.add(scope)
+            lower, upper = _candidate_window(candidate)
+            if lower is not None and upper is not None:
+                library_min = lower if library_min is None else min(library_min, lower)
+                library_max = upper if library_max is None else max(library_max, upper)
+                global_min = lower if global_min is None else min(global_min, lower)
+                global_max = upper if global_max is None else max(global_max, upper)
+        candidate_reference_ids = {
+            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+        }
+        matching_reference_ids.update(candidate_reference_ids)
+        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
+        matching_reference_seed_ids = sorted(set(reference_seed_ids) & candidate_reference_ids)
+        summaries.append(
+            {
+                "library_id": library_id,
+                "description": str(library.get("description") or "").strip(),
+                "source": str(library.get("source") or "").strip(),
+                "total_candidate_count": len(raw_candidates),
+                "matching_candidate_count": len(candidate_summaries),
+                "assignment_type_counts": dict(sorted(type_counts.items())),
+                "material_scopes": sorted(library_material_scopes),
+                "wavenumber_range_cm1": [library_min, library_max] if library_min is not None and library_max is not None else [],
+                "reference_seed_count": len(reference_seed_ids),
+                "reference_seed_ids": reference_seed_ids,
+                "matching_reference_seed_ids": matching_reference_seed_ids,
+                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidates": candidate_summaries,
+            }
+        )
+
+    build_source_commands = [
+        _ftir_discovery_build_source_command(summary["library_id"], filters, summary["candidate_ids"])
+        for summary in summaries
+        if summary["matching_candidate_count"] > 0
+    ]
+    return {
+        "schema_version": "0.2",
+        "source": "ea.ftir.assignment_library_discovery:v0.2",
+        "status": "ready" if matching_candidate_count else "no_matching_candidates",
+        "available_builtin_libraries": sorted(libraries),
+        "library_count": len(summaries),
+        "total_candidate_count": total_candidate_count,
+        "matching_candidate_count": matching_candidate_count,
+        "available_assignment_types": sorted(all_assignment_types),
+        "available_material_scopes": sorted(all_material_scopes),
+        "available_wavenumber_range_cm1": [global_min, global_max] if global_min is not None and global_max is not None else [],
+        "matching_reference_ids": sorted(matching_reference_ids),
+        "filters": filters,
+        "libraries": summaries,
+        "next_commands": {
+            "build_assignment_packet": build_source_commands,
+            "register_reference_seeds": "ea references register-seeds /path/to/ea-project --source-packet suggestions/ftir/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "suggest_assignments": "ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/<result_id>/ftir_metadata.yml --source-file suggestions/ftir/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "prepare_review": "ea ftir prepare-review /path/to/ea-project --suggestion suggestions/ftir/<suggestion_id>/ftir_assignment_suggestions.yml --project-id <project-id>",
+        },
+        "boundaries": [
+            "This discovery command reads bundled FTIR assignment library metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download/parse full text, register references, create source packets, match bands, create ReviewRecords, inject citations, write memory, or prove composition/functional groups.",
+            "Use the listed build-assignment-packet, references register-seeds, suggest-assignments, and prepare-review commands when the user wants traceable project artifacts.",
+        ],
+    }
+
+
 def _source_reference_seeds(
     source_library: Any,
     *,

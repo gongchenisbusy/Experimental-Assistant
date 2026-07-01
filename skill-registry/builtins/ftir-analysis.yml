@@ -11,6 +11,7 @@ ea_skill:
   output_artifacts:
     - processed_result
     - context_record
+    - assignment_library_discovery_summary
     - assignment_source_packet
     - assignment_suggestion_record
     - assignment_review_package
@@ -51,6 +52,7 @@ ea_skill:
       - ea ftir inspect
       - ea ftir process
       - ea ftir report
+      - ea ftir list-assignment-libraries
       - ea ftir build-assignment-packet
       - ea ftir suggest-assignments
       - ea ftir prepare-review
@@ -74,6 +76,8 @@ ea_skill:
       confidence_boundary: metadata_record_only
     assignment_suggestions:
       implemented: true
+      discovery_helper: ea ftir list-assignment-libraries
+      discovery_output: assignment_library_discovery_summary
       built_in_assignment_library: generic_materials
       built_in_candidate_scope:
         - broad organic group-frequency starters
@@ -90,6 +94,7 @@ ea_skill:
       report_integration: optional_via_assignment_suggestion_argument
       memory_candidate_bridge: ea ftir propose-memory
       reference_seeds_required_for_builtin_sources: true
+      discovery_boundary: local_builtin_metadata_only_no_project_files_no_lookup_no_registration_no_source_packet_no_matching_no_review_no_citations_no_memory_no_proof
       required_candidate_fields:
         - assignment_label
         - wavenumber_window_cm1
@@ -101,6 +106,7 @@ ea_skill:
       boundary: source_backed_advisory_only_no_auto_apply_no_composition_or_functional_group_proof
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
+      - assignment library discovery lists bundled FTIR library and candidate coverage only; it does not create project files, run live lookup, register references, build source packets, match bands, inject citations, create ReviewRecords, write memory, or prove composition/functional groups
       - confirmed literature/source-candidate manifests can populate source packets only when explicit confirmation metadata is present; the packet builder does not run live search, download or parse articles, register references, inject citations, apply assignments, or prove composition/functional groups
       - source-backed assignment suggestions match reviewed candidate windows to detected bands and can be shown in reports, but remain advisory until user review
       - prepare-review writes grouped review packages only and does not create ReviewRecords or confirmed interpretations

@@ -10,6 +10,7 @@ from ea.ftir.service import (
     process_ftir_result,
     propose_ftir_assignment_memory_candidates,
     suggest_ftir_assignments,
+    summarize_ftir_assignment_libraries,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "process_ftir_result",
     "propose_ftir_assignment_memory_candidates",
     "suggest_ftir_assignments",
+    "summarize_ftir_assignment_libraries",
 ]

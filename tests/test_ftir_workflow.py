@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from ea.cli import main
-from ea.ftir import default_ftir_processing_parameters, inspect_ftir_file
+from ea.ftir import default_ftir_processing_parameters, inspect_ftir_file, summarize_ftir_assignment_libraries
 from ea.storage import read_markdown_record, read_yaml
 
 
@@ -797,6 +797,99 @@ def test_cli_builds_builtin_ftir_assignment_source_packet(tmp_path: Path, capsys
     assert filtered_packet["filters"]["material_scopes"] == ["polymer"]
 
 
+def test_ftir_assignment_library_summary_filters_source_backed_candidates() -> None:
+    summary = summarize_ftir_assignment_libraries(
+        builtin_libraries=["generic_materials"],
+        assignment_types=["inorganic_ion"],
+        material_scopes=["oxide"],
+        wavenumber_min_cm1=1300,
+        wavenumber_max_cm1=1500,
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["library_count"] == 1
+    assert summary["matching_candidate_count"] == 2
+    assert summary["filters"]["builtin_libraries"] == ["generic_materials"]
+    assert summary["filters"]["assignment_types"] == ["inorganic_ion"]
+    assert summary["filters"]["material_scopes"] == ["oxide"]
+    assert summary["filters"]["wavenumber_min_cm1"] == 1300
+    assert summary["filters"]["wavenumber_max_cm1"] == 1500
+    assert "inorganic_ion" in summary["available_assignment_types"]
+    assert "oxides" in summary["available_material_scopes"]
+    assert summary["available_wavenumber_range_cm1"] == [400.0, 3600.0]
+    assert "builtin-ftir-nakamoto-2009" in summary["matching_reference_ids"]
+
+    library = summary["libraries"][0]
+    assert library["library_id"] == "generic_materials"
+    assert library["total_candidate_count"] >= 18
+    assert library["matching_candidate_count"] == 2
+    assert "builtin-ftir-nakamoto-2009" in library["matching_reference_seed_ids"]
+    candidates = {candidate["candidate_id"]: candidate for candidate in library["candidates"]}
+    carbonate = candidates["ftir-builtin-carbonate-asymmetric-stretch-generic"]
+    assert carbonate["wavenumber_window_cm1"] == [1350.0, 1500.0]
+    assert carbonate["expected_feature"] == "absorbance_maximum"
+    assert carbonate["auto_applied"] is False
+    assert carbonate["requires_user_review"] is True
+    nitrate = candidates["ftir-builtin-nitrate-stretching-generic"]
+    assert nitrate["assignment_label"] == "nitrate NO3 stretching candidate"
+    command = summary["next_commands"]["build_assignment_packet"][0]
+    assert "build-assignment-packet" in command
+    assert "--include-candidate ftir-builtin-carbonate-asymmetric-stretch-generic" in command
+    assert "--include-candidate ftir-builtin-nitrate-stretching-generic" in command
+    assert "does not run live literature search" in " ".join(summary["boundaries"])
+
+
+def test_cli_lists_ftir_assignment_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "ftir",
+                "list-assignment-libraries",
+                "--builtin-library",
+                "generic_materials",
+                "--assignment-type",
+                "functional_group",
+                "--material-scope",
+                "polymer",
+                "--wavenumber-min-cm1",
+                "1650",
+                "--wavenumber-max-cm1",
+                "1800",
+            ]
+        )
+        == 0
+    )
+    summary = _json_output(capsys)
+    assert summary["status"] == "ready"
+    assert summary["libraries"][0]["library_id"] == "generic_materials"
+    assert "ftir-builtin-carbonyl-co-stretching-generic" in summary["libraries"][0]["candidate_ids"]
+    assert "suggest-assignments" in summary["next_commands"]["suggest_assignments"]
+
+    assert (
+        main(
+            [
+                "ftir",
+                "list-assignment-libraries",
+                "--builtin-library",
+                "generic_materials",
+                "--assignment-type",
+                "inorganic_ion",
+                "--material-scope",
+                "polymer",
+                "--wavenumber-min-cm1",
+                "2800",
+                "--wavenumber-max-cm1",
+                "3000",
+            ]
+        )
+        == 0
+    )
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["next_commands"]["build_assignment_packet"] == []
+
+
 def test_cli_builds_ftir_assignment_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
     workspace = tmp_path / "ftir-literature-manifest-project"
     assert main(
@@ -919,7 +1012,9 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea ftir inspect" in readme
+    assert "ea ftir list-assignment-libraries" in readme
     assert "ea ftir process" in skill
+    assert "ea ftir list-assignment-libraries" in skill
     assert "ea ftir suggest-assignments" in skill
     assert "ea ftir propose-memory" in skill
     assert "--assignment-suggestion" in skill
@@ -930,6 +1025,8 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     reference_text = ftir_reference.read_text(encoding="utf-8")
     assert "signal_mode" in reference_text
     assert "context_record" in reference_text
+    assert "list-assignment-libraries" in reference_text
+    assert "candidate counts, assignment types, material scopes, wavenumber ranges" in reference_text
     assert "build-assignment-packet" in reference_text
     assert "suggest-assignments" in reference_text
     assert "propose-memory" in reference_text
@@ -941,6 +1038,8 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
+    assert "assignment_library_discovery_summary" in ftir_record["notes"]
+    assert "ea ftir list-assignment-libraries" in ftir_record["notes"]
     assert "assignment_suggestions" in ftir_record["notes"]
     assert "memory_candidate proposals" in ftir_record["notes"]
     assert "built_in_assignment_library" in ftir_record["notes"]
