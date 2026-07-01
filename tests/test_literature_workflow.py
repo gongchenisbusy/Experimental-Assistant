@@ -1223,6 +1223,147 @@ def test_cli_literature_prepares_and_preflights_xps_source_candidate_manifest(tm
     assert "does not search" in " ".join(preflight_record["boundaries"])
 
 
+def test_literature_prepares_and_preflights_uv_vis_source_candidate_manifest(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="UV Vis Source Candidate Manifest",
+        project_slug="uv-vis-source-candidate-manifest",
+        research_direction="semiconductor optical absorption literature",
+        material_system="oxide semiconductor thin film",
+        experiment_type="UV-Vis characterization",
+        enable_literature=True,
+    )
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-uv-vis-source-candidate-manifest",
+            "selection_status": "selected_from_ranked_candidates",
+            "items": [
+                {
+                    "rank": 1,
+                    "candidate_id": "cand-uv-001",
+                    "title": "Optical absorption model for oxide semiconductor films",
+                    "authors": ["C. Optics"],
+                    "year": 2025,
+                    "venue": "Example Optical Materials",
+                    "doi": "10.1000/uv-vis-gap-source",
+                    "url": "https://doi.org/10.1000/uv-vis-gap-source",
+                }
+            ],
+        },
+    )
+
+    result = prepare_literature_source_candidate_manifest(
+        tmp_path,
+        method="uv-vis",
+        source_items_path=Path("literature/selected_items.yml"),
+        confirm_for_source_packet=True,
+        user_response="User confirmed UV-Vis source-candidate manifest staging.",
+        created_at="2026-07-01T19:00:00",
+    )
+    manifest_path = Path(result["manifest_path"])
+    manifest = read_yaml(manifest_path)
+
+    assert result["status"] == "confirmed_for_source_packet"
+    assert result["method"] == "uv_vis"
+    assert manifest["method_scope"] == ["uv_vis"]
+    assert manifest["candidates"][0]["candidate_type"] is None
+    assert manifest["candidates"][0]["include_in_source_packet"] is False
+    assert "future `ea uv-vis build-source-packet` workflow" in manifest["next_steps"][2]
+
+    draft_preflight = preflight_literature_source_candidate_manifest(
+        tmp_path,
+        method="uv_vis",
+        manifest_path=Path(result["manifest_ref"]),
+        checked_at="2026-07-01T19:01:00",
+    )
+    assert draft_preflight["status"] == "not_ready"
+    assert draft_preflight["errors"][0]["code"] == "source_candidate_manifest_has_no_included_candidates"
+
+    manifest["candidates"][0].update(
+        {
+            "include_in_source_packet": True,
+            "candidate_type": "optical_gap_candidate",
+            "optical_target": "absorption edge screening",
+            "reported_energy_eV": 3.18,
+            "energy_window_eV": [3.05, 3.30],
+            "transition_assumption": "direct-allowed Tauc-style screening context from the cited source",
+            "source_summary": "The selected UV-Vis source reports an optical-gap candidate for a comparable oxide film.",
+            "applicability_notes": ["Use only after checking film thickness, substrate/background, and transition-model assumptions."],
+            "caveats": ["Source-backed UV-Vis candidate only; not a final band-gap or mechanism proof."],
+        }
+    )
+    write_yaml(manifest_path, manifest)
+
+    ready_preflight = preflight_literature_source_candidate_manifest(
+        tmp_path,
+        method="uv_vis",
+        manifest_path=Path(result["manifest_ref"]),
+        checked_at="2026-07-01T19:02:00",
+    )
+    preflight_record = read_yaml(tmp_path / "literature" / "uv_vis_source_candidates_preflight.yml")
+    assert ready_preflight["status"] == "ready_for_source_packet"
+    assert ready_preflight["candidate_count"] == 1
+    assert ready_preflight["ready_count"] == 1
+    assert ready_preflight["invalid_count"] == 0
+    assert preflight_record["candidate_reports"][0]["status"] == "ready_for_source_packet"
+    assert "does not prove UV-Vis band gaps" in " ".join(preflight_record["boundaries"])
+
+
+def test_cli_literature_prepares_uv_vis_source_candidate_manifest(tmp_path: Path, capsys) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="CLI UV Vis Source Candidate Manifest",
+        project_slug="cli-uv-vis-source-candidate-manifest",
+        research_direction="optical absorption literature",
+        material_system="semiconductor film",
+        experiment_type="UV-Vis characterization",
+        enable_literature=True,
+    )
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-cli-uv-vis-source-candidate-manifest",
+            "selection_status": "selected_from_ranked_candidates",
+            "items": [
+                {
+                    "rank": 1,
+                    "candidate_id": "cand-cli-uv-001",
+                    "title": "UV-Vis optical transition model example",
+                    "doi": "10.1000/cli-uv-vis-source",
+                }
+            ],
+        },
+    )
+
+    assert (
+        main(
+            [
+                "literature",
+                "prepare-source-candidates",
+                str(tmp_path),
+                "--method",
+                "uv_vis",
+                "--source-items",
+                "literature/selected_items.yml",
+                "--confirm-for-source-packet",
+                "--user-response",
+                "User confirmed UV-Vis source-candidate manifest staging.",
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    manifest = read_yaml(Path(output["manifest_path"]))
+
+    assert output["status"] == "confirmed_for_source_packet"
+    assert output["method"] == "uv_vis"
+    assert manifest["method_scope"] == ["uv_vis"]
+    assert manifest["candidates"][0]["candidate_type"] is None
+
+
 def test_cli_literature_rank_candidates_populates_acquisition_targets(tmp_path: Path, capsys) -> None:
     initialize_project(
         tmp_path,
@@ -1799,6 +1940,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "prepare-source-candidates" in readme
     assert "preflight-source-candidates" in readme
     assert "confirmed_ftir_source_candidates.yml" in readme
+    assert "confirmed_uv_vis_source_candidates.yml" in readme
     assert "confirmed_xps_source_candidates.yml" in readme
     assert "public_search_state.yml" in readme
     assert "institution-access-guide" in readme
@@ -1812,6 +1954,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "search-public" in reference
     assert "prepare-source-candidates" in reference
     assert "preflight-source-candidates" in reference
+    assert "optical_gap_candidate" in reference
     assert "source_candidates_preflight.yml" in reference
     assert "include_in_source_packet: false" in reference
     assert "institution_access_guidance.yml" in reference
@@ -1828,9 +1971,11 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "contract boundaries until their implementation services exist" not in skill
     assert "prepare-source-candidates" in skill
     assert "preflight-source-candidates" in skill
+    assert "confirmed_uv_vis_source_candidates.yml" in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "source-candidate manifest preparation/preflight" in literature_record["notes"]
+    assert "FTIR/UV-Vis/XPS source-candidate" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
     assert "public_search_candidate_manifest" in manifest["output_artifacts"]
     assert "public_search_state_record" in manifest["output_artifacts"]
@@ -1848,8 +1993,8 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
-    assert "ftir_xps_source_candidate_manifest_preparation" in manifest["current_v0_2_support"]["implemented"]
-    assert "ftir_xps_source_candidate_manifest_preflight" in manifest["current_v0_2_support"]["implemented"]
+    assert "ftir_uv_vis_xps_source_candidate_manifest_preparation" in manifest["current_v0_2_support"]["implemented"]
+    assert "ftir_uv_vis_xps_source_candidate_manifest_preflight" in manifest["current_v0_2_support"]["implemented"]
     assert "institution_access_guidance_packet" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]

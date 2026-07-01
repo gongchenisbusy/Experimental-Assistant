@@ -23,6 +23,7 @@ Current v0.2 UV-Vis support:
 - Feature tables include `position`, `position_unit`, `wavelength_nm`, `energy_eV`, `prominence`, `signal_mode`, `feature_type`, `assignment_confidence`, and `assignment_source`.
 - Reports include an embedded UV-Vis figure, original figure path, feature tables, optical edge estimate, optional Tauc/Kubelka-Munk screening summary/table link, optional derivative screening summary/table link, confidence-labeled possible interpretations, file links, References, and provenance.
 - Public users can inspect `examples/public-uv-vis-project/` for a synthetic reviewed optical-screening walkthrough with Tauc screening, derivative screening, correction-context provenance, report, figure, healthcheck/eval, and traceability. It is not a source-backed suggestion example.
+- Literature source-candidate staging supports `ea literature prepare-source-candidates --method uv_vis` and `ea literature preflight-source-candidates --method uv_vis` for confirmed local literature manifests. Candidate types are `optical_transition_model`, `optical_gap_candidate`, `optical_feature_assignment`, and `correction_context_candidate`. This stage validates editable source-backed metadata only; EA v0.2 does not yet build UV-Vis source packets, inject report citations, auto-apply Tauc/Kubelka-Munk/correction models from these manifests, or prove band gaps/transition mechanisms.
 - `tauc_analysis` is disabled by default. Enable it only after the user reviews the transform (`absorbance` or `kubelka_munk`), transition assumption, exponent, and `fit_window_eV`. Absorbance Tauc screening requires `signal_mode=absorbance`; Kubelka-Munk screening requires `signal_mode=reflectance`.
 - `derivative_analysis` is disabled by default. Enable it only after the user reviews or accepts the derivative axis (`auto`, `energy_eV`, `wavelength_nm`, or `uv_vis_axis`) and understands that derivative extrema/inflection hints are screening-only.
 - `correction_context` is disabled by default. Enable it only after the user reviews substrate/reference/background/sample-geometry/diffuse-reflectance metadata. This record is metadata/provenance only; EA does not apply automatic numeric correction from it in v0.2.
@@ -36,6 +37,8 @@ ea review add /path/to/ea-project --target-type uv_vis_columns --target-ref raw/
 ea review add /path/to/ea-project --target-type uv_vis_parameters --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default UV-Vis parameters confirmed"
 ea uv-vis process /path/to/ea-project --metadata raw/uv_vis/char-20260630-001/metadata.yml --x-column wavelength_nm --y-column absorbance --x-unit nm --signal-mode absorbance --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
 ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea literature prepare-source-candidates /path/to/ea-project --method uv_vis --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed UV-Vis source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project --method uv_vis --manifest literature/confirmed_uv_vis_source_candidates.yml
 ```
 
 Optional reviewed derivative parameters can be supplied with `--parameters-json` or `--parameters-file`:
@@ -78,4 +81,4 @@ correction_context:
     - EA records context only; no automatic numeric correction is applied.
 ```
 
-Future UV-Vis work should add numeric baseline/substrate/reference correction algorithms after review, replicate comparison, richer material assignment libraries, and user-confirmed memory-candidate generation from report interpretations.
+Future UV-Vis work should add `uv-vis build-source-packet` / suggestion / review-package / report-integration / memory-candidate commands after the literature-manifest contract is stable, plus numeric baseline/substrate/reference correction algorithms after review, replicate comparison, and richer material assignment libraries.

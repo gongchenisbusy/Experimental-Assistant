@@ -701,9 +701,12 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "Tauc/Kubelka-Munk" in reference_text
     assert "derivative_analysis" in reference_text
     assert "correction_context" in reference_text
+    assert "prepare-source-candidates --method uv_vis" in reference_text
+    assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
     assert "Minimal UV-Vis workflow implemented" in uv_vis_record["notes"]
     assert "tauc_kubelka_munk_screening" in uv_vis_record["notes"]
     assert "derivative_screening" in uv_vis_record["notes"]
     assert "correction_context_records" in uv_vis_record["notes"]
+    assert "source-candidate manifest/preflight" in uv_vis_record["notes"]

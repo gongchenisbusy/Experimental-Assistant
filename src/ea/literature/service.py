@@ -32,7 +32,7 @@ SEARCH_SOURCES = [
 ]
 
 PUBLIC_METADATA_SOURCES: list[PublicMetadataSource] = ["crossref", "openalex", "arxiv"]
-SOURCE_CANDIDATE_METHODS = {"ftir", "xps"}
+SOURCE_CANDIDATE_METHODS = {"ftir", "uv_vis", "xps"}
 
 RANKING_HEADERS = [
     "candidate_id",
@@ -91,6 +91,23 @@ XPS_SOURCE_CANDIDATE_REQUIRED_FIELDS = [
     "confidence",
     "caveats",
 ]
+
+UV_VIS_SOURCE_CANDIDATE_REQUIRED_FIELDS = [
+    "candidate_id",
+    "candidate_type",
+    "source_summary",
+    "applicability_notes",
+    "reference_ids",
+    "confidence",
+    "caveats",
+]
+
+UV_VIS_SOURCE_CANDIDATE_TYPES = {
+    "optical_transition_model",
+    "optical_gap_candidate",
+    "optical_feature_assignment",
+    "correction_context_candidate",
+}
 
 
 def recommended_top_n(scope: ProjectScope) -> int | tuple[int, int]:
@@ -2315,7 +2332,17 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 def _source_candidate_method(method: str) -> str:
     normalized = str(method or "").strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {"infrared": "ftir", "ir": "ftir", "surface_spectroscopy": "xps"}
+    aliases = {
+        "infrared": "ftir",
+        "ir": "ftir",
+        "optical_absorption": "uv_vis",
+        "optical_spectroscopy": "uv_vis",
+        "uvvis": "uv_vis",
+        "uv_vis_absorption": "uv_vis",
+        "uv_visible": "uv_vis",
+        "uv_visible_absorption": "uv_vis",
+        "surface_spectroscopy": "xps",
+    }
     normalized = aliases.get(normalized, normalized)
     if normalized not in SOURCE_CANDIDATE_METHODS:
         raise ValueError(f"Unsupported source-candidate method: {method}. Expected one of {sorted(SOURCE_CANDIDATE_METHODS)}")
@@ -2405,6 +2432,30 @@ def _source_candidate_base(method: str, item: dict[str, Any], *, index: int, see
                 "expected_feature": "absorbance_maximum",
             }
         )
+    elif method == "uv_vis":
+        common.update(
+            {
+                "candidate_type": None,
+                "optical_target": None,
+                "reported_energy_eV": None,
+                "energy_window_eV": [None, None],
+                "wavelength_window_nm": [None, None],
+                "transition_model": None,
+                "transition_assumption": None,
+                "tauc_transform": None,
+                "signal_mode": None,
+                "correction_context": {
+                    "substrate": None,
+                    "reference": None,
+                    "background": None,
+                    "sample_geometry": None,
+                    "diffuse_reflectance_model": None,
+                },
+                "evidence_requirements": [
+                    "Link the candidate to reviewed UV-Vis metadata, processing parameters, and project references before use."
+                ],
+            }
+        )
     else:
         common.update(
             {
@@ -2421,6 +2472,48 @@ def _source_candidate_base(method: str, item: dict[str, Any], *, index: int, see
             }
         )
     return common
+
+
+def _source_candidate_builder_next_step(method: str, output_ref: str) -> str:
+    if method == "ftir":
+        return f"After preflight passes, run `ea ftir build-assignment-packet /path/to/ea-project --literature-manifest {output_ref}`."
+    if method == "xps":
+        return f"After preflight passes, run `ea xps build-source-packet /path/to/ea-project --literature-manifest {output_ref}`."
+    return (
+        "After preflight passes, keep the confirmed UV-Vis manifest as source-backed staging for a future "
+        "`ea uv-vis build-source-packet` workflow; EA v0.2 does not yet build UV-Vis source packets from this manifest."
+    )
+
+
+def _source_candidate_method_aliases(method: str) -> set[str]:
+    if method == "ftir":
+        return {"ftir", "infrared", "ftir_assignment", "ftir_assignment_source_packet"}
+    if method == "uv_vis":
+        return {
+            "uv_vis",
+            "uvvis",
+            "uv_visible",
+            "uv_visible_absorption",
+            "uv_vis_absorption",
+            "optical_absorption",
+            "optical_spectroscopy",
+        }
+    return {"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"}
+
+
+def _source_candidate_preflight_fix_step(method: str) -> str:
+    if method == "uv_vis":
+        return "Fix errors and missing required metadata before using this UV-Vis manifest in a future source-packet workflow."
+    return "Fix errors and missing required metadata before building FTIR/XPS source packets."
+
+
+def _source_candidate_preflight_boundary(method: str) -> str:
+    if method == "uv_vis":
+        return (
+            "Preflight status does not prove UV-Vis band gaps, transition types, optical feature assignments, "
+            "substrate/reference/background corrections, mechanisms, thickness, or material state."
+        )
+    return "Preflight status does not prove FTIR composition/functional groups or XPS chemical states/composition."
 
 
 def prepare_literature_source_candidate_manifest(
@@ -2481,10 +2574,7 @@ def prepare_literature_source_candidate_manifest(
         "next_steps": [
             "Fill method-specific candidate fields and set include_in_source_packet: true only for candidates the user wants staged.",
             f"Run `ea literature preflight-source-candidates /path/to/ea-project --method {method} --manifest {output_ref}` before building a source packet.",
-            (
-                f"After preflight passes, run `ea {'ftir build-assignment-packet' if method == 'ftir' else 'xps build-source-packet'} "
-                f"/path/to/ea-project --literature-manifest {output_ref}`."
-            ),
+            _source_candidate_builder_next_step(method, output_ref),
         ],
         "boundaries": [
             "This manifest preparation is local deterministic staging only.",
@@ -2527,7 +2617,12 @@ def prepare_literature_source_candidate_manifest(
 
 def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> list[str]:
     missing: list[str] = []
-    required = FTIR_SOURCE_CANDIDATE_REQUIRED_FIELDS if method == "ftir" else XPS_SOURCE_CANDIDATE_REQUIRED_FIELDS
+    if method == "ftir":
+        required = FTIR_SOURCE_CANDIDATE_REQUIRED_FIELDS
+    elif method == "uv_vis":
+        required = UV_VIS_SOURCE_CANDIDATE_REQUIRED_FIELDS
+    else:
+        required = XPS_SOURCE_CANDIDATE_REQUIRED_FIELDS
     for field in required:
         value = candidate.get(field)
         if value in (None, "", [], {}):
@@ -2537,6 +2632,46 @@ def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> 
         if not (isinstance(window, list | tuple) and len(window) >= 2 and _as_float(window[0]) is not None and _as_float(window[1]) is not None):
             if "wavenumber_window_cm1" not in missing:
                 missing.append("wavenumber_window_cm1")
+    elif method == "uv_vis":
+        candidate_type = str(candidate.get("candidate_type") or "").strip().lower().replace("-", "_")
+        if candidate_type not in UV_VIS_SOURCE_CANDIDATE_TYPES and "candidate_type" not in missing:
+            missing.append("supported_candidate_type")
+        energy = _as_float(candidate.get("reported_energy_eV"))
+        energy_window = candidate.get("energy_window_eV")
+        has_energy_window = (
+            isinstance(energy_window, list | tuple)
+            and len(energy_window) >= 2
+            and _as_float(energy_window[0]) is not None
+            and _as_float(energy_window[1]) is not None
+        )
+        wavelength_window = candidate.get("wavelength_window_nm")
+        has_wavelength_window = (
+            isinstance(wavelength_window, list | tuple)
+            and len(wavelength_window) >= 2
+            and _as_float(wavelength_window[0]) is not None
+            and _as_float(wavelength_window[1]) is not None
+        )
+        if candidate_type == "optical_transition_model":
+            for field in ["transition_model", "transition_assumption", "tauc_transform"]:
+                if candidate.get(field) in (None, "", [], {}):
+                    missing.append(field)
+        elif candidate_type == "optical_gap_candidate":
+            if energy is None and not has_energy_window:
+                missing.append("reported_energy_eV_or_energy_window_eV")
+            if candidate.get("transition_assumption") in (None, "", [], {}):
+                missing.append("transition_assumption")
+        elif candidate_type == "optical_feature_assignment":
+            if energy is None and not has_energy_window and not has_wavelength_window:
+                missing.append("reported_energy_or_wavelength_window")
+            if candidate.get("optical_target") in (None, "", [], {}):
+                missing.append("optical_target")
+        elif candidate_type == "correction_context_candidate":
+            correction_context = candidate.get("correction_context")
+            if not isinstance(correction_context, dict) or not any(
+                correction_context.get(key)
+                for key in ["substrate", "reference", "background", "sample_geometry", "diffuse_reflectance_model"]
+            ):
+                missing.append("correction_context")
     else:
         suggestion_type = str(candidate.get("suggestion_type") or "").strip().lower().replace("-", "_")
         if suggestion_type == "spin_orbit_constraint":
@@ -2579,9 +2714,7 @@ def preflight_literature_source_candidate_manifest(
             root,
             manifest_path=resolved_manifest,
             method=method,
-            method_aliases={"ftir", "infrared", "ftir_assignment", "ftir_assignment_source_packet"}
-            if method == "ftir"
-            else {"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"},
+            method_aliases=_source_candidate_method_aliases(method),
         )
         warnings.extend(manifest_warnings)
         candidates = [candidate for candidate in library.get("candidates") or [] if isinstance(candidate, dict)]
@@ -2665,12 +2798,12 @@ def preflight_literature_source_candidate_manifest(
         "errors": errors,
         "warnings": warnings,
         "next_steps": [
-            "Fix errors and missing required metadata before building FTIR/XPS source packets.",
+            _source_candidate_preflight_fix_step(method),
             "Run `ea references register-seeds --source-packet ...` only after a source packet is built and the user wants those seeds registered.",
         ],
         "boundaries": [
             "Preflight reads local YAML only; it does not search, download, parse full text, register references, inject citations, or apply assignments/parameters.",
-            "Preflight status does not prove FTIR composition/functional groups or XPS chemical states/composition.",
+            _source_candidate_preflight_boundary(method),
         ],
     }
     write_yaml(output_path, preflight)

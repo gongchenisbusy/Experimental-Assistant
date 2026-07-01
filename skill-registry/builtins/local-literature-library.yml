@@ -65,8 +65,8 @@ ea_skill:
       - explicit_public_metadata_search_connectors
       - public_metadata_search_resume_state
       - supplied_candidate_ranking_and_selection_export
-      - ftir_xps_source_candidate_manifest_preparation
-      - ftir_xps_source_candidate_manifest_preflight
+      - ftir_uv_vis_xps_source_candidate_manifest_preparation
+      - ftir_uv_vis_xps_source_candidate_manifest_preflight
       - dedicated_workflow_handoff_packet
       - zotero_codex_query_and_target_manifest_generation
       - institution_access_guidance_packet

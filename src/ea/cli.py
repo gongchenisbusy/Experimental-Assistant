@@ -568,17 +568,23 @@ def build_parser() -> argparse.ArgumentParser:
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
-    lit_prepare_sources = literature_sub.add_parser("prepare-source-candidates", help="prepare an editable FTIR/XPS source-candidate manifest from local literature items")
+    lit_prepare_sources = literature_sub.add_parser(
+        "prepare-source-candidates",
+        help="prepare an editable FTIR/UV-Vis/XPS source-candidate manifest from local literature items",
+    )
     lit_prepare_sources.add_argument("workspace", type=Path)
-    lit_prepare_sources.add_argument("--method", required=True, choices=["ftir", "xps"])
+    lit_prepare_sources.add_argument("--method", required=True, choices=["ftir", "uv_vis", "xps"])
     lit_prepare_sources.add_argument("--source-items", type=Path)
     lit_prepare_sources.add_argument("--output", type=Path)
     lit_prepare_sources.add_argument("--confirm-for-source-packet", action="store_true")
     lit_prepare_sources.add_argument("--user-response")
     lit_prepare_sources.add_argument("--max-items", type=int)
-    lit_preflight_sources = literature_sub.add_parser("preflight-source-candidates", help="preflight a confirmed FTIR/XPS source-candidate manifest")
+    lit_preflight_sources = literature_sub.add_parser(
+        "preflight-source-candidates",
+        help="preflight a confirmed FTIR/UV-Vis/XPS source-candidate manifest",
+    )
     lit_preflight_sources.add_argument("workspace", type=Path)
-    lit_preflight_sources.add_argument("--method", required=True, choices=["ftir", "xps"])
+    lit_preflight_sources.add_argument("--method", required=True, choices=["ftir", "uv_vis", "xps"])
     lit_preflight_sources.add_argument("--manifest", required=True, type=Path)
     lit_preflight_sources.add_argument("--output", type=Path)
 
