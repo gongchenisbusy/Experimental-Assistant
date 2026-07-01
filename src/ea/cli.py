@@ -87,6 +87,7 @@ from ea.uv_vis import (
     build_uv_vis_source_packet,
     default_uv_vis_processing_parameters,
     inspect_uv_vis_file,
+    prepare_uv_vis_interpretation_review_package,
     process_uv_vis_result,
     suggest_uv_vis_interpretations,
 )
@@ -375,6 +376,11 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_suggest.add_argument("--source-file", required=True, type=Path)
     uv_vis_suggest.add_argument("--project-id")
     uv_vis_suggest.add_argument("--related-record", action="append", default=[])
+    uv_vis_prepare_review = uv_vis_sub.add_parser("prepare-review", help="prepare a grouped review package from UV-Vis interpretation suggestions")
+    uv_vis_prepare_review.add_argument("workspace", type=Path)
+    uv_vis_prepare_review.add_argument("--suggestion", required=True, type=Path)
+    uv_vis_prepare_review.add_argument("--project-id")
+    uv_vis_prepare_review.add_argument("--candidate-id", action="append", default=[])
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
@@ -1179,7 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "uv-vis":
         project_id = getattr(args, "project_id", None)
-        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations"} and not project_id:
+        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.uv_vis_command == "inspect":
             inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
@@ -1239,6 +1245,16 @@ def main(argv: list[str] | None = None) -> int:
                     uv_vis_metadata_path=_project_path(args.workspace, args.metadata),
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.uv_vis_command == "prepare-review":
+            _print_json(
+                prepare_uv_vis_interpretation_review_package(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    candidate_ids=args.candidate_id,
                 )
             )
             return 0

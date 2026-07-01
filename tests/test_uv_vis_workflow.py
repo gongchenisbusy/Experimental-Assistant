@@ -1018,6 +1018,31 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
                     "confidence": "low",
                     "caveats": ["Unresolved source; advisory only."],
                 },
+                {
+                    "candidate_id": "uv-feature-no-match",
+                    "candidate_type": "optical_feature_assignment",
+                    "optical_target": "near-UV absorption feature",
+                    "feature_label": "source-backed near-UV feature with no current match",
+                    "energy_window_eV": [3.0, 3.2],
+                    "expected_feature": "absorbance_maximum",
+                    "source_summary": "Source describes a comparable near-UV feature that is absent from the current processed spectrum.",
+                    "applicability_notes": ["Keep as no-match context unless processing or candidate windows change."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "low",
+                    "caveats": ["No current processed evidence match."],
+                },
+                {
+                    "candidate_id": "uv-gap-invalid",
+                    "candidate_type": "optical_gap_candidate",
+                    "optical_target": "invalid source metadata fixture",
+                    "reported_energy_eV": 2.1,
+                    "energy_window_eV": [2.0, 2.2],
+                    "transition_assumption": "direct-allowed screening context",
+                    "applicability_notes": ["Deliberately missing source summary for validation."],
+                    "reference_ids": ["ref-uv-gap"],
+                    "confidence": "low",
+                    "caveats": ["Invalid test fixture."],
+                },
             ],
         },
     )
@@ -1041,11 +1066,11 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     provenance = read_yaml(Path(output["provenance"]))
 
     assert output["status"] == "ready_for_user_review"
-    assert output["candidate_count"] == 4
+    assert output["candidate_count"] == 6
     assert output["ready_for_user_review_count"] == 3
     assert output["needs_reference_registration_count"] == 1
-    assert output["no_evidence_match_count"] == 0
-    assert output["invalid_count"] == 0
+    assert output["no_evidence_match_count"] == 1
+    assert output["invalid_count"] == 1
     assert record["source"] == "ea.uv_vis.interpretation_suggestions:v0.2"
     assert record["source_packet_ref"] == packet_ref
     assert record["uv_vis_metadata_ref"] == metadata_ref
@@ -1069,12 +1094,51 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     unresolved = candidates["uv-transition-unresolved"]
     assert unresolved["status"] == "needs_reference_registration"
     assert unresolved["unresolved_reference_ids"] == ["ref-missing"]
+    assert candidates["uv-feature-no-match"]["status"] == "no_evidence_match"
+    assert candidates["uv-gap-invalid"]["status"] == "invalid_missing_required_metadata"
+    assert "source_summary" in candidates["uv-gap-invalid"]["missing_fields"]
     assert "ref-missing" in record["reference_ids"]
     assert set(table["candidate_id"]) == set(candidates)
     assert provenance["workflow"] == "uv_vis_interpretation_suggestion"
     assert provenance["inputs"]["records"] == [packet_ref, metadata_ref, "raw/uv_vis/char-test/metadata.yml"]
     assert {features_ref, tauc_ref, derivative_ref, correction_ref}.issubset(set(provenance["inputs"]["files"]))
     assert set(provenance["source_refs"]) == {"ref-uv-gap", "ref-missing"}
+
+    suggestion_ref = Path(output["record"]).relative_to(workspace).as_posix()
+    review_count_before_package = len(list((workspace / "reviews").glob("*.yml")))
+    assert main(["uv-vis", "prepare-review", str(workspace), "--project-id", project_id, "--suggestion", suggestion_ref]) == 0
+    review_package_output = _json_output(capsys)
+    assert review_package_output["status"] == "review_package_prepared"
+    assert review_package_output["selected_candidate_count"] == 6
+    assert review_package_output["selected_status_counts"]["ready_for_user_review"] == 3
+    assert review_package_output["selected_status_counts"]["needs_reference_registration"] == 1
+    assert review_package_output["selected_status_counts"]["no_evidence_match"] == 1
+    assert review_package_output["selected_status_counts"]["invalid_missing_required_metadata"] == 1
+    assert len(list((workspace / "reviews").glob("*.yml"))) == review_count_before_package
+
+    review_package = read_yaml(Path(review_package_output["review_package"]))
+    review_package_markdown = Path(review_package_output["review_package_markdown"]).read_text(encoding="utf-8")
+    groups = {group["group"]: set(group["candidate_ids"]) for group in review_package["groups"]}
+    assert review_package["source"] == "ea.uv_vis.interpretation_review_package:v0.2"
+    assert review_package["review_target_type"] == "uv_vis_interpretation_suggestions"
+    assert review_package["review_target_ref"] == suggestion_ref
+    assert groups["ready_for_user_review"] == {"uv-gap-ready", "uv-feature-ready", "uv-correction-ready"}
+    assert groups["needs_reference_registration"] == {"uv-transition-unresolved"}
+    assert groups["no_evidence_match"] == {"uv-feature-no-match"}
+    assert groups["invalid_or_incomplete"] == {"uv-gap-invalid"}
+    assert "ref-missing" in review_package["unresolved_reference_ids"]
+    assert "ea review add /path/to/ea-project" in review_package["recommended_commands"]["create_review_record"]
+    assert "ea uv-vis suggest-interpretations" in review_package["recommended_commands"]["rerun_after_reference_registration"]
+    assert "does not create a ReviewRecord" in " ".join(review_package["boundaries"])
+    assert "does not apply UV-Vis optical models" in " ".join(review_package["boundaries"])
+    assert read_yaml(Path(review_package_output["provenance"]))["workflow"] == "uv_vis_interpretation_review_package"
+    assert "UV-Vis Interpretation Suggestion Review Package" in review_package_markdown
+    assert "uv-gap-ready" in review_package_markdown
+    assert "visible absorption feature" in review_package_markdown
+    assert "reported_energy_eV=2.1" in review_package_markdown
+    assert "uv-feature-no-match" in review_package_markdown
+    assert "uv-gap-invalid" in review_package_markdown
+    assert "does not apply UV-Vis optical models" in review_package_markdown
 
 
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
@@ -1088,9 +1152,11 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis inspect" in readme
     assert "ea uv-vis build-source-packet" in readme
     assert "ea uv-vis suggest-interpretations" in readme
+    assert "ea uv-vis prepare-review" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
     assert "ea uv-vis suggest-interpretations" in skill
+    assert "ea uv-vis prepare-review" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
@@ -1101,6 +1167,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "prepare-source-candidates --method uv_vis" in reference_text
     assert "ea uv-vis build-source-packet" in reference_text
     assert "ea uv-vis suggest-interpretations" in reference_text
+    assert "ea uv-vis prepare-review" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
@@ -1111,3 +1178,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "source-candidate manifest/preflight" in uv_vis_record["notes"]
     assert "source_packet building" in uv_vis_record["notes"]
     assert "interpretation_suggestions" in uv_vis_record["notes"]
+    assert "review packages" in uv_vis_record["notes"]
