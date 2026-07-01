@@ -1423,31 +1423,30 @@ def test_cli_builds_xps_parameter_source_packet_from_library(tmp_path: Path, cap
     project_frontmatter, _ = read_markdown_record(Path(project["project"]))
     project_id = project_frontmatter["project_id"]
 
-    assert main(
-        [
-            "references",
-            "add",
-            str(workspace),
-            "--project-id",
-            project_id,
-            "--citation",
-            "User-curated XPS reference note with source-backed Fe 2p and Tougaard candidates.",
-            "--title",
-            "Project XPS parameter note",
-            "--url",
-            "https://example.org/project-xps-parameter-note",
-            "--source-type",
-            "manual",
-        ]
-    ) == 0
-    reference = _json_output(capsys)
-    ref_id = Path(reference["reference"]).stem
-
     library = workspace / "project_xps_parameter_library.yml"
     library.write_text(
-        f"""
+        """
 schema_version: "0.2"
 library_id: project-xps-library
+reference_seeds:
+  ref-xps-seed-fe2p-001:
+    citation: "Seeded Fe 2p spin-orbit reference note. Example Journal (2026)."
+    title: "Seeded Fe 2p spin-orbit reference note"
+    year: 2026
+    url: "https://example.org/seeded-xps-fe2p"
+    source_type: manual
+  ref-xps-seed-tougaard-001:
+    citation: "Seeded Tougaard U2 reference note. Example Journal (2026)."
+    title: "Seeded Tougaard U2 reference note"
+    year: 2026
+    url: "https://example.org/seeded-xps-tougaard"
+    source_type: manual
+  ref-xps-seed-o1s-ignored:
+    citation: "Filtered O 1s XPS reference note. Example Journal (2026)."
+    title: "Filtered O 1s XPS reference note"
+    year: 2026
+    url: "https://example.org/seeded-xps-o1s"
+    source_type: manual
 candidates:
   - candidate_id: xps-param-fe2p-spin-001
     suggestion_type: spin_orbit_constraint
@@ -1461,7 +1460,7 @@ candidates:
     applicability_notes:
       - Applies only after reviewed Fe 2p component IDs, bounds, and background are confirmed.
     reference_ids:
-      - {ref_id}
+      - ref-xps-seed-fe2p-001
     confidence: low
   - candidate_id: xps-param-tougaard-u2-001
     suggestion_type: tougaard_parameter
@@ -1472,7 +1471,7 @@ candidates:
     applicability_notes:
       - Requires a reviewed background region and user-confirmed B scale before subtraction.
     reference_ids:
-      - {ref_id}
+      - ref-xps-seed-tougaard-001
     confidence: low
   - candidate_id: xps-param-o1s-spin-ignored
     suggestion_type: spin_orbit_constraint
@@ -1485,7 +1484,7 @@ candidates:
     applicability_notes:
       - Used only to verify filtering.
     reference_ids:
-      - {ref_id}
+      - ref-xps-seed-o1s-ignored
 """.strip(),
         encoding="utf-8",
     )
@@ -1510,15 +1509,44 @@ candidates:
     packet_output = _json_output(capsys)
     assert packet_output["status"] == "ready_for_suggest_parameters"
     assert packet_output["candidate_count"] == 2
+    assert packet_output["reference_seed_count"] == 2
     packet = read_yaml(Path(packet_output["source_packet"]))
     assert packet["source"] == "ea.xps.parameter_source_packet:v0.2"
     assert packet["source_library_ref"] == library.relative_to(workspace).as_posix()
     assert packet["candidate_count"] == 2
+    assert packet["reference_seed_count"] == 2
+    assert set(packet["reference_seeds"]) == {"ref-xps-seed-fe2p-001", "ref-xps-seed-tougaard-001"}
+    assert "ref-xps-seed-o1s-ignored" not in packet["reference_seeds"]
+    assert packet["reference_seeds"]["ref-xps-seed-fe2p-001"]["title"] == "Seeded Fe 2p spin-orbit reference note"
     assert packet["candidates"][0]["parameter_origin"] == "source_suggested"
+    assert packet["reference_ids"] == ["ref-xps-seed-fe2p-001", "ref-xps-seed-tougaard-001"]
     assert packet["filters"]["include_candidates"] == ["xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"]
+    assert "register-seeds" in " ".join(packet["next_steps"])
+    assert "registration hints only" in " ".join(packet["boundaries"])
     assert "does not perform unconfirmed live network lookup" in " ".join(packet["boundaries"])
     assert "EA may use those sources to prepare candidates" in " ".join(packet["boundaries"])
     assert (workspace / packet["provenance_ref"]).exists()
+
+    packet_ref = Path(packet_output["source_packet"]).relative_to(workspace).as_posix()
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                packet_ref,
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    seed_output = _json_output(capsys)
+    assert seed_output["imported_count"] == 2
+    assert {item["reference_id"] for item in seed_output["imported"]} == {"ref-xps-seed-fe2p-001", "ref-xps-seed-tougaard-001"}
+    assert seed_output["skipped_count"] == 0
+    assert (workspace / "literature" / "references" / "ref-xps-seed-fe2p-001.yml").exists()
 
     assert main(
         [
@@ -1526,7 +1554,7 @@ candidates:
             "suggest-parameters",
             str(workspace),
             "--source-file",
-            Path(packet_output["source_packet"]).relative_to(workspace).as_posix(),
+            packet_ref,
             "--project-id",
             project_id,
         ]
@@ -1701,6 +1729,9 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
 
     assert "ea xps inspect" in readme
     assert "ea xps process" in skill
+    assert "ea xps build-source-packet" in skill
+    assert "ea xps suggest-parameters" in skill
+    assert "register-seeds" in skill
     assert "references/xps-workflow.md" in skill
     assert xps_reference.exists()
     xps_reference_text = xps_reference.read_text(encoding="utf-8")
@@ -1710,6 +1741,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "spin_orbit_constraints" in xps_reference_text
     assert "build-source-packet" in xps_reference_text
     assert "xps_parameter_source_packet" in xps_reference_text
+    assert "reference_seeds" in xps_reference_text
+    assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
     assert "region_records" in xps_reference_text
@@ -1724,6 +1757,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
     assert "parameter_source_packets" in xps_record["notes"]
+    assert "reference_seeds" in xps_record["notes"]
+    assert "register-seeds" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
     assert "spin_orbit_constraints" in xps_record["notes"]
     assert "region_records" in xps_record["notes"]

@@ -20,7 +20,7 @@ Current v0.2 XPS support:
 - Raw import uses `ea raw import --characterization-type xps`.
 - Inspection identifies common XPS files by path/name, binding-energy metadata, and binding-energy-like ranges.
 - Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, disabled-by-default `component_quantification` screening from reviewed binding-energy windows, disabled-by-default `background_model` records for reviewed Shirley/Tougaard/linear/local-minimum/rolling-quantile choices, disabled-by-default `background_subtraction` numeric linear, Shirley, or Tougaard U2 subtraction inside reviewed regions with reviewed anchor points/windows, disabled-by-default `component_fit` screening from reviewed regions, explicit components, peak shapes, initial values, bounds, selected intensity/background columns, optional reviewed `spin_orbit_constraints` with source-backed parameter metadata when applicable, references, caveats, and fit-quality thresholds, and disabled-by-default `region_records` for reviewed survey/core-level/project-region organization and provenance.
-- `ea xps build-source-packet` creates standard XPS parameter source packets from project-local candidate libraries or editable templates; local-literature or confirmed search connectors may generate the same packet schema. `ea xps suggest-parameters` records source-backed `spin_orbit_constraint` and `tougaard_parameter` candidates from those packets under `suggestions/xps/` without applying them to processing parameters.
+- `ea xps build-source-packet` creates standard XPS parameter source packets from project-local candidate libraries or editable templates; local-literature or confirmed search connectors may generate the same packet schema. XPS source packets can carry filtered `reference_seeds` for candidate `reference_ids`; use `ea references register-seeds` explicitly before treating those seed IDs as registered project references. `ea xps suggest-parameters` records source-backed `spin_orbit_constraint` and `tougaard_parameter` candidates from those packets under `suggestions/xps/` without applying them to processing parameters.
 - Processed CSV files include `binding_energy_raw`, calibrated `binding_energy_eV`, `raw_intensity`, optional `baseline_signal`, optional `smoothed_intensity`, and `processed_intensity`.
 - When `background_subtraction.enabled` is true with method `reviewed_linear_background_subtraction`, `reviewed_shirley_background_subtraction`, or `reviewed_tougaard_u2_background_subtraction`, processed CSV files also include the reviewed background column, background-subtracted intensity column, and region ID column for the supplied binding-energy windows.
 - When `component_fit.enabled` is true with method `reviewed_component_fit_screening`, processed CSV files also include the reviewed component-fit intensity column, residual column, and fit-region ID column only for supplied binding-energy windows.
@@ -30,7 +30,7 @@ Current v0.2 XPS support:
 - When `background_model.enabled` is true, EA writes `xps_background.yml` with reviewed background region/model choices, windows, software/tool refs, reference IDs, reviewer notes, caveats, and whether the background had already been applied outside EA.
 - When `background_subtraction.enabled` is true, EA writes `xps_background_subtraction.yml` with reviewed subtraction method, regions, left/right anchors, optional Shirley iterations/convergence, optional Tougaard U2 `B`/`C_eV2`/kernel/integration-direction metadata, output columns, references, warnings, caveats, and confidence.
 - When `component_fit.enabled` is true, EA writes `xps_component_fit.yml` and `xps_component_fit.csv` with reviewed component IDs, peak shapes, initial/fitted values, bounds, optional reviewed spin-orbit constraint metadata, fit-quality metrics, reference IDs, caveats, confidence, and record/table refs.
-- When `build-source-packet` is run, EA writes a standard `xps_parameter_source_packet.yml`-style YAML packet with filters, candidate metadata, reference IDs, provenance, and no-auto-application boundaries.
+- When `build-source-packet` is run, EA writes a standard `xps_parameter_source_packet.yml`-style YAML packet with filters, candidate metadata, reference IDs, optional filtered `reference_seeds`, provenance, and no-auto-application boundaries.
 - When `suggest-parameters` is run, EA writes `xps_parameter_suggestions.yml` and `xps_parameter_suggestions.csv` with candidate status, target parameter path, source summary, applicability notes, reference IDs, unresolved-reference warnings, and `auto_applied: false`.
 - When `region_records.enabled` is true, EA writes `xps_region_records.yml` and `xps_region_records.csv` with reviewed region roles, binding-energy windows, calibration group IDs, linked output refs, reference IDs, caveats, confidence, and record/table refs.
 - Reports include an embedded XPS figure, original figure path, calibration/background section, peak table, optional component screening table, optional component-fit section/table, optional multi-region section/table, confidence-labeled possible interpretations, file links, References, and provenance.
@@ -45,6 +45,7 @@ ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps
 ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
 ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
 ea xps build-source-packet /path/to/ea-project --library-file project_xps_parameter_library.yml --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
+ea references register-seeds /path/to/ea-project --source-packet suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea xps suggest-parameters /path/to/ea-project --source-file suggestions/xps/source-packets/xps_parameter_source_packet.yml --related-record raw/xps/char-20260630-001/metadata.yml
 ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-001 --calibration-review-ref review-20260630-002 --parameter-review-ref review-20260630-003 --sample-ref sample-001
 ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
@@ -80,11 +81,17 @@ ea xps build-source-packet /path/to/ea-project --library-file project_xps_parame
 ea xps build-source-packet /path/to/ea-project --write-template
 ```
 
-Source-packet building is a staging step. It filters and copies candidate metadata into the standard packet schema, records provenance, and does not validate references or apply values; `ea xps suggest-parameters` remains the review-record step. This command boundary means no unconfirmed live lookup or silent parameter application inside the command, not a ban on EA preparing source-backed candidates from reviewed project literature, local libraries, user-provided sources, or user-confirmed search workflows.
+Source-packet building is a staging step. It filters and copies candidate metadata plus matching `reference_seeds` into the standard packet schema, records provenance, and does not validate references or apply values; `ea references register-seeds` remains the explicit project-reference registration step and `ea xps suggest-parameters` remains the review-record step. This command boundary means no unconfirmed live lookup or silent parameter application inside the command, not a ban on EA preparing source-backed candidates from reviewed project literature, local libraries, user-provided sources, or user-confirmed search workflows.
 
 Optional source-backed parameter suggestion source packet:
 
 ```yaml
+reference_seeds:
+  ref-xps-spin-orbit-001:
+    citation: "Author A. XPS spin-orbit parameter note. Journal (2026)."
+    title: "XPS spin-orbit parameter note"
+    year: 2026
+    url: "https://example.org/xps-spin-orbit-note"
 candidates:
   - candidate_id: xps-param-fe2p-spin-001
     suggestion_type: spin_orbit_constraint

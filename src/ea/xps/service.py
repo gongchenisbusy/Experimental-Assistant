@@ -578,6 +578,54 @@ def _xps_parameter_source_candidates(source_packet: Any) -> list[Any]:
     return []
 
 
+def _xps_parameter_source_reference_seeds(
+    source_packet: Any,
+    *,
+    referenced_ids: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(source_packet, dict):
+        return {}
+    raw_seeds = source_packet.get("reference_seeds") or {}
+    if not raw_seeds:
+        return {}
+    if not isinstance(raw_seeds, dict):
+        warnings.append(
+            _warning(
+                "xps_parameter_source_reference_seeds_invalid",
+                "XPS parameter source packet reference_seeds were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+        return {}
+    reference_seeds: dict[str, Any] = {}
+    for raw_seed_id, raw_seed in raw_seeds.items():
+        seed_id = str(raw_seed_id).strip()
+        if not seed_id:
+            warnings.append(
+                _warning(
+                    "xps_parameter_source_reference_seed_id_invalid",
+                    "An XPS parameter source reference_seed was skipped because its seed id was empty.",
+                    severity="medium",
+                )
+            )
+            continue
+        if seed_id not in referenced_ids:
+            continue
+        if not isinstance(raw_seed, dict):
+            warnings.append(
+                _warning(
+                    "xps_parameter_source_reference_seed_ignored",
+                    "An XPS parameter source reference_seed was skipped because its metadata was not a mapping.",
+                    severity="medium",
+                    seed_id=seed_id,
+                )
+            )
+            continue
+        reference_seeds[seed_id] = deepcopy(raw_seed)
+    return reference_seeds
+
+
 def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
     return [
         {
@@ -670,6 +718,7 @@ def build_xps_parameter_source_packet(
 
     warnings: list[dict[str, Any]] = []
     library_ref: str | None = None
+    source_library: Any = {}
     if template_mode:
         raw_candidates = _xps_parameter_source_template_candidates()
     else:
@@ -677,7 +726,8 @@ def build_xps_parameter_source_packet(
         if source_path is None or not source_path.exists():
             raise XPSProcessingError(f"XPS parameter library file not found: {library_path}")
         library_ref = _relative_to_root(root, source_path)
-        raw_candidates = _xps_parameter_source_candidates(read_yaml(source_path))
+        source_library = read_yaml(source_path)
+        raw_candidates = _xps_parameter_source_candidates(source_library)
 
     include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
     type_set = {_normalize_xps_suggestion_type(item) for item in suggestion_types or [] if str(item).strip()}
@@ -725,6 +775,11 @@ def build_xps_parameter_source_packet(
         )
 
     reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    reference_seeds = _xps_parameter_source_reference_seeds(
+        source_library,
+        referenced_ids=set(reference_ids),
+        warnings=warnings,
+    )
     packet_ref = _relative_to_root(root, output_path)
     status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_parameters" if selected else "no_matching_candidates")
     packet = {
@@ -736,6 +791,8 @@ def build_xps_parameter_source_packet(
         "updated_at": timestamp,
         "source": "ea.xps.parameter_source_packet:v0.2",
         "source_library_ref": library_ref,
+        "reference_seed_count": len(reference_seeds),
+        "reference_seeds": reference_seeds,
         "candidate_count": len(selected),
         "candidates": selected,
         "filters": {
@@ -747,11 +804,13 @@ def build_xps_parameter_source_packet(
         "reference_ids": reference_ids,
         "warnings": warnings,
         "next_steps": [
+            "If this packet includes reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
             "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric fields.",
             "Run `ea xps suggest-parameters` on this packet to create traceable suggestion records before copying values into processing parameters.",
         ],
         "boundaries": [
             "Source packets are staging artifacts and do not apply values to XPS processing parameters.",
+            "reference_seeds are registration hints only; they do not inject report citations, download PDFs, apply XPS parameters, prove chemical states, or calculate composition.",
             "This source-packet builder is a deterministic staging step and does not perform unconfirmed live network lookup or parse full text during the command. Values may originate from user-provided data, local libraries, project literature records, or separately confirmed literature/search connectors, and EA may use those sources to prepare candidates. The packet still does not auto-choose or apply components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
         ],
     }
@@ -763,6 +822,7 @@ def build_xps_parameter_source_packet(
         outputs={"records": [packet_ref], "files": []},
         parameters={
             "candidate_count": len(selected),
+            "reference_seed_count": len(reference_seeds),
             "template": template_mode,
             "filters": packet["filters"],
             "auto_applied": False,
@@ -778,6 +838,7 @@ def build_xps_parameter_source_packet(
         "source_packet_id": source_packet_id,
         "status": status,
         "candidate_count": len(selected),
+        "reference_seed_count": len(reference_seeds),
         "reference_ids": reference_ids,
         "warnings": warnings,
         "provenance": str(provenance_path),
