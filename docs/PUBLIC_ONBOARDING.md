@@ -98,6 +98,8 @@ Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, `xps`, `electrochemistry`, or `t
 
 For XPS source-backed parameter work, EA may first help gather candidate values from project literature, a local candidate library, user-provided sources, or a user-confirmed literature/search workflow. Use `ea xps build-source-packet` to turn a project-local candidate library or editable template into a standard source packet, then use `ea xps suggest-parameters` before copying any values into processing parameters. The suggestion workflow writes advisory YAML/CSV records under `suggestions/xps/`, checks whether cited `reference_ids` are registered, records source summary and applicability notes, and never auto-applies values to fitting or background subtraction.
 
+For FTIR source-backed assignment work, use `ea ftir build-assignment-packet` to turn a project-local band-assignment library or editable template into a standard source packet, then use `ea ftir suggest-assignments` with processed FTIR metadata. The workflow matches reviewed candidate wavenumber windows against detected FTIR features, records source summary, applicability notes, confidence, caveats, matched band IDs, and registered/missing `reference_ids`, and never treats a band match alone as composition or functional-group proof.
+
 ## 4. Review Gates And Reports
 
 EA is intentionally review-gated:

@@ -206,6 +206,47 @@ def _coerce_float(value: Any, default: float, *, minimum: float | None = None, m
     return coerced, False
 
 
+def _relative_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _candidate_number(value: Any, *names: str) -> float | None:
+    for name in names:
+        if not isinstance(value, dict) or value.get(name) is None:
+            continue
+        try:
+            number = float(value.get(name))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(number):
+            return number
+    return None
+
+
 def _axis_metadata_text(metadata: dict[str, Any]) -> str:
     parts = [
         metadata.get("AxisUnit[1]"),
@@ -261,6 +302,549 @@ def inspect_ftir_file(path: Path) -> FTIRInspection:
         warnings=warnings,
         requires_user_confirmation=True,
     )
+
+
+def _ftir_assignment_source_candidates(source_packet: Any) -> list[Any]:
+    if isinstance(source_packet, list):
+        return source_packet
+    if isinstance(source_packet, dict):
+        raw_candidates = source_packet.get("candidates") or source_packet.get("assignments") or source_packet.get("suggestions") or []
+        return raw_candidates if isinstance(raw_candidates, list) else []
+    return []
+
+
+def _ftir_assignment_template_candidates() -> list[dict[str, Any]]:
+    return [
+        {
+            "candidate_id": "ftir-assignment-template-001",
+            "assignment_type": "functional_group",
+            "assignment_label": "TODO: e.g. ester/carbonyl C=O stretching",
+            "band_label": "TODO: descriptive band label",
+            "material_scope": "TODO: polymer/oxide/surface-functionalized material scope",
+            "sample_scope": "TODO: sample forms or preparation conditions where this applies",
+            "wavenumber_window_cm1": [None, None],
+            "expected_feature": "absorbance_maximum",
+            "source_summary": "TODO: summarize the reference spectrum, table, or literature source for this band window.",
+            "applicability_notes": ["TODO: describe when this window applies and known overlaps."],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": ["Template candidate only; fill band window and source metadata before running suggest-assignments."],
+        }
+    ]
+
+
+def _candidate_identity(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or "").strip()
+
+
+def _normalize_assignment_type(value: Any) -> str:
+    return str(value or "functional_group").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _normalize_expected_feature(value: Any) -> str:
+    normalized = str(value or "any").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "peak": "any",
+        "band": "any",
+        "detected_band": "any",
+        "absorbance_peak": "absorbance_maximum",
+        "absorbance": "absorbance_maximum",
+        "maximum": "absorbance_maximum",
+        "valley": "transmittance_minimum",
+        "minimum": "transmittance_minimum",
+        "transmittance": "transmittance_minimum",
+        "transmittance_valley": "transmittance_minimum",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _candidate_matches_filters(
+    candidate: dict[str, Any],
+    *,
+    include_candidates: set[str],
+    assignment_types: set[str],
+    material_scopes: set[str],
+) -> bool:
+    if include_candidates and _candidate_identity(candidate) not in include_candidates:
+        return False
+    if assignment_types and _normalize_assignment_type(candidate.get("assignment_type") or candidate.get("type")) not in assignment_types:
+        return False
+    if material_scopes:
+        material_scope = str(candidate.get("material_scope") or "").strip().lower()
+        if not any(scope in material_scope for scope in material_scopes):
+            return False
+    return True
+
+
+def build_ftir_assignment_source_packet(
+    root: Path,
+    *,
+    project_id: str,
+    library_path: Path | None = None,
+    output_path: Path | None = None,
+    include_candidates: list[str] | None = None,
+    assignment_types: list[str] | None = None,
+    material_scopes: list[str] | None = None,
+    template: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    if not library_path and not template:
+        raise FTIRProcessingError("Provide --library-file or --write-template for FTIR assignment source-packet generation")
+
+    template_mode = template and library_path is None
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    source_packet_id = next_id(root, "ftir_assignment_source_packet", day)
+    if output_path is None:
+        if template_mode:
+            output_path = root / "templates" / "ftir_assignment_source_packet.yml"
+        else:
+            output_path = root / "suggestions" / "ftir" / "source-packets" / f"{source_packet_id}.yml"
+    elif not output_path.is_absolute():
+        output_path = root / output_path
+    assert_not_raw_output_path(root, output_path)
+
+    warnings: list[dict[str, Any]] = []
+    library_ref: str | None = None
+    if template_mode:
+        raw_candidates = _ftir_assignment_template_candidates()
+    else:
+        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        if source_path is None or not source_path.exists():
+            raise FTIRProcessingError(f"FTIR assignment library file not found: {library_path}")
+        library_ref = _relative_to_root(root, source_path)
+        raw_candidates = _ftir_assignment_source_candidates(read_yaml(source_path))
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_assignment_type(item) for item in assignment_types or [] if str(item).strip()}
+    material_set = {str(item).strip().lower() for item in material_scopes or [] if str(item).strip()}
+    selected: list[dict[str, Any]] = []
+    for index, raw_candidate in enumerate(raw_candidates, start=1):
+        if not isinstance(raw_candidate, dict):
+            warnings.append(
+                _warning(
+                    "ftir_assignment_source_candidate_ignored",
+                    "An FTIR assignment source candidate was not a mapping and was skipped while building the source packet.",
+                    severity="medium",
+                    candidate_index=index,
+                )
+            )
+            continue
+        if not _candidate_matches_filters(
+            raw_candidate,
+            include_candidates=include_set,
+            assignment_types=type_set,
+            material_scopes=material_set,
+        ):
+            continue
+        selected.append(deepcopy(raw_candidate))
+
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "ftir_assignment_source_library_empty",
+                "No FTIR assignment candidates were found in the source library.",
+                severity="medium",
+            )
+        )
+    if raw_candidates and not selected:
+        warnings.append(
+            _warning(
+                "ftir_assignment_source_no_matches",
+                "No FTIR assignment candidates matched the requested filters.",
+                severity="medium",
+            )
+        )
+
+    reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    packet_ref = _relative_to_root(root, output_path)
+    status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_assignments" if selected else "no_matching_candidates")
+    packet = {
+        "schema_version": "0.2",
+        "source_packet_id": source_packet_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.ftir.assignment_source_packet:v0.2",
+        "source_library_ref": library_ref,
+        "candidate_count": len(selected),
+        "candidates": selected,
+        "filters": {
+            "include_candidates": sorted(include_set),
+            "assignment_types": sorted(type_set),
+            "material_scopes": sorted(material_set),
+        },
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Review and edit this packet until every candidate has a wavenumber window, source_summary, applicability_notes, reference_ids, confidence, and caveats.",
+            "Run `ea ftir suggest-assignments` with processed FTIR metadata to match candidates against detected bands before using them in reports or memory.",
+        ],
+        "boundaries": [
+            "FTIR assignment source packets are staging artifacts and do not modify processing outputs or confirmed project memory.",
+            "This source-packet builder does not run live lookup or parse full text itself; values may originate from user-provided data, local libraries, project literature, or separately confirmed search connectors.",
+        ],
+    }
+    write_yaml(output_path, packet)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="ftir_assignment_source_packet",
+        inputs={"records": [library_ref] if library_ref else [], "files": []},
+        outputs={"records": [packet_ref], "files": []},
+        parameters={"candidate_count": len(selected), "template": template_mode, "filters": packet["filters"], "auto_applied": False},
+        warnings=warnings,
+        source_refs=reference_ids,
+        created_at=created_at,
+    )
+    packet["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(output_path, packet)
+    return {
+        "source_packet": str(output_path),
+        "source_packet_id": source_packet_id,
+        "status": status,
+        "candidate_count": len(selected),
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
+
+
+def _ftir_assignment_columns() -> list[str]:
+    return [
+        "candidate_id",
+        "assignment_type",
+        "assignment_label",
+        "band_label",
+        "status",
+        "requires_user_review",
+        "auto_applied",
+        "wavenumber_window_cm1",
+        "expected_feature",
+        "matched_band_ids",
+        "matched_wavenumbers_cm-1",
+        "source_summary",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "material_scope",
+        "sample_scope",
+        "confidence",
+        "missing_fields",
+        "caveats",
+    ]
+
+
+def _candidate_window(candidate: dict[str, Any]) -> tuple[float | None, float | None]:
+    window = candidate.get("wavenumber_window_cm1", candidate.get("wavenumber_window_cm-1", candidate.get("window_cm1")))
+    if isinstance(window, list | tuple) and len(window) >= 2:
+        lower = _candidate_number({"lower": window[0]}, "lower")
+        upper = _candidate_number({"upper": window[1]}, "upper")
+    elif isinstance(window, dict):
+        lower = _candidate_number(window, "min", "lower", "low", "start_cm1", "from_cm1")
+        upper = _candidate_number(window, "max", "upper", "high", "end_cm1", "to_cm1")
+    else:
+        lower = _candidate_number(candidate, "wavenumber_min_cm1", "min_cm1", "lower_cm1")
+        upper = _candidate_number(candidate, "wavenumber_max_cm1", "max_cm1", "upper_cm1")
+    if lower is None or upper is None:
+        return None, None
+    return (min(lower, upper), max(lower, upper))
+
+
+def _expected_feature_matches(expected_feature: str, band_type: str) -> bool:
+    if expected_feature in {"", "any"}:
+        return True
+    if expected_feature == "absorbance_maximum":
+        return band_type == "absorbance_maximum"
+    if expected_feature == "transmittance_minimum":
+        return band_type == "transmittance_minimum"
+    return False
+
+
+def _match_ftir_bands(bands: pd.DataFrame, lower: float, upper: float, expected_feature: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    if bands.empty:
+        return matches
+    for _, row in bands.iterrows():
+        try:
+            wavenumber = float(row["wavenumber_cm-1"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        band_type = str(row.get("band_type") or "")
+        if lower <= wavenumber <= upper and _expected_feature_matches(expected_feature, band_type):
+            matches.append(
+                {
+                    "band_id": str(row.get("band_id") or ""),
+                    "wavenumber_cm-1": wavenumber,
+                    "prominence": float(row.get("prominence", 0.0)),
+                    "band_type": band_type,
+                    "possible_band_family": str(row.get("possible_band_family") or ""),
+                }
+            )
+    return matches
+
+
+def _normalize_ftir_assignment_candidate(
+    raw_candidate: Any,
+    *,
+    suggestion_id: str,
+    number: int,
+    bands: pd.DataFrame,
+    registered_references: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(raw_candidate, dict):
+        candidate_id = f"{suggestion_id}-cand-{number:03d}"
+        warnings.append(
+            _warning(
+                "ftir_assignment_suggestion_ignored",
+                "An FTIR assignment suggestion candidate was not a mapping and was recorded as invalid.",
+                severity="medium",
+                candidate_id=candidate_id,
+            )
+        )
+        return {
+            "candidate_id": candidate_id,
+            "assignment_type": "unknown",
+            "status": "invalid_candidate_mapping",
+            "requires_user_review": True,
+            "auto_applied": False,
+            "missing_fields": ["candidate_mapping"],
+        }
+
+    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("assignment_id") or f"{suggestion_id}-cand-{number:03d}")
+    assignment_type = _normalize_assignment_type(raw_candidate.get("assignment_type") or raw_candidate.get("type"))
+    assignment_label = str(raw_candidate.get("assignment_label") or raw_candidate.get("functional_group") or raw_candidate.get("band_assignment") or "").strip()
+    band_label = str(raw_candidate.get("band_label") or assignment_label).strip()
+    reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
+    applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
+    caveats = _coerce_string_list(raw_candidate.get("caveats"))
+    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
+    expected_feature = _normalize_expected_feature(raw_candidate.get("expected_feature"))
+    lower, upper = _candidate_window(raw_candidate)
+    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    missing_fields: list[str] = []
+    if not assignment_label:
+        missing_fields.append("assignment_label")
+    if lower is None or upper is None:
+        missing_fields.append("wavenumber_window_cm1")
+    if not source_summary:
+        missing_fields.append("source_summary")
+    if not reference_ids:
+        missing_fields.append("reference_ids")
+    if not applicability_notes:
+        missing_fields.append("applicability_notes")
+    if expected_feature not in {"any", "absorbance_maximum", "transmittance_minimum"}:
+        missing_fields.append("expected_feature")
+
+    matches = _match_ftir_bands(bands, lower, upper, expected_feature) if lower is not None and upper is not None else []
+    if missing_fields:
+        status = "invalid_missing_required_metadata"
+    elif unresolved_reference_ids:
+        status = "needs_reference_registration"
+    elif not matches:
+        status = "no_feature_match"
+    else:
+        status = "ready_for_user_review"
+
+    candidate: dict[str, Any] = {
+        "candidate_id": candidate_id,
+        "assignment_type": assignment_type,
+        "assignment_label": assignment_label,
+        "band_label": band_label,
+        "status": status,
+        "requires_user_review": True,
+        "auto_applied": False,
+        "wavenumber_window_cm1": [lower, upper] if lower is not None and upper is not None else [],
+        "expected_feature": expected_feature,
+        "matched_bands": matches,
+        "matched_band_ids": [match["band_id"] for match in matches if match.get("band_id")],
+        "matched_wavenumbers_cm-1": [match["wavenumber_cm-1"] for match in matches],
+        "source_summary": source_summary,
+        "reference_ids": reference_ids,
+        "unresolved_reference_ids": unresolved_reference_ids,
+        "applicability_notes": applicability_notes,
+        "material_scope": str(raw_candidate.get("material_scope") or "").strip() or None,
+        "sample_scope": str(raw_candidate.get("sample_scope") or "").strip() or None,
+        "confidence": confidence,
+        "missing_fields": missing_fields,
+        "caveats": caveats,
+    }
+    if unresolved_reference_ids:
+        warnings.append(
+            _warning(
+                "ftir_assignment_suggestion_reference_unresolved",
+                "An FTIR assignment suggestion cites reference_ids that are not registered in the project reference index.",
+                severity="medium",
+                candidate_id=candidate_id,
+                unresolved_reference_ids=unresolved_reference_ids,
+            )
+        )
+    if missing_fields:
+        warnings.append(
+            _warning(
+                "ftir_assignment_suggestion_missing_metadata",
+                "An FTIR assignment suggestion is missing required source, band-window, or applicability metadata.",
+                severity="medium",
+                candidate_id=candidate_id,
+                missing_fields=missing_fields,
+            )
+        )
+    if status == "no_feature_match":
+        warnings.append(
+            _warning(
+                "ftir_assignment_suggestion_no_feature_match",
+                "An FTIR assignment candidate did not match any detected FTIR band in the processed feature table.",
+                severity="low",
+                candidate_id=candidate_id,
+                wavenumber_window_cm1=candidate["wavenumber_window_cm1"],
+            )
+        )
+    return candidate
+
+
+def suggest_ftir_assignments(
+    root: Path,
+    *,
+    project_id: str,
+    ftir_metadata_path: Path,
+    source_path: Path,
+    related_records: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_packet = read_yaml(source_path)
+    raw_candidates = _ftir_assignment_source_candidates(source_packet)
+    ftir_metadata = read_yaml(ftir_metadata_path)
+    peak_table_ref = ftir_metadata.get("outputs", {}).get("peak_table")
+    if not peak_table_ref:
+        raise FTIRProcessingError("FTIR metadata does not include outputs.peak_table for assignment matching")
+    peak_table_path = root / str(peak_table_ref)
+    if not peak_table_path.exists():
+        raise FTIRProcessingError(f"FTIR peak table not found: {peak_table_ref}")
+    bands = pd.read_csv(peak_table_path)
+
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    suggestion_id = next_id(root, "suggestion", day)
+    output_dir = root / "suggestions" / "ftir" / suggestion_id
+    record_path = output_dir / "ftir_assignment_suggestions.yml"
+    table_path = output_dir / "ftir_assignment_suggestions.csv"
+    for path in [record_path, table_path]:
+        assert_not_raw_output_path(root, path)
+
+    warnings: list[dict[str, Any]] = []
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "ftir_assignment_suggestion_empty_source",
+                "No FTIR assignment candidates were found in the source packet.",
+                severity="medium",
+            )
+        )
+    registered_references = _registered_reference_ids(root)
+    candidates = [
+        _normalize_ftir_assignment_candidate(
+            candidate,
+            suggestion_id=suggestion_id,
+            number=index,
+            bands=bands,
+            registered_references=registered_references,
+            warnings=warnings,
+        )
+        for index, candidate in enumerate(raw_candidates, start=1)
+    ]
+    table = pd.DataFrame(candidates, columns=_ftir_assignment_columns())
+    for column in [
+        "wavenumber_window_cm1",
+        "matched_band_ids",
+        "matched_wavenumbers_cm-1",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "missing_fields",
+        "caveats",
+    ]:
+        if column in table.columns:
+            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+
+    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
+    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
+    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_feature_match")
+    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    if ready_count:
+        status = "ready_for_user_review"
+    elif unresolved_count:
+        status = "needs_reference_registration"
+    elif no_match_count:
+        status = "no_feature_match"
+    else:
+        status = "needs_source_metadata"
+
+    source_ref = _relative_to_root(root, source_path)
+    metadata_ref = _relative_to_root(root, ftir_metadata_path)
+    record_ref = _relative_to_root(root, record_path)
+    table_ref = _relative_to_root(root, table_path)
+    related_records = related_records or []
+    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    record = {
+        "schema_version": "0.2",
+        "suggestion_id": suggestion_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.ftir.assignment_suggestions:v0.2",
+        "source_packet_ref": source_ref,
+        "ftir_metadata_ref": metadata_ref,
+        "feature_table_ref": str(peak_table_ref),
+        "table_ref": table_ref,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_feature_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "candidates": candidates,
+        "related_records": related_records,
+        "reference_ids": all_reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or correct unresolved reference_ids before using source-backed assignment suggestions.",
+            "Ask the user to review ready FTIR candidates before citing them as report interpretations or memory candidates.",
+            "Use matched band IDs and source/applicability notes when discussing possible functional groups; do not treat a band match alone as composition proof.",
+        ],
+        "boundaries": [
+            "FTIR assignment suggestions are advisory and auto_applied is always false.",
+            "This suggestion-record step does not run live lookup, alter processing outputs, prove functional groups/composition, or write confirmed memory.",
+        ],
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(table_path, index=False)
+    write_yaml(record_path, record)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="ftir_assignment_suggestion",
+        inputs={"records": [source_ref, metadata_ref, *related_records], "files": [str(peak_table_ref)]},
+        outputs={"records": [record_ref, table_ref], "files": []},
+        parameters={"candidate_count": len(candidates), "auto_applied": False},
+        warnings=warnings,
+        source_refs=all_reference_ids,
+        created_at=created_at,
+    )
+    record["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(record_path, record)
+    return {
+        "suggestion_id": suggestion_id,
+        "record": str(record_path),
+        "table": str(table_path),
+        "status": status,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_feature_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "warnings": warnings,
+    }
 
 
 def _confirmed_frame(path: Path, request: FTIRProcessingRequest) -> pd.DataFrame:

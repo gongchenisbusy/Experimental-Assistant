@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+import pandas as pd
+
 from ea.cli import main
 from ea.ftir import default_ftir_processing_parameters, inspect_ftir_file
 from ea.storage import read_markdown_record, read_yaml
@@ -363,6 +365,249 @@ def test_ftir_context_record_preserves_reviewed_method_metadata(tmp_path: Path, 
     assert "不执行自动背景/参比数值校正" in report_body
 
 
+def test_cli_builds_ftir_assignment_source_packet_and_suggestions(tmp_path: Path, capsys) -> None:
+    fixture = _write_ftir_fixture(tmp_path / "synthetic-ftir-assignment-spectrum.txt")
+    workspace = tmp_path / "ftir-assignment-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "FTIR Assignment Workflow",
+            "--slug",
+            "ftir-assignment-workflow",
+            "--direction",
+            "FTIR source-backed assignment records",
+            "--material",
+            "polymer composite film",
+            "--experiment-type",
+            "materials FTIR characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "ftir",
+            "--sample-ref",
+            "sample-ftir-assignment-001",
+            "--experiment-ref",
+            "exp-ftir-assignment-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "ftir_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=wavenumber, y=absorbance, unit=cm^-1, signal_mode=absorbance",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "ftir_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(default_ftir_processing_parameters(), ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "ftir",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ftir-assignment-001",
+            "--x-column",
+            "wavenumber",
+            "--y-column",
+            "absorbance",
+            "--x-unit",
+            "cm^-1",
+            "--signal-mode",
+            "absorbance",
+            "--column-review-ref",
+            column_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    ftir_metadata_ref = Path(process_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "references",
+            "add",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--citation",
+            "Example FTIR reference spectrum note.",
+            "--title",
+            "Example FTIR reference spectrum",
+            "--year",
+            "2026",
+            "--url",
+            "https://example.org/ftir-reference",
+        ]
+    ) == 0
+    reference_output = _json_output(capsys)
+    reference_id = Path(reference_output["reference"]).stem
+
+    library = workspace / "project_ftir_assignment_library.yml"
+    library.write_text(
+        f"""
+candidates:
+  - candidate_id: ftir-assignment-carbonyl-001
+    assignment_type: functional_group
+    assignment_label: ester/carbonyl C=O stretching
+    band_label: carbonyl stretching band
+    material_scope: polymer composite film
+    sample_scope: reviewed synthetic fixture
+    wavenumber_window_cm1: [1700, 1745]
+    expected_feature: absorbance_maximum
+    source_summary: Example reference spectrum reports a carbonyl stretching band in this region.
+    applicability_notes:
+      - Applies only when project chemistry supports oxygen-containing organic groups.
+    reference_ids:
+      - {reference_id}
+    confidence: medium
+    caveats:
+      - Band overlap requires review before durable interpretation.
+  - candidate_id: ftir-assignment-ch-001
+    assignment_type: functional_group
+    assignment_label: aliphatic C-H stretching
+    band_label: C-H stretching band
+    material_scope: polymer composite film
+    sample_scope: reviewed synthetic fixture
+    wavenumber_window_cm1: [2860, 2960]
+    expected_feature: absorbance_maximum
+    source_summary: Example reference spectrum reports aliphatic C-H stretching in this region.
+    applicability_notes:
+      - Review organic residues, ligands, or binders before interpretation.
+    reference_ids:
+      - ref-missing-ftir-001
+    confidence: low
+    caveats:
+      - Missing project reference should block report use until registered.
+  - candidate_id: ftir-assignment-no-match-001
+    assignment_type: functional_group
+    assignment_label: nitrile C=N or C≡N candidate
+    band_label: high-frequency triple-bond candidate
+    material_scope: polymer composite film
+    sample_scope: reviewed synthetic fixture
+    wavenumber_window_cm1: [2100, 2150]
+    expected_feature: absorbance_maximum
+    source_summary: Example source records this as a possible triple-bond region.
+    applicability_notes:
+      - Use only if detected bands and chemistry support it.
+    reference_ids:
+      - {reference_id}
+    confidence: low
+    caveats:
+      - Included to verify no-feature-match behavior.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert main(
+        [
+            "ftir",
+            "build-assignment-packet",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--library-file",
+            library.relative_to(workspace).as_posix(),
+            "--material-scope",
+            "polymer",
+        ]
+    ) == 0
+    packet_output = _json_output(capsys)
+    assert packet_output["status"] == "ready_for_suggest_assignments"
+    assert packet_output["candidate_count"] == 3
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet["source"] == "ea.ftir.assignment_source_packet:v0.2"
+    assert packet["source_library_ref"] == library.relative_to(workspace).as_posix()
+    assert "suggest-assignments" in " ".join(packet["next_steps"])
+    assert "does not run live lookup" in " ".join(packet["boundaries"])
+
+    packet_ref = Path(packet_output["source_packet"]).relative_to(workspace).as_posix()
+    assert main(
+        [
+            "ftir",
+            "suggest-assignments",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--metadata",
+            ftir_metadata_ref,
+            "--source-file",
+            packet_ref,
+            "--related-record",
+            ftir_metadata_ref,
+        ]
+    ) == 0
+    suggestion_output = _json_output(capsys)
+    assert suggestion_output["status"] == "ready_for_user_review"
+    assert suggestion_output["ready_for_user_review_count"] == 1
+    assert suggestion_output["needs_reference_registration_count"] == 1
+    assert suggestion_output["no_feature_match_count"] == 1
+
+    record = read_yaml(Path(suggestion_output["record"]))
+    table = pd.read_csv(Path(suggestion_output["table"]))
+    assert record["source"] == "ea.ftir.assignment_suggestions:v0.2"
+    assert record["candidates"][0]["status"] == "ready_for_user_review"
+    assert record["candidates"][0]["matched_band_ids"]
+    assert record["candidates"][0]["auto_applied"] is False
+    assert record["candidates"][1]["status"] == "needs_reference_registration"
+    assert "ref-missing-ftir-001" in record["candidates"][1]["unresolved_reference_ids"]
+    assert record["candidates"][2]["status"] == "no_feature_match"
+    assert "composition proof" in " ".join(record["next_steps"])
+    assert "does not run live lookup" in " ".join(record["boundaries"])
+    assert (workspace / record["provenance_ref"]).exists()
+    assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration", "no_feature_match"}
+
+    assert main(["ftir", "build-assignment-packet", str(workspace), "--project-id", project_id, "--write-template"]) == 0
+    template_output = _json_output(capsys)
+    template = read_yaml(Path(template_output["source_packet"]))
+    assert template["status"] == "template_requires_user_edit"
+    assert (workspace / "templates" / "ftir_assignment_source_packet.yml").exists()
+
+
 def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -373,11 +618,15 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
 
     assert "ea ftir inspect" in readme
     assert "ea ftir process" in skill
+    assert "ea ftir suggest-assignments" in skill
     assert "references/ftir-workflow.md" in skill
     assert ftir_reference.exists()
     reference_text = ftir_reference.read_text(encoding="utf-8")
     assert "signal_mode" in reference_text
     assert "context_record" in reference_text
+    assert "build-assignment-packet" in reference_text
+    assert "suggest-assignments" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
+    assert "assignment_suggestions" in ftir_record["notes"]

@@ -11,6 +11,8 @@ ea_skill:
   output_artifacts:
     - processed_result
     - context_record
+    - assignment_source_packet
+    - assignment_suggestion_record
     - figure_record
     - report_section
     - provenance_record
@@ -47,6 +49,8 @@ ea_skill:
       - ea ftir inspect
       - ea ftir process
       - ea ftir report
+      - ea ftir build-assignment-packet
+      - ea ftir suggest-assignments
     processing:
       - optional rolling-quantile baseline correction
       - optional Savitzky-Golay smoothing
@@ -64,7 +68,21 @@ ea_skill:
         - reference
         - correction_notes
       confidence_boundary: metadata_record_only
+    assignment_suggestions:
+      implemented: true
+      source_packet_format: yaml
+      record_format: yaml_and_csv
+      required_candidate_fields:
+        - assignment_label
+        - wavenumber_window_cm1
+        - source_summary
+        - applicability_notes
+        - reference_ids
+        - confidence
+        - caveats
+      boundary: source_backed_advisory_only_no_auto_apply_no_composition_or_functional_group_proof
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
+      - source-backed assignment suggestions match reviewed candidate windows to detected bands but remain advisory until user review
       - context records preserve reviewed method metadata but do not apply automatic background/reference correction
       - formal functional-group or composition conclusions require project chemistry, reference spectra or literature, and user review

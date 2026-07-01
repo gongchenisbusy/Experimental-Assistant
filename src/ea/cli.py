@@ -22,7 +22,14 @@ from ea.exports import (
     verify_bundle_checksums,
 )
 from ea.figures import lookup_figure
-from ea.ftir import FTIRProcessingRequest, default_ftir_processing_parameters, inspect_ftir_file, process_ftir_result
+from ea.ftir import (
+    FTIRProcessingRequest,
+    build_ftir_assignment_source_packet,
+    default_ftir_processing_parameters,
+    inspect_ftir_file,
+    process_ftir_result,
+    suggest_ftir_assignments,
+)
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
 from ea.literature import (
@@ -268,6 +275,21 @@ def build_parser() -> argparse.ArgumentParser:
     ftir_report.add_argument("--experiment-ref", action="append", default=[])
     ftir_report.add_argument("--sample-ref", action="append", default=[])
     ftir_report.add_argument("--reference-id", action="append", default=[])
+    ftir_suggest = ftir_sub.add_parser("suggest-assignments", help="record source-backed FTIR band-assignment suggestions without applying them")
+    ftir_suggest.add_argument("workspace", type=Path)
+    ftir_suggest.add_argument("--metadata", required=True, type=Path)
+    ftir_suggest.add_argument("--source-file", required=True, type=Path)
+    ftir_suggest.add_argument("--project-id")
+    ftir_suggest.add_argument("--related-record", action="append", default=[])
+    ftir_source_packet = ftir_sub.add_parser("build-assignment-packet", help="build a standard FTIR assignment source packet")
+    ftir_source_packet.add_argument("workspace", type=Path)
+    ftir_source_packet.add_argument("--library-file", type=Path)
+    ftir_source_packet.add_argument("--output", type=Path)
+    ftir_source_packet.add_argument("--project-id")
+    ftir_source_packet.add_argument("--include-candidate", action="append", default=[])
+    ftir_source_packet.add_argument("--assignment-type", action="append", default=[])
+    ftir_source_packet.add_argument("--material-scope", action="append", default=[])
+    ftir_source_packet.add_argument("--write-template", action="store_true")
 
     uv_vis = sub.add_parser("uv-vis", help="UV-Vis inspection, processing, and report helpers")
     uv_vis_sub = uv_vis.add_subparsers(dest="uv_vis_command", required=True)
@@ -948,7 +970,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "ftir":
         project_id = getattr(args, "project_id", None)
-        if args.ftir_command in {"process", "report"} and not project_id:
+        if args.ftir_command in {"process", "report", "suggest-assignments", "build-assignment-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.ftir_command == "inspect":
             inspection = asdict(inspect_ftir_file(_project_path(args.workspace, args.spectrum)))
@@ -984,6 +1006,31 @@ def main(argv: list[str] | None = None) -> int:
                 reference_ids=args.reference_id,
             )
             _print_json({"report": str(path)})
+            return 0
+        if args.ftir_command == "suggest-assignments":
+            _print_json(
+                suggest_ftir_assignments(
+                    args.workspace,
+                    project_id=project_id,
+                    ftir_metadata_path=_project_path(args.workspace, args.metadata),
+                    source_path=_project_path(args.workspace, args.source_file),
+                    related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.ftir_command == "build-assignment-packet":
+            _print_json(
+                build_ftir_assignment_source_packet(
+                    args.workspace,
+                    project_id=project_id,
+                    library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    output_path=args.output,
+                    include_candidates=args.include_candidate,
+                    assignment_types=args.assignment_type,
+                    material_scopes=args.material_scope,
+                    template=args.write_template,
+                )
+            )
             return 0
     if args.command == "uv-vis":
         project_id = getattr(args, "project_id", None)
