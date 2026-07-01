@@ -1420,6 +1420,70 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
     return "\n".join(rows)
 
 
+def _xps_component_fit_summary(metadata: dict) -> str:
+    fit = (metadata.get("peak_analysis") or {}).get("component_fit") or {}
+    if not fit:
+        return "当前没有启用或记录 XPS component_fit。"
+    status = fit.get("status", "unknown")
+    fitted_regions = fit.get("fitted_region_count", 0)
+    region_count = fit.get("region_count", 0)
+    fitted_components = fit.get("fitted_component_count", 0)
+    component_count = fit.get("component_count", 0)
+    confidence = fit.get("confidence", "insufficient")
+    source = fit.get("assignment_source", "ea.xps.component_fit:v0.2")
+    record_ref = fit.get("record_ref", "未生成")
+    table_ref = fit.get("component_table_ref", "未生成")
+    fit_column = fit.get("fit_intensity_column", "xps_component_fit_intensity")
+    residual_column = fit.get("residual_column", "xps_component_fit_residual")
+    references = fit.get("reference_ids") or []
+    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    return (
+        f"Reviewed XPS component_fit 状态为 `{status}`；fitted regions: `{fitted_regions}/{region_count}`；"
+        f"fitted components: `{fitted_components}/{component_count}`；record: `{record_ref}`；table: `{table_ref}`；"
+        f"fit column: `{fit_column}`；residual column: `{residual_column}`；confidence: `{confidence}`；"
+        f"assignment_source: `{source}`；references: `{reference_text}`。\n\n"
+        "该记录只表示用户审核过的 component-fit screening；EA 不自动选择组分、背景、bounds、峰形、spin-orbit 常数，"
+        "也不据此证明化学态、组成或正式定量。"
+    )
+
+
+def _xps_component_fit_table(metadata: dict) -> str:
+    fit = (metadata.get("peak_analysis") or {}).get("component_fit") or {}
+    regions = fit.get("regions") or []
+    rows = [
+        "| component_id | region_id | shape | center (eV) | FWHM (eV) | area % | RMSE | R^2 | status | confidence |",
+        "|---|---|---|---:|---:|---:|---:|---:|---|---|",
+    ]
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        for component in (region.get("components") or [])[:12]:
+            if not isinstance(component, dict):
+                continue
+            center = component.get("fitted_center_eV")
+            fwhm = component.get("fitted_fwhm_eV")
+            area_percent = component.get("relative_fit_area_percent")
+            rmse = component.get("fit_rmse")
+            r2 = component.get("fit_r_squared")
+            rows.append(
+                "| {component_id} | {region_id} | {shape} | {center} | {fwhm} | {area_percent} | {rmse} | {r2} | {status} | {confidence} |".format(
+                    component_id=component.get("component_id", "n/a"),
+                    region_id=component.get("region_id", region.get("region_id", "n/a")),
+                    shape=component.get("peak_shape", "n/a"),
+                    center=f"{float(center):.3f}" if center is not None else "n/a",
+                    fwhm=f"{float(fwhm):.3f}" if fwhm is not None else "n/a",
+                    area_percent=f"{float(area_percent):.2f}" if area_percent is not None else "n/a",
+                    rmse=f"{float(rmse):.4g}" if rmse is not None else "n/a",
+                    r2=f"{float(r2):.4f}" if r2 is not None else "n/a",
+                    status=component.get("status", "unknown"),
+                    confidence=component.get("confidence", "insufficient"),
+                )
+            )
+    if len(rows) == 2:
+        return "当前没有可展示的 XPS component_fit component。"
+    return "\n".join(rows)
+
+
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
     shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
@@ -1484,6 +1548,8 @@ def generate_xps_report(
     peak_table = _xps_peak_table(root, outputs["peak_table"])
     component_summary = _xps_component_summary(metadata)
     component_table = _xps_component_table(root, outputs.get("component_table"))
+    component_fit_summary = _xps_component_fit_summary(metadata)
+    component_fit_table = _xps_component_fit_table(metadata)
     background_summary = _xps_background_model_text(metadata)
     background_table = _xps_background_model_table(metadata)
     background_subtraction_summary = _xps_background_subtraction_text(metadata)
@@ -1549,6 +1615,12 @@ def generate_xps_report(
 
 {component_table}
 
+## XPS reviewed component fit screening
+
+{component_fit_summary}
+
+{component_fit_table}
+
 ## 可能结论与可信度
 
 {interpretation_text}
@@ -1566,6 +1638,8 @@ def generate_xps_report(
 - processed CSV: `{outputs['processed_csv']}`
 - peak table: `{outputs['peak_table']}`
 - component table: `{outputs.get('component_table', '未生成')}`
+{f"- component fit: `{outputs['component_fit']}`" if outputs.get('component_fit') else "- component fit: `未生成`"}
+{f"- component fit table: `{outputs['component_fit_table']}`" if outputs.get('component_fit_table') else "- component fit table: `未生成`"}
 {f"- background model: `{outputs['background_model']}`" if outputs.get('background_model') else "- background model: `未生成`"}
 {f"- background subtraction: `{outputs['background_subtraction']}`" if outputs.get('background_subtraction') else "- background subtraction: `未生成`"}
 - plot: `{outputs['figure']}`
@@ -1591,7 +1665,20 @@ def generate_xps_report(
         workflow="report_generation",
         inputs={
             "records": [str(xps_metadata_path.relative_to(root))],
-            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("component_table"), outputs.get("background_model"), outputs["figure"]] if value],
+            "files": [
+                value
+                for value in [
+                    outputs["processed_csv"],
+                    outputs["peak_table"],
+                    outputs.get("component_table"),
+                    outputs.get("component_fit_table"),
+                    outputs.get("component_fit"),
+                    outputs.get("background_model"),
+                    outputs.get("background_subtraction"),
+                    outputs["figure"],
+                ]
+                if value
+            ],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},

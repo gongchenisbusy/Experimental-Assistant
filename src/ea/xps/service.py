@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import least_squares
 from scipy.signal import find_peaks, savgol_filter
 
 from ea.figures import (
@@ -93,6 +94,25 @@ def default_xps_processing_parameters() -> dict[str, Any]:
             "min_points": 5,
             "source": "ea.xps.component_quantification:v0.2",
             "components": [],
+        },
+        "component_fit": {
+            "enabled": False,
+            "method": "reviewed_component_fit_screening",
+            "source": "ea.xps.component_fit:v0.2",
+            "input_intensity_column": "processed_intensity",
+            "fit_intensity_column": "xps_component_fit_intensity",
+            "residual_column": "xps_component_fit_residual",
+            "region_id_column": "xps_component_fit_region_id",
+            "min_points": 8,
+            "max_nfev": 5000,
+            "fit_quality_thresholds": {
+                "max_rmse": None,
+                "min_r_squared": None,
+            },
+            "regions": [],
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
         },
         "background_model": {
             "enabled": False,
@@ -1529,12 +1549,796 @@ def _apply_component_quantification(
     return table, summary, warnings
 
 
+def _component_fit_columns() -> list[str]:
+    return [
+        "component_id",
+        "region_id",
+        "label",
+        "element",
+        "core_level",
+        "peak_shape",
+        "spin_orbit_group_id",
+        "initial_center_eV",
+        "fitted_center_eV",
+        "initial_amplitude",
+        "fitted_amplitude",
+        "initial_fwhm_eV",
+        "fitted_fwhm_eV",
+        "initial_mixing",
+        "fitted_mixing",
+        "fitted_area",
+        "relative_fit_area_percent",
+        "fit_rmse",
+        "fit_r_squared",
+        "confidence",
+        "assignment_source",
+        "status",
+        "notes",
+    ]
+
+
+def _component_fit_optional_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+    if value is None or value == "":
+        return None, None
+    try:
+        return float(value), None
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "xps_component_fit_parameter_ignored",
+                "XPS component-fit optional numeric parameter could not be parsed and was ignored.",
+                severity="medium",
+                field=field,
+            ),
+        )
+
+
+def _component_fit_required_float(component: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        if key in component and component.get(key) is not None:
+            try:
+                return float(component.get(key))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _component_fit_bounds(component: dict[str, Any], keys: tuple[str, ...]) -> tuple[float, float] | None:
+    value = None
+    for key in keys:
+        if key in component and component.get(key) is not None:
+            value = component.get(key)
+            break
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        low = float(value[0])
+        high = float(value[1])
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+        return None
+    return low, high
+
+
+def _component_fit_profile(x: np.ndarray, amplitude: float, center: float, fwhm: float, mixing: float, shape: str) -> np.ndarray:
+    width = max(float(fwhm), 1e-12)
+    gaussian = np.exp(-4.0 * np.log(2.0) * np.square((x - float(center)) / width))
+    lorentzian = 1.0 / (1.0 + 4.0 * np.square((x - float(center)) / width))
+    if shape == "gaussian":
+        profile = gaussian
+    elif shape == "lorentzian":
+        profile = lorentzian
+    else:
+        mix = min(max(float(mixing), 0.0), 1.0)
+        profile = (1.0 - mix) * gaussian + mix * lorentzian
+    return float(amplitude) * profile
+
+
+def _component_fit_area(amplitude: float, fwhm: float, mixing: float, shape: str) -> float:
+    width = max(float(fwhm), 1e-12)
+    gaussian_sigma = width / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+    gaussian_area = float(amplitude) * gaussian_sigma * np.sqrt(2.0 * np.pi)
+    lorentzian_area = float(amplitude) * np.pi * width * 0.5
+    if shape == "gaussian":
+        return float(gaussian_area)
+    if shape == "lorentzian":
+        return float(lorentzian_area)
+    mix = min(max(float(mixing), 0.0), 1.0)
+    return float((1.0 - mix) * gaussian_area + mix * lorentzian_area)
+
+
+def _component_fit_quality(observed: np.ndarray, fitted: np.ndarray, parameter_count: int) -> dict[str, float | None]:
+    residual = observed - fitted
+    rss = float(np.sum(residual**2))
+    sst = float(np.sum((observed - float(np.mean(observed))) ** 2))
+    dof = max(int(observed.size - parameter_count), 1)
+    return {
+        "point_count": int(observed.size),
+        "parameter_count": int(parameter_count),
+        "residual_sum_squares": rss,
+        "rmse": float(np.sqrt(rss / max(observed.size, 1))),
+        "mae": float(np.mean(np.abs(residual))) if observed.size else None,
+        "reduced_chi_square": float(rss / dof),
+        "r_squared": float(1.0 - rss / sst) if sst > 0 else None,
+        "max_abs_residual": float(np.max(np.abs(residual))) if observed.size else None,
+    }
+
+
+def _component_fit_thresholds(params: dict[str, Any]) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    thresholds = params.get("fit_quality_thresholds", {})
+    if not isinstance(thresholds, dict):
+        return (
+            {"max_rmse": None, "min_r_squared": None},
+            [
+                _warning(
+                    "xps_component_fit_thresholds_ignored",
+                    "XPS component-fit quality thresholds were ignored because they were not a mapping.",
+                    severity="medium",
+                )
+            ],
+        )
+    parsed: dict[str, float | None] = {}
+    for name in ["max_rmse", "min_r_squared"]:
+        parsed[name], warning = _component_fit_optional_float(thresholds.get(name), f"fit_quality_thresholds.{name}")
+        if warning:
+            warnings.append(warning)
+    return parsed, warnings
+
+
+def _component_fit_quality_checks(metrics: dict[str, float | None], thresholds: dict[str, float | None]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    checks: dict[str, Any] = {}
+    warnings: list[dict[str, Any]] = []
+    max_rmse = thresholds.get("max_rmse")
+    if max_rmse is not None:
+        value = metrics.get("rmse")
+        passed = value is not None and float(value) <= float(max_rmse)
+        checks["max_rmse"] = {"threshold": max_rmse, "value": value, "passed": bool(passed)}
+        if not passed:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_quality_threshold_failed",
+                    "XPS component-fit RMSE exceeded the reviewed threshold.",
+                    severity="medium",
+                    metric="rmse",
+                    value=value,
+                    threshold=max_rmse,
+                )
+            )
+    min_r2 = thresholds.get("min_r_squared")
+    if min_r2 is not None:
+        value = metrics.get("r_squared")
+        passed = value is not None and float(value) >= float(min_r2)
+        checks["min_r_squared"] = {"threshold": min_r2, "value": value, "passed": bool(passed)}
+        if not passed:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_quality_threshold_failed",
+                    "XPS component-fit R-squared was below the reviewed threshold.",
+                    severity="medium",
+                    metric="r_squared",
+                    value=value,
+                    threshold=min_r2,
+                )
+            )
+    return checks, warnings
+
+
+def _component_fit_component_spec(
+    component: dict[str, Any],
+    *,
+    region_id: str,
+    number: int,
+    source: str,
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    component_id = str(component.get("component_id") or component.get("id") or f"xps-fit-component-{number:03d}")
+    shape = str(component.get("peak_shape") or component.get("shape") or "pseudo_voigt").strip().lower().replace("-", "_")
+    if shape not in {"gaussian", "lorentzian", "pseudo_voigt"}:
+        warnings.append(
+            _warning(
+                "xps_component_fit_shape_unsupported",
+                "A reviewed XPS component-fit peak shape was not supported.",
+                severity="medium",
+                region_id=region_id,
+                component_id=component_id,
+                peak_shape=shape,
+            )
+        )
+        return None
+
+    center = _component_fit_required_float(component, ("initial_center_eV", "center_eV", "initial_center"))
+    amplitude = _component_fit_required_float(component, ("initial_amplitude", "amplitude"))
+    fwhm = _component_fit_required_float(component, ("initial_fwhm_eV", "fwhm_eV", "initial_width_eV"))
+    center_bounds = _component_fit_bounds(component, ("center_bounds_eV", "center_bounds"))
+    amplitude_bounds = _component_fit_bounds(component, ("amplitude_bounds",))
+    fwhm_bounds = _component_fit_bounds(component, ("fwhm_bounds_eV", "fwhm_bounds", "width_bounds_eV"))
+    mixing = 0.0
+    mixing_bounds = None
+    if shape == "pseudo_voigt":
+        mixing = _component_fit_required_float(component, ("initial_mixing", "mixing"))
+        mixing_bounds = _component_fit_bounds(component, ("mixing_bounds",))
+
+    missing = []
+    if center is None:
+        missing.append("initial_center_eV")
+    if amplitude is None:
+        missing.append("initial_amplitude")
+    if fwhm is None:
+        missing.append("initial_fwhm_eV")
+    if center_bounds is None:
+        missing.append("center_bounds_eV")
+    if amplitude_bounds is None:
+        missing.append("amplitude_bounds")
+    if fwhm_bounds is None:
+        missing.append("fwhm_bounds_eV")
+    if shape == "pseudo_voigt" and mixing is None:
+        missing.append("initial_mixing")
+    if shape == "pseudo_voigt" and mixing_bounds is None:
+        missing.append("mixing_bounds")
+    if missing:
+        warnings.append(
+            _warning(
+                "xps_component_fit_reviewed_parameters_missing",
+                "XPS component-fit was skipped for a component because reviewed initial values or bounds were missing.",
+                severity="medium",
+                region_id=region_id,
+                component_id=component_id,
+                missing_fields=missing,
+            )
+        )
+        return None
+    if amplitude <= 0 or fwhm <= 0 or (shape == "pseudo_voigt" and not 0.0 <= float(mixing) <= 1.0):
+        warnings.append(
+            _warning(
+                "xps_component_fit_initial_value_invalid",
+                "XPS component-fit was skipped for a component because reviewed initial values were outside physical screening bounds.",
+                severity="medium",
+                region_id=region_id,
+                component_id=component_id,
+            )
+        )
+        return None
+
+    specs = [
+        ("center_eV", center, center_bounds),
+        ("amplitude", amplitude, amplitude_bounds),
+        ("fwhm_eV", fwhm, fwhm_bounds),
+    ]
+    if shape == "pseudo_voigt":
+        specs.append(("mixing", float(mixing), mixing_bounds))
+    for name, initial, bounds in specs:
+        low, high = bounds
+        if initial < low or initial > high:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_bounds_invalid",
+                    "XPS component-fit was skipped because a reviewed initial value was outside reviewed bounds.",
+                    severity="medium",
+                    region_id=region_id,
+                    component_id=component_id,
+                    parameter=name,
+                    initial_value=initial,
+                    lower_bound=low,
+                    upper_bound=high,
+                )
+            )
+            return None
+
+    return {
+        "component_id": component_id,
+        "label": str(component.get("label") or component_id),
+        "region_id": region_id,
+        "element": str(component.get("element") or ""),
+        "core_level": str(component.get("core_level") or component.get("orbital") or ""),
+        "peak_shape": shape,
+        "spin_orbit_group_id": str(component.get("spin_orbit_group_id") or "") or None,
+        "spin_orbit_role": str(component.get("spin_orbit_role") or "") or None,
+        "initial_center_eV": float(center),
+        "initial_amplitude": float(amplitude),
+        "initial_fwhm_eV": float(fwhm),
+        "initial_mixing": float(mixing) if shape == "pseudo_voigt" else None,
+        "bounds": {
+            "center_eV": list(center_bounds),
+            "amplitude": list(amplitude_bounds),
+            "fwhm_eV": list(fwhm_bounds),
+            "mixing": list(mixing_bounds) if mixing_bounds is not None else None,
+        },
+        "reference_ids": _coerce_string_list(component.get("reference_ids")),
+        "reviewer_notes": _coerce_string_list(component.get("reviewer_notes") or component.get("notes")),
+        "caveats": _coerce_string_list(component.get("caveats")),
+        "confidence": str(component.get("confidence") or "low").strip().lower(),
+        "assignment_source": str(component.get("source") or component.get("assignment_source") or source),
+        "notes": str(component.get("notes") or "reviewed XPS component fit; screening only"),
+    }
+
+
+def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("component_fit", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return pd.DataFrame(columns=_component_fit_columns()), None, []
+
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "reviewed_component_fit_screening")
+    source = str(params.get("source") or "ea.xps.component_fit:v0.2")
+    if method != "reviewed_component_fit_screening":
+        warnings.append(
+            _warning(
+                "xps_component_fit_method_unsupported",
+                "Only reviewed_component_fit_screening is supported for XPS component_fit in EA v0.2.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_component_fit_screening"
+
+    input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
+    fit_column = _column_name(params.get("fit_intensity_column"), "xps_component_fit_intensity")
+    residual_column = _column_name(params.get("residual_column"), "xps_component_fit_residual")
+    region_id_column = _column_name(params.get("region_id_column"), "xps_component_fit_region_id")
+    min_points, min_adjusted = _coerce_int(params.get("min_points"), 8, minimum=4)
+    max_nfev, max_adjusted = _coerce_int(params.get("max_nfev"), 5000, minimum=100)
+    thresholds, threshold_warnings = _component_fit_thresholds(params)
+    warnings.extend(threshold_warnings)
+    if min_adjusted:
+        warnings.append(
+            _warning(
+                "xps_component_fit_min_points_adjusted",
+                "Invalid XPS component_fit min_points was adjusted before processing.",
+                severity="medium",
+                min_points=min_points,
+            )
+        )
+    if max_adjusted:
+        warnings.append(
+            _warning(
+                "xps_component_fit_max_nfev_adjusted",
+                "Invalid XPS component_fit max_nfev was adjusted before processing.",
+                severity="medium",
+                max_nfev=max_nfev,
+            )
+        )
+
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "input_intensity_column": input_column,
+        "fit_intensity_column": fit_column,
+        "residual_column": residual_column,
+        "region_id_column": region_id_column,
+        "min_points": min_points,
+        "max_nfev": max_nfev,
+        "fit_quality_thresholds": thresholds,
+        "status": "not_applied",
+        "confidence": "insufficient",
+        "region_count": 0,
+        "fitted_region_count": 0,
+        "component_count": 0,
+        "fitted_component_count": 0,
+        "regions": [],
+        "reference_ids": _coerce_string_list(params.get("reference_ids")),
+        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "caveats": _coerce_string_list(params.get("caveats")),
+        "boundary": (
+            "XPS component_fit is reviewed screening-level numerical modeling only. EA v0.2 does not automatically choose components, "
+            "backgrounds, bounds, peak shapes, spin-orbit constants, chemical states, or definitive composition from this record."
+        ),
+    }
+
+    if input_column not in processed.columns:
+        warnings.append(
+            _warning(
+                "xps_component_fit_input_missing",
+                "XPS component_fit input intensity column was not present in the processed table.",
+                severity="medium",
+                input_intensity_column=input_column,
+            )
+        )
+        record.update({"status": "skipped_missing_input_column", "warnings": warnings})
+        return pd.DataFrame(columns=_component_fit_columns()), record, warnings
+    if len({input_column, fit_column, residual_column, region_id_column}) != 4:
+        warnings.append(
+            _warning(
+                "xps_component_fit_column_collision",
+                "XPS component_fit column names must be distinct and must not overwrite the input intensity column.",
+                severity="medium",
+                input_intensity_column=input_column,
+                fit_intensity_column=fit_column,
+                residual_column=residual_column,
+                region_id_column=region_id_column,
+            )
+        )
+        record.update({"status": "skipped_column_collision", "warnings": warnings})
+        return pd.DataFrame(columns=_component_fit_columns()), record, warnings
+    existing_output_columns = [column for column in [fit_column, residual_column, region_id_column] if column in processed.columns]
+    if existing_output_columns:
+        warnings.append(
+            _warning(
+                "xps_component_fit_output_column_exists",
+                "XPS component_fit output columns must not overwrite existing processed table columns.",
+                severity="medium",
+                existing_output_columns=existing_output_columns,
+            )
+        )
+        record.update({"status": "skipped_existing_output_column", "warnings": warnings})
+        return pd.DataFrame(columns=_component_fit_columns()), record, warnings
+
+    raw_regions = params.get("regions", [])
+    if not isinstance(raw_regions, list):
+        raw_regions = []
+        warnings.append(
+            _warning(
+                "xps_component_fit_regions_ignored",
+                "XPS component_fit regions were ignored because they were not supplied as a list.",
+                severity="medium",
+            )
+        )
+    if not raw_regions:
+        warnings.append(
+            _warning(
+                "xps_component_fit_regions_missing",
+                "component_fit was enabled, but no reviewed fit regions were supplied.",
+                severity="medium",
+            )
+        )
+        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        return pd.DataFrame(columns=_component_fit_columns()), record, warnings
+
+    processed[fit_column] = np.nan
+    processed[residual_column] = np.nan
+    processed[region_id_column] = pd.Series(pd.NA, index=processed.index, dtype="object")
+    x = processed["binding_energy_eV"].to_numpy(dtype=float)
+    y = pd.to_numeric(processed[input_column], errors="coerce").to_numpy(dtype=float)
+    regions: list[dict[str, Any]] = []
+    component_rows: list[dict[str, Any]] = []
+    fitted_regions = 0
+    all_reference_ids = set(record["reference_ids"])
+
+    for number, region in enumerate(raw_regions, start=1):
+        if not isinstance(region, dict):
+            warnings.append(
+                _warning(
+                    "xps_component_fit_region_ignored",
+                    "A reviewed XPS component_fit region was ignored because it was not a mapping.",
+                    severity="medium",
+                    region_number=number,
+                )
+            )
+            continue
+        region_id = str(region.get("region_id") or region.get("id") or f"xps-component-fit-region-{number:03d}")
+        low, high = _background_window(region)
+        region_references = _coerce_string_list(region.get("reference_ids"))
+        all_reference_ids.update(region_references)
+        region_record: dict[str, Any] = {
+            "region_id": region_id,
+            "label": str(region.get("label") or region_id),
+            "binding_energy_min_eV": low,
+            "binding_energy_max_eV": high,
+            "input_intensity_column": str(region.get("input_intensity_column") or input_column),
+            "background_source": str(region.get("background_source") or params.get("background_source") or "input_column_already_reviewed"),
+            "background_column": region.get("background_column") or params.get("background_column"),
+            "point_count": 0,
+            "status": "invalid_region_window",
+            "component_count": 0,
+            "fitted_component_count": 0,
+            "reference_ids": region_references,
+            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "caveats": _coerce_string_list(region.get("caveats")),
+            "confidence": str(region.get("confidence") or "low").strip().lower(),
+            "assignment_source": source,
+        }
+        if low is None or high is None:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_invalid_window",
+                    "A reviewed XPS component_fit region has an invalid binding-energy window.",
+                    severity="medium",
+                    region_id=region_id,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        region_input_column = str(region_record["input_intensity_column"])
+        if region_input_column != input_column:
+            if region_input_column not in processed.columns:
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_region_input_missing",
+                        "A reviewed XPS component_fit region input column was not present in the processed table.",
+                        severity="medium",
+                        region_id=region_id,
+                        input_intensity_column=region_input_column,
+                    )
+                )
+                regions.append(region_record)
+                continue
+            region_y_all = pd.to_numeric(processed[region_input_column], errors="coerce").to_numpy(dtype=float)
+        else:
+            region_y_all = y
+
+        background_column = region_record.get("background_column")
+        if background_column:
+            background_column = str(background_column)
+            if background_column not in processed.columns:
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_background_column_missing",
+                        "A reviewed XPS component_fit background column was not present in the processed table.",
+                        severity="medium",
+                        region_id=region_id,
+                        background_column=background_column,
+                    )
+                )
+                regions.append(region_record)
+                continue
+            background_values = pd.to_numeric(processed[background_column], errors="coerce").to_numpy(dtype=float)
+            target_y_all = region_y_all - background_values
+            region_record["background_source"] = "reviewed_background_column_subtracted"
+        else:
+            target_y_all = region_y_all
+
+        mask = (x >= low) & (x <= high) & np.isfinite(target_y_all)
+        point_count = int(mask.sum())
+        region_record["point_count"] = point_count
+        if point_count < min_points:
+            region_record["status"] = "insufficient_region_points"
+            warnings.append(
+                _warning(
+                    "xps_component_fit_insufficient_points",
+                    "A reviewed XPS component_fit region had too few points for fitting.",
+                    severity="medium",
+                    region_id=region_id,
+                    point_count=point_count,
+                    min_points=min_points,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        raw_components = region.get("components") or []
+        if not isinstance(raw_components, list) or not raw_components:
+            region_record["status"] = "no_reviewed_components"
+            warnings.append(
+                _warning(
+                    "xps_component_fit_components_missing",
+                    "A reviewed XPS component_fit region did not provide reviewed components.",
+                    severity="medium",
+                    region_id=region_id,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        specs: list[dict[str, Any]] = []
+        for component_number, component in enumerate(raw_components, start=1):
+            if not isinstance(component, dict):
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_component_ignored",
+                        "A reviewed XPS component_fit component was ignored because it was not a mapping.",
+                        severity="medium",
+                        region_id=region_id,
+                        component_number=component_number,
+                    )
+                )
+                continue
+            spec = _component_fit_component_spec(component, region_id=region_id, number=component_number, source=source, warnings=warnings)
+            if spec is not None:
+                specs.append(spec)
+                all_reference_ids.update(spec.get("reference_ids", []))
+        region_record["component_count"] = len(specs)
+        if not specs:
+            region_record["status"] = "no_valid_reviewed_components"
+            regions.append(region_record)
+            continue
+
+        x_region = x[mask]
+        observed = target_y_all[mask]
+        parameter_map: list[tuple[int, str]] = []
+        x0: list[float] = []
+        lower_bounds: list[float] = []
+        upper_bounds: list[float] = []
+        for spec_index, spec in enumerate(specs):
+            for name, initial_key in [
+                ("center_eV", "initial_center_eV"),
+                ("amplitude", "initial_amplitude"),
+                ("fwhm_eV", "initial_fwhm_eV"),
+            ]:
+                parameter_map.append((spec_index, name))
+                x0.append(float(spec[initial_key]))
+                low_bound, high_bound = spec["bounds"][name]
+                lower_bounds.append(float(low_bound))
+                upper_bounds.append(float(high_bound))
+            if spec["peak_shape"] == "pseudo_voigt":
+                parameter_map.append((spec_index, "mixing"))
+                x0.append(float(spec["initial_mixing"]))
+                low_bound, high_bound = spec["bounds"]["mixing"]
+                lower_bounds.append(float(low_bound))
+                upper_bounds.append(float(high_bound))
+
+        def unpack(values: np.ndarray) -> list[dict[str, float]]:
+            fitted_specs: list[dict[str, float]] = []
+            for spec in specs:
+                fitted_specs.append(
+                    {
+                        "center_eV": float(spec["initial_center_eV"]),
+                        "amplitude": float(spec["initial_amplitude"]),
+                        "fwhm_eV": float(spec["initial_fwhm_eV"]),
+                        "mixing": float(spec["initial_mixing"] or 0.0),
+                    }
+                )
+            for value, (spec_index, name) in zip(values, parameter_map, strict=True):
+                fitted_specs[spec_index][name] = float(value)
+            return fitted_specs
+
+        def model(values: np.ndarray) -> np.ndarray:
+            fitted_specs = unpack(values)
+            total = np.zeros_like(x_region, dtype=float)
+            for spec, fitted_spec in zip(specs, fitted_specs, strict=True):
+                total += _component_fit_profile(
+                    x_region,
+                    fitted_spec["amplitude"],
+                    fitted_spec["center_eV"],
+                    fitted_spec["fwhm_eV"],
+                    fitted_spec["mixing"],
+                    spec["peak_shape"],
+                )
+            return total
+
+        try:
+            result = least_squares(
+                lambda values: model(values) - observed,
+                np.asarray(x0, dtype=float),
+                bounds=(np.asarray(lower_bounds, dtype=float), np.asarray(upper_bounds, dtype=float)),
+                max_nfev=max_nfev,
+            )
+        except ValueError as exc:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_optimizer_failed",
+                    "XPS component-fit optimizer failed before producing reviewed fit parameters.",
+                    severity="medium",
+                    region_id=region_id,
+                    error=str(exc),
+                )
+            )
+            region_record["status"] = "optimizer_failed"
+            regions.append(region_record)
+            continue
+
+        fitted_signal = model(result.x)
+        fit_metrics = _component_fit_quality(observed, fitted_signal, len(parameter_map))
+        quality_checks, quality_warnings = _component_fit_quality_checks(fit_metrics, thresholds)
+        warnings.extend(quality_warnings)
+        optimizer_status = {
+            "success": bool(result.success),
+            "status": int(result.status),
+            "message": str(result.message),
+            "nfev": int(result.nfev),
+            "cost": float(result.cost),
+        }
+        if not result.success:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_not_converged",
+                    "XPS component-fit optimizer did not converge for a reviewed region.",
+                    severity="medium",
+                    region_id=region_id,
+                    optimizer_status=optimizer_status,
+                )
+            )
+            region_record.update({"status": "optimizer_not_converged", "optimizer_status": optimizer_status, "fit_quality": fit_metrics})
+            regions.append(region_record)
+            continue
+
+        if processed.loc[mask, fit_column].notna().any():
+            warnings.append(
+                _warning(
+                    "xps_component_fit_region_overlap",
+                    "A reviewed XPS component_fit region overlaps a previously fitted region; later region values were written for the overlap.",
+                    severity="low",
+                    region_id=region_id,
+                )
+            )
+        residual = observed - fitted_signal
+        processed.loc[mask, fit_column] = fitted_signal
+        processed.loc[mask, residual_column] = residual
+        processed.loc[mask, region_id_column] = region_id
+
+        fitted_specs = unpack(result.x)
+        fitted_components: list[dict[str, Any]] = []
+        fitted_areas: list[float] = []
+        for spec, fitted_spec in zip(specs, fitted_specs, strict=True):
+            area = _component_fit_area(
+                fitted_spec["amplitude"],
+                fitted_spec["fwhm_eV"],
+                fitted_spec["mixing"],
+                spec["peak_shape"],
+            )
+            fitted_areas.append(area)
+            fitted_component = {
+                "component_id": spec["component_id"],
+                "region_id": region_id,
+                "label": spec["label"],
+                "element": spec["element"],
+                "core_level": spec["core_level"],
+                "peak_shape": spec["peak_shape"],
+                "spin_orbit_group_id": spec.get("spin_orbit_group_id"),
+                "initial_center_eV": spec["initial_center_eV"],
+                "fitted_center_eV": fitted_spec["center_eV"],
+                "initial_amplitude": spec["initial_amplitude"],
+                "fitted_amplitude": fitted_spec["amplitude"],
+                "initial_fwhm_eV": spec["initial_fwhm_eV"],
+                "fitted_fwhm_eV": fitted_spec["fwhm_eV"],
+                "initial_mixing": spec.get("initial_mixing"),
+                "fitted_mixing": fitted_spec["mixing"] if spec["peak_shape"] == "pseudo_voigt" else None,
+                "fitted_area": area,
+                "relative_fit_area_percent": np.nan,
+                "fit_rmse": fit_metrics["rmse"],
+                "fit_r_squared": fit_metrics["r_squared"],
+                "confidence": spec.get("confidence", "low"),
+                "assignment_source": spec.get("assignment_source", source),
+                "status": "fitted",
+                "notes": spec.get("notes", "reviewed XPS component fit; screening only"),
+                "bounds": spec["bounds"],
+                "reference_ids": spec.get("reference_ids", []),
+                "reviewer_notes": spec.get("reviewer_notes", []),
+                "caveats": spec.get("caveats", []),
+            }
+            fitted_components.append(fitted_component)
+
+        area_total = float(np.sum(fitted_areas))
+        if area_total > 0:
+            for fitted_component in fitted_components:
+                fitted_component["relative_fit_area_percent"] = float(fitted_component["fitted_area"] / area_total * 100.0)
+
+        for fitted_component in fitted_components:
+            row = {key: fitted_component.get(key, np.nan) for key in _component_fit_columns()}
+            component_rows.append(row)
+
+        region_record.update(
+            {
+                "status": "reviewed_component_fit_screening",
+                "fitted_component_count": len(fitted_components),
+                "fit_quality": fit_metrics,
+                "fit_quality_checks": quality_checks,
+                "optimizer_status": optimizer_status,
+                "components": fitted_components,
+                "output_columns": [fit_column, residual_column, region_id_column],
+            }
+        )
+        fitted_regions += 1
+        regions.append(region_record)
+
+    table = pd.DataFrame(component_rows, columns=_component_fit_columns())
+    fitted_component_count = int((table["status"].astype(str) == "fitted").sum()) if not table.empty else 0
+    record.update(
+        {
+            "status": "reviewed_component_fit_screening" if fitted_regions else "no_regions_fitted",
+            "confidence": "low" if fitted_regions else "insufficient",
+            "region_count": len(regions),
+            "fitted_region_count": fitted_regions,
+            "component_count": int(sum(int(region.get("component_count", 0)) for region in regions)),
+            "fitted_component_count": fitted_component_count,
+            "regions": regions,
+            "reference_ids": sorted(all_reference_ids),
+            "warnings": warnings,
+        }
+    )
+    return table, record, warnings
+
+
 def _analyze_peaks(
     peaks: pd.DataFrame,
     request: XPSProcessingRequest,
     component_summary: dict[str, Any] | None = None,
     background_record: dict[str, Any] | None = None,
     background_subtraction_record: dict[str, Any] | None = None,
+    component_fit_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
@@ -1618,6 +2422,25 @@ def _analyze_peaks(
                     "assignment_source": background_subtraction_record.get("assignment_source", "ea.xps.background_subtraction:v0.2"),
                 }
             )
+    if component_fit_record:
+        analysis["component_fit"] = component_fit_record
+        if component_fit_record.get("status") == "reviewed_component_fit_screening":
+            evidence = [
+                component.get("component_id")
+                for region in component_fit_record.get("regions", [])
+                if isinstance(region, dict)
+                for component in region.get("components", [])
+                if isinstance(component, dict) and component.get("component_id")
+            ]
+            analysis["possible_interpretations"].append(
+                {
+                    "text": "Reviewed XPS component-fit screening produced fitted component positions, widths, amplitudes, and areas inside explicit user-confirmed regions. Treat these values as numerical screening artifacts, not as chemical-state proof, definitive composition, or automatic spin-orbit constrained fitting.",
+                    "confidence": component_fit_record.get("confidence", "low"),
+                    "evidence": ["component_fit", *evidence] if evidence else ["component_fit"],
+                    "assignment_source": component_fit_record.get("assignment_source", "ea.xps.component_fit:v0.2"),
+                    "component_fit_status": component_fit_record.get("status", "unknown"),
+                }
+            )
     return analysis
 
 
@@ -1636,6 +2459,7 @@ def _plot_xps(
     output: Path,
     *,
     background_subtraction: dict[str, Any] | None = None,
+    component_fit: dict[str, Any] | None = None,
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
@@ -1664,6 +2488,19 @@ def _plot_xps(
                     color=NATURE_LIKE_COLORS["orange"],
                     linewidth=1.0,
                     label="Background-subtracted intensity",
+                )
+    if component_fit and component_fit.get("status") == "reviewed_component_fit_screening":
+        fit_column = str(component_fit.get("fit_intensity_column") or "xps_component_fit_intensity")
+        if fit_column in processed.columns:
+            fit_mask = pd.to_numeric(processed[fit_column], errors="coerce").notna()
+            if bool(fit_mask.any()):
+                ax.plot(
+                    processed.loc[fit_mask, "binding_energy_eV"],
+                    processed.loc[fit_mask, fit_column],
+                    color=NATURE_LIKE_COLORS["pink"],
+                    linewidth=1.0,
+                    linestyle="-.",
+                    label="Reviewed component fit",
                 )
     if not components.empty:
         for _, component in components[components["status"].astype(str) == "integrated"].head(8).iterrows():
@@ -1718,10 +2555,11 @@ def process_xps_result(
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
     background_subtraction_record, background_subtraction_warnings = _apply_background_subtraction(processed, parameters)
+    component_fit_table, component_fit_record, component_fit_warnings = _apply_component_fit(processed, parameters)
     peaks = _detect_peaks(processed, parameters, request.x_unit)
     components, component_summary, component_warnings = _apply_component_quantification(processed, parameters)
     background_record, background_warnings = _record_background_model(parameters)
-    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record, background_subtraction_record)
+    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record, background_subtraction_record, component_fit_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -1735,12 +2573,14 @@ def process_xps_result(
     processed_csv = output_dir / "xps_processed.csv"
     peaks_csv = output_dir / "xps_peaks.csv"
     components_csv = output_dir / "xps_components.csv"
+    component_fit_csv = output_dir / "xps_component_fit.csv"
+    component_fit_yml = output_dir / "xps_component_fit.yml"
     background_yml = output_dir / "xps_background.yml"
     background_subtraction_yml = output_dir / "xps_background_subtraction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "xps_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "xps_metadata.yml"
-    for output in [processed_csv, peaks_csv, components_csv, background_yml, background_subtraction_yml, figure, result_metadata]:
+    for output in [processed_csv, peaks_csv, components_csv, component_fit_csv, component_fit_yml, background_yml, background_subtraction_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1769,12 +2609,29 @@ def process_xps_result(
             evidence = item.get("evidence")
             if isinstance(evidence, list):
                 item["evidence"] = [background_subtraction_ref if value == "background_subtraction" else value for value in evidence]
+    component_fit_table_ref: str | None = None
+    component_fit_ref: str | None = None
+    if component_fit_record is not None:
+        component_fit_table_ref = str(component_fit_csv.relative_to(root))
+        component_fit_ref = str(component_fit_yml.relative_to(root))
+        component_fit_record["record_ref"] = component_fit_ref
+        component_fit_record["component_table_ref"] = component_fit_table_ref
+        component_fit_table.to_csv(component_fit_csv, index=False)
+        write_yaml(component_fit_yml, component_fit_record)
+        if peak_analysis.get("component_fit"):
+            peak_analysis["component_fit"]["record_ref"] = component_fit_ref
+            peak_analysis["component_fit"]["component_table_ref"] = component_fit_table_ref
+        for item in peak_analysis.get("possible_interpretations", []):
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [component_fit_ref if value == "component_fit" else value for value in evidence]
     _plot_xps(
         processed,
         peaks,
         components,
         figure,
         background_subtraction=background_subtraction_record,
+        component_fit=component_fit_record,
         footer=figure_footer(figure_id, None) if figure_id else None,
     )
 
@@ -1785,6 +2642,7 @@ def process_xps_result(
         warnings.append(_warning("xps_calibration_reference_missing", "No XPS calibration reference text was recorded.", severity="medium"))
     warnings.extend(processing_warnings)
     warnings.extend(background_subtraction_warnings)
+    warnings.extend(component_fit_warnings)
     warnings.extend(component_warnings)
     warnings.extend(background_warnings)
     outputs = {
@@ -1798,6 +2656,10 @@ def process_xps_result(
         outputs["background_model"] = background_ref
     if background_subtraction_ref:
         outputs["background_subtraction"] = background_subtraction_ref
+    if component_fit_ref:
+        outputs["component_fit"] = component_fit_ref
+    if component_fit_table_ref:
+        outputs["component_fit_table"] = component_fit_table_ref
     result = XPSProcessingResult(
         xps_result_id=result_id,
         result_id=result_id,
@@ -1835,6 +2697,8 @@ def process_xps_result(
                     str(processed_csv.relative_to(root)),
                     str(peaks_csv.relative_to(root)),
                     str(components_csv.relative_to(root)),
+                    component_fit_table_ref,
+                    component_fit_ref,
                     background_ref,
                     background_subtraction_ref,
                     str(figure.relative_to(root)),
@@ -1889,6 +2753,8 @@ def process_xps_result(
                     str(processed_csv.relative_to(root)),
                     str(peaks_csv.relative_to(root)),
                     str(components_csv.relative_to(root)),
+                    component_fit_table_ref,
+                    component_fit_ref,
                     background_ref,
                     background_subtraction_ref,
                 ]

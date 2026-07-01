@@ -12,6 +12,8 @@ ea_skill:
     - processed_result
     - background_model_record
     - background_subtraction_record
+    - component_fit_record
+    - component_fit_table
     - figure_record
     - report_section
     - provenance_record
@@ -65,6 +67,9 @@ ea_skill:
       - component_quantification_screening
       - background_model_records
       - background_subtraction_linear_preprocessing
+      - background_subtraction_shirley_preprocessing
+      - background_subtraction_tougaard_u2_preprocessing
+      - reviewed_component_fit_screening
     background_model_records:
       source: ea.xps.background_model:v0.2
       default_enabled: false
@@ -95,8 +100,34 @@ ea_skill:
         - xps_shirley_subtracted_intensity_column
         - xps_tougaard_u2_subtracted_intensity_column
       boundary: reviewed_numeric_preprocessing_only_no_endpoint_autoselection_no_tougaard_parameter_autofit_no_quases_depth_profile_modeling_no_spin_orbit_fitting_no_composition_or_chemical_state_proof
+    component_fit:
+      source: ea.xps.component_fit:v0.2
+      default_enabled: false
+      supported_methods:
+        - reviewed_component_fit_screening
+      supported_peak_shapes:
+        - gaussian
+        - lorentzian
+        - pseudo_voigt
+      required_reviewed_inputs:
+        - binding_energy_region
+        - input_intensity_column
+        - component_ids_and_labels
+        - peak_shape
+        - initial_center_amplitude_fwhm
+        - center_amplitude_fwhm_bounds
+        - fit_quality_thresholds
+        - references_caveats_confidence
+      output_artifacts:
+        - xps_component_fit.yml
+        - xps_component_fit.csv
+        - xps_component_fit_intensity_column
+        - xps_component_fit_residual_column
+        - xps_component_fit_region_id_column
+      boundary: reviewed_screening_only_no_automatic_component_background_bounds_peak_shape_spin_orbit_constant_selection_no_constrained_spin_orbit_fitting_no_composition_or_chemical_state_proof
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
-      - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, spin-orbit constrained fitting, and formal multi-region quantification remain future work
+      - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, and formal multi-region quantification remain future work
+      - reviewed_component_fit_screening uses only explicit user-reviewed components, peak shapes, initial values, bounds, and selected intensity columns; chemical-state proof, composition proof, automatic background/component selection, spin-orbit constants, and constrained spin-orbit fitting remain future work

@@ -192,6 +192,56 @@ def _tougaard_background_subtraction_parameters() -> dict:
     return parameters
 
 
+def _component_fit_parameters() -> dict:
+    parameters = _component_quantification_parameters()
+    parameters["component_fit"] = {
+        "enabled": True,
+        "method": "reviewed_component_fit_screening",
+        "source": "ea.xps.component_fit:v0.2",
+        "input_intensity_column": "xps_background_subtracted_intensity",
+        "fit_intensity_column": "xps_component_fit_intensity",
+        "residual_column": "xps_component_fit_residual",
+        "region_id_column": "xps_component_fit_region_id",
+        "min_points": 8,
+        "max_nfev": 5000,
+        "fit_quality_thresholds": {
+            "max_rmse": 0.12,
+            "min_r_squared": 0.70,
+        },
+        "reference_ids": ["ref-xps-fit-001"],
+        "regions": [
+            {
+                "region_id": "xps-fit-c1s-region-001",
+                "label": "C 1s reviewed component-fit region",
+                "binding_energy_window_eV": [282.0, 288.0],
+                "reference_ids": ["ref-xps-fit-001"],
+                "reviewer_notes": ["User confirmed one reviewed Gaussian C 1s component for screening fit."],
+                "caveats": ["Screening fit only; not chemical-state proof."],
+                "confidence": "low",
+                "components": [
+                    {
+                        "component_id": "xps-fit-c1s-001",
+                        "label": "C 1s reviewed Gaussian fit",
+                        "element": "C",
+                        "core_level": "1s",
+                        "peak_shape": "gaussian",
+                        "initial_center_eV": 284.8,
+                        "center_bounds_eV": [283.5, 286.0],
+                        "initial_amplitude": 0.8,
+                        "amplitude_bounds": [0.05, 1.5],
+                        "initial_fwhm_eV": 3.2,
+                        "fwhm_bounds_eV": [0.8, 6.0],
+                        "reference_ids": ["ref-xps-fit-001"],
+                        "reviewer_notes": ["Initial center and FWHM were reviewed from the synthetic C 1s region."],
+                        "confidence": "low",
+                    }
+                ],
+            }
+        ],
+    }
+    return parameters
+
+
 def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
 
@@ -751,6 +801,167 @@ def test_cli_runs_reviewed_tougaard_u2_background_subtraction(tmp_path: Path, ca
     assert "toward_higher_binding_energy" in report_body
 
 
+def test_cli_runs_reviewed_component_fit_screening(tmp_path: Path, capsys) -> None:
+    fixture = _write_xps_fixture(tmp_path / "synthetic-xps-component-fit.txt")
+    parameters = _component_fit_parameters()
+    workspace = tmp_path / "cli-xps-component-fit-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Component Fit Workflow",
+            "--slug",
+            "cli-xps-component-fit",
+            "--direction",
+            "XPS component fit workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "xps",
+            "--sample-ref",
+            "sample-xps-fit-001",
+            "--experiment-ref",
+            "exp-xps-fit-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    for target_type, reviewed_content in [
+        ("xps_columns", "x=binding_energy_eV, y=intensity, unit=eV"),
+        ("xps_calibration", "C 1s reference at 284.8 eV; no additional shift needed"),
+        ("xps_parameters", json.dumps(parameters, ensure_ascii=False)),
+    ]:
+        assert main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                target_type,
+                "--target-ref",
+                raw_metadata_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                reviewed_content,
+            ]
+        ) == 0
+        review = _json_output(capsys)
+        if target_type == "xps_columns":
+            column_review = review
+        elif target_type == "xps_calibration":
+            calibration_review = review
+        else:
+            parameter_review = review
+
+    assert main(
+        [
+            "xps",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-fit-001",
+            "--x-column",
+            "binding_energy_eV",
+            "--y-column",
+            "intensity",
+            "--x-unit",
+            "eV",
+            "--energy-shift-ev",
+            "0.0",
+            "--calibration-reference",
+            "C 1s 284.8 eV user-confirmed reference",
+            "--column-review-ref",
+            column_review["review_id"],
+            "--calibration-review-ref",
+            calibration_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    xps_metadata = Path(process_output["metadata"])
+    xps = read_yaml(xps_metadata)
+
+    fit_record = xps["peak_analysis"]["component_fit"]
+    assert fit_record["status"] == "reviewed_component_fit_screening"
+    assert fit_record["method"] == "reviewed_component_fit_screening"
+    assert fit_record["input_intensity_column"] == "xps_background_subtracted_intensity"
+    assert fit_record["fitted_region_count"] == 1
+    assert fit_record["fitted_component_count"] == 1
+    assert "components" in fit_record["regions"][0]
+    assert "does not automatically choose components" in fit_record["boundary"]
+    assert xps["outputs"]["component_fit"].endswith("xps_component_fit.yml")
+    assert xps["outputs"]["component_fit_table"].endswith("xps_component_fit.csv")
+    saved_fit = read_yaml(workspace / xps["outputs"]["component_fit"])
+    assert saved_fit["record_ref"] == xps["outputs"]["component_fit"]
+    assert saved_fit["component_table_ref"] == xps["outputs"]["component_fit_table"]
+    region = saved_fit["regions"][0]
+    component = region["components"][0]
+    assert region["status"] == "reviewed_component_fit_screening"
+    assert component["component_id"] == "xps-fit-c1s-001"
+    assert component["peak_shape"] == "gaussian"
+    assert abs(component["fitted_center_eV"] - 284.8) < 0.5
+    assert component["relative_fit_area_percent"] == 100.0
+    assert region["fit_quality"]["r_squared"] is None or region["fit_quality"]["r_squared"] > 0.70
+    processed = pd.read_csv(workspace / xps["outputs"]["processed_csv"])
+    assert "xps_component_fit_intensity" in processed.columns
+    assert "xps_component_fit_residual" in processed.columns
+    fitted = processed.loc[processed["xps_component_fit_region_id"] == "xps-fit-c1s-region-001", "xps_component_fit_intensity"]
+    assert fitted.notna().any()
+    fit_table = pd.read_csv(workspace / xps["outputs"]["component_fit_table"])
+    assert fit_table.loc[0, "component_id"] == "xps-fit-c1s-001"
+    assert fit_table.loc[0, "status"] == "fitted"
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
+    assert xps["outputs"]["component_fit"] in figure_record["source_data_refs"]
+    assert xps["outputs"]["component_fit_table"] in figure_record["source_data_refs"]
+    assert any(xps["outputs"]["component_fit"] in item.get("evidence", []) for item in xps["peak_analysis"]["possible_interpretations"])
+
+    assert main(
+        [
+            "xps",
+            "report",
+            str(workspace),
+            "--metadata",
+            xps_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-fit-001",
+            "--experiment-ref",
+            "exp-xps-fit-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## XPS reviewed component fit screening" in report_body
+    assert "xps-fit-c1s-001" in report_body
+    assert "xps_component_fit_intensity" in report_body
+    assert "Screening fit only" in report_body or "screening" in report_body
+
+
 def test_xps_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -766,6 +977,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_reference_text = xps_reference.read_text(encoding="utf-8")
     assert "calibration_review_ref" in xps_reference_text
     assert "component_quantification" in xps_reference_text
+    assert "component_fit" in xps_reference_text
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
     assert "reviewed_shirley_background_subtraction" in xps_reference_text
@@ -773,6 +985,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
+    assert "component_fit" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
     assert "background_subtraction" in xps_record["notes"]
     assert "reviewed_shirley_background_subtraction" in xps_record["notes"]
