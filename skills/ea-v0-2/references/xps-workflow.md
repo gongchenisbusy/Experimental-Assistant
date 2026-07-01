@@ -8,7 +8,7 @@ Required gates:
 2. Ask for or verify x/y columns and x-axis unit (`eV` or `unknown`).
 3. Ask for or verify binding-energy calibration before analysis. Record `energy_shift_eV`, `calibration_reference`, and `calibration_review_ref`.
 4. Ask for or verify processing parameters before analysis.
-5. If component quantification, background-model documentation, or numeric background subtraction is requested, ask the user to confirm `component_quantification`, `background_model`, and/or `background_subtraction` parameters: reviewed component IDs/labels, elements/core levels, binding-energy/background windows, subtraction method, anchor points/windows, Shirley iteration settings when used, integration baseline, model/background notes, software/tool provenance, and sensitivity factors when atomic-percent screening is desired.
+5. If component quantification, background-model documentation, or numeric background subtraction is requested, ask the user to confirm `component_quantification`, `background_model`, and/or `background_subtraction` parameters: reviewed component IDs/labels, elements/core levels, binding-energy/background windows, subtraction method, anchor points/windows, Shirley iteration settings when used, Tougaard U2 `B`/`C_eV2`/integration direction when used, integration baseline, model/background notes, software/tool provenance, and sensitivity factors when atomic-percent screening is desired.
 6. Keep raw data untouched; write processed outputs outside `raw/`.
 7. Record baseline handling, smoothing, normalization, detected screening peaks, optional component screening, optional reviewed background-model record, optional reviewed background-subtraction record, generated figure, report, and provenance.
 8. Treat automatic peaks, reviewed background-subtracted columns, and component screening estimates as screening evidence. Use calibration context, background model, peak model, references, and user review before writing chemical-state conclusions.
@@ -18,15 +18,15 @@ Current v0.2 XPS support:
 
 - Raw import uses `ea raw import --characterization-type xps`.
 - Inspection identifies common XPS files by path/name, binding-energy metadata, and binding-energy-like ranges.
-- Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, disabled-by-default `component_quantification` screening from reviewed binding-energy windows, disabled-by-default `background_model` records for reviewed Shirley/Tougaard/linear/local-minimum/rolling-quantile choices, and disabled-by-default `background_subtraction` numeric linear or Shirley subtraction inside reviewed regions with reviewed anchor points/windows.
+- Processing supports user-confirmed energy shift, optional rolling-quantile baseline correction, optional Savitzky-Golay smoothing, max-intensity normalization, SciPy peak detection, disabled-by-default `component_quantification` screening from reviewed binding-energy windows, disabled-by-default `background_model` records for reviewed Shirley/Tougaard/linear/local-minimum/rolling-quantile choices, and disabled-by-default `background_subtraction` numeric linear, Shirley, or Tougaard U2 subtraction inside reviewed regions with reviewed anchor points/windows.
 - Processed CSV files include `binding_energy_raw`, calibrated `binding_energy_eV`, `raw_intensity`, optional `baseline_signal`, optional `smoothed_intensity`, and `processed_intensity`.
-- When `background_subtraction.enabled` is true with method `reviewed_linear_background_subtraction` or `reviewed_shirley_background_subtraction`, processed CSV files also include the reviewed background column, background-subtracted intensity column, and region ID column for the supplied binding-energy windows.
+- When `background_subtraction.enabled` is true with method `reviewed_linear_background_subtraction`, `reviewed_shirley_background_subtraction`, or `reviewed_tougaard_u2_background_subtraction`, processed CSV files also include the reviewed background column, background-subtracted intensity column, and region ID column for the supplied binding-energy windows.
 - Peak tables include `binding_energy_eV`, raw energy, prominence, component model status, possible assignment, assignment confidence, and assignment source.
 - When `component_quantification.enabled` is true, EA writes `xps_components.csv` with reviewed component windows, integrated area, relative area percent, sensitivity factor, RSF-corrected area, and `relative_atomic_percent_screening` when all included components have valid positive sensitivity factors.
 - When `background_model.enabled` is true, EA writes `xps_background.yml` with reviewed background region/model choices, windows, software/tool refs, reference IDs, reviewer notes, caveats, and whether the background had already been applied outside EA.
-- When `background_subtraction.enabled` is true, EA writes `xps_background_subtraction.yml` with reviewed subtraction method, regions, left/right anchors, optional Shirley iterations/convergence, output columns, references, warnings, caveats, and confidence.
+- When `background_subtraction.enabled` is true, EA writes `xps_background_subtraction.yml` with reviewed subtraction method, regions, left/right anchors, optional Shirley iterations/convergence, optional Tougaard U2 `B`/`C_eV2`/kernel/integration-direction metadata, output columns, references, warnings, caveats, and confidence.
 - Reports include an embedded XPS figure, original figure path, calibration/background section, peak table, optional component screening table, confidence-labeled possible interpretations, file links, References, and provenance.
-- XPS component quantification is screening-only. XPS background model records are provenance only. XPS background subtraction is reviewed numeric preprocessing only. EA does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, automatic endpoint selection, Tougaard subtraction, or spin-orbit constrained fitting.
+- XPS component quantification is screening-only. XPS background model records are provenance only. XPS background subtraction is reviewed numeric preprocessing only. EA does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, automatic endpoint selection, automatic Tougaard parameter fitting, QUASES/depth-profile modeling, or spin-orbit constrained fitting.
 
 CLI path:
 
@@ -148,4 +148,35 @@ background_subtraction:
 
 Linear and Shirley background subtraction write reviewed preprocessing columns and `xps_background_subtraction.yml`. They do not choose endpoints automatically, apply Tougaard subtraction, fit spin-orbit constrained peaks, calculate final composition, or prove chemical states.
 
-Future XPS work should add numeric user-confirmed Tougaard subtraction workflows, constrained peak fitting, spin-orbit pair handling, standard reference libraries, multi-region project records, replicate/statistical comparisons, and user-confirmed memory-candidate generation from report interpretations.
+Optional reviewed Tougaard U2 background-subtraction parameters:
+
+```yaml
+background_subtraction:
+  enabled: true
+  method: reviewed_tougaard_u2_background_subtraction
+  source: ea.xps.background_subtraction:v0.2
+  input_intensity_column: processed_intensity
+  min_points: 5
+  tougaard_B: 1200.0
+  tougaard_C_eV2: 1643.0
+  integration_direction: toward_higher_binding_energy
+  reference_ids:
+    - ref-xps-tougaard-001
+  regions:
+    - region_id: xps-tougaard-c1s-001
+      label: C 1s reviewed Tougaard U2 background
+      binding_energy_window_eV: [280.0, 292.0]
+      left_anchor_window_eV: [280.0, 281.0]
+      right_anchor_window_eV: [291.0, 292.0]
+      reference_ids:
+        - ref-xps-tougaard-001
+      reviewer_notes:
+        - User confirmed endpoint windows and Tougaard U2 B/C parameters.
+      caveats:
+        - Reviewed Tougaard U2 preprocessing only; not QUASES depth-profile modeling.
+      confidence: low
+```
+
+Tougaard U2 subtraction writes reviewed preprocessing columns and `xps_background_subtraction.yml`. It requires a positive user-reviewed `B`; `C_eV2` and integration direction are recorded. EA does not auto-fit `B`, choose endpoints automatically, run QUASES/depth-profile modeling, fit spin-orbit constrained peaks, calculate final composition, or prove chemical states.
+
+Future XPS work should add constrained peak fitting, spin-orbit pair handling, standard reference libraries, multi-region project records, replicate/statistical comparisons, broader Tougaard variants only after reviewed protocols, and user-confirmed memory-candidate generation from report interpretations.

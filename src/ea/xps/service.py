@@ -114,6 +114,9 @@ def default_xps_processing_parameters() -> dict[str, Any]:
             "corrected_intensity_column": "xps_background_subtracted_intensity",
             "region_id_column": "xps_background_subtraction_region_id",
             "min_points": 5,
+            "tougaard_B": None,
+            "tougaard_C_eV2": 1643.0,
+            "integration_direction": "toward_higher_binding_energy",
             "regions": [],
             "reference_ids": [],
             "reviewer_notes": [],
@@ -633,6 +636,12 @@ def _background_subtraction_defaults(method: str) -> dict[str, str]:
             "corrected_intensity_column": "xps_shirley_subtracted_intensity",
             "region_id_column": "xps_background_subtraction_region_id",
         }
+    if method == "reviewed_tougaard_u2_background_subtraction":
+        return {
+            "background_column": "xps_tougaard_u2_background",
+            "corrected_intensity_column": "xps_tougaard_u2_subtracted_intensity",
+            "region_id_column": "xps_background_subtraction_region_id",
+        }
     return {
         "background_column": "xps_linear_background",
         "corrected_intensity_column": "xps_background_subtracted_intensity",
@@ -641,23 +650,35 @@ def _background_subtraction_defaults(method: str) -> dict[str, str]:
 
 
 def _background_subtraction_method_label(method: str) -> str:
-    return "Shirley" if method == "reviewed_shirley_background_subtraction" else "linear"
+    if method == "reviewed_shirley_background_subtraction":
+        return "Shirley"
+    if method == "reviewed_tougaard_u2_background_subtraction":
+        return "Tougaard U2"
+    return "linear"
 
 
 def _background_subtraction_success_status(method: str) -> str:
     if method == "reviewed_shirley_background_subtraction":
         return "reviewed_shirley_background_subtracted"
+    if method == "reviewed_tougaard_u2_background_subtraction":
+        return "reviewed_tougaard_u2_background_subtracted"
     return "reviewed_linear_background_subtracted"
 
 
 def _background_subtraction_region_status(method: str) -> str:
     if method == "reviewed_shirley_background_subtraction":
         return "shirley_background_subtracted"
+    if method == "reviewed_tougaard_u2_background_subtraction":
+        return "tougaard_u2_background_subtracted"
     return "linear_background_subtracted"
 
 
 def _is_background_subtraction_success(record: dict[str, Any]) -> bool:
-    return record.get("status") in {"reviewed_linear_background_subtracted", "reviewed_shirley_background_subtracted"}
+    return record.get("status") in {
+        "reviewed_linear_background_subtracted",
+        "reviewed_shirley_background_subtracted",
+        "reviewed_tougaard_u2_background_subtracted",
+    }
 
 
 def _anchor_window(region: dict[str, Any], side: str) -> tuple[float, float] | None:
@@ -817,6 +838,123 @@ def _shirley_background_from_anchors(
     }
 
 
+def _first_config_value(region: dict[str, Any], params: dict[str, Any], keys: tuple[str, ...], default: Any = None) -> Any:
+    for container in (region, params):
+        for key in keys:
+            if key in container and container.get(key) is not None:
+                return container.get(key)
+    return default
+
+
+def _positive_float(value: Any) -> float | None:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return None
+    return coerced if coerced > 0 else None
+
+
+def _tougaard_region_parameters(
+    region: dict[str, Any],
+    params: dict[str, Any],
+    *,
+    default_c_eV2: float,
+    default_direction: str,
+    region_id: str,
+    warnings: list[dict[str, Any]],
+) -> tuple[float | None, float, str]:
+    raw_b = _first_config_value(region, params, ("tougaard_B", "B", "b1", "B1"))
+    b_value = _positive_float(raw_b)
+    if b_value is None:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_tougaard_B_missing",
+                "A reviewed XPS Tougaard U2 background_subtraction region is missing a positive user-reviewed B parameter.",
+                severity="medium",
+                region_id=region_id,
+            )
+        )
+
+    raw_c = _first_config_value(region, params, ("tougaard_C_eV2", "C_eV2", "C"), default_c_eV2)
+    c_value, adjusted_c = _coerce_float(raw_c, default_c_eV2, minimum=1e-12)
+    if adjusted_c:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_tougaard_C_adjusted",
+                "Invalid XPS Tougaard U2 C_eV2 parameter was adjusted before processing.",
+                severity="medium",
+                region_id=region_id,
+                tougaard_C_eV2=c_value,
+            )
+        )
+
+    direction = str(
+        _first_config_value(
+            region,
+            params,
+            ("integration_direction", "tougaard_integration_direction"),
+            default_direction,
+        )
+    ).strip()
+    allowed_directions = {"toward_higher_binding_energy", "toward_lower_binding_energy"}
+    if direction not in allowed_directions:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_tougaard_direction_adjusted",
+                "Invalid XPS Tougaard U2 integration_direction was adjusted before processing.",
+                severity="medium",
+                region_id=region_id,
+                supplied_integration_direction=direction,
+            )
+        )
+        direction = default_direction
+    return b_value, c_value, direction
+
+
+def _tougaard_u2_background_from_anchors(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    x_left: float,
+    y_left: float,
+    x_right: float,
+    y_right: float,
+    tougaard_B: float,
+    tougaard_C_eV2: float,
+    integration_direction: str,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    linear_background, slope = _linear_background_from_anchors(x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+    residual = np.clip(y - linear_background, a_min=0.0, a_max=None)
+    integrals = np.zeros_like(x, dtype=float)
+    for index, x_value in enumerate(x):
+        if integration_direction == "toward_lower_binding_energy":
+            segment_x = x[: index + 1]
+            segment_residual = residual[: index + 1]
+            delta = x_value - segment_x
+        else:
+            segment_x = x[index:]
+            segment_residual = residual[index:]
+            delta = segment_x - x_value
+        if len(segment_x) < 2:
+            continue
+        kernel = delta / np.square(tougaard_C_eV2 + np.square(delta))
+        integrals[index] = float(np.trapezoid(segment_residual * kernel, segment_x))
+
+    background = linear_background + float(tougaard_B) * integrals
+    return background, {
+        "algorithm": "reviewed_tougaard_u2_kernel",
+        "kernel": "delta_E/(C_eV2+delta_E^2)^2",
+        "linear_endpoint_slope_intensity_per_eV": float(slope),
+        "endpoint_low_intensity": float(linear_background[0]),
+        "endpoint_high_intensity": float(linear_background[-1]),
+        "tougaard_B": float(tougaard_B),
+        "tougaard_C_eV2": float(tougaard_C_eV2),
+        "integration_direction": integration_direction,
+        "residual_area_after_linear_endpoint_baseline": float(np.trapezoid(residual, x)),
+        "tougaard_integral_max": float(np.nanmax(integrals)) if integrals.size else 0.0,
+    }
+
+
 def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("background_subtraction", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
@@ -824,7 +962,11 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
 
     warnings: list[dict[str, Any]] = []
     method = str(params.get("method") or "reviewed_linear_background_subtraction")
-    supported_methods = {"reviewed_linear_background_subtraction", "reviewed_shirley_background_subtraction"}
+    supported_methods = {
+        "reviewed_linear_background_subtraction",
+        "reviewed_shirley_background_subtraction",
+        "reviewed_tougaard_u2_background_subtraction",
+    }
     method_label = _background_subtraction_method_label(method)
     defaults = _background_subtraction_defaults(method)
     base_defaults = _background_subtraction_defaults("reviewed_linear_background_subtraction")
@@ -832,7 +974,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
     input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
     background_column_input = params.get("background_column")
     corrected_column_input = params.get("corrected_intensity_column")
-    if method == "reviewed_shirley_background_subtraction":
+    if method in {"reviewed_shirley_background_subtraction", "reviewed_tougaard_u2_background_subtraction"}:
         if background_column_input == base_defaults["background_column"]:
             background_column_input = None
         if corrected_column_input == base_defaults["corrected_intensity_column"]:
@@ -843,6 +985,13 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
     min_points, adjusted_min_points = _coerce_int(params.get("min_points"), 5, minimum=2)
     max_iterations, adjusted_max_iterations = _coerce_int(params.get("max_iterations"), 100, minimum=2)
     tolerance, adjusted_tolerance = _coerce_float(params.get("tolerance"), 1e-6, minimum=1e-12)
+    global_tougaard_b = _positive_float(_first_config_value({}, params, ("tougaard_B", "B", "b1", "B1")))
+    tougaard_c_eV2, adjusted_tougaard_c = _coerce_float(params.get("tougaard_C_eV2", params.get("C_eV2", 1643.0)), 1643.0, minimum=1e-12)
+    integration_direction = str(params.get("integration_direction") or "toward_higher_binding_energy").strip()
+    adjusted_integration_direction = False
+    if integration_direction not in {"toward_higher_binding_energy", "toward_lower_binding_energy"}:
+        integration_direction = "toward_higher_binding_energy"
+        adjusted_integration_direction = True
     record: dict[str, Any] = {
         "enabled": True,
         "method": method,
@@ -854,6 +1003,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "min_points": min_points,
         "max_iterations": max_iterations if method == "reviewed_shirley_background_subtraction" else None,
         "tolerance": tolerance if method == "reviewed_shirley_background_subtraction" else None,
+        "tougaard_B": global_tougaard_b if method == "reviewed_tougaard_u2_background_subtraction" else None,
+        "tougaard_C_eV2": tougaard_c_eV2 if method == "reviewed_tougaard_u2_background_subtraction" else None,
+        "integration_direction": integration_direction if method == "reviewed_tougaard_u2_background_subtraction" else None,
         "status": "not_applied",
         "confidence": "insufficient",
         "region_count": 0,
@@ -864,7 +1016,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
             "XPS background_subtraction applies only user-reviewed numeric preprocessing inside explicit binding-energy regions. "
-            "EA v0.2 does not automatically choose endpoints/windows, perform undeclared Tougaard subtraction or peak fitting, assign chemical states, "
+            "EA v0.2 does not automatically choose endpoints/windows, fit Tougaard parameters, run QUASES/depth-profile modeling or peak fitting, assign chemical states, "
             "prove composition, or perform spin-orbit constrained fitting from this record."
         ),
     }
@@ -897,6 +1049,16 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 severity="medium",
                 max_iterations=max_iterations,
                 tolerance=tolerance,
+            )
+        )
+    if method == "reviewed_tougaard_u2_background_subtraction" and (adjusted_tougaard_c or adjusted_integration_direction):
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_tougaard_parameter_adjusted",
+                "Invalid XPS Tougaard U2 background_subtraction parameters were adjusted before processing.",
+                severity="medium",
+                tougaard_C_eV2=tougaard_c_eV2,
+                integration_direction=integration_direction,
             )
         )
     if input_column not in processed.columns:
@@ -996,6 +1158,25 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
             "assignment_source": source,
         }
         all_reference_ids.update(region_record["reference_ids"])
+        tougaard_b: float | None = None
+        region_tougaard_c = tougaard_c_eV2
+        region_integration_direction = integration_direction
+        if method == "reviewed_tougaard_u2_background_subtraction":
+            tougaard_b, region_tougaard_c, region_integration_direction = _tougaard_region_parameters(
+                region,
+                params,
+                default_c_eV2=tougaard_c_eV2,
+                default_direction=integration_direction,
+                region_id=region_id,
+                warnings=warnings,
+            )
+            region_record.update(
+                {
+                    "tougaard_B": tougaard_b,
+                    "tougaard_C_eV2": region_tougaard_c,
+                    "integration_direction": region_integration_direction,
+                }
+            )
         if low is None or high is None:
             warnings.append(
                 _warning(
@@ -1023,6 +1204,11 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                     min_points=min_points,
                 )
             )
+            regions.append(region_record)
+            continue
+
+        if method == "reviewed_tougaard_u2_background_subtraction" and tougaard_b is None:
+            region_record["status"] = "missing_reviewed_tougaard_B"
             regions.append(region_record)
             continue
 
@@ -1085,6 +1271,18 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                         tolerance=tolerance,
                     )
                 )
+        elif method == "reviewed_tougaard_u2_background_subtraction":
+            background, subtraction_details = _tougaard_u2_background_from_anchors(
+                x[mask],
+                y[mask],
+                x_left=x_left,
+                y_left=y_left,
+                x_right=x_right,
+                y_right=y_right,
+                tougaard_B=float(tougaard_b),
+                tougaard_C_eV2=region_tougaard_c,
+                integration_direction=region_integration_direction,
+            )
         else:
             background, slope = _linear_background_from_anchors(x[mask], x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
             subtraction_details = {
@@ -1414,7 +1612,7 @@ def _analyze_peaks(
             method_label = _background_subtraction_method_label(str(background_subtraction_record.get("method") or "reviewed_linear_background_subtraction"))
             analysis["possible_interpretations"].append(
                 {
-                    "text": f"Reviewed {method_label} XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as Tougaard modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
+                    "text": f"Reviewed {method_label} XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as QUASES/depth-profile modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
                     "confidence": background_subtraction_record.get("confidence", "low"),
                     "evidence": ["background_subtraction"],
                     "assignment_source": background_subtraction_record.get("assignment_source", "ea.xps.background_subtraction:v0.2"),

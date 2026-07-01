@@ -1355,7 +1355,12 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
     if not subtraction:
         return "当前没有启用或记录 XPS background subtraction。"
     method = subtraction.get("method", "reviewed_linear_background_subtraction")
-    method_label = "Shirley" if method == "reviewed_shirley_background_subtraction" else "linear"
+    if method == "reviewed_shirley_background_subtraction":
+        method_label = "Shirley"
+    elif method == "reviewed_tougaard_u2_background_subtraction":
+        method_label = "Tougaard U2"
+    else:
+        method_label = "linear"
     status = subtraction.get("status", "unknown")
     corrected_count = subtraction.get("corrected_region_count", 0)
     region_count = subtraction.get("region_count", 0)
@@ -1370,8 +1375,8 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
         f"Reviewed XPS {method_label} background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
         f"record: `{record_ref}`；background column: `{background_column}`；corrected column: `{corrected_column}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
-        "该记录只表示用户审核过的数值扣背景预处理；EA 不自动选择端点/窗口，不执行未声明的 Tougaard 或峰拟合模型，"
-        "也不据此证明化学态、组成或 spin-orbit constrained fitting。"
+        "该记录只表示用户审核过的数值扣背景预处理；EA 不自动选择端点/窗口，不自动拟合 Tougaard 参数，"
+        "不执行 QUASES/depth-profile modeling 或峰拟合模型，也不据此证明化学态、组成或 spin-orbit constrained fitting。"
     )
 
 
@@ -1381,8 +1386,8 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
     if not regions:
         return "当前没有可展示的 XPS background subtraction region。"
     rows = [
-        "| region_id | method | algorithm | window (eV) | left anchor (eV) | right anchor (eV) | points | iterations | converged | status | confidence |",
-        "|---|---|---|---:|---:|---:|---:|---:|---|---|---|",
+        "| region_id | method | algorithm | window (eV) | left anchor (eV) | right anchor (eV) | B | C_eV2 | direction | points | iterations | converged | status | confidence |",
+        "|---|---|---|---:|---:|---:|---:|---:|---|---:|---:|---|---|---|",
     ]
     method = subtraction.get("method", "reviewed_linear_background_subtraction")
     for region in regions[:12]:
@@ -1395,13 +1400,16 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
         left_x = left.get("binding_energy_eV") if isinstance(left, dict) else None
         right_x = right.get("binding_energy_eV") if isinstance(right, dict) else None
         rows.append(
-            "| {region_id} | {method} | {algorithm} | {window} | {left} | {right} | {points} | {iterations} | {converged} | {status} | {confidence} |".format(
+            "| {region_id} | {method} | {algorithm} | {window} | {left} | {right} | {b_value} | {c_value} | {direction} | {points} | {iterations} | {converged} | {status} | {confidence} |".format(
                 region_id=region.get("region_id", "n/a"),
                 method=method,
                 algorithm=region.get("algorithm", "n/a"),
                 window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
                 left=f"{float(left_x):.2f}" if left_x is not None else "n/a",
                 right=f"{float(right_x):.2f}" if right_x is not None else "n/a",
+                b_value=f"{float(region['tougaard_B']):.6g}" if region.get("tougaard_B") is not None else "n/a",
+                c_value=f"{float(region['tougaard_C_eV2']):.6g}" if region.get("tougaard_C_eV2") is not None else "n/a",
+                direction=region.get("integration_direction", "n/a"),
                 points=region.get("point_count", 0),
                 iterations=region.get("iterations", "n/a"),
                 converged=region.get("converged", "n/a"),

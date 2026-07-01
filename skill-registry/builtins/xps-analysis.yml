@@ -85,15 +85,18 @@ ea_skill:
       supported_methods:
         - reviewed_linear_background_subtraction
         - reviewed_shirley_background_subtraction
+        - reviewed_tougaard_u2_background_subtraction
       output_artifacts:
         - xps_background_subtraction.yml
         - xps_linear_background_column
         - xps_shirley_background_column
+        - xps_tougaard_u2_background_column
         - xps_background_subtracted_intensity_column
         - xps_shirley_subtracted_intensity_column
-      boundary: reviewed_numeric_preprocessing_only_no_endpoint_autoselection_no_tougaard_no_spin_orbit_fitting_no_composition_or_chemical_state_proof
+        - xps_tougaard_u2_subtracted_intensity_column
+      boundary: reviewed_numeric_preprocessing_only_no_endpoint_autoselection_no_tougaard_parameter_autofit_no_quases_depth_profile_modeling_no_spin_orbit_fitting_no_composition_or_chemical_state_proof
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
-      - reviewed linear and Shirley background_subtraction writes preprocessing columns only; numeric Tougaard background subtraction, spin-orbit constrained fitting, and formal multi-region quantification remain future work
+      - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, spin-orbit constrained fitting, and formal multi-region quantification remain future work

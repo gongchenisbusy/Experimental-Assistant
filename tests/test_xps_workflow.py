@@ -163,6 +163,35 @@ def _shirley_background_subtraction_parameters() -> dict:
     return parameters
 
 
+def _tougaard_background_subtraction_parameters() -> dict:
+    parameters = default_xps_processing_parameters()
+    parameters["background_subtraction"] = {
+        "enabled": True,
+        "method": "reviewed_tougaard_u2_background_subtraction",
+        "source": "ea.xps.background_subtraction:v0.2",
+        "input_intensity_column": "processed_intensity",
+        "min_points": 5,
+        "tougaard_B": 1200.0,
+        "tougaard_C_eV2": 1643.0,
+        "integration_direction": "toward_higher_binding_energy",
+        "reference_ids": ["ref-xps-tougaard-001"],
+        "regions": [
+            {
+                "region_id": "xps-tougaard-c1s-001",
+                "label": "C 1s reviewed Tougaard U2 background",
+                "binding_energy_window_eV": [280.0, 292.0],
+                "left_anchor_window_eV": [280.0, 281.0],
+                "right_anchor_window_eV": [291.0, 292.0],
+                "reference_ids": ["ref-xps-tougaard-001"],
+                "reviewer_notes": ["User confirmed endpoint windows and Tougaard U2 B/C parameters."],
+                "caveats": ["Reviewed Tougaard U2 preprocessing only; not QUASES depth-profile modeling."],
+                "confidence": "low",
+            }
+        ],
+    }
+    return parameters
+
+
 def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
 
@@ -566,6 +595,162 @@ def test_cli_runs_reviewed_shirley_background_subtraction(tmp_path: Path, capsys
     assert "iterative_shirley_background" in report_body
 
 
+def test_cli_runs_reviewed_tougaard_u2_background_subtraction(tmp_path: Path, capsys) -> None:
+    fixture = _write_xps_fixture(tmp_path / "synthetic-xps-tougaard.txt")
+    parameters = _tougaard_background_subtraction_parameters()
+    workspace = tmp_path / "cli-xps-tougaard-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Tougaard Workflow",
+            "--slug",
+            "cli-xps-tougaard",
+            "--direction",
+            "XPS Tougaard workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "xps",
+            "--sample-ref",
+            "sample-xps-tougaard-001",
+            "--experiment-ref",
+            "exp-xps-tougaard-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    for target_type, reviewed_content in [
+        ("xps_columns", "x=binding_energy_eV, y=intensity, unit=eV"),
+        ("xps_calibration", "C 1s reference at 284.8 eV; no additional shift needed"),
+        ("xps_parameters", json.dumps(parameters, ensure_ascii=False)),
+    ]:
+        assert main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                target_type,
+                "--target-ref",
+                raw_metadata_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                reviewed_content,
+            ]
+        ) == 0
+        review = _json_output(capsys)
+        if target_type == "xps_columns":
+            column_review = review
+        elif target_type == "xps_calibration":
+            calibration_review = review
+        else:
+            parameter_review = review
+
+    assert main(
+        [
+            "xps",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-tougaard-001",
+            "--x-column",
+            "binding_energy_eV",
+            "--y-column",
+            "intensity",
+            "--x-unit",
+            "eV",
+            "--energy-shift-ev",
+            "0.0",
+            "--calibration-reference",
+            "C 1s 284.8 eV user-confirmed reference",
+            "--column-review-ref",
+            column_review["review_id"],
+            "--calibration-review-ref",
+            calibration_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    xps_metadata = Path(process_output["metadata"])
+    xps = read_yaml(xps_metadata)
+
+    subtraction_record = xps["peak_analysis"]["background_subtraction"]
+    assert subtraction_record["status"] == "reviewed_tougaard_u2_background_subtracted"
+    assert subtraction_record["method"] == "reviewed_tougaard_u2_background_subtraction"
+    assert subtraction_record["background_column"] == "xps_tougaard_u2_background"
+    assert subtraction_record["corrected_intensity_column"] == "xps_tougaard_u2_subtracted_intensity"
+    assert subtraction_record["tougaard_B"] == 1200.0
+    assert subtraction_record["tougaard_C_eV2"] == 1643.0
+    assert subtraction_record["integration_direction"] == "toward_higher_binding_energy"
+    assert subtraction_record["corrected_region_count"] == 1
+    assert "QUASES/depth-profile" in subtraction_record["boundary"]
+    saved_subtraction = read_yaml(workspace / xps["outputs"]["background_subtraction"])
+    region = saved_subtraction["regions"][0]
+    assert region["status"] == "tougaard_u2_background_subtracted"
+    assert region["algorithm"] == "reviewed_tougaard_u2_kernel"
+    assert region["kernel"] == "delta_E/(C_eV2+delta_E^2)^2"
+    assert region["tougaard_B"] == 1200.0
+    assert region["tougaard_C_eV2"] == 1643.0
+    assert region["integration_direction"] == "toward_higher_binding_energy"
+    assert region["tougaard_integral_max"] >= 0.0
+    processed = pd.read_csv(workspace / xps["outputs"]["processed_csv"])
+    assert "xps_tougaard_u2_background" in processed.columns
+    assert "xps_tougaard_u2_subtracted_intensity" in processed.columns
+    corrected = processed.loc[processed["xps_background_subtraction_region_id"] == "xps-tougaard-c1s-001", "xps_tougaard_u2_subtracted_intensity"]
+    assert corrected.notna().any()
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
+    assert xps["outputs"]["background_subtraction"] in figure_record["source_data_refs"]
+    assert any(xps["outputs"]["background_subtraction"] in item.get("evidence", []) for item in xps["peak_analysis"]["possible_interpretations"])
+
+    assert main(
+        [
+            "xps",
+            "report",
+            str(workspace),
+            "--metadata",
+            xps_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-tougaard-001",
+            "--experiment-ref",
+            "exp-xps-tougaard-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "Reviewed XPS Tougaard U2 background subtraction" in report_body
+    assert "xps-tougaard-c1s-001" in report_body
+    assert "xps_tougaard_u2_subtracted_intensity" in report_body
+    assert "reviewed_tougaard_u2_kernel" in report_body
+    assert "toward_higher_binding_energy" in report_body
+
+
 def test_xps_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -584,9 +769,11 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
     assert "reviewed_shirley_background_subtraction" in xps_reference_text
+    assert "reviewed_tougaard_u2_background_subtraction" in xps_reference_text
     assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
     assert "background_subtraction" in xps_record["notes"]
     assert "reviewed_shirley_background_subtraction" in xps_record["notes"]
+    assert "reviewed_tougaard_u2_background_subtraction" in xps_record["notes"]
