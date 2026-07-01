@@ -1,0 +1,32 @@
+schema_version: '0.2'
+references:
+  builtin-xps-charge-reference-guide-2020:
+    reference_id: builtin-xps-charge-reference-guide-2020
+    path: literature/references/builtin-xps-charge-reference-guide-2020.yml
+    project_id: prj-public-xps-be-example
+    citation: 'Baer, D. R.; Artyushkova, K.; Cohen, H.; Easton, C. D.; Engelhard,
+      M.; Gengenbach, T. R.; Greczynski, G.; Mack, P.; Morgan, D. J.; Roberts, A.
+      XPS guide: Charge neutralization and binding energy referencing for insulating
+      samples. Journal of Vacuum Science & Technology A 38, 031204 (2020).'
+    doi: 10.1116/6.0000057
+    url: https://doi.org/10.1116/6.0000057
+    local_path: null
+    source_type: manual
+  builtin-xps-thermo-c:
+    reference_id: builtin-xps-thermo-c
+    path: literature/references/builtin-xps-thermo-c.yml
+    project_id: prj-public-xps-be-example
+    citation: Thermo Fisher Scientific. Carbon XPS periodic table reference page.
+    doi: null
+    url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/non-metal/carbon.html
+    local_path: null
+    source_type: web
+  builtin-xps-thermo-si:
+    reference_id: builtin-xps-thermo-si
+    path: literature/references/builtin-xps-thermo-si.yml
+    project_id: prj-public-xps-be-example
+    citation: Thermo Fisher Scientific. Silicon XPS periodic table reference page.
+    doi: null
+    url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/metalloid/silicon.html
+    local_path: null
+    source_type: web

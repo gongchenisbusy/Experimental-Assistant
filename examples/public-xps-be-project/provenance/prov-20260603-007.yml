@@ -1,0 +1,26 @@
+provenance_id: prov-20260603-007
+workflow: xps_parameter_review_package
+created_at: '2026-06-03T09:21:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  files: []
+outputs:
+  records:
+  - suggestions/xps/suggestion-20260603-001/review_package.yml
+  - suggestions/xps/suggestion-20260603-001/review_package.md
+  files: []
+parameters:
+  suggestion_id: suggestion-20260603-001
+  requested_candidate_ids: []
+  selected_candidate_count: 5
+  auto_applied: false
+review_refs: []
+warnings: []
+source_refs:
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-thermo-c
+- builtin-xps-thermo-si
+scripts: []

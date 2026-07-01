@@ -1,0 +1,18 @@
+schema_version: '0.2'
+reports:
+  rpt-public-xps-be-example-20260603-001:
+    report_id: rpt-public-xps-be-example-20260603-001
+    path: reports/rpt-public-xps-be-example-20260603-001.md
+    project_id: prj-public-xps-be-example
+    result_ids:
+    - res-public-xps-be-example-xps-20260603-001
+    figure_ids:
+    - fig-public-xps-be-example-xps-20260603-001
+    sample_ids:
+    - sample-example-si-sio2-xps-001
+    experiment_ids:
+    - exp-20260603-001
+    reference_ids:
+    - builtin-xps-charge-reference-guide-2020
+    - builtin-xps-thermo-c
+    - builtin-xps-thermo-si

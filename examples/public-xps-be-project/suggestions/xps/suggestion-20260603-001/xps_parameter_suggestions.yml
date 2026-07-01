@@ -1,0 +1,248 @@
+schema_version: '0.2'
+suggestion_id: suggestion-20260603-001
+project_id: prj-public-xps-be-example
+status: ready_for_user_review
+created_at: '2026-06-03T09:20:00'
+updated_at: '2026-06-03T09:20:00'
+source: ea.xps.parameter_suggestions:v0.2
+source_packet_ref: suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+table_ref: suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
+candidate_count: 5
+ready_for_user_review_count: 5
+needs_reference_registration_count: 0
+invalid_count: 0
+candidates:
+- candidate_id: xps-builtin-c1s-adventitious-cc-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  requires_user_review: true
+  auto_applied: false
+  parameter_origin: source_suggested
+  source_summary: Thermo's carbon XPS reference lists adventitious-carbon C-C near
+    284.8 eV and explicitly cautions that this default charge reference is not always
+    valid.
+  reference_ids:
+  - builtin-xps-thermo-c
+  - builtin-xps-charge-reference-guide-2020
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use only for spectra where the user confirms adventitious/hydrocarbon carbon is
+    plausible and the C 1s region is reviewed.
+  - Treat this as a BE/reference discussion candidate, not as an instruction to shift
+    the spectrum.
+  confidence: medium
+  element: C
+  core_level: 1s
+  caveats:
+  - Not a universal charge reference.
+  - Does not prove surface contamination source, carbon hybridization, or sample composition.
+  target_parameter_path: interpretation.binding_energy_candidates
+  chemical_state_label: Adventitious or hydrocarbon C-C/C-H C 1s candidate
+  expected_binding_energy_eV: 284.8
+  binding_energy_window_eV:
+  - 284.6
+  - 285.0
+  binding_energy_min_eV: 284.6
+  binding_energy_max_eV: 285.0
+  calibration_reference: User-reviewed C 1s or instrument calibration context required;
+    the Thermo reference notes C-C is often set to 284.8 eV by default but is not
+    always valid.
+  charge_reference_assumption: Do not use this candidate to apply charge correction
+    automatically; record the actual project charge-neutralization or BE-referencing
+    procedure before report use.
+  calibration_group_id: null
+  overlap_notes:
+  - C 1s may overlap Ru 3d, Sr 3p1/2, or K 2p in some systems.
+  - Adventitious carbon chemistry and film thickness can shift apparent C 1s position.
+  status: ready_for_user_review
+  missing_fields: []
+- candidate_id: xps-builtin-c1s-c-o-c-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  requires_user_review: true
+  auto_applied: false
+  parameter_origin: source_suggested
+  source_summary: Thermo's carbon XPS reference lists C-O-C near 286 eV in adventitious
+    carbon and C-O near 286 eV for polymers.
+  reference_ids:
+  - builtin-xps-thermo-c
+  - builtin-xps-charge-reference-guide-2020
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use only after C 1s baseline/background and possible overlapping components are
+    reviewed.
+  - Interpret with O 1s, sample chemistry, and project literature before assigning
+    oxygenated carbon.
+  confidence: low
+  element: C
+  core_level: 1s
+  caveats:
+  - C 1s BE alone cannot distinguish all C-O, C-N, ether, alcohol, or contamination
+    contributions.
+  - Not a functional-group or composition proof.
+  target_parameter_path: interpretation.binding_energy_candidates
+  chemical_state_label: C-O-C / C-O C 1s candidate
+  expected_binding_energy_eV: 286.0
+  binding_energy_window_eV:
+  - 285.7
+  - 286.4
+  binding_energy_min_eV: 285.7
+  binding_energy_max_eV: 286.4
+  calibration_reference: Candidate assumes the C 1s energy scale has already been
+    reviewed, commonly relative to a project-approved C-C/C-H reference near 284.8
+    eV or another documented calibration.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    insulating or mixed samples require a separately reviewed referencing procedure.
+  calibration_group_id: null
+  overlap_notes:
+  - C-N, C-O, and ether/alcohol-like contributions can appear in similar C 1s ranges.
+  status: ready_for_user_review
+  missing_fields: []
+- candidate_id: xps-builtin-c1s-o-c-o-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  requires_user_review: true
+  auto_applied: false
+  parameter_origin: source_suggested
+  source_summary: Thermo's carbon XPS reference lists O-C=O near 288.5 eV for adventitious
+    carbon and C=O-style polymer contributions around 288-290 eV.
+  reference_ids:
+  - builtin-xps-thermo-c
+  - builtin-xps-charge-reference-guide-2020
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use only when sample chemistry, O 1s data, and reviewed C 1s fitting context make
+    a carboxylate/ester/carbonyl discussion plausible.
+  - Review carbonate/ester overlap risks for oxide or carbonate-containing samples.
+  confidence: low
+  element: C
+  core_level: 1s
+  caveats:
+  - Not a standalone carboxylate, carbonate, ester, or oxidation proof.
+  - Requires project-specific chemistry and references for final assignment.
+  target_parameter_path: interpretation.binding_energy_candidates
+  chemical_state_label: O-C=O / carboxylate-like C 1s candidate
+  expected_binding_energy_eV: 288.5
+  binding_energy_window_eV:
+  - 288.0
+  - 289.2
+  binding_energy_min_eV: 288.0
+  binding_energy_max_eV: 289.2
+  calibration_reference: Candidate assumes the C 1s energy scale has already been
+    reviewed, commonly relative to a project-approved C-C/C-H reference near 284.8
+    eV or another documented calibration.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    document charge neutralization and BE referencing before using it as report evidence.
+  calibration_group_id: null
+  overlap_notes:
+  - Ester, carboxylate, carbonate, and high-BE contamination contributions can overlap
+    in this region.
+  status: ready_for_user_review
+  missing_fields: []
+- candidate_id: xps-builtin-si2p-elemental-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  requires_user_review: true
+  auto_applied: false
+  parameter_origin: source_suggested
+  source_summary: Thermo's silicon XPS reference lists elemental Si 2p around 99.4
+    eV and notes that Si 2p spin-orbit splitting is mainly considered for elemental
+    Si.
+  reference_ids:
+  - builtin-xps-thermo-si
+  - builtin-xps-charge-reference-guide-2020
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use for silicon wafer, elemental Si, or reduced Si discussion only after oxide
+    thickness, surface cleaning, and pass-energy context are reviewed.
+  - Consider the existing Si 2p spin-orbit candidate when fitting resolved elemental
+    Si doublets.
+  confidence: medium
+  element: Si
+  core_level: 2p
+  caveats:
+  - Not a proof of elemental silicon fraction or oxide thickness.
+  - Does not automatically choose a resolved Si 2p doublet model.
+  target_parameter_path: interpretation.binding_energy_candidates
+  chemical_state_label: Elemental silicon Si 2p candidate
+  expected_binding_energy_eV: 99.4
+  binding_energy_window_eV:
+  - 99.0
+  - 99.8
+  binding_energy_min_eV: 99.0
+  binding_energy_max_eV: 99.8
+  calibration_reference: User-reviewed instrument or project BE calibration required;
+    compare with any C 1s referencing only after the user confirms that procedure.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    conductive, semiconducting, native-oxide, or insulating contexts must be reviewed
+    separately.
+  calibration_group_id: null
+  overlap_notes:
+  - Native oxide can add higher-BE Si 2p components and change relative intensities.
+  status: ready_for_user_review
+  missing_fields: []
+- candidate_id: xps-builtin-si2p-sio2-binding-energy-candidate
+  suggestion_type: binding_energy_candidate
+  requires_user_review: true
+  auto_applied: false
+  parameter_origin: source_suggested
+  source_summary: Thermo's silicon XPS reference lists SiO2 Si 2p around 103.5 eV
+    and notes C 1s 284.8 eV referencing for silicates/nitride examples.
+  reference_ids:
+  - builtin-xps-thermo-si
+  - builtin-xps-charge-reference-guide-2020
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use only when SiO2, native oxide, silicate, or oxide-layer context is plausible
+    and reviewed with sample preparation history.
+  - Compare elemental Si and oxide components when substrate/native-oxide thickness
+    matters.
+  confidence: low
+  element: Si
+  core_level: 2p
+  caveats:
+  - Not a standalone SiO2 thickness, stoichiometry, or composition proof.
+  - Requires project-specific calibration and model review before final assignment.
+  target_parameter_path: interpretation.binding_energy_candidates
+  chemical_state_label: Silicon dioxide Si 2p candidate
+  expected_binding_energy_eV: 103.5
+  binding_energy_window_eV:
+  - 103.0
+  - 104.0
+  binding_energy_min_eV: 103.0
+  binding_energy_max_eV: 104.0
+  calibration_reference: Thermo lists silicates and nitride as referenced to C 1s
+    at 284.8 eV; this candidate requires the user to review the actual project calibration/reference
+    method before use.
+  charge_reference_assumption: No charge correction is applied by this candidate;
+    insulating SiO2 or silicate surfaces require documented charge-neutralization
+    and BE-referencing choices.
+  calibration_group_id: null
+  overlap_notes:
+  - Silicates, aluminosilicates, SiON, and other oxidized Si environments may fall
+    near this region.
+  status: ready_for_user_review
+  missing_fields: []
+related_records:
+- processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+reference_ids:
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-thermo-c
+- builtin-xps-thermo-si
+warnings: []
+next_steps:
+- Register or correct unresolved reference_ids before using source-backed values.
+- If no suitable source packet exists, create one from a reviewed local library, project
+  literature record, or user-confirmed literature/search workflow before review.
+- Ask the user to review ready candidates before copying any values into XPS processing
+  parameters.
+- When accepted, copy spin-orbit candidates into component_fit.spin_orbit_constraints
+  or Tougaard candidates into background_subtraction parameters with review refs.
+- When accepted, keep binding-energy candidates in report/memory interpretation context
+  only unless a later reviewed component model explicitly uses them.
+boundaries:
+- Suggestion records are advisory and auto_applied is always false.
+- This suggestion-record step is a validation/review-record step and does not perform
+  unconfirmed live network lookup itself. EA may prepare source packets from reviewed
+  local libraries, project literature, user-provided sources, or user-confirmed literature/search
+  workflows before this step; this step validates supplied source packets/reference
+  IDs and does not auto-select or apply components/backgrounds/bounds/peak shapes,
+  apply fitting, silently calibrate spectra, apply charge correction, prove chemical
+  states/composition, or calculate composition.
+provenance_ref: provenance/prov-20260603-006.yml

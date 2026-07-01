@@ -1,0 +1,4 @@
+peak_id,binding_energy_eV,raw_binding_energy,position_unit,raw_intensity,processed_intensity,prominence,method,component_model,possible_assignment,assignment_confidence,assignment_source,notes
+xps-peak-001,103.5,103.5,eV,0.3278988,1.0,0.9146985899307958,scipy_find_peaks,not_fitted,unassigned,insufficient,ea.xps.peak_detection:v0.2,"automatic XPS peak screening; requires calibrated references, fitting model, and user review"
+xps-peak-002,285.0,285.0,eV,0.27322448,0.8332585541636627,0.737888549759865,scipy_find_peaks,not_fitted,unassigned,insufficient,ea.xps.peak_detection:v0.2,"automatic XPS peak screening; requires calibrated references, fitting model, and user review"
+xps-peak-003,532.5,532.5,eV,0.25423116,0.7753342189724391,0.6663498311064269,scipy_find_peaks,not_fitted,unassigned,insufficient,ea.xps.peak_detection:v0.2,"automatic XPS peak screening; requires calibrated references, fitting model, and user review"

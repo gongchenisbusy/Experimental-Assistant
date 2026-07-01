@@ -1,0 +1,24 @@
+schema_version: '0.2'
+source_refs: []
+provenance_refs:
+- prov-20260603-003
+review_refs: []
+characterization_id: char-20260603-001
+project_id: prj-public-xps-be-example
+sample_refs:
+- sample-example-si-sio2-xps-001
+characterization_type: xps
+original_source_path: source-inputs/raw/si-sio2-xps-public-fixture.txt
+project_raw_path: raw/xps/char-20260603-001/si-sio2-xps-public-fixture.txt
+sha256: d69ef4af366d55477daed8f3d3b18c870cba9e91e5f42b87b6677702b2fe6cff
+file_size_bytes: 43471
+imported_at: '2026-06-03T09:10:00'
+import_status: imported
+original_filename: si-sio2-xps-public-fixture.txt
+aliases: []
+instrument_metadata: {}
+column_candidates: []
+experiment_refs:
+- exp-20260603-001
+original_mtime: 1780477440.0
+warnings: []

@@ -1,0 +1,32 @@
+schema_version: '0.2'
+created_at: '2026-06-03T09:19:00'
+updated_at: '2026-06-03T09:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-xps-charge-reference-guide-2020
+project_id: prj-public-xps-be-example
+citation: 'Baer, D. R.; Artyushkova, K.; Cohen, H.; Easton, C. D.; Engelhard, M.;
+  Gengenbach, T. R.; Greczynski, G.; Mack, P.; Morgan, D. J.; Roberts, A. XPS guide:
+  Charge neutralization and binding energy referencing for insulating samples. Journal
+  of Vacuum Science & Technology A 38, 031204 (2020).'
+title: 'XPS guide: Charge neutralization and binding energy referencing for insulating
+  samples'
+authors:
+- Donald R. Baer
+- Kateryna Artyushkova
+- Hagai Cohen
+- Christopher D. Easton
+- Mark Engelhard
+- Thomas R. Gengenbach
+- Grzegorz Greczynski
+- Paul Mack
+- David J. Morgan
+- Adam Roberts
+year: 2020
+venue: Journal of Vacuum Science & Technology A
+doi: 10.1116/6.0000057
+url: https://doi.org/10.1116/6.0000057
+source_type: manual
+notes: Charge neutralization and binding-energy referencing guidance seed; this library
+  does not apply charge correction.

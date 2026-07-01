@@ -33,6 +33,24 @@ def _project_path(root: Path, ref: str) -> Path:
     return path if path.is_absolute() else root / path
 
 
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _is_non_file_record_ref(root: Path, ref: str) -> bool:
+    clean = _clean_ref(str(ref)).strip()
+    if not clean:
+        return False
+    return clean.startswith("builtin:") or clean in _registered_reference_ids(root)
+
+
 def _provenance_path(root: Path, ref: str) -> Path:
     path = Path(_clean_ref(ref))
     if path.suffix or len(path.parts) > 1:
@@ -181,7 +199,7 @@ def _check_record_refs(
 ) -> None:
     for ref in refs:
         path = _project_path(root, ref)
-        if not path.exists():
+        if not path.exists() and not _is_non_file_record_ref(root, ref):
             findings.append(HealthFinding("error", code, message, path=str(owner), ref=ref))
 
 
@@ -553,7 +571,7 @@ def _check_candidate_record(
     for review_ref in frontmatter.get("review_refs") or []:
         _check_review_ref(root, str(review_ref), findings, candidate_path)
     for source_ref in frontmatter.get("source_refs") or []:
-        if not _project_path(root, str(source_ref)).exists():
+        if not _project_path(root, str(source_ref)).exists() and not _is_non_file_record_ref(root, str(source_ref)):
             findings.append(
                 HealthFinding(
                     "warning",
@@ -652,7 +670,7 @@ def _check_memory(root: Path, findings: list[HealthFinding]) -> None:
                     )
                 )
         for source_ref in memory.get("source_refs") or []:
-            if not _project_path(root, str(source_ref)).exists():
+            if not _project_path(root, str(source_ref)).exists() and not _is_non_file_record_ref(root, str(source_ref)):
                 findings.append(
                     HealthFinding(
                         "error",

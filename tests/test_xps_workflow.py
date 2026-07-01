@@ -2372,6 +2372,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "charge-reference assumption" in xps_reference_text
     assert "C-C/C-H, C-O-C, O-C=O, elemental Si, and SiO2" in xps_reference_text
     assert "--suggestion-type binding_energy_candidate" in xps_reference_text
+    assert "examples/public-xps-be-project" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]

@@ -1,0 +1,33 @@
+provenance_id: prov-20260603-005
+workflow: xps_parameter_source_packet
+created_at: '2026-06-03T09:18:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - builtin:generic_xps_parameters
+  files: []
+outputs:
+  records:
+  - suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+  files: []
+parameters:
+  candidate_count: 5
+  reference_seed_count: 3
+  template: false
+  builtin_library: generic_xps_parameters
+  source_library_kind: built_in
+  filters:
+    include_candidates: []
+    suggestion_types:
+    - binding_energy_candidate
+    elements: []
+    core_levels: []
+  auto_applied: false
+review_refs: []
+warnings: []
+source_refs:
+- builtin-xps-charge-reference-guide-2020
+- builtin-xps-thermo-c
+- builtin-xps-thermo-si
+scripts: []

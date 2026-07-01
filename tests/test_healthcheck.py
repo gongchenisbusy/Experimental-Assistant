@@ -367,6 +367,61 @@ def test_healthcheck_passes_memory_and_reference_indices(tmp_path: Path) -> None
     assert result["error_count"] == 0
 
 
+def test_healthcheck_allows_registered_reference_ids_and_builtin_record_refs(tmp_path: Path) -> None:
+    outputs = initialize_project(
+        tmp_path,
+        project_name="Reference Source Healthcheck",
+        project_slug="reference-source-healthcheck",
+        research_direction="Reference source ref healthcheck",
+        material_system="public example",
+        experiment_type="metadata audit",
+        created_at="2026-06-30T12:30:00",
+    )
+    project_frontmatter, _ = read_markdown_record(outputs["project"])
+    project_id = project_frontmatter["project_id"]
+    reference_path = register_reference(
+        tmp_path,
+        project_id=project_id,
+        reference_id="ref-healthcheck-source-001",
+        citation="Healthcheck source reference. Example Journal (2026).",
+        title="Healthcheck source reference",
+        url="https://example.org/healthcheck-source-reference",
+        source_type="manual",
+        created_at="2026-06-30T12:31:00",
+    )
+    write_provenance_entry(
+        tmp_path,
+        workflow="healthcheck_registered_reference_source",
+        inputs={"records": ["builtin:generic_xps_parameters", reference_path.stem], "files": []},
+        outputs={"records": ["EA_PROJECT.md"], "files": []},
+        created_at="2026-06-30T12:32:00",
+    )
+    provenance_path = write_provenance_entry(
+        tmp_path,
+        workflow="healthcheck_memory_source",
+        inputs={"records": [], "files": []},
+        outputs={"records": ["EA_PROJECT.md"], "files": []},
+        created_at="2026-06-30T12:33:00",
+    )
+    propose_memory_candidate(
+        tmp_path,
+        project_id=project_id,
+        candidate_text="Registered reference_id is valid as a memory source ref.",
+        source_refs=[reference_path.stem],
+        provenance_refs=[provenance_path.stem],
+        category="interpretation",
+        confidence="low",
+        created_at="2026-06-30T12:34:00",
+    )
+
+    result = run_healthcheck(tmp_path)
+    codes = {finding["code"] for finding in result["findings"]}
+
+    assert result["status"] == "pass"
+    assert "provenance_input_record_missing" not in codes
+    assert "memory_candidate_source_ref_missing" not in codes
+
+
 def test_healthcheck_detects_missing_reference_record_and_bad_report_citations(tmp_path: Path) -> None:
     built = _build_memory_reference_project(tmp_path)
     (tmp_path / "literature" / "references" / f"{built['reference_id']}.yml").unlink()

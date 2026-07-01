@@ -1,0 +1,21 @@
+provenance_id: prov-20260603-003
+workflow: raw_file_import
+created_at: '2026-06-03T09:10:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files:
+  - source-inputs/raw/si-sio2-xps-public-fixture.txt
+outputs:
+  records:
+  - raw/xps/char-20260603-001/metadata.yml
+  files:
+  - raw/xps/char-20260603-001/si-sio2-xps-public-fixture.txt
+parameters:
+  import_status: imported
+  sha256: d69ef4af366d55477daed8f3d3b18c870cba9e91e5f42b87b6677702b2fe6cff
+review_refs: []
+warnings: []
+source_refs: []
+scripts: []

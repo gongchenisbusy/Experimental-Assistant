@@ -1,0 +1,48 @@
+schema_version: '0.2'
+example_id: public-xps-be-project
+example_type: packaged_public_project
+project_id: prj-public-xps-be-example
+report_id: rpt-public-xps-be-example-20260603-001
+result_id: res-public-xps-be-example-xps-20260603-001
+figure_id: fig-public-xps-be-example-xps-20260603-001
+suggestion_id: suggestion-20260603-001
+public_boundary:
+  uses_developer_machine_defaults: false
+  zotero_enabled: false
+  browser_assist_enabled: false
+  institution_access: null
+  private_cache_required: false
+workflow_boundary:
+  auto_applies_binding_energy_candidates: false
+  auto_calibrates_or_charge_corrects: false
+  proves_chemical_state_or_composition: false
+  writes_confirmed_memory: false
+key_artifacts:
+  project: EA_PROJECT.md
+  rule_card: PROJECT_RULE_CARD.md
+  source_input: source-inputs/raw/si-sio2-xps-public-fixture.txt
+  raw_metadata: raw/xps/char-20260603-001/metadata.yml
+  raw_file: raw/xps/char-20260603-001/si-sio2-xps-public-fixture.txt
+  sample: samples/sample-example-si-sio2-xps-001.md
+  experiment: experiments/exp-20260603-001.md
+  xps_metadata: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+  processed_csv: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_processed.csv
+  peak_table: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_peaks.csv
+  figure: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/fig-public-xps-be-example-xps-20260603-001.png
+  source_packet: suggestions/xps/source-packets/xps_binding_energy_candidates.yml
+  suggestion_record: suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  suggestion_table: suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.csv
+  review_package: suggestions/xps/suggestion-20260603-001/review_package.yml
+  review_package_markdown: suggestions/xps/suggestion-20260603-001/review_package.md
+  suggestion_review: reviews/review-20260603-005.yml
+  report: reports/rpt-public-xps-be-example-20260603-001.md
+  memory_candidates:
+  - memory/candidates/memcand-20260603-001.md
+  - memory/candidates/memcand-20260603-002.md
+  reference_index: literature/references/index.yml
+validation:
+  healthcheck_status: pass
+  healthcheck_errors: 0
+  evaluation_status: pass
+  evaluation_errors: 0
+regenerate: python3 scripts/build_public_xps_be_example_project.py --force

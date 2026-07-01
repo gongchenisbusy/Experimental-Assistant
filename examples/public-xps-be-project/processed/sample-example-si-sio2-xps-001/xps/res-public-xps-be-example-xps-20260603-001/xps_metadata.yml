@@ -1,0 +1,153 @@
+schema_version: '0.2'
+created_at: '2026-06-03T09:16:00'
+updated_at: '2026-06-03T09:16:00'
+status: warning
+source_refs: []
+provenance_refs:
+- prov-20260603-004
+review_refs:
+- review-20260603-002
+- review-20260603-003
+- review-20260603-004
+xps_result_id: res-public-xps-be-example-xps-20260603-001
+result_id: res-public-xps-be-example-xps-20260603-001
+project_id: prj-public-xps-be-example
+characterization_file_ref: char-20260603-001
+sample_refs:
+- sample-example-si-sio2-xps-001
+x_column: binding_energy_eV
+y_column: intensity
+x_unit: eV
+energy_shift_eV: 0.0
+calibration_reference: Synthetic public example; no automatic charge correction. C
+  1s/Si 2p BE candidates are advisory discussion starters only.
+processing_parameters:
+  baseline_correction:
+    enabled: false
+    method: rolling_quantile
+    window_points: 101
+    quantile: 0.05
+  smoothing:
+    enabled: false
+    method: savitzky_golay
+    window_length: 9
+    polyorder: 2
+  normalization:
+    enabled: true
+    method: max_intensity
+  peak_detection:
+    method: scipy_find_peaks
+    prominence: auto
+    distance: auto
+    max_features: 12
+    source: ea.xps.peak_detection:v0.2
+  component_quantification:
+    enabled: false
+    method: reviewed_window_integration
+    integration_baseline: local_minimum
+    min_points: 5
+    source: ea.xps.component_quantification:v0.2
+    components: []
+  component_fit:
+    enabled: false
+    method: reviewed_component_fit_screening
+    source: ea.xps.component_fit:v0.2
+    input_intensity_column: processed_intensity
+    fit_intensity_column: xps_component_fit_intensity
+    residual_column: xps_component_fit_residual
+    region_id_column: xps_component_fit_region_id
+    min_points: 8
+    max_nfev: 5000
+    fit_quality_thresholds:
+      max_rmse: null
+      min_r_squared: null
+    spin_orbit_constraints: []
+    regions: []
+    reference_ids: []
+    reviewer_notes: []
+    caveats: []
+  region_records:
+    enabled: false
+    method: reviewed_multi_region_project_record
+    source: ea.xps.region_records:v0.2
+    min_points: 3
+    default_calibration_group_id: null
+    regions: []
+    reference_ids: []
+    reviewer_notes: []
+    caveats: []
+  background_model:
+    enabled: false
+    method: reviewed_background_record
+    source: ea.xps.background_model:v0.2
+    regions: []
+    applied_to_processed_data: false
+    software: {}
+    reference_ids: []
+    reviewer_notes: []
+    caveats: []
+  background_subtraction:
+    enabled: false
+    method: reviewed_linear_background_subtraction
+    source: ea.xps.background_subtraction:v0.2
+    input_intensity_column: processed_intensity
+    background_column: xps_linear_background
+    corrected_intensity_column: xps_background_subtracted_intensity
+    region_id_column: xps_background_subtraction_region_id
+    min_points: 5
+    tougaard_B: null
+    tougaard_C_eV2: 1643.0
+    integration_direction: toward_higher_binding_energy
+    regions: []
+    reference_ids: []
+    reviewer_notes: []
+    caveats: []
+outputs:
+  figure: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/fig-public-xps-be-example-xps-20260603-001.png
+  peak_table: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_peaks.csv
+  component_table: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_components.csv
+  processed_csv: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_processed.csv
+  metadata: processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+peak_analysis:
+  peak_count: 3
+  strongest_peaks:
+  - peak_id: xps-peak-001
+    binding_energy_eV: 103.5
+    assignment_source: ea.xps.peak_detection:v0.2
+  - peak_id: xps-peak-002
+    binding_energy_eV: 285.0
+    assignment_source: ea.xps.peak_detection:v0.2
+  - peak_id: xps-peak-003
+    binding_energy_eV: 532.5
+    assignment_source: ea.xps.peak_detection:v0.2
+  calibration:
+    energy_shift_eV: 0.0
+    calibration_reference: Synthetic public example; no automatic charge correction.
+      C 1s/Si 2p BE candidates are advisory discussion starters only.
+    confidence: low
+  possible_interpretations:
+  - text: Detected XPS peak(s) indicate photoelectron spectral structure in the reviewed
+      binding-energy window; treat them as screening evidence only until calibration,
+      background model, component fitting, and references are user-confirmed.
+    confidence: low
+    evidence:
+    - xps-peak-001
+    - xps-peak-002
+    - xps-peak-003
+    assignment_source: ea.xps.peak_detection:v0.2
+  component_quantification:
+    enabled: false
+    method: reviewed_window_integration
+    assignment_source: ea.xps.component_quantification:v0.2
+    status: disabled
+    component_count: 0
+    quantified_component_count: 0
+    rsf_complete: false
+    boundary: XPS component quantification is screening-only and requires user-reviewed
+      windows, background/model choices, sensitivity factors, calibration, and references
+      before durable chemical-state or composition conclusions.
+figure_id: fig-public-xps-be-example-xps-20260603-001
+warnings:
+- code: xps_normalization_applied
+  message: XPS intensity normalized by processing parameters.
+  severity: low

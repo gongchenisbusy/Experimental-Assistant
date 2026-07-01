@@ -1,0 +1,16 @@
+schema_version: '0.2'
+created_at: '2026-06-03T09:19:00'
+updated_at: '2026-06-03T09:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-xps-thermo-si
+project_id: prj-public-xps-be-example
+citation: Thermo Fisher Scientific. Silicon XPS periodic table reference page.
+title: Silicon XPS periodic table reference page
+authors:
+- Thermo Fisher Scientific
+url: https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/metalloid/silicon.html
+source_type: web
+notes: Vendor educational reference seed for Si 2p screening context; replace with
+  project-specific references when possible.

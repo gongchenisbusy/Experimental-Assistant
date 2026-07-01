@@ -1,0 +1,30 @@
+provenance_id: prov-20260603-008
+workflow: report_generation
+created_at: '2026-06-03T09:24:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_metadata.yml
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+  files:
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_processed.csv
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_peaks.csv
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/xps_components.csv
+  - processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/fig-public-xps-be-example-xps-20260603-001.png
+outputs:
+  records:
+  - reports/rpt-public-xps-be-example-20260603-001.md
+  files: []
+parameters:
+  include_next_step_suggestions: false
+  language: zh
+  parameter_suggestion_refs:
+  - suggestions/xps/suggestion-20260603-001/xps_parameter_suggestions.yml
+review_refs: []
+warnings:
+- code: xps_normalization_applied
+  message: XPS intensity normalized by processing parameters.
+  severity: low
+source_refs: []
+scripts: []
