@@ -107,6 +107,8 @@ ea_skill:
         - Ti 2p, Ni 2p, Co 2p, Zn 2p transition-metal starter spin-orbit constraints
         - Mo 3d and W 4f chalcogenide/oxide-relevant starter spin-orbit constraints
         - S 2p and P 2p non-metal starter spin-orbit constraints
+        - C 1s C-C/C-H, C-O-C, and O-C=O binding-energy starter candidates
+        - Si 2p elemental Si and SiO2 binding-energy starter candidates
         - Tougaard U2-style background starting point
         - Project-local or confirmed-literature binding-energy/chemical-state candidates with BE center/window and calibration assumptions
       output_artifacts:

@@ -2007,8 +2007,8 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert packet_output["status"] == "ready_for_suggest_parameters"
     assert packet_output["source_library_kind"] == "built_in"
     assert packet_output["source_library_ref"] == "builtin:generic_xps_parameters"
-    assert packet_output["candidate_count"] >= 12
-    assert packet_output["reference_seed_count"] >= 15
+    assert packet_output["candidate_count"] >= 17
+    assert packet_output["reference_seed_count"] >= 16
     assert packet["source_library_kind"] == "built_in"
     assert packet["source_library_ref"] == "builtin:generic_xps_parameters"
     assert "builtin-xps-charge-reference-guide-2020" in packet["guidance_reference_ids"]
@@ -2016,6 +2016,7 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert "builtin-xps-thermo-ti" in packet["reference_seeds"]
     assert "builtin-xps-thermo-mo" in packet["reference_seeds"]
     assert "builtin-xps-thermo-s" in packet["reference_seeds"]
+    assert "builtin-xps-thermo-c" in packet["reference_seeds"]
     assert "silently apply adventitious-carbon" in " ".join(packet["guidance_notes"])
     candidates = {candidate["candidate_id"]: candidate for candidate in packet["candidates"]}
     assert "xps-builtin-fe2p-spin-orbit-metal-screening" in candidates
@@ -2028,10 +2029,21 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert "xps-builtin-w4f-spin-orbit-screening" in candidates
     assert "xps-builtin-s2p-spin-orbit-generic-screening" in candidates
     assert "xps-builtin-p2p-spin-orbit-generic-screening" in candidates
+    assert "xps-builtin-c1s-adventitious-cc-binding-energy-candidate" in candidates
+    assert "xps-builtin-c1s-c-o-c-binding-energy-candidate" in candidates
+    assert "xps-builtin-c1s-o-c-o-binding-energy-candidate" in candidates
+    assert "xps-builtin-si2p-elemental-binding-energy-candidate" in candidates
+    assert "xps-builtin-si2p-sio2-binding-energy-candidate" in candidates
     assert candidates["xps-builtin-mo3d-spin-orbit-screening"]["area_ratio"] == 0.6667
     assert candidates["xps-builtin-w4f-spin-orbit-screening"]["area_ratio"] == 0.75
     assert candidates["xps-builtin-s2p-spin-orbit-generic-screening"]["center_delta_eV"] == 1.16
     assert "not a sulfide/sulfate/elemental sulfur assignment" in " ".join(candidates["xps-builtin-s2p-spin-orbit-generic-screening"]["caveats"])
+    assert candidates["xps-builtin-c1s-adventitious-cc-binding-energy-candidate"]["suggestion_type"] == "binding_energy_candidate"
+    assert candidates["xps-builtin-c1s-adventitious-cc-binding-energy-candidate"]["expected_binding_energy_eV"] == 284.8
+    assert candidates["xps-builtin-c1s-adventitious-cc-binding-energy-candidate"]["binding_energy_window_eV"] == [284.6, 285.0]
+    assert "not always valid" in candidates["xps-builtin-c1s-adventitious-cc-binding-energy-candidate"]["calibration_reference"]
+    assert candidates["xps-builtin-si2p-sio2-binding-energy-candidate"]["expected_binding_energy_eV"] == 103.5
+    assert "builtin-xps-thermo-c" in candidates["xps-builtin-c1s-c-o-c-binding-energy-candidate"]["reference_ids"]
     assert "built-in or local reference_seeds" in " ".join(packet["next_steps"])
     assert "registration hints only" in " ".join(packet["boundaries"])
     assert "does not perform unconfirmed live network lookup" in " ".join(packet["boundaries"])
@@ -2062,6 +2074,7 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     assert {item["reference_id"] for item in seed_output["imported"]} >= {
         "builtin-xps-charge-reference-guide-2020",
         "builtin-xps-background-guide-2021",
+        "builtin-xps-thermo-c",
         "builtin-xps-thermo-fe",
         "builtin-xps-thermo-ti",
         "builtin-xps-thermo-mo",
@@ -2072,6 +2085,10 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     suggestion_output = _json_output(capsys)
     assert suggestion_output["status"] == "ready_for_user_review"
     assert suggestion_output["ready_for_user_review_count"] == packet_output["candidate_count"]
+    suggestion_record = read_yaml(Path(suggestion_output["record"]))
+    ready_candidates = {candidate["candidate_id"]: candidate for candidate in suggestion_record["candidates"]}
+    assert ready_candidates["xps-builtin-si2p-sio2-binding-energy-candidate"]["target_parameter_path"] == "interpretation.binding_energy_candidates"
+    assert ready_candidates["xps-builtin-si2p-sio2-binding-energy-candidate"]["status"] == "ready_for_user_review"
 
     assert (
         main(
@@ -2127,6 +2144,32 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
         "builtin-xps-nist-srd20",
         "builtin-xps-thermo-s",
         "builtin-xps-charge-reference-guide-2020",
+    }
+
+    assert (
+        main(
+            [
+                "xps",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "generic_xps_parameters",
+                "--suggestion-type",
+                "binding_energy_candidate",
+            ]
+        )
+        == 0
+    )
+    be_filtered_output = _json_output(capsys)
+    be_filtered_packet = read_yaml(Path(be_filtered_output["source_packet"]))
+    assert be_filtered_output["candidate_count"] == 5
+    assert {candidate["suggestion_type"] for candidate in be_filtered_packet["candidates"]} == {"binding_energy_candidate"}
+    assert set(be_filtered_packet["reference_ids"]) == {
+        "builtin-xps-charge-reference-guide-2020",
+        "builtin-xps-thermo-c",
+        "builtin-xps-thermo-si",
     }
 
 
@@ -2327,6 +2370,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "expected BE center or BE window" in xps_reference_text
     assert "calibration reference" in xps_reference_text
     assert "charge-reference assumption" in xps_reference_text
+    assert "C-C/C-H, C-O-C, O-C=O, elemental Si, and SiO2" in xps_reference_text
+    assert "--suggestion-type binding_energy_candidate" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
@@ -2348,3 +2393,4 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "spin-orbit energy separations, area ratios, FWHM ratios" in xps_record["notes"]
     assert "binding_energy_candidate" in xps_record["notes"]
     assert "calibration reference" in xps_record["notes"]
+    assert "C 1s/Si 2p binding-energy starter candidates" in xps_record["notes"]
