@@ -2173,6 +2173,111 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     }
 
 
+def test_cli_builds_oxide_o1s_builtin_source_packet(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "cli-xps-oxide-o1s-source-packet-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Oxide O1s Source Packet Workflow",
+            "--slug",
+            "cli-xps-oxide-o1s-source-packet",
+            "--direction",
+            "XPS O 1s oxide candidate workflow",
+            "--material",
+            "air-exposed oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert (
+        main(
+            [
+                "xps",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "oxide_o1s_binding_energy",
+                "--suggestion-type",
+                "binding_energy_candidate",
+            ]
+        )
+        == 0
+    )
+    packet_output = _json_output(capsys)
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet_output["status"] == "ready_for_suggest_parameters"
+    assert packet_output["source_library_ref"] == "builtin:oxide_o1s_binding_energy"
+    assert packet_output["candidate_count"] == 4
+    assert packet_output["reference_seed_count"] == 5
+    assert "builtin-xps-o1s-metal-oxide-insight-2025" in packet["guidance_reference_ids"]
+    assert "builtin-xps-o1s-oxygen-vacancy-critical-2025" in packet["guidance_reference_ids"]
+    assert set(packet["reference_seeds"]) == {
+        "builtin-xps-cardiff-o1s-reference",
+        "builtin-xps-charge-reference-guide-2020",
+        "builtin-xps-o1s-metal-oxide-insight-2025",
+        "builtin-xps-o1s-oxygen-vacancy-critical-2025",
+        "builtin-xps-thermo-o",
+    }
+    assert "oxygen vacancies" in " ".join(packet["guidance_notes"])
+    candidates = {candidate["candidate_id"]: candidate for candidate in packet["candidates"]}
+    lattice = candidates["xps-builtin-o1s-lattice-oxide-binding-energy-candidate"]
+    assert lattice["expected_binding_energy_eV"] == 529.8
+    assert lattice["binding_energy_window_eV"] == [529.0, 531.0]
+    assert lattice["confidence"] == "medium"
+    assert "stoichiometry" in " ".join(lattice["caveats"])
+    hydroxyl = candidates["xps-builtin-o1s-hydroxyl-adsorbed-oxygen-binding-energy-candidate"]
+    assert hydroxyl["binding_energy_window_eV"] == [531.0, 532.2]
+    assert "Not an oxygen-vacancy proof" in " ".join(hydroxyl["caveats"])
+    carbonate = candidates["xps-builtin-o1s-carbonate-carbonyl-binding-energy-candidate"]
+    assert "289-290 eV" in carbonate["calibration_reference"]
+    high_be = candidates["xps-builtin-o1s-silica-organic-co-binding-energy-candidate"]
+    assert high_be["expected_binding_energy_eV"] == 532.9
+    assert "SiO2" in high_be["source_summary"]
+
+    packet_ref = Path(packet_output["source_packet"]).relative_to(workspace).as_posix()
+    assert main(["xps", "suggest-parameters", str(workspace), "--source-file", packet_ref, "--project-id", project_id]) == 0
+    unresolved_output = _json_output(capsys)
+    assert unresolved_output["status"] == "needs_reference_registration"
+    assert unresolved_output["needs_reference_registration_count"] == 4
+
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                packet_ref,
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    seed_output = _json_output(capsys)
+    assert seed_output["imported_count"] == packet_output["reference_seed_count"]
+
+    assert main(["xps", "suggest-parameters", str(workspace), "--source-file", packet_ref, "--project-id", project_id]) == 0
+    suggestion_output = _json_output(capsys)
+    assert suggestion_output["status"] == "ready_for_user_review"
+    assert suggestion_output["ready_for_user_review_count"] == 4
+    suggestion_record = read_yaml(Path(suggestion_output["record"]))
+    ready_candidates = {candidate["candidate_id"]: candidate for candidate in suggestion_record["candidates"]}
+    assert ready_candidates["xps-builtin-o1s-lattice-oxide-binding-energy-candidate"]["target_parameter_path"] == (
+        "interpretation.binding_energy_candidates"
+    )
+    assert ready_candidates["xps-builtin-o1s-hydroxyl-adsorbed-oxygen-binding-energy-candidate"]["auto_applied"] is False
+    assert "oxygen vacancies" in " ".join(suggestion_record["candidates"][1]["overlap_notes"]).lower()
+
+
 def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-region-records.txt")
     parameters = _region_records_parameters()
@@ -2335,6 +2440,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "ea xps propose-memory" in skill
     assert "--builtin-library" in skill
     assert "generic_xps_parameters" in skill
+    assert "oxide_o1s_binding_energy" in skill
     assert "--parameter-suggestion" in skill
     assert "register-seeds" in skill
     assert "references/xps-workflow.md" in skill
@@ -2349,6 +2455,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "reference_seeds" in xps_reference_text
     assert "guidance_reference_ids" in xps_reference_text
     assert "generic_xps_parameters" in xps_reference_text
+    assert "oxide_o1s_binding_energy" in xps_reference_text
     assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "propose-memory" in xps_reference_text
@@ -2371,6 +2478,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "calibration reference" in xps_reference_text
     assert "charge-reference assumption" in xps_reference_text
     assert "C-C/C-H, C-O-C, O-C=O, elemental Si, and SiO2" in xps_reference_text
+    assert "lattice oxide, hydroxyl/adsorbed-oxygen-like, carbonate/carbonyl-like, and silica/organic C-O" in xps_reference_text
     assert "--suggestion-type binding_energy_candidate" in xps_reference_text
     assert "examples/public-xps-be-project" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
@@ -2380,6 +2488,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "reference_seeds" in xps_record["notes"]
     assert "guidance_reference_ids" in xps_record["notes"]
     assert "generic_xps_parameters" in xps_record["notes"]
+    assert "oxide_o1s_binding_energy" in xps_record["notes"]
     assert "register-seeds" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
     assert "propose-memory" in xps_record["notes"]
@@ -2395,3 +2504,4 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "binding_energy_candidate" in xps_record["notes"]
     assert "calibration reference" in xps_record["notes"]
     assert "C 1s/Si 2p binding-energy starter candidates" in xps_record["notes"]
+    assert "O 1s lattice oxide" in xps_record["notes"]
