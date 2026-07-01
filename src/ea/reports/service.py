@@ -1459,7 +1459,36 @@ def _uv_vis_correction_context_text(metadata: dict) -> str:
         f"Correction context 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
         f"{detail_text}\n\n"
-        "该记录只保存已审核的基底、参比、背景、样品几何或漫反射语境；本阶段不执行自动数值校正，也不把这些 metadata 单独作为 optical mechanism 或 band gap 结论。"
+        "该 context 记录只保存已审核的基底、参比、背景、样品几何或漫反射语境；该记录本身不执行自动数值校正，也不把这些 metadata 单独作为 optical mechanism 或 band gap 结论。"
+    )
+
+
+def _uv_vis_numeric_correction_text(metadata: dict) -> str:
+    correction = (metadata.get("peak_analysis") or {}).get("numeric_correction")
+    if not correction:
+        return "当前没有启用或记录 reviewed UV-Vis numeric correction。"
+    status = correction.get("status", "unknown")
+    method = correction.get("method", "unknown")
+    confidence = correction.get("confidence", "insufficient")
+    source = correction.get("assignment_source", "ea.uv_vis.numeric_correction:v0.2")
+    record_ref = correction.get("record_ref", "未生成")
+    input_column = correction.get("input_signal_column", "raw_signal")
+    output_column = correction.get("output_signal_column", "numeric_corrected_signal")
+    reference_column = correction.get("reviewed_reference_column") or correction.get("reference_signal_column") or "未使用"
+    reference_scale = correction.get("reference_scale")
+    reference_scale_text = f"{float(reference_scale):.4g}" if reference_scale is not None else "未使用"
+    constant_offset = correction.get("constant_offset")
+    constant_offset_text = f"{float(constant_offset):.4g}" if constant_offset is not None else "0"
+    operation = correction.get("operation", "未记录")
+    notes = correction.get("correction_notes") or []
+    note_text = "；".join(str(note) for note in notes) if notes else "未记录"
+    return (
+        f"Reviewed numeric correction 状态为 `{status}`；method: `{method}`；record: `{record_ref}`；"
+        f"input/output columns: `{input_column}` -> `{output_column}`；reference column: `{reference_column}`；"
+        f"reference_scale: `{reference_scale_text}`；constant_offset: `{constant_offset_text}`；operation: `{operation}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"- correction notes: `{note_text}`\n\n"
+        "该记录表示用户审核过的透明数值预处理；它不会自动选择参比/背景，不证明基底或参比修正有效，不证明 band gap、transition mechanism、feature assignment 或样品排名。"
     )
 
 
@@ -1523,6 +1552,7 @@ def generate_uv_vis_report(
     tauc_text = _uv_vis_tauc_text(metadata)
     derivative_text = _uv_vis_derivative_text(metadata)
     correction_context_text = _uv_vis_correction_context_text(metadata)
+    numeric_correction_text = _uv_vis_numeric_correction_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
@@ -1569,6 +1599,10 @@ def generate_uv_vis_report(
 ## Correction context 记录
 
 {correction_context_text}
+
+## Reviewed numeric correction
+
+{numeric_correction_text}
 
 ## 图谱
 
@@ -1619,6 +1653,7 @@ def generate_uv_vis_report(
 {f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get('tauc_table') else "- Tauc/Kubelka-Munk table: `未生成`"}
 {f"- derivative table: `{outputs['derivative_table']}`" if outputs.get('derivative_table') else "- derivative table: `未生成`"}
 {f"- correction context: `{outputs['correction_context']}`" if outputs.get('correction_context') else "- correction context: `未生成`"}
+{f"- numeric correction: `{outputs['numeric_correction']}`" if outputs.get('numeric_correction') else "- numeric correction: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1654,6 +1689,7 @@ def generate_uv_vis_report(
                     outputs.get("tauc_table"),
                     outputs.get("derivative_table"),
                     outputs.get("correction_context"),
+                    outputs.get("numeric_correction"),
                     outputs["figure"],
                 ]
                 if value

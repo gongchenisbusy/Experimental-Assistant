@@ -13,6 +13,7 @@ ea_skill:
     - tauc_screening_table
     - derivative_screening_table
     - correction_context_record
+    - numeric_correction_record
     - source_packet
     - interpretation_suggestion_record
     - replicate_comparison_record
@@ -88,6 +89,18 @@ ea_skill:
         - diffuse_reflectance
         - correction_notes
       confidence_boundary: metadata_record_only
+    numeric_correction:
+      implemented: true
+      optional: true
+      record_format: yaml
+      methods:
+        - constant_offset
+        - subtract_reference_column
+      requires_confirmed_parameter_review: true
+      output_columns:
+        - reference_signal
+        - numeric_corrected_signal
+      confidence_boundary: reviewed_preprocessing_only
     source_packets:
       implemented: true
       command: ea uv-vis build-source-packet
@@ -180,7 +193,8 @@ ea_skill:
       - threshold optical-edge estimates are low-confidence orientation values
       - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
-      - correction-context records preserve reviewed metadata but do not apply automatic numeric correction
+      - correction-context records preserve reviewed metadata but do not apply automatic numeric correction by themselves
+      - numeric_correction applies only reviewed constant-offset or reference-column subtraction before smoothing/normalization/feature detection; it does not choose references, prove correction validity, apply substrate models, or rank samples
       - source packets, interpretation suggestions, and review packages preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not create ReviewRecords, inject report citations, write memory, or apply optical models/corrections; reviewed report and memory proposal integrations only read confirmed ReviewRecords and registered references, and memory proposal writes draft candidates only
       - replicate comparison records summarize processed metadata with descriptive statistics; reviewed feature matching is optional and requires explicit tolerance parameters plus a confirmed uv_vis_feature_matching ReviewRecord
       - reviewed feature matching records candidate groups only; it does not reprocess raw data, silently match features, infer replicate grouping, prove optical conclusions, or rank samples

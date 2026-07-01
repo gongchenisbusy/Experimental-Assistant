@@ -63,7 +63,8 @@ skills:
     notes: >-
       Minimal UV-Vis workflow implemented for review-gated optical feature detection,
       threshold edge estimates, tauc_kubelka_munk_screening, derivative_screening,
-      correction_context_records, literature source-candidate manifest/preflight
+      correction_context_records, reviewed numeric_correction for constant-offset
+      and reference-column subtraction, literature source-candidate manifest/preflight
       staging, traceable source_packet building from editable templates, local
       libraries, or confirmed literature manifests for optical-transition/gap/feature/
       correction-context candidates, advisory interpretation_suggestions under
@@ -80,9 +81,9 @@ skills:
       uv_vis_feature_matching ReviewRecord, traceable figures,
       and confidence-labeled reports; formal band-gap or transition conclusions,
       ReviewRecord creation by report/memory commands, optical model/correction
-      auto-application, raw reprocessing, hidden replicate grouping, hidden
-      feature matching by comparison commands, sample ranking, and confirmed
-      memory commit still require later reviewed workflows.
+      auto-selection, substrate/reference validity proof, raw reprocessing, hidden
+      replicate grouping, hidden feature matching by comparison commands, sample
+      ranking, and confirmed memory commit still require later reviewed workflows.
   - id: ea.xps-analysis
     manifest: skill-registry/builtins/xps-analysis.yml
     status: builtin_v0_2_reference

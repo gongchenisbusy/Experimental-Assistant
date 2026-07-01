@@ -36,6 +36,24 @@ def _write_uv_vis_fixture(path: Path) -> Path:
     return path
 
 
+def _write_uv_vis_reference_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = nm",
+        "# y_label = absorbance",
+        "wavelength_nm absorbance blank_absorbance",
+    ]
+    for index in range(520):
+        wavelength = 300.0 + index * 1.0
+        blank = 0.025 + 0.00001 * (wavelength - 300.0)
+        edge = 0.40 / (1.0 + math.exp((wavelength - 610.0) / 18.0))
+        feature = 0.13 * math.exp(-((wavelength - 455.0) ** 2) / (2.0 * 24.0**2))
+        corrected = 0.02 + edge + feature
+        absorbance = corrected + blank + 0.01
+        lines.append(f"{wavelength:.2f} {absorbance:.8f} {blank:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def _write_uv_vis_tauc_fixture(path: Path) -> Path:
     lines = [
         "# x_unit = eV",
@@ -683,6 +701,165 @@ def test_uv_vis_correction_context_records_reviewed_metadata(tmp_path: Path, cap
     assert "quartz" in report_body
     assert "correction context" in report_body
     assert "不执行自动数值校正" in report_body
+
+
+def test_uv_vis_reviewed_numeric_correction_subtracts_reference_column(tmp_path: Path, capsys) -> None:
+    fixture = _write_uv_vis_reference_fixture(tmp_path / "synthetic-uv-vis-reference-spectrum.txt")
+    workspace = tmp_path / "uv-vis-numeric-correction-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV-Vis Numeric Correction Workflow",
+            "--slug",
+            "uv-vis-numeric-correction-workflow",
+            "--direction",
+            "UV-Vis reviewed numeric correction",
+            "--material",
+            "semiconductor thin film on quartz",
+            "--experiment-type",
+            "UV-Vis reference-column correction",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "uv_vis",
+            "--sample-ref",
+            "sample-uv-vis-numeric-correction-001",
+            "--experiment-ref",
+            "exp-uv-vis-numeric-correction-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=wavelength_nm, y=absorbance, reference=blank_absorbance, unit=nm, signal_mode=absorbance",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    parameters = default_uv_vis_processing_parameters()
+    parameters["numeric_correction"].update(
+        {
+            "enabled": True,
+            "method": "subtract_reference_column",
+            "reference_column": "blank_absorbance",
+            "reference_scale": 1.0,
+            "constant_offset": 0.01,
+            "correction_notes": ["Blank column and offset were user-reviewed before processing."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "uv_vis_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "uv-vis",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-uv-vis-numeric-correction-001",
+            "--x-column",
+            "wavelength_nm",
+            "--y-column",
+            "absorbance",
+            "--x-unit",
+            "nm",
+            "--signal-mode",
+            "absorbance",
+            "--parameters-json",
+            json.dumps({"numeric_correction": parameters["numeric_correction"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    uv_vis_metadata = Path(process_output["metadata"])
+    uv_vis = read_yaml(uv_vis_metadata)
+    numeric_correction = uv_vis["peak_analysis"]["numeric_correction"]
+    processed = pd.read_csv(workspace / uv_vis["outputs"]["processed_csv"])
+    correction_record = read_yaml(workspace / uv_vis["outputs"]["numeric_correction"])
+
+    assert numeric_correction["status"] == "reviewed_numeric_correction_applied"
+    assert numeric_correction["method"] == "subtract_reference_column"
+    assert numeric_correction["reviewed_reference_column"] == "blank_absorbance"
+    assert numeric_correction["record_ref"] == uv_vis["outputs"]["numeric_correction"]
+    assert "not prove substrate/reference/background validity" in numeric_correction["boundary"]
+    assert uv_vis["outputs"]["numeric_correction"].endswith("uv_vis_numeric_correction.yml")
+    assert correction_record["operation"] == "raw_signal - (reference_scale * reference_signal + constant_offset)"
+    assert {"raw_signal", "reference_signal", "numeric_corrected_signal", "processed_signal"}.issubset(processed.columns)
+    first = processed.iloc[0]
+    assert math.isclose(first["numeric_corrected_signal"], first["raw_signal"] - first["reference_signal"] - 0.01, rel_tol=0, abs_tol=1e-8)
+    assert any(warning["code"] == "uv_vis_numeric_correction_applied" for warning in uv_vis["warnings"])
+
+    provenance = read_yaml(workspace / "provenance" / f"{uv_vis['provenance_refs'][0]}.yml")
+    assert uv_vis["outputs"]["numeric_correction"] in provenance["outputs"]["files"]
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][uv_vis["figure_id"]]
+    assert uv_vis["outputs"]["numeric_correction"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "uv-vis",
+            "report",
+            str(workspace),
+            "--metadata",
+            uv_vis_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-uv-vis-numeric-correction-001",
+            "--experiment-ref",
+            "exp-uv-vis-numeric-correction-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Reviewed numeric correction" in report_body
+    assert "subtract_reference_column" in report_body
+    assert "numeric correction" in report_body
+    assert "不证明" in report_body
 
 
 def test_uv_vis_source_packet_template_contains_expected_candidate_types(tmp_path: Path) -> None:
@@ -1525,6 +1702,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "Tauc/Kubelka-Munk" in reference_text
     assert "derivative_analysis" in reference_text
     assert "correction_context" in reference_text
+    assert "numeric_correction" in reference_text
     assert "prepare-source-candidates --method uv_vis" in reference_text
     assert "ea uv-vis build-source-packet" in reference_text
     assert "ea uv-vis suggest-interpretations" in reference_text
@@ -1540,6 +1718,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "tauc_kubelka_munk_screening" in uv_vis_record["notes"]
     assert "derivative_screening" in uv_vis_record["notes"]
     assert "correction_context_records" in uv_vis_record["notes"]
+    assert "numeric_correction" in uv_vis_record["notes"]
     assert "source-candidate manifest/preflight" in uv_vis_record["notes"]
     assert "source_packet building" in uv_vis_record["notes"]
     assert "interpretation_suggestions" in uv_vis_record["notes"]

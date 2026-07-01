@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -117,6 +118,15 @@ def default_uv_vis_processing_parameters() -> dict[str, Any]:
             "reference": {},
             "background": {},
             "diffuse_reflectance": {},
+            "correction_notes": [],
+        },
+        "numeric_correction": {
+            "enabled": False,
+            "method": "constant_offset",
+            "source": "ea.uv_vis.numeric_correction:v0.2",
+            "constant_offset": 0.0,
+            "reference_column": "",
+            "reference_scale": 1.0,
             "correction_notes": [],
         },
     }
@@ -248,8 +258,75 @@ def inspect_uv_vis_file(path: Path) -> UVVisInspection:
     )
 
 
-def _confirmed_frame(path: Path, request: UVVisProcessingRequest) -> pd.DataFrame:
-    frame, _ = _read_spectrum(path)
+def _numeric_correction_method(parameters: dict[str, Any]) -> str:
+    params = parameters.get("numeric_correction", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return ""
+    return str(params.get("method") or "constant_offset").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _numeric_correction_reference_column(parameters: dict[str, Any]) -> str:
+    params = parameters.get("numeric_correction", {})
+    if not isinstance(params, dict):
+        return ""
+    return str(params.get("reference_column") or params.get("background_column") or "").strip()
+
+
+def _reviewed_numeric_float(value: Any, name: str, default: float) -> float:
+    if value is None or value == "":
+        return default
+    number = _finite_float(value)
+    if number is None:
+        raise UVVisProcessingError(f"UV-Vis numeric_correction.{name} must be a finite number")
+    return float(number)
+
+
+def _read_uv_vis_full_text_table(path: Path) -> tuple[pd.DataFrame, dict[str, str]]:
+    metadata: dict[str, str] = {}
+    rows: list[list[float]] = []
+    header: list[str] | None = None
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            if "=" in line[1:]:
+                key, value = line[1:].split("=", 1)
+                metadata[key.strip()] = value.strip()
+            continue
+        parts = [part for part in re.split(r"[\t,\s]+", line) if part]
+        try:
+            rows.append([float(value) for value in parts])
+        except ValueError:
+            if header is None:
+                header = parts
+    if not rows:
+        return pd.DataFrame(), metadata
+    width = max(len(row) for row in rows)
+    normalized_rows = [row + [np.nan] * (width - len(row)) for row in rows]
+    columns = header if header and len(header) == width else [f"col_{index}" for index in range(width)]
+    return pd.DataFrame(normalized_rows, columns=columns), metadata
+
+
+def _read_uv_vis_source_frame(path: Path, parameters: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if _numeric_correction_method(parameters) != "subtract_reference_column":
+        return _read_spectrum(path)
+    suffix = path.suffix.lower()
+    if suffix in {".txt", ".csv"}:
+        frame, metadata = _read_uv_vis_full_text_table(path)
+        if frame.shape[1] < 3:
+            raise UVVisProcessingError(f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}")
+        return frame.rename(columns=str), metadata
+    if suffix in {".xlsx", ".xlsm"}:
+        frame = pd.read_excel(path).rename(columns=str)
+        if frame.shape[1] < 3:
+            raise UVVisProcessingError(f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}")
+        return frame, {}
+    return _read_spectrum(path)
+
+
+def _confirmed_frame(path: Path, request: UVVisProcessingRequest, parameters: dict[str, Any] | None = None) -> pd.DataFrame:
+    frame, _ = _read_uv_vis_source_frame(path, parameters or {})
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
         raise UVVisProcessingError("Confirmed x/y columns are not present in the raw file")
@@ -257,10 +334,24 @@ def _confirmed_frame(path: Path, request: UVVisProcessingRequest) -> pd.DataFram
         raise UVVisProcessingError("UV-Vis x_unit must be user-confirmed as nm, eV, or unknown")
     if request.signal_mode not in {"absorbance", "transmittance", "reflectance"}:
         raise UVVisProcessingError("UV-Vis signal_mode must be user-confirmed as absorbance, transmittance, or reflectance")
-    data = frame[[request.x_column, request.y_column]].copy()
-    data.columns = ["uv_vis_axis", "raw_signal"]
+    selected_columns = [request.x_column, request.y_column]
+    numeric_method = _numeric_correction_method(parameters or {})
+    reference_column = _numeric_correction_reference_column(parameters or {})
+    if numeric_method == "subtract_reference_column":
+        if not reference_column:
+            raise UVVisProcessingError("UV-Vis subtract_reference_column correction requires numeric_correction.reference_column")
+        if reference_column not in frame.columns:
+            raise UVVisProcessingError(f"Reviewed UV-Vis reference column is not present in the raw file: {reference_column}")
+        selected_columns.append(reference_column)
+    data = frame[selected_columns].copy()
+    rename_map = {request.x_column: "uv_vis_axis", request.y_column: "raw_signal"}
+    if reference_column:
+        rename_map[reference_column] = "reference_signal"
+    data = data.rename(columns=rename_map)
     data["uv_vis_axis"] = pd.to_numeric(data["uv_vis_axis"], errors="coerce")
     data["raw_signal"] = pd.to_numeric(data["raw_signal"], errors="coerce")
+    if "reference_signal" in data.columns:
+        data["reference_signal"] = pd.to_numeric(data["reference_signal"], errors="coerce")
     data = data.dropna().sort_values("uv_vis_axis").reset_index(drop=True)
     if data.empty:
         raise UVVisProcessingError("Confirmed UV-Vis columns contain no numeric data")
@@ -275,10 +366,70 @@ def _confirmed_frame(path: Path, request: UVVisProcessingRequest) -> pd.DataFram
     return data
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_numeric_correction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("numeric_correction", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+    method = _numeric_correction_method(parameters)
+    source = str(params.get("source") or "ea.uv_vis.numeric_correction:v0.2")
+    constant_offset = _reviewed_numeric_float(params.get("constant_offset", params.get("offset")), "constant_offset", 0.0)
+    warnings: list[dict[str, Any]] = []
+    raw_signal = processed["raw_signal"].to_numpy(dtype=float)
+    operation_text = ""
+    if method == "constant_offset":
+        corrected = raw_signal - constant_offset
+        operation_text = "raw_signal - constant_offset"
+    elif method == "subtract_reference_column":
+        reference_column = _numeric_correction_reference_column(parameters)
+        if "reference_signal" not in processed.columns:
+            raise UVVisProcessingError("UV-Vis subtract_reference_column correction requires a numeric reference_signal column")
+        reference_scale = _reviewed_numeric_float(params.get("reference_scale"), "reference_scale", 1.0)
+        reference_signal = processed["reference_signal"].to_numpy(dtype=float)
+        corrected = raw_signal - (reference_scale * reference_signal + constant_offset)
+        operation_text = "raw_signal - (reference_scale * reference_signal + constant_offset)"
+    else:
+        raise UVVisProcessingError(f"Unsupported reviewed UV-Vis numeric correction method: {method}")
+
+    processed["numeric_corrected_signal"] = np.asarray(corrected, dtype=float)
+    warnings.append(
+        _warning(
+            "uv_vis_numeric_correction_applied",
+            "Reviewed UV-Vis numeric correction was applied before smoothing, normalization, and feature detection.",
+            method=method,
+            severity="low",
+        )
+    )
+    return (
+        {
+            "enabled": True,
+            "status": "reviewed_numeric_correction_applied",
+            "method": method,
+            "assignment_source": source,
+            "confidence": "low",
+            "input_signal_column": "raw_signal",
+            "output_signal_column": "numeric_corrected_signal",
+            "reference_signal_column": "reference_signal" if method == "subtract_reference_column" else None,
+            "reviewed_reference_column": _numeric_correction_reference_column(parameters) or None,
+            "reference_scale": _reviewed_numeric_float(params.get("reference_scale"), "reference_scale", 1.0)
+            if method == "subtract_reference_column"
+            else None,
+            "constant_offset": constant_offset,
+            "operation": operation_text,
+            "correction_notes": _coerce_string_list(params.get("correction_notes")),
+            "warnings": warnings,
+            "boundary": "Reviewed numeric correction is a transparent preprocessing step only; it does not prove substrate/reference/background validity, band gap, transition mechanism, optical assignment, or sample ranking.",
+        },
+        warnings,
+    )
+
+
+def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any] | None]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
-    signal = processed["raw_signal"].to_numpy(dtype=float)
+    numeric_correction, numeric_warnings = _apply_numeric_correction(processed, parameters)
+    warnings.extend(numeric_warnings)
+    signal_column = "numeric_corrected_signal" if numeric_correction else "raw_signal"
+    signal = processed[signal_column].to_numpy(dtype=float)
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
@@ -327,7 +478,7 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
             signal = signal / max_value
         warnings.append(_warning("uv_vis_normalization_applied", "UV-Vis signal normalized by processing parameters."))
     processed["processed_signal"] = signal
-    return processed, warnings
+    return processed, warnings, numeric_correction
 
 
 def _detection_signal(processed: pd.DataFrame, signal_mode: str) -> np.ndarray:
@@ -907,6 +1058,7 @@ def _analyze_features(
     tauc: dict[str, Any] | None = None,
     derivative: dict[str, Any] | None = None,
     correction_context: dict[str, Any] | None = None,
+    numeric_correction: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "feature_count": int(len(features)),
@@ -915,6 +1067,7 @@ def _analyze_features(
         "tauc_analysis": tauc,
         "derivative_analysis": derivative,
         "correction_context": correction_context,
+        "numeric_correction": numeric_correction,
         "possible_interpretations": [],
     }
     if features.empty:
@@ -998,6 +1151,18 @@ def _analyze_features(
                 "confidence": correction_context.get("confidence", "low"),
                 "evidence": ["correction_context"],
                 "assignment_source": correction_context.get("assignment_source", "ea.uv_vis.correction_context:v0.2"),
+            }
+        )
+    if numeric_correction and numeric_correction.get("status") == "reviewed_numeric_correction_applied":
+        analysis["possible_interpretations"].append(
+            {
+                "text": (
+                    f"Reviewed UV-Vis numeric correction `{numeric_correction.get('method', 'unknown')}` was applied before "
+                    "screening feature detection. Treat corrected spectral features as preprocessing-dependent evidence, not as proof of optical mechanism or correction validity."
+                ),
+                "confidence": numeric_correction.get("confidence", "low"),
+                "evidence": ["numeric_correction"],
+                "assignment_source": numeric_correction.get("assignment_source", "ea.uv_vis.numeric_correction:v0.2"),
             }
         )
     return analysis
@@ -3268,13 +3433,13 @@ def process_uv_vis_result(
         raise UVVisProcessingError(f"File is {inspection.file_kind}, not UV-Vis")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    processed, processing_warnings, numeric_correction = _apply_processing(_confirmed_frame(raw_path, request, parameters), parameters)
     features = _detect_features(processed, parameters, request.signal_mode, request.x_unit)
     edge = _estimate_edge(processed, parameters, request.signal_mode)
     tauc_analysis, tauc_warnings = _run_tauc_analysis(processed, parameters, request.signal_mode)
     derivative_table, derivative_analysis, derivative_warnings = _run_derivative_analysis(processed, parameters)
     correction_context, correction_warnings = _record_correction_context(parameters)
-    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis, correction_context)
+    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis, correction_context, numeric_correction)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -3290,10 +3455,11 @@ def process_uv_vis_result(
     tauc_csv = output_dir / "uv_vis_tauc.csv"
     derivative_csv = output_dir / "uv_vis_derivative.csv"
     correction_context_yml = output_dir / "uv_vis_correction_context.yml"
+    numeric_correction_yml = output_dir / "uv_vis_numeric_correction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "uv_vis_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "uv_vis_metadata.yml"
-    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, correction_context_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, correction_context_yml, numeric_correction_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -3318,6 +3484,13 @@ def process_uv_vis_result(
         write_yaml(correction_context_yml, correction_context)
         if feature_analysis.get("correction_context"):
             feature_analysis["correction_context"]["record_ref"] = correction_context_ref
+    numeric_correction_ref: str | None = None
+    if numeric_correction is not None:
+        numeric_correction_ref = str(numeric_correction_yml.relative_to(root))
+        numeric_correction["record_ref"] = numeric_correction_ref
+        write_yaml(numeric_correction_yml, numeric_correction)
+        if feature_analysis.get("numeric_correction"):
+            feature_analysis["numeric_correction"]["record_ref"] = numeric_correction_ref
     _plot_uv_vis(processed, features, figure, request.x_unit, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
 
     warnings: list[Any] = []
@@ -3339,6 +3512,8 @@ def process_uv_vis_result(
         outputs["derivative_table"] = derivative_output_ref
     if correction_context_ref:
         outputs["correction_context"] = correction_context_ref
+    if numeric_correction_ref:
+        outputs["numeric_correction"] = numeric_correction_ref
     provenance_files = [
         str(processed_csv.relative_to(root)),
         str(features_csv.relative_to(root)),
@@ -3350,6 +3525,8 @@ def process_uv_vis_result(
         provenance_files.append(derivative_output_ref)
     if correction_context_ref:
         provenance_files.append(correction_context_ref)
+    if numeric_correction_ref:
+        provenance_files.append(numeric_correction_ref)
     result = UVVisProcessingResult(
         uv_vis_result_id=result_id,
         result_id=result_id,
@@ -3427,6 +3604,7 @@ def process_uv_vis_result(
             ]
             + ([tauc_output_ref] if tauc_output_ref else [])
             + ([derivative_output_ref] if derivative_output_ref else [])
-            + ([correction_context_ref] if correction_context_ref else []),
+            + ([correction_context_ref] if correction_context_ref else [])
+            + ([numeric_correction_ref] if numeric_correction_ref else []),
         )
     return result_metadata
