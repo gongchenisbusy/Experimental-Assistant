@@ -55,7 +55,7 @@ from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect
 from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
 from ea.raw_import import import_raw_file
-from ea.references import import_bibtex_references, register_reference, validate_report_citations
+from ea.references import import_bibtex_references, register_reference, register_reference_seeds, validate_report_citations
 from ea.reports import (
     generate_electrochemistry_report,
     generate_ftir_report,
@@ -569,6 +569,13 @@ def build_parser() -> argparse.ArgumentParser:
     ref_import.add_argument("bibtex", type=Path)
     ref_import.add_argument("--project-id")
     ref_import.add_argument("--source-type", choices=["literature_library", "manual", "web", "local_pdf", "report"], default="literature_library")
+    ref_seed = references_sub.add_parser("register-seeds", help="explicitly register reference_seeds from a source packet")
+    ref_seed.add_argument("workspace", type=Path)
+    ref_seed.add_argument("--source-packet", required=True, type=Path)
+    ref_seed.add_argument("--project-id")
+    ref_seed.add_argument("--seed-id", action="append", default=[])
+    ref_seed.add_argument("--source-type", choices=["literature_library", "manual", "web", "local_pdf", "report"], default="manual")
+    ref_seed.add_argument("--dry-run", action="store_true")
     ref_validate = references_sub.add_parser("validate-report", help="check report inline citations against its References section")
     ref_validate.add_argument("workspace", type=Path)
     ref_validate.add_argument("report", type=Path)
@@ -1489,6 +1496,19 @@ def main(argv: list[str] | None = None) -> int:
                     args.bibtex,
                     project_id=project_id,
                     source_type=args.source_type,
+                )
+            )
+            return 0
+        if args.references_command == "register-seeds":
+            project_id = args.project_id or _project_id_from_workspace(args.workspace)
+            _print_json(
+                register_reference_seeds(
+                    args.workspace,
+                    _project_path(args.workspace, args.source_packet),
+                    project_id=project_id,
+                    seed_ids=args.seed_id,
+                    source_type=args.source_type,
+                    dry_run=args.dry_run,
                 )
             )
             return 0

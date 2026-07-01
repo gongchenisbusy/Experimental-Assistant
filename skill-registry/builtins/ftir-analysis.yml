@@ -74,6 +74,7 @@ ea_skill:
       built_in_assignment_library: generic_materials
       source_packet_format: yaml
       record_format: yaml_and_csv
+      reference_seed_registration_helper: ea references register-seeds
       report_integration: optional_via_assignment_suggestion_argument
       reference_seeds_required_for_builtin_sources: true
       required_candidate_fields:

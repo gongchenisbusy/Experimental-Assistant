@@ -714,6 +714,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "ea ftir suggest-assignments" in skill
     assert "--assignment-suggestion" in skill
     assert "--builtin-library" in skill
+    assert "register-seeds" in skill
     assert "references/ftir-workflow.md" in skill
     assert ftir_reference.exists()
     reference_text = ftir_reference.read_text(encoding="utf-8")
@@ -723,8 +724,10 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "suggest-assignments" in reference_text
     assert "--assignment-suggestion" in reference_text
     assert "generic_materials" in reference_text
+    assert "register-seeds" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
     assert "assignment_suggestions" in ftir_record["notes"]
     assert "built_in_assignment_library" in ftir_record["notes"]
+    assert "reference_seed registration" in ftir_record["notes"]

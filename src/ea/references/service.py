@@ -11,6 +11,7 @@ from ea.storage.ids import next_id
 
 
 SourceType = Literal["manual", "literature_library", "web", "local_pdf", "report"]
+SOURCE_TYPES = {"manual", "literature_library", "web", "local_pdf", "report"}
 
 
 class ReferenceError(ValueError):
@@ -51,6 +52,15 @@ def _normalize_text(value: str | None) -> str:
     if not value:
         return ""
     return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _safe_reference_id(value: str) -> str:
+    reference_id = value.strip()
+    if not reference_id:
+        raise ReferenceError("Reference seed id cannot be empty")
+    if "/" in reference_id or "\\" in reference_id or reference_id in {".", ".."}:
+        raise ReferenceError(f"Reference seed id is not safe for a project reference record: {value}")
+    return reference_id
 
 
 def _clean_bibtex_value(value: str | None) -> str | None:
@@ -280,11 +290,28 @@ def find_duplicate_reference(
     return None
 
 
+def _existing_reference_by_id(root: Path, reference_id: str) -> dict[str, Any] | None:
+    index_path = _index_path(root)
+    if not index_path.exists():
+        return None
+    index = read_yaml(index_path)
+    item = (index.get("references") or {}).get(reference_id)
+    if not item:
+        return None
+    record_path = root / item.get("path", f"literature/references/{reference_id}.yml")
+    return {
+        "reference_id": reference_id,
+        "path": str(record_path),
+        "match": "reference_id",
+    }
+
+
 def register_reference(
     root: Path,
     *,
     project_id: str,
     citation: str,
+    reference_id: str | None = None,
     title: str | None = None,
     authors: list[str] | None = None,
     year: int | None = None,
@@ -298,7 +325,9 @@ def register_reference(
 ) -> Path:
     if not citation.strip():
         raise ReferenceError("Reference citation cannot be empty")
-    reference_id = next_id(root, "reference", created_at[:10] if created_at else None)
+    reference_id = _safe_reference_id(reference_id) if reference_id else next_id(root, "reference", created_at[:10] if created_at else None)
+    if _existing_reference_by_id(root, reference_id):
+        raise ReferenceError(f"Reference id already exists: {reference_id}")
     record = ReferenceRecord(
         reference_id=reference_id,
         project_id=project_id,
@@ -331,6 +360,143 @@ def register_reference(
     }
     write_yaml(index_path, index)
     return path
+
+
+def _coerce_authors(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _coerce_year(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        match = re.search(r"\d{4}", str(value))
+        return int(match.group(0)) if match else None
+
+
+def _seed_reference_kwargs(seed: dict[str, Any], *, default_source_type: SourceType) -> dict[str, Any]:
+    source_type = str(seed.get("source_type") or default_source_type)
+    if source_type not in SOURCE_TYPES:
+        source_type = default_source_type
+    return {
+        "citation": str(seed.get("citation") or seed.get("title") or "").strip(),
+        "title": str(seed.get("title")).strip() if seed.get("title") is not None else None,
+        "authors": _coerce_authors(seed.get("authors", seed.get("author"))),
+        "year": _coerce_year(seed.get("year")),
+        "venue": str(seed.get("venue")).strip() if seed.get("venue") is not None else None,
+        "doi": _normalize_doi(str(seed.get("doi"))) if seed.get("doi") else None,
+        "url": str(seed.get("url")).strip() if seed.get("url") is not None else None,
+        "local_path": str(seed.get("local_path")).strip() if seed.get("local_path") is not None else None,
+        "source_type": source_type,
+        "notes": str(seed.get("notes")).strip() if seed.get("notes") is not None else None,
+    }
+
+
+def register_reference_seeds(
+    root: Path,
+    source_packet_path: Path,
+    *,
+    project_id: str,
+    seed_ids: list[str] | None = None,
+    source_type: SourceType = "manual",
+    dry_run: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_path = source_packet_path if source_packet_path.is_absolute() else root / source_packet_path
+    if not source_path.exists():
+        raise ReferenceError(f"Reference seed source packet not found: {source_packet_path}")
+    packet = read_yaml(source_path)
+    seeds = packet.get("reference_seeds") or {}
+    if not isinstance(seeds, dict):
+        raise ReferenceError("Source packet reference_seeds must be a mapping from seed id to reference metadata")
+    selected_seed_ids = [str(seed_id).strip() for seed_id in seed_ids or [] if str(seed_id).strip()] or sorted(str(seed_id) for seed_id in seeds)
+    imported: list[dict[str, Any]] = []
+    reused: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for raw_seed_id in selected_seed_ids:
+        try:
+            seed_id = _safe_reference_id(raw_seed_id)
+        except ReferenceError as exc:
+            skipped.append({"seed_id": raw_seed_id, "reason": "invalid_seed_id", "message": str(exc)})
+            continue
+        if seed_id not in seeds:
+            skipped.append({"seed_id": seed_id, "reason": "seed_not_found"})
+            continue
+        seed = seeds[seed_id]
+        if not isinstance(seed, dict):
+            skipped.append({"seed_id": seed_id, "reason": "invalid_seed_mapping"})
+            continue
+        kwargs = _seed_reference_kwargs(seed, default_source_type=source_type)
+        citation = kwargs.pop("citation")
+        if not citation:
+            skipped.append({"seed_id": seed_id, "reason": "missing_citation"})
+            continue
+        existing_by_id = _existing_reference_by_id(root, seed_id)
+        if existing_by_id:
+            reused.append({"seed_id": seed_id, **existing_by_id})
+            continue
+        duplicate = find_duplicate_reference(
+            root,
+            doi=kwargs.get("doi"),
+            url=kwargs.get("url"),
+            title=kwargs.get("title"),
+            citation=citation,
+        )
+        if duplicate:
+            reused.append(
+                {
+                    "seed_id": seed_id,
+                    **duplicate,
+                    "replacement_required": duplicate["reference_id"] != seed_id,
+                }
+            )
+            continue
+        if dry_run:
+            imported.append(
+                {
+                    "seed_id": seed_id,
+                    "reference_id": seed_id,
+                    "path": str(_reference_dir(root) / f"{seed_id}.yml"),
+                    "dry_run": True,
+                }
+            )
+            continue
+        path = register_reference(
+            root,
+            project_id=project_id,
+            reference_id=seed_id,
+            citation=citation,
+            created_at=created_at,
+            **kwargs,
+        )
+        imported.append({"seed_id": seed_id, "reference_id": seed_id, "path": str(path)})
+    return {
+        "source_packet": str(source_path),
+        "seed_count": len(seeds),
+        "selected_seed_ids": selected_seed_ids,
+        "imported_count": len(imported),
+        "reused_count": len(reused),
+        "skipped_count": len(skipped),
+        "dry_run": dry_run,
+        "imported": imported,
+        "reused": reused,
+        "skipped": skipped,
+        "next_steps": [
+            "Use the registered seed reference_ids only where the source packet or suggestion record explicitly cites them.",
+            "Run the relevant report command after suggestion records are regenerated or already cite these registered seed IDs.",
+        ],
+        "boundaries": [
+            "Reference seed registration only writes project reference records; it does not add report citations, mutate source packets, prove assignments, download PDFs, run live lookup, or write memory.",
+        ],
+    }
 
 
 def import_bibtex_references(

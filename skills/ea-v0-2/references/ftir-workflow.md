@@ -28,7 +28,7 @@ Current v0.2 FTIR support:
 - Built-in band-family windows cover broad regions only, such as O-H/N-H stretching, C-H stretching, carbonyl/amide-adjacent regions, fingerprint regions, and low-wavenumber metal-oxygen regions. They do not identify compounds by themselves.
 - Reports include an embedded FTIR figure, original figure path, band tables, optional context record summary/link, optional source-backed assignment suggestion sections, confidence-labeled possible interpretations, file links, References, and provenance.
 - `context_record` is disabled by default. Enable it only after the user reviews instrument/accessory, atmosphere, sample preparation, background/reference, and correction-note metadata. This record is metadata/provenance only; EA does not apply automatic background/reference/ATR/atmosphere correction from it in v0.2.
-- FTIR assignment suggestions are advisory. They require source summary, applicability notes, reference IDs, confidence, caveats, and user review before report or memory use. Built-in packets include `reference_seeds`; register or replace those sources in the project reference index before treating built-in candidates as report evidence. `ea ftir report --assignment-suggestion` can display these records and merge registered references into the report bibliography, but EA does not run live lookup inside `suggest-assignments`, auto-apply assignments, or prove composition/functional groups from a band match alone.
+- FTIR assignment suggestions are advisory. They require source summary, applicability notes, reference IDs, confidence, caveats, and user review before report or memory use. Built-in packets include `reference_seeds`; use `ea references register-seeds` or manual replacement to register those sources in the project reference index before treating built-in candidates as report evidence. `ea ftir report --assignment-suggestion` can display these records and merge registered references into the report bibliography, but EA does not run live lookup inside `suggest-assignments`, auto-apply assignments, or prove composition/functional groups from a band match alone.
 
 CLI path:
 
@@ -41,6 +41,7 @@ ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metada
 ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
 ea ftir build-assignment-packet /path/to/ea-project
 ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
+ea references register-seeds /path/to/ea-project --source-packet suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ```
@@ -49,7 +50,7 @@ Built-in FTIR assignment seed library:
 
 - Default source-packet generation uses `generic_materials` when neither `--library-file` nor `--write-template` is supplied.
 - The built-in library includes common generic O-H/N-H, aliphatic C-H, C=O, triple-bond, aromatic C=C, C-O/C-N, Si-O/oxide, and low-wavenumber metal-oxygen candidates.
-- Built-in candidates are generic screening seeds. They carry `reference_seeds`, but their `reference_ids` still need project registration or replacement before report citations can become numbered references.
+- Built-in candidates are generic screening seeds. They carry `reference_seeds`, but their `reference_ids` still need project registration or replacement before report citations can become numbered references. Use `ea references register-seeds` only when the user or agent explicitly wants those seeds registered in this project.
 - Use `--include-candidate`, `--assignment-type`, and `--material-scope` to narrow the packet before matching.
 
 Optional project-local FTIR assignment candidate library:

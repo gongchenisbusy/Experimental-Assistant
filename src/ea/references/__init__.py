@@ -7,6 +7,7 @@ from ea.references.service import (
     parse_bibtex_references,
     read_reference,
     register_reference,
+    register_reference_seeds,
     validate_report_citations,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "parse_bibtex_references",
     "read_reference",
     "register_reference",
+    "register_reference_seeds",
     "validate_report_citations",
 ]
