@@ -114,6 +114,17 @@ def default_xps_processing_parameters() -> dict[str, Any]:
             "reviewer_notes": [],
             "caveats": [],
         },
+        "region_records": {
+            "enabled": False,
+            "method": "reviewed_multi_region_project_record",
+            "source": "ea.xps.region_records:v0.2",
+            "min_points": 3,
+            "default_calibration_group_id": None,
+            "regions": [],
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
         "background_model": {
             "enabled": False,
             "method": "reviewed_background_record",
@@ -2332,6 +2343,228 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
     return table, record, warnings
 
 
+def _region_record_columns() -> list[str]:
+    return [
+        "region_id",
+        "label",
+        "region_role",
+        "element",
+        "core_level",
+        "binding_energy_min_eV",
+        "binding_energy_max_eV",
+        "point_count",
+        "calibration_group_id",
+        "linked_output_refs",
+        "reference_ids",
+        "confidence",
+        "status",
+    ]
+
+
+def _region_record_refs(region: dict[str, Any], linked_outputs: dict[str, str | None]) -> list[str]:
+    refs: list[str] = []
+    for key in [
+        "background_model_ref",
+        "background_subtraction_ref",
+        "component_quantification_ref",
+        "component_fit_ref",
+        "component_fit_table_ref",
+        "processed_csv_ref",
+        "peak_table_ref",
+    ]:
+        value = region.get(key)
+        if isinstance(value, str) and value.strip():
+            refs.append(value.strip())
+    for key in [
+        "background_model",
+        "background_subtraction",
+        "component_table",
+        "component_fit",
+        "component_fit_table",
+        "processed_csv",
+        "peak_table",
+    ]:
+        value = linked_outputs.get(key)
+        if value:
+            refs.append(str(value))
+    return sorted(dict.fromkeys(refs))
+
+
+def _apply_region_records(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    *,
+    linked_outputs: dict[str, str | None],
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("region_records", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return pd.DataFrame(columns=_region_record_columns()), None, []
+
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "reviewed_multi_region_project_record")
+    source = str(params.get("source") or "ea.xps.region_records:v0.2")
+    if method != "reviewed_multi_region_project_record":
+        warnings.append(
+            _warning(
+                "xps_region_records_method_unsupported",
+                "Only reviewed_multi_region_project_record is supported for XPS region_records in EA v0.2.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_multi_region_project_record"
+    min_points, min_adjusted = _coerce_int(params.get("min_points"), 3, minimum=1)
+    if min_adjusted:
+        warnings.append(
+            _warning(
+                "xps_region_records_min_points_adjusted",
+                "Invalid XPS region_records min_points was adjusted before processing.",
+                severity="medium",
+                min_points=min_points,
+            )
+        )
+
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "min_points": min_points,
+        "status": "not_applied",
+        "confidence": "insufficient",
+        "region_count": 0,
+        "reviewed_region_count": 0,
+        "regions": [],
+        "linked_output_refs": sorted(str(value) for value in linked_outputs.values() if value),
+        "reference_ids": _coerce_string_list(params.get("reference_ids")),
+        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "caveats": _coerce_string_list(params.get("caveats")),
+        "boundary": (
+            "XPS region_records are reviewed project-organization and provenance records only. EA v0.2 does not automatically share "
+            "charge correction, align survey/core-level spectra, assign chemical states, calculate formal multi-region composition, or rank samples."
+        ),
+    }
+
+    raw_regions = params.get("regions", [])
+    if not isinstance(raw_regions, list):
+        raw_regions = []
+        warnings.append(
+            _warning(
+                "xps_region_records_regions_ignored",
+                "XPS region_records regions were ignored because they were not supplied as a list.",
+                severity="medium",
+            )
+        )
+    if not raw_regions:
+        warnings.append(
+            _warning(
+                "xps_region_records_regions_missing",
+                "region_records was enabled, but no reviewed XPS regions were supplied.",
+                severity="medium",
+            )
+        )
+        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        return pd.DataFrame(columns=_region_record_columns()), record, warnings
+
+    x = processed["binding_energy_eV"].to_numpy(dtype=float)
+    regions: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
+    all_reference_ids = set(record["reference_ids"])
+    reviewed_count = 0
+    default_calibration_group = params.get("default_calibration_group_id") or params.get("calibration_group_id")
+
+    for number, region in enumerate(raw_regions, start=1):
+        if not isinstance(region, dict):
+            warnings.append(
+                _warning(
+                    "xps_region_record_ignored",
+                    "A reviewed XPS region record was ignored because it was not a mapping.",
+                    severity="medium",
+                    region_number=number,
+                )
+            )
+            continue
+        region_id = str(region.get("region_id") or region.get("id") or f"xps-region-record-{number:03d}")
+        role = str(region.get("region_role") or region.get("role") or "core_level").strip().lower()
+        if role not in {"survey", "core_level", "valence", "auger", "other"}:
+            warnings.append(
+                _warning(
+                    "xps_region_record_role_unsupported",
+                    "A reviewed XPS region role was not recognized and was recorded as other.",
+                    severity="low",
+                    region_id=region_id,
+                    requested_role=role,
+                )
+            )
+            role = "other"
+        low, high = _background_window(region)
+        reference_ids = _coerce_string_list(region.get("reference_ids"))
+        all_reference_ids.update(reference_ids)
+        linked_refs = _region_record_refs(region, linked_outputs)
+        region_record: dict[str, Any] = {
+            "region_id": region_id,
+            "label": str(region.get("label") or region_id),
+            "region_role": role,
+            "element": str(region.get("element") or ""),
+            "core_level": str(region.get("core_level") or region.get("orbital") or ""),
+            "binding_energy_min_eV": low,
+            "binding_energy_max_eV": high,
+            "calibration_group_id": str(region.get("calibration_group_id") or default_calibration_group or "") or None,
+            "point_count": 0,
+            "linked_output_refs": linked_refs,
+            "reference_ids": reference_ids,
+            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "caveats": _coerce_string_list(region.get("caveats")),
+            "confidence": str(region.get("confidence") or "low").strip().lower(),
+            "assignment_source": str(region.get("source") or region.get("assignment_source") or source),
+            "status": "invalid_region_window",
+        }
+        if low is None or high is None:
+            warnings.append(
+                _warning(
+                    "xps_region_record_invalid_window",
+                    "A reviewed XPS region record has an invalid binding-energy window.",
+                    severity="medium",
+                    region_id=region_id,
+                )
+            )
+        else:
+            mask = (x >= low) & (x <= high)
+            point_count = int(mask.sum())
+            region_record["point_count"] = point_count
+            if point_count < min_points:
+                region_record["status"] = "insufficient_region_points"
+                warnings.append(
+                    _warning(
+                        "xps_region_record_insufficient_points",
+                        "A reviewed XPS region record had too few points in the processed table.",
+                        severity="medium",
+                        region_id=region_id,
+                        point_count=point_count,
+                        min_points=min_points,
+                    )
+                )
+            else:
+                region_record["status"] = "reviewed_multi_region_project_record"
+                reviewed_count += 1
+        regions.append(region_record)
+        row = {key: region_record.get(key, np.nan) for key in _region_record_columns()}
+        rows.append(row)
+
+    table = pd.DataFrame(rows, columns=_region_record_columns())
+    record.update(
+        {
+            "status": "reviewed_multi_region_project_record" if reviewed_count else "no_regions_recorded",
+            "confidence": "low" if reviewed_count else "insufficient",
+            "region_count": len(regions),
+            "reviewed_region_count": reviewed_count,
+            "regions": regions,
+            "reference_ids": sorted(all_reference_ids),
+            "warnings": warnings,
+        }
+    )
+    return table, record, warnings
+
+
 def _analyze_peaks(
     peaks: pd.DataFrame,
     request: XPSProcessingRequest,
@@ -2575,12 +2808,26 @@ def process_xps_result(
     components_csv = output_dir / "xps_components.csv"
     component_fit_csv = output_dir / "xps_component_fit.csv"
     component_fit_yml = output_dir / "xps_component_fit.yml"
+    region_records_csv = output_dir / "xps_region_records.csv"
+    region_records_yml = output_dir / "xps_region_records.yml"
     background_yml = output_dir / "xps_background.yml"
     background_subtraction_yml = output_dir / "xps_background_subtraction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "xps_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "xps_metadata.yml"
-    for output in [processed_csv, peaks_csv, components_csv, component_fit_csv, component_fit_yml, background_yml, background_subtraction_yml, figure, result_metadata]:
+    for output in [
+        processed_csv,
+        peaks_csv,
+        components_csv,
+        component_fit_csv,
+        component_fit_yml,
+        region_records_csv,
+        region_records_yml,
+        background_yml,
+        background_subtraction_yml,
+        figure,
+        result_metadata,
+    ]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2625,6 +2872,29 @@ def process_xps_result(
             evidence = item.get("evidence")
             if isinstance(evidence, list):
                 item["evidence"] = [component_fit_ref if value == "component_fit" else value for value in evidence]
+    region_records_table_ref: str | None = None
+    region_records_ref: str | None = None
+    region_records_table, region_records_record, region_records_warnings = _apply_region_records(
+        processed,
+        parameters,
+        linked_outputs={
+            "processed_csv": str(processed_csv.relative_to(root)),
+            "peak_table": str(peaks_csv.relative_to(root)),
+            "component_table": str(components_csv.relative_to(root)),
+            "background_model": background_ref,
+            "background_subtraction": background_subtraction_ref,
+            "component_fit": component_fit_ref,
+            "component_fit_table": component_fit_table_ref,
+        },
+    )
+    if region_records_record is not None:
+        region_records_table_ref = str(region_records_csv.relative_to(root))
+        region_records_ref = str(region_records_yml.relative_to(root))
+        region_records_record["record_ref"] = region_records_ref
+        region_records_record["region_table_ref"] = region_records_table_ref
+        region_records_table.to_csv(region_records_csv, index=False)
+        write_yaml(region_records_yml, region_records_record)
+        peak_analysis["region_records"] = region_records_record
     _plot_xps(
         processed,
         peaks,
@@ -2643,6 +2913,7 @@ def process_xps_result(
     warnings.extend(processing_warnings)
     warnings.extend(background_subtraction_warnings)
     warnings.extend(component_fit_warnings)
+    warnings.extend(region_records_warnings)
     warnings.extend(component_warnings)
     warnings.extend(background_warnings)
     outputs = {
@@ -2660,6 +2931,10 @@ def process_xps_result(
         outputs["component_fit"] = component_fit_ref
     if component_fit_table_ref:
         outputs["component_fit_table"] = component_fit_table_ref
+    if region_records_ref:
+        outputs["region_records"] = region_records_ref
+    if region_records_table_ref:
+        outputs["region_records_table"] = region_records_table_ref
     result = XPSProcessingResult(
         xps_result_id=result_id,
         result_id=result_id,
@@ -2699,6 +2974,8 @@ def process_xps_result(
                     str(components_csv.relative_to(root)),
                     component_fit_table_ref,
                     component_fit_ref,
+                    region_records_table_ref,
+                    region_records_ref,
                     background_ref,
                     background_subtraction_ref,
                     str(figure.relative_to(root)),
@@ -2744,7 +3021,7 @@ def process_xps_result(
                     "processing_parameters": parameters,
                 },
             },
-            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records, optional reviewed background-subtraction overlays, and traceable calibration/processing parameters.",
+            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background/region records, optional reviewed background-subtraction overlays, and traceable calibration/processing parameters.",
             purpose="xps_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
@@ -2755,6 +3032,8 @@ def process_xps_result(
                     str(components_csv.relative_to(root)),
                     component_fit_table_ref,
                     component_fit_ref,
+                    region_records_table_ref,
+                    region_records_ref,
                     background_ref,
                     background_subtraction_ref,
                 ]

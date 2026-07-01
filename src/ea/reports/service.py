@@ -1484,6 +1484,61 @@ def _xps_component_fit_table(metadata: dict) -> str:
     return "\n".join(rows)
 
 
+def _xps_region_records_summary(metadata: dict) -> str:
+    records = (metadata.get("peak_analysis") or {}).get("region_records") or {}
+    if not records:
+        return "当前没有启用或记录 XPS region_records。"
+    status = records.get("status", "unknown")
+    reviewed_regions = records.get("reviewed_region_count", 0)
+    region_count = records.get("region_count", 0)
+    confidence = records.get("confidence", "insufficient")
+    source = records.get("assignment_source", "ea.xps.region_records:v0.2")
+    record_ref = records.get("record_ref", "未生成")
+    table_ref = records.get("region_table_ref", "未生成")
+    refs = records.get("linked_output_refs") or []
+    linked = "、".join(str(item) for item in refs[:8]) if refs else "未记录 linked output"
+    return (
+        f"Reviewed XPS region_records 状态为 `{status}`；reviewed regions: `{reviewed_regions}/{region_count}`；"
+        f"record: `{record_ref}`；table: `{table_ref}`；confidence: `{confidence}`；assignment_source: `{source}`；"
+        f"linked outputs: `{linked}`。\n\n"
+        "该记录只表示用户审核过的 XPS survey/core-level/project region 组织和 provenance；EA 不自动共享 charge correction，"
+        "不自动对齐 survey/core-level 谱图，不据此证明化学态、正式组成或样品排名。"
+    )
+
+
+def _xps_region_records_table(metadata: dict) -> str:
+    records = (metadata.get("peak_analysis") or {}).get("region_records") or {}
+    regions = records.get("regions") or []
+    rows = [
+        "| region_id | role | element | core level | window (eV) | points | calibration group | linked refs | status | confidence |",
+        "|---|---|---|---|---:|---:|---|---|---|---|",
+    ]
+    for region in regions[:12]:
+        if not isinstance(region, dict):
+            continue
+        low = region.get("binding_energy_min_eV")
+        high = region.get("binding_energy_max_eV")
+        linked_refs = region.get("linked_output_refs") or []
+        linked_text = "<br>".join(str(item) for item in linked_refs[:4]) if linked_refs else "n/a"
+        rows.append(
+            "| {region_id} | {role} | {element} | {core_level} | {window} | {points} | {calibration_group} | {linked_refs} | {status} | {confidence} |".format(
+                region_id=region.get("region_id", "n/a"),
+                role=region.get("region_role", "n/a"),
+                element=region.get("element") or "n/a",
+                core_level=region.get("core_level") or "n/a",
+                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                points=region.get("point_count", 0),
+                calibration_group=region.get("calibration_group_id") or "n/a",
+                linked_refs=linked_text,
+                status=region.get("status", "unknown"),
+                confidence=region.get("confidence", "insufficient"),
+            )
+        )
+    if len(rows) == 2:
+        return "当前没有可展示的 XPS region_records region。"
+    return "\n".join(rows)
+
+
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
     shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
@@ -1550,6 +1605,8 @@ def generate_xps_report(
     component_table = _xps_component_table(root, outputs.get("component_table"))
     component_fit_summary = _xps_component_fit_summary(metadata)
     component_fit_table = _xps_component_fit_table(metadata)
+    region_records_summary = _xps_region_records_summary(metadata)
+    region_records_table = _xps_region_records_table(metadata)
     background_summary = _xps_background_model_text(metadata)
     background_table = _xps_background_model_table(metadata)
     background_subtraction_summary = _xps_background_subtraction_text(metadata)
@@ -1621,6 +1678,12 @@ def generate_xps_report(
 
 {component_fit_table}
 
+## XPS reviewed multi-region records
+
+{region_records_summary}
+
+{region_records_table}
+
 ## 可能结论与可信度
 
 {interpretation_text}
@@ -1640,6 +1703,8 @@ def generate_xps_report(
 - component table: `{outputs.get('component_table', '未生成')}`
 {f"- component fit: `{outputs['component_fit']}`" if outputs.get('component_fit') else "- component fit: `未生成`"}
 {f"- component fit table: `{outputs['component_fit_table']}`" if outputs.get('component_fit_table') else "- component fit table: `未生成`"}
+{f"- region records: `{outputs['region_records']}`" if outputs.get('region_records') else "- region records: `未生成`"}
+{f"- region records table: `{outputs['region_records_table']}`" if outputs.get('region_records_table') else "- region records table: `未生成`"}
 {f"- background model: `{outputs['background_model']}`" if outputs.get('background_model') else "- background model: `未生成`"}
 {f"- background subtraction: `{outputs['background_subtraction']}`" if outputs.get('background_subtraction') else "- background subtraction: `未生成`"}
 - plot: `{outputs['figure']}`
@@ -1673,6 +1738,8 @@ def generate_xps_report(
                     outputs.get("component_table"),
                     outputs.get("component_fit_table"),
                     outputs.get("component_fit"),
+                    outputs.get("region_records_table"),
+                    outputs.get("region_records"),
                     outputs.get("background_model"),
                     outputs.get("background_subtraction"),
                     outputs["figure"],

@@ -14,6 +14,8 @@ ea_skill:
     - background_subtraction_record
     - component_fit_record
     - component_fit_table
+    - region_records_record
+    - region_records_table
     - figure_record
     - report_section
     - provenance_record
@@ -70,6 +72,7 @@ ea_skill:
       - background_subtraction_shirley_preprocessing
       - background_subtraction_tougaard_u2_preprocessing
       - reviewed_component_fit_screening
+      - reviewed_region_records
     background_model_records:
       source: ea.xps.background_model:v0.2
       default_enabled: false
@@ -125,9 +128,32 @@ ea_skill:
         - xps_component_fit_residual_column
         - xps_component_fit_region_id_column
       boundary: reviewed_screening_only_no_automatic_component_background_bounds_peak_shape_spin_orbit_constant_selection_no_constrained_spin_orbit_fitting_no_composition_or_chemical_state_proof
+    region_records:
+      source: ea.xps.region_records:v0.2
+      default_enabled: false
+      supported_methods:
+        - reviewed_multi_region_project_record
+      supported_roles:
+        - survey
+        - core_level
+        - valence
+        - auger
+        - other
+      required_reviewed_inputs:
+        - region_id_and_label
+        - region_role
+        - binding_energy_window
+        - calibration_group_id_when_shared
+        - linked_output_refs_when_available
+        - references_caveats_confidence
+      output_artifacts:
+        - xps_region_records.yml
+        - xps_region_records.csv
+      boundary: reviewed_project_organization_and_provenance_only_no_survey_core_level_autonomy_no_silent_charge_correction_sharing_no_formal_multi_region_composition_or_chemical_state_proof
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
       - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, and formal multi-region quantification remain future work
       - reviewed_component_fit_screening uses only explicit user-reviewed components, peak shapes, initial values, bounds, and selected intensity columns; chemical-state proof, composition proof, automatic background/component selection, spin-orbit constants, and constrained spin-orbit fitting remain future work
+      - reviewed_region_records organize survey/core-level/project-region provenance and linked refs only; automatic spectrum alignment, silent charge-correction sharing, formal multi-region composition, sample ranking, and chemical-state proof remain future work

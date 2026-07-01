@@ -242,6 +242,46 @@ def _component_fit_parameters() -> dict:
     return parameters
 
 
+def _region_records_parameters() -> dict:
+    parameters = _component_fit_parameters()
+    parameters["region_records"] = {
+        "enabled": True,
+        "method": "reviewed_multi_region_project_record",
+        "source": "ea.xps.region_records:v0.2",
+        "min_points": 3,
+        "default_calibration_group_id": "xps-calibration-c1s-2848",
+        "reference_ids": ["ref-xps-region-001"],
+        "regions": [
+            {
+                "region_id": "xps-region-survey-001",
+                "label": "Reviewed XPS survey record",
+                "region_role": "survey",
+                "binding_energy_window_eV": [0.0, 1200.0],
+                "calibration_group_id": "xps-calibration-c1s-2848",
+                "reference_ids": ["ref-xps-region-001"],
+                "reviewer_notes": ["User confirmed this file is the survey-level project XPS context."],
+                "caveats": ["Survey region organization only; not quantitative composition."],
+                "confidence": "low",
+            },
+            {
+                "region_id": "xps-region-c1s-001",
+                "label": "Reviewed C 1s core-level record",
+                "region_role": "core_level",
+                "element": "C",
+                "core_level": "1s",
+                "binding_energy_window_eV": [282.0, 288.0],
+                "calibration_group_id": "xps-calibration-c1s-2848",
+                "component_fit_ref": "reviewed-user-note:component-fit-c1s",
+                "reference_ids": ["ref-xps-region-001", "ref-xps-fit-001"],
+                "reviewer_notes": ["User linked this C 1s region to the reviewed component-fit screening record."],
+                "caveats": ["Core-level grouping only; not chemical-state proof."],
+                "confidence": "low",
+            },
+        ],
+    }
+    return parameters
+
+
 def test_inspect_synthetic_xps_fixture(tmp_path: Path) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-survey.txt")
 
@@ -962,6 +1002,152 @@ def test_cli_runs_reviewed_component_fit_screening(tmp_path: Path, capsys) -> No
     assert "Screening fit only" in report_body or "screening" in report_body
 
 
+def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
+    fixture = _write_xps_fixture(tmp_path / "synthetic-xps-region-records.txt")
+    parameters = _region_records_parameters()
+    workspace = tmp_path / "cli-xps-region-records-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Region Records Workflow",
+            "--slug",
+            "cli-xps-region-records",
+            "--direction",
+            "XPS region records workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "xps",
+            "--sample-ref",
+            "sample-xps-region-001",
+            "--experiment-ref",
+            "exp-xps-region-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    for target_type, reviewed_content in [
+        ("xps_columns", "x=binding_energy_eV, y=intensity, unit=eV"),
+        ("xps_calibration", "C 1s reference at 284.8 eV; one reviewed calibration group"),
+        ("xps_parameters", json.dumps(parameters, ensure_ascii=False)),
+    ]:
+        assert main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                target_type,
+                "--target-ref",
+                raw_metadata_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                reviewed_content,
+            ]
+        ) == 0
+        review = _json_output(capsys)
+        if target_type == "xps_columns":
+            column_review = review
+        elif target_type == "xps_calibration":
+            calibration_review = review
+        else:
+            parameter_review = review
+
+    assert main(
+        [
+            "xps",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-region-001",
+            "--x-column",
+            "binding_energy_eV",
+            "--y-column",
+            "intensity",
+            "--x-unit",
+            "eV",
+            "--energy-shift-ev",
+            "0.0",
+            "--calibration-reference",
+            "C 1s 284.8 eV user-confirmed reference",
+            "--column-review-ref",
+            column_review["review_id"],
+            "--calibration-review-ref",
+            calibration_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+            "--parameters-json",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    xps_metadata = Path(process_output["metadata"])
+    xps = read_yaml(xps_metadata)
+
+    region_record = xps["peak_analysis"]["region_records"]
+    assert region_record["status"] == "reviewed_multi_region_project_record"
+    assert region_record["reviewed_region_count"] == 2
+    assert "does not automatically share" in region_record["boundary"]
+    assert xps["outputs"]["region_records"].endswith("xps_region_records.yml")
+    assert xps["outputs"]["region_records_table"].endswith("xps_region_records.csv")
+    saved_regions = read_yaml(workspace / xps["outputs"]["region_records"])
+    assert saved_regions["record_ref"] == xps["outputs"]["region_records"]
+    assert saved_regions["region_table_ref"] == xps["outputs"]["region_records_table"]
+    assert saved_regions["regions"][0]["region_role"] == "survey"
+    assert saved_regions["regions"][1]["region_role"] == "core_level"
+    assert saved_regions["regions"][1]["calibration_group_id"] == "xps-calibration-c1s-2848"
+    assert xps["outputs"]["component_fit"] in saved_regions["regions"][1]["linked_output_refs"]
+    region_table = pd.read_csv(workspace / xps["outputs"]["region_records_table"])
+    assert set(region_table["region_id"]) == {"xps-region-survey-001", "xps-region-c1s-001"}
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][xps["figure_id"]]
+    assert xps["outputs"]["region_records"] in figure_record["source_data_refs"]
+    assert xps["outputs"]["region_records_table"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "xps",
+            "report",
+            str(workspace),
+            "--metadata",
+            xps_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-xps-region-001",
+            "--experiment-ref",
+            "exp-xps-region-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## XPS reviewed multi-region records" in report_body
+    assert "xps-region-c1s-001" in report_body
+    assert "xps_region_records.yml" in report_body
+    assert "不自动共享 charge correction" in report_body
+
+
 def test_xps_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -978,6 +1164,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "calibration_review_ref" in xps_reference_text
     assert "component_quantification" in xps_reference_text
     assert "component_fit" in xps_reference_text
+    assert "region_records" in xps_reference_text
     assert "background_model" in xps_reference_text
     assert "background_subtraction" in xps_reference_text
     assert "reviewed_shirley_background_subtraction" in xps_reference_text
@@ -986,6 +1173,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
+    assert "region_records" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
     assert "background_subtraction" in xps_record["notes"]
     assert "reviewed_shirley_background_subtraction" in xps_record["notes"]
