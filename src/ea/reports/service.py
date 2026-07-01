@@ -6,7 +6,7 @@ import pandas as pd
 
 from ea.figures import update_figure_report_ref
 from ea.provenance import write_provenance_entry
-from ea.references import build_report_reference_block
+from ea.references import build_report_reference_block, format_inline_citation
 from ea.schema import ReportRecord
 from ea.schema.models import EARecord
 from ea.standards import infer_project_slug
@@ -702,6 +702,138 @@ def _ftir_context_record_text(metadata: dict) -> str:
     )
 
 
+def _ordered_unique(values: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values or []:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.add(text)
+            ordered.append(text)
+    return ordered
+
+
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _relative_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _load_ftir_assignment_suggestion_records(root: Path, refs: list[Path] | None) -> list[dict]:
+    records = []
+    for ref in refs or []:
+        path = ref if ref.is_absolute() else root / ref
+        record = read_yaml(path)
+        record["record_ref"] = _relative_to_root(root, path)
+        records.append(record)
+    return records
+
+
+def _reference_citation(reference_ids: list[str], reference_block: dict) -> str:
+    number_by_id = {
+        str(item["reference_id"]): int(item["number"])
+        for item in reference_block.get("numbered_references", [])
+    }
+    numbers = [number_by_id[reference_id] for reference_id in reference_ids if reference_id in number_by_id]
+    return format_inline_citation(numbers) if numbers else ""
+
+
+def _format_report_list(values: object, *, limit: int = 3) -> str:
+    if values is None:
+        return "未记录"
+    if isinstance(values, str):
+        return values if values.strip() else "未记录"
+    if isinstance(values, list | tuple):
+        items = [str(item) for item in values if str(item).strip()]
+        if not items:
+            return "未记录"
+        shown = items[:limit]
+        suffix = f"；另有 {len(items) - limit} 项" if len(items) > limit else ""
+        return "；".join(shown) + suffix
+    return str(values)
+
+
+def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict) -> str:
+    if not records:
+        return (
+            "当前报告未附加 FTIR assignment suggestion record。若需要讨论 source-backed 功能团候选，"
+            "请先运行 `ea ftir suggest-assignments`，再在报告生成时传入对应记录。"
+        )
+    lines: list[str] = []
+    status_rank = {
+        "ready_for_user_review": 0,
+        "needs_reference_registration": 1,
+        "no_feature_match": 2,
+        "invalid_missing_required_metadata": 3,
+    }
+    for record in records:
+        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_status = str(record.get("status") or "unknown")
+        lines.append(
+            f"- suggestion_record: `{record_ref}`；status: `{record_status}`；"
+            f"candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
+        )
+        candidates = record.get("candidates") or []
+        if not candidates:
+            lines.append("  - 该 suggestion record 未包含 candidate。")
+            continue
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda item: (
+                status_rank.get(str(item.get("status") or ""), 9),
+                str(item.get("candidate_id") or ""),
+            ),
+        )
+        for candidate in sorted_candidates[:8]:
+            reference_ids = [str(item) for item in candidate.get("reference_ids", [])]
+            unresolved_ids = [str(item) for item in candidate.get("unresolved_reference_ids", [])]
+            citation = _reference_citation(reference_ids, reference_block)
+            matched_bands = _format_report_list(candidate.get("matched_band_ids"))
+            matched_wavenumbers = _format_report_list(candidate.get("matched_wavenumbers_cm-1"))
+            caveats = _format_report_list(candidate.get("caveats"))
+            applicability = _format_report_list(candidate.get("applicability_notes"))
+            source_summary = str(candidate.get("source_summary") or "未记录")
+            lines.append(
+                "  - `{candidate_id}`: {assignment}{citation}\n"
+                "    - status: `{status}`；confidence: `{confidence}`；matched bands: `{matched_bands}`；"
+                "matched wavenumbers cm^-1: `{matched_wavenumbers}`\n"
+                "    - source_summary: {source_summary}\n"
+                "    - applicability: {applicability}\n"
+                "    - caveats: {caveats}\n"
+                "    - unresolved_reference_ids: `{unresolved}`".format(
+                    candidate_id=str(candidate.get("candidate_id") or "unknown"),
+                    assignment=str(candidate.get("assignment_label") or "未记录 assignment_label"),
+                    citation=citation,
+                    status=str(candidate.get("status") or "unknown"),
+                    confidence=str(candidate.get("confidence") or "insufficient"),
+                    matched_bands=matched_bands,
+                    matched_wavenumbers=matched_wavenumbers,
+                    source_summary=source_summary,
+                    applicability=applicability,
+                    caveats=caveats,
+                    unresolved=", ".join(unresolved_ids) if unresolved_ids else "无",
+                )
+            )
+        if len(sorted_candidates) > 8:
+            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+    lines.append(
+        "- 上述 FTIR assignment suggestions 是 source-backed advisory records；它们可以帮助组织讨论，但不能单独证明化学组成、功能团归属、反应路径或写入 confirmed memory。"
+    )
+    return "\n".join(lines)
+
+
 def generate_ftir_report(
     root: Path,
     *,
@@ -710,6 +842,7 @@ def generate_ftir_report(
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
     reference_ids: list[str] | None = None,
+    assignment_suggestion_paths: list[Path] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(ftir_metadata_path)
@@ -744,10 +877,19 @@ def generate_ftir_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in warnings
     ) or "未记录高风险 warning。"
-    reference_block = build_report_reference_block(root, reference_ids)
+    assignment_suggestion_records = _load_ftir_assignment_suggestion_records(root, assignment_suggestion_paths)
+    registered_references = _registered_reference_ids(root)
+    suggestion_reference_ids = [
+        str(reference_id)
+        for record in assignment_suggestion_records
+        for reference_id in record.get("reference_ids", [])
+        if str(reference_id) in registered_references
+    ]
+    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
     citation_text = reference_block["inline_citation"]
     literature_note = f"相关解释应与已登记文献或参考谱库对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或参考谱库引用。"
     interpretation_text = _ftir_interpretation_text(metadata, citation_text)
+    assignment_suggestion_text = _ftir_assignment_suggestion_text(assignment_suggestion_records, reference_block)
     figure_rel = outputs["figure"]
     figure_embed = f"![FTIR spectrum](../{figure_rel})"
     body = f"""# FTIR 分析报告
@@ -789,6 +931,10 @@ def generate_ftir_report(
 
 {interpretation_text}
 
+## Source-backed FTIR assignment suggestions
+
+{assignment_suggestion_text}
+
 ## 谨慎解释
 
 在当前数据范围内，自动 FTIR band family 只能支持“可能功能团或谱区提示”，不能仅凭本次 FTIR 数据直接确认化学组成、键合机制、表面吸附来源或反应路径。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
@@ -824,11 +970,15 @@ def generate_ftir_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(ftir_metadata_path.relative_to(root))],
+            "records": [str(ftir_metadata_path.relative_to(root)), *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []]],
             "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("context_record"), outputs["figure"]] if value],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={
+            "include_next_step_suggestions": False,
+            "language": "zh",
+            "assignment_suggestion_refs": [_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
+        },
         review_refs=[],
         warnings=warnings,
         created_at=created_at,

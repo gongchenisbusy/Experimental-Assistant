@@ -12,7 +12,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: ftir
-    notes: Minimal FTIR workflow implemented for review-gated band detection, broad band-family screening hints, context_records for reviewed instrument/background/reference metadata, source-backed assignment_source_packets from local libraries/templates, advisory assignment_suggestions under suggestions/ftir that match candidate windows to detected bands, traceable figures, and confidence-labeled reports; formal functional-group or composition conclusions still require reference spectra or literature and user review.
+    notes: Minimal FTIR workflow implemented for review-gated band detection, broad band-family screening hints, context_records for reviewed instrument/background/reference metadata, source-backed assignment_source_packets from local libraries/templates, advisory assignment_suggestions under suggestions/ftir that match candidate windows to detected bands, optional report integration for assignment suggestions with registered references, traceable figures, and confidence-labeled reports; formal functional-group or composition conclusions still require reference spectra or literature and user review.
   - id: ea.image-analysis
     manifest: skill-registry/builtins/image-analysis.yml
     status: builtin_v0_2_reference

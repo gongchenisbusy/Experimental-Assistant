@@ -31,6 +31,7 @@ ea_skill:
   report_requirements:
     inline_numeric_citations: true
     band_assignment_confidence_required: true
+    assignment_suggestion_section_advisory: true
     confidence_labels:
       - high
       - medium
@@ -72,6 +73,7 @@ ea_skill:
       implemented: true
       source_packet_format: yaml
       record_format: yaml_and_csv
+      report_integration: optional_via_assignment_suggestion_argument
       required_candidate_fields:
         - assignment_label
         - wavenumber_window_cm1
@@ -83,6 +85,6 @@ ea_skill:
       boundary: source_backed_advisory_only_no_auto_apply_no_composition_or_functional_group_proof
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
-      - source-backed assignment suggestions match reviewed candidate windows to detected bands but remain advisory until user review
+      - source-backed assignment suggestions match reviewed candidate windows to detected bands and can be shown in reports, but remain advisory until user review
       - context records preserve reviewed method metadata but do not apply automatic background/reference correction
       - formal functional-group or composition conclusions require project chemistry, reference spectra or literature, and user review

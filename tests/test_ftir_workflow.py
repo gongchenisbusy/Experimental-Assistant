@@ -601,6 +601,36 @@ candidates:
     assert (workspace / record["provenance_ref"]).exists()
     assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration", "no_feature_match"}
 
+    assert main(
+        [
+            "ftir",
+            "report",
+            str(workspace),
+            "--metadata",
+            ftir_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ftir-assignment-001",
+            "--experiment-ref",
+            "exp-ftir-assignment-001",
+            "--assignment-suggestion",
+            Path(suggestion_output["record"]).relative_to(workspace).as_posix(),
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
+    assert reference_id in report_frontmatter["reference_ids"]
+    assert "ref-missing-ftir-001" not in report_frontmatter["reference_ids"]
+    assert "## Source-backed FTIR assignment suggestions" in report_body
+    assert "ester/carbonyl C=O stretching[1]" in report_body
+    assert "ready_for_user_review" in report_body
+    assert "needs_reference_registration" in report_body
+    assert "ref-missing-ftir-001" in report_body
+    assert "no_feature_match" in report_body
+    assert "不能单独证明化学组成" in report_body
+    assert "Example FTIR reference spectrum note." in report_body
+
     assert main(["ftir", "build-assignment-packet", str(workspace), "--project-id", project_id, "--write-template"]) == 0
     template_output = _json_output(capsys)
     template = read_yaml(Path(template_output["source_packet"]))
@@ -619,6 +649,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "ea ftir inspect" in readme
     assert "ea ftir process" in skill
     assert "ea ftir suggest-assignments" in skill
+    assert "--assignment-suggestion" in skill
     assert "references/ftir-workflow.md" in skill
     assert ftir_reference.exists()
     reference_text = ftir_reference.read_text(encoding="utf-8")
@@ -626,6 +657,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "context_record" in reference_text
     assert "build-assignment-packet" in reference_text
     assert "suggest-assignments" in reference_text
+    assert "--assignment-suggestion" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
