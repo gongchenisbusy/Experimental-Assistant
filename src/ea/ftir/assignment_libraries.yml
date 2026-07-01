@@ -24,6 +24,33 @@ libraries:
         venue: "Academic Press"
         source_type: manual
         notes: "General IR/Raman spectroscopy reference seed. Register or replace with project-specific references before using suggestions as report evidence."
+      builtin-ftir-coates-2000:
+        citation: "Coates, J. Interpretation of Infrared Spectra, A Practical Approach. In Encyclopedia of Analytical Chemistry; Wiley, 2000."
+        title: "Interpretation of Infrared Spectra, A Practical Approach"
+        author:
+          - "John Coates"
+        year: 2000
+        venue: "Encyclopedia of Analytical Chemistry"
+        source_type: review
+        notes: "Practical FTIR interpretation reference seed for common group-frequency and overlap checks. Register or replace with project-specific references before using suggestions as report evidence."
+      builtin-ftir-farmer-1974:
+        citation: "Farmer, V. C., Ed. The Infrared Spectra of Minerals; Mineralogical Society, 1974."
+        title: "The Infrared Spectra of Minerals"
+        author:
+          - "Victor C. Farmer"
+        year: 1974
+        venue: "Mineralogical Society"
+        source_type: manual
+        notes: "Mineral and inorganic-solid FTIR reference seed. Register or replace with project-specific references before using suggestions as report evidence."
+      builtin-ftir-nakamoto-2009:
+        citation: "Nakamoto, K. Infrared and Raman Spectra of Inorganic and Coordination Compounds, Part A, 6th ed.; Wiley, 2009."
+        title: "Infrared and Raman Spectra of Inorganic and Coordination Compounds"
+        author:
+          - "Kazuo Nakamoto"
+        year: 2009
+        venue: "Wiley"
+        source_type: manual
+        notes: "Inorganic and coordination-compound vibrational spectroscopy seed. Register or replace with project-specific references before using suggestions as report evidence."
     candidates:
       - candidate_id: ftir-builtin-oh-nh-stretching-generic
         assignment_type: functional_group
@@ -44,6 +71,26 @@ libraries:
         caveats:
           - Moisture, hydrogen bonding, and sample-preparation artifacts commonly affect this region.
           - This window does not distinguish O-H from N-H without project context and additional evidence.
+      - candidate_id: ftir-builtin-water-bending-adsorbate-generic
+        assignment_type: adsorbate_or_matrix
+        assignment_label: adsorbed or molecular water H-O-H bending candidate
+        band_label: water bending band
+        material_scope: generic materials; oxides; hydroxides; porous materials; powders; films; hydrated salts; polymers with moisture uptake
+        sample_scope: samples where ambient exposure, hydration, residual solvent, adsorbed water, or incomplete drying is plausible
+        wavenumber_window_cm1: [1580, 1670]
+        expected_feature: absorbance_maximum
+        source_summary: General FTIR references list H-O-H bending of molecular water near the mid-1600 cm^-1 region, with strong overlap from amide, C=C, and carbonyl-adjacent bands.
+        applicability_notes:
+          - Use with the high-wavenumber O-H stretching envelope, drying history, background spectrum, and sample atmosphere before treating this as water.
+          - A band in this window is often an interference or overlap check rather than a primary assignment.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - Amide I, aromatic C=C, conjugated C=O, and water bending can overlap in this region.
+          - This candidate does not prove hydration state or water content without controls.
       - candidate_id: ftir-builtin-aliphatic-ch-stretching-generic
         assignment_type: functional_group
         assignment_label: aliphatic C-H stretching candidate
@@ -82,6 +129,46 @@ libraries:
         caveats:
           - Water bending, amide bands, C=C modes, and other overlapping bands can affect this region.
           - The candidate does not identify a specific compound or carbonyl environment by itself.
+      - candidate_id: ftir-builtin-amide-i-ii-generic
+        assignment_type: functional_group
+        assignment_label: amide I/II or protein/polyamide band candidate
+        band_label: amide-region band
+        material_scope: generic materials; polyamides; proteins; biomaterials; polymer composites; surface ligands; nitrogen-containing organics
+        sample_scope: samples where amides, proteins, polyamides, peptide-like binders, or nitrogen-containing organic coatings are plausible
+        wavenumber_window_cm1: [1500, 1700]
+        expected_feature: absorbance_maximum
+        source_summary: Standard FTIR references place amide I and amide II absorptions across the 1500-1700 cm^-1 region, with overlap from water bending, C=C, and carbonyl bands.
+        applicability_notes:
+          - Look for paired amide-region features and review water/background handling before interpreting this as amide chemistry.
+          - Treat as a family-level candidate unless project chemistry narrows the amide environment.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - This region is crowded and cannot separate amide, water, aromatic C=C, or carbonyl contributions alone.
+          - Band-window agreement is not proof of protein, peptide, or polyamide identity.
+      - candidate_id: ftir-builtin-carboxylate-coo-generic
+        assignment_type: functional_group
+        assignment_label: carboxylate COO- stretching candidate
+        band_label: carboxylate asymmetric/symmetric stretching region
+        material_scope: generic materials; metal-organic frameworks; carboxylate salts; polymers; surface ligands; oxidized carbon; coordination materials
+        sample_scope: samples where deprotonated carboxylates, metal carboxylates, organic salts, or carboxylate ligands are plausible
+        wavenumber_window_cm1: [1300, 1620]
+        expected_feature: absorbance_maximum
+        source_summary: General FTIR references place carboxylate asymmetric and symmetric stretching bands broadly across the 1300-1620 cm^-1 region, with separation and position depending on coordination and counterion environment.
+        applicability_notes:
+          - Use only as a carboxylate-family candidate; specific binding mode requires paired bands and project-specific references.
+          - Compare with carbonyl, carbonate, nitrate, water, and aromatic/amide overlap before interpretation.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+          - builtin-ftir-nakamoto-2009
+        confidence: low
+        caveats:
+          - The window is intentionally broad and can overlap carbonate, nitrate, amide, water, and aromatic bands.
+          - It does not determine coordination mode or carboxylate formation by itself.
       - candidate_id: ftir-builtin-nitrile-triple-bond-generic
         assignment_type: functional_group
         assignment_label: nitrile or triple-bond stretching candidate
@@ -158,6 +245,162 @@ libraries:
         caveats:
           - Organic C-O/C-N fingerprint bands can overlap this region.
           - This candidate is not a definitive oxide-network assignment.
+      - candidate_id: ftir-builtin-silanol-sioh-generic
+        assignment_type: surface_functionality
+        assignment_label: silanol or Si-OH surface candidate
+        band_label: Si-OH/silanol region band
+        material_scope: generic materials; silica; silicates; glass; oxide surfaces; sol-gel materials; hybrid organic-inorganic materials
+        sample_scope: samples where hydroxylated silica, silicate surfaces, sol-gel residues, or oxide surface hydroxyls are plausible
+        wavenumber_window_cm1: [900, 990]
+        expected_feature: absorbance_maximum
+        source_summary: General and mineral FTIR references describe Si-OH/silanol-related bands in the lower fingerprint region, but positions depend on silicate structure, hydrogen bonding, and surface state.
+        applicability_notes:
+          - Use together with broad O-H stretching, Si-O network bands, drying/activation history, and silica/silicate context.
+          - Treat as a surface-hydroxyl candidate until reference spectra or project literature are reviewed.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+        confidence: low
+        caveats:
+          - C-O/C-N fingerprint bands and Si-O network modes can overlap this region.
+          - The candidate does not quantify silanol density or prove surface hydroxylation alone.
+      - candidate_id: ftir-builtin-carbonate-asymmetric-stretch-generic
+        assignment_type: inorganic_ion
+        assignment_label: carbonate CO3 asymmetric stretching candidate
+        band_label: carbonate stretching band
+        material_scope: generic materials; carbonates; hydroxides; oxides; minerals; catalysts; cementitious materials; air-exposed powders
+        sample_scope: samples where carbonate salts, atmospheric carbonation, surface carbonate, mineral phases, or basic oxide/hydroxide exposure are plausible
+        wavenumber_window_cm1: [1350, 1500]
+        expected_feature: absorbance_maximum
+        source_summary: Inorganic and mineral FTIR references commonly assign carbonate stretching bands in the 1350-1500 cm^-1 region, with splitting and position depending on symmetry, phase, and coordination.
+        applicability_notes:
+          - Check for supporting carbonate bending bands near the lower fingerprint region before treating the stretch as carbonate.
+          - Review air exposure, CO2 uptake, substrates, fillers, and carbonate-containing reagents.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - Carboxylate, nitrate, amide, and organic deformation bands can overlap this region.
+          - This candidate does not prove a carbonate phase without corroborating bands or references.
+      - candidate_id: ftir-builtin-carbonate-bending-generic
+        assignment_type: inorganic_ion
+        assignment_label: carbonate bending support candidate
+        band_label: carbonate bending/supporting band
+        material_scope: generic materials; carbonates; minerals; cementitious materials; oxides; hydroxides; catalysts
+        sample_scope: samples where carbonate salts, mineral carbonate phases, or atmospheric carbonation are plausible
+        wavenumber_window_cm1: [690, 890]
+        expected_feature: absorbance_maximum
+        source_summary: Mineral and inorganic FTIR references describe carbonate bending features in the lower fingerprint region; paired evidence with carbonate stretching is usually more informative than a single band.
+        applicability_notes:
+          - Use as supporting evidence for a carbonate-family hypothesis, especially when the 1350-1500 cm^-1 region also has a plausible carbonate feature.
+          - Review mineral phase, sample matrix, and instrument low-wavenumber response.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+        confidence: low
+        caveats:
+          - Phosphate, sulfate, Si-O, and metal-oxygen features may overlap parts of this broad support window.
+          - A single lower-fingerprint band is not carbonate proof.
+      - candidate_id: ftir-builtin-phosphate-stretching-generic
+        assignment_type: inorganic_ion
+        assignment_label: phosphate PO4 stretching candidate
+        band_label: phosphate stretching band
+        material_scope: generic materials; phosphates; apatites; bioactive ceramics; catalysts; battery materials; inorganic composites
+        sample_scope: samples where phosphate, apatite, phosphonate, or phosphate-containing inorganic/organic phases are plausible
+        wavenumber_window_cm1: [900, 1150]
+        expected_feature: absorbance_maximum
+        source_summary: Inorganic, coordination, and mineral FTIR references place many phosphate stretching modes in the 900-1150 cm^-1 region, with exact positions depending on phase, symmetry, hydration, and substitution.
+        applicability_notes:
+          - Compare with phosphate bending bands and project-specific references before reporting phosphate assignment.
+          - Distinguish from Si-O, C-O/C-N, sulfate, and organic fingerprint bands using sample context.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - This region overlaps Si-O/oxide and organic fingerprint absorptions.
+          - The candidate does not identify a specific phosphate phase or substitution state.
+      - candidate_id: ftir-builtin-phosphate-bending-generic
+        assignment_type: inorganic_ion
+        assignment_label: phosphate PO4 bending support candidate
+        band_label: phosphate bending/supporting band
+        material_scope: generic materials; phosphates; apatites; bioactive ceramics; inorganic composites
+        sample_scope: samples where phosphate or apatite-like chemistry is plausible and low-wavenumber FTIR response is reliable
+        wavenumber_window_cm1: [520, 650]
+        expected_feature: absorbance_maximum
+        source_summary: Mineral and inorganic FTIR references report phosphate bending modes in the lower fingerprint region, often used as support for phosphate-family assignments.
+        applicability_notes:
+          - Use as supporting evidence with phosphate stretching bands and project-specific references.
+          - Confirm the instrument and accessory provide reliable response in this region.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+        confidence: low
+        caveats:
+          - Metal-oxygen, sulfate, and carbonate lower-fingerprint features can overlap.
+          - A lower-region match alone does not prove phosphate phase identity.
+      - candidate_id: ftir-builtin-sulfate-stretching-generic
+        assignment_type: inorganic_ion
+        assignment_label: sulfate SO4 stretching candidate
+        band_label: sulfate stretching band
+        material_scope: generic materials; sulfates; minerals; catalysts; battery materials; inorganic salts; treated oxides
+        sample_scope: samples where sulfate salts, sulfate surface species, oxidized sulfur species, or sulfur-containing processing residues are plausible
+        wavenumber_window_cm1: [1000, 1220]
+        expected_feature: absorbance_maximum
+        source_summary: Inorganic and mineral FTIR references place many sulfate stretching modes in the 1000-1220 cm^-1 region, with splitting and position depending on symmetry, hydration, and coordination.
+        applicability_notes:
+          - Compare with sulfate bending/support bands, sulfur-containing reagents, and sample history.
+          - Separate from Si-O, phosphate, and organic fingerprint features using project context.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - Sulfate, phosphate, silicate, and C-O/C-N regions overlap substantially.
+          - This candidate does not prove a sulfate phase or surface species alone.
+      - candidate_id: ftir-builtin-sulfate-bending-generic
+        assignment_type: inorganic_ion
+        assignment_label: sulfate SO4 bending support candidate
+        band_label: sulfate bending/supporting band
+        material_scope: generic materials; sulfates; minerals; catalysts; inorganic salts; treated oxides
+        sample_scope: samples where sulfate species are plausible and low-wavenumber FTIR response is reliable
+        wavenumber_window_cm1: [560, 680]
+        expected_feature: absorbance_maximum
+        source_summary: Inorganic and mineral FTIR references report sulfate bending modes in the lower fingerprint region, usually interpreted with sulfate stretching evidence and sample context.
+        applicability_notes:
+          - Use as supporting evidence only, preferably alongside a sulfate stretching candidate.
+          - Review low-wavenumber instrument response and overlapping phosphate/metal-oxygen features.
+        reference_ids:
+          - builtin-ftir-farmer-1974
+          - builtin-ftir-nakamoto-2009
+        confidence: low
+        caveats:
+          - This lower region overlaps phosphate, carbonate, and metal-oxygen bands.
+          - It does not identify sulfate coordination or phase by itself.
+      - candidate_id: ftir-builtin-nitrate-stretching-generic
+        assignment_type: inorganic_ion
+        assignment_label: nitrate NO3 stretching candidate
+        band_label: nitrate stretching band
+        material_scope: generic materials; nitrates; inorganic salts; sol-gel precursors; catalysts; battery materials; treated oxides
+        sample_scope: samples where nitrate precursors, residual nitrate salts, oxidized nitrogen species, or nitrate-containing processing routes are plausible
+        wavenumber_window_cm1: [1300, 1500]
+        expected_feature: absorbance_maximum
+        source_summary: Inorganic FTIR references list nitrate stretching features broadly in the 1300-1500 cm^-1 region, with position and splitting depending on coordination, symmetry, hydration, and phase.
+        applicability_notes:
+          - Review synthesis precursors and washing/drying history before interpreting this as residual nitrate.
+          - Compare against carbonate, carboxylate, amide, and organic deformation candidates.
+        reference_ids:
+          - builtin-ftir-nakamoto-2009
+          - builtin-ftir-coates-2000
+        confidence: low
+        caveats:
+          - The nitrate window strongly overlaps carbonate and carboxylate regions.
+          - A match does not prove nitrate residue without supporting chemistry or reference spectra.
       - candidate_id: ftir-builtin-metal-oxygen-low-region-generic
         assignment_type: functional_group
         assignment_label: metal-oxygen low-wavenumber candidate

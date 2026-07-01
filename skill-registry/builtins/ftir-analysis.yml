@@ -75,6 +75,12 @@ ea_skill:
     assignment_suggestions:
       implemented: true
       built_in_assignment_library: generic_materials
+      built_in_candidate_scope:
+        - broad organic group-frequency starters
+        - adsorbed water and surface hydroxyl checks
+        - Si-O/silanol and low-wavenumber metal-oxygen regions
+        - carbonate/phosphate/sulfate/nitrate inorganic-ion starters
+        - carboxylate and amide family candidates
       source_packet_format: yaml
       confirmed_literature_manifest_input: true
       record_format: yaml_and_csv

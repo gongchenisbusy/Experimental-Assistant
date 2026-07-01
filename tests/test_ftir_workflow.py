@@ -749,14 +749,24 @@ def test_cli_builds_builtin_ftir_assignment_source_packet(tmp_path: Path, capsys
     packet_output = _json_output(capsys)
     packet = read_yaml(Path(packet_output["source_packet"]))
     assert packet_output["status"] == "ready_for_suggest_assignments"
-    assert packet_output["candidate_count"] >= 8
-    assert packet_output["reference_seed_count"] == 2
+    assert packet_output["candidate_count"] >= 18
+    assert packet_output["reference_seed_count"] >= 5
     assert packet["source_library_kind"] == "built_in"
     assert packet["source_library_ref"] == "builtin:generic_materials"
     assert "builtin-ftir-socrates-2001" in packet["reference_seeds"]
     assert "builtin-ftir-colthup-1990" in packet["reference_seeds"]
+    assert "builtin-ftir-farmer-1974" in packet["reference_seeds"]
+    assert "builtin-ftir-nakamoto-2009" in packet["reference_seeds"]
     assert "builtin-ftir-socrates-2001" in packet["reference_ids"]
-    assert any(candidate["candidate_id"] == "ftir-builtin-carbonyl-co-stretching-generic" for candidate in packet["candidates"])
+    candidate_ids = {candidate["candidate_id"] for candidate in packet["candidates"]}
+    assert "ftir-builtin-carbonyl-co-stretching-generic" in candidate_ids
+    assert "ftir-builtin-carbonate-asymmetric-stretch-generic" in candidate_ids
+    assert "ftir-builtin-phosphate-stretching-generic" in candidate_ids
+    assert "ftir-builtin-sulfate-stretching-generic" in candidate_ids
+    assert "ftir-builtin-water-bending-adsorbate-generic" in candidate_ids
+    carbonate = next(candidate for candidate in packet["candidates"] if candidate["candidate_id"] == "ftir-builtin-carbonate-asymmetric-stretch-generic")
+    assert "air exposure" in " ".join(carbonate["applicability_notes"]).lower()
+    assert "carbonate phase" in " ".join(carbonate["caveats"]).lower()
     assert "built-in reference_seeds" in " ".join(packet["next_steps"])
     assert "does not perform unconfirmed live lookup" in " ".join(packet["boundaries"])
     assert "EA may use those sources to prepare assignment candidates" in " ".join(packet["boundaries"])
