@@ -109,6 +109,7 @@ def default_xps_processing_parameters() -> dict[str, Any]:
                 "max_rmse": None,
                 "min_r_squared": None,
             },
+            "spin_orbit_constraints": [],
             "regions": [],
             "reference_ids": [],
             "reviewer_notes": [],
@@ -1569,6 +1570,14 @@ def _component_fit_columns() -> list[str]:
         "core_level",
         "peak_shape",
         "spin_orbit_group_id",
+        "spin_orbit_role",
+        "spin_orbit_constraint_id",
+        "spin_orbit_anchor_component_id",
+        "spin_orbit_dependent_component_id",
+        "spin_orbit_center_delta_eV",
+        "spin_orbit_area_ratio",
+        "spin_orbit_fwhm_ratio",
+        "spin_orbit_constraint_status",
         "initial_center_eV",
         "fitted_center_eV",
         "initial_amplitude",
@@ -1866,6 +1875,264 @@ def _component_fit_component_spec(
     }
 
 
+def _component_fit_constraint_number(constraint: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        if key in constraint and constraint.get(key) is not None:
+            try:
+                value = float(constraint.get(key))
+            except (TypeError, ValueError):
+                return None
+            return value if np.isfinite(value) else None
+    return None
+
+
+def _component_fit_intersect_bounds(current: tuple[float, float], candidate: tuple[float, float]) -> tuple[float, float] | None:
+    low = max(float(current[0]), float(candidate[0]))
+    high = min(float(current[1]), float(candidate[1]))
+    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+        return None
+    return low, high
+
+
+def _component_fit_spin_orbit_constraints(
+    specs: list[dict[str, Any]],
+    raw_constraints: list[Any],
+    *,
+    region_id: str,
+    warnings: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[int, dict[str, tuple[float, float]]], set[int], bool]:
+    effective_bounds: dict[int, dict[str, tuple[float, float]]] = {
+        index: {
+            "center_eV": tuple(spec["bounds"]["center_eV"]),
+            "amplitude": tuple(spec["bounds"]["amplitude"]),
+            "fwhm_eV": tuple(spec["bounds"]["fwhm_eV"]),
+            "mixing": tuple(spec["bounds"]["mixing"]) if spec["bounds"].get("mixing") is not None else (0.0, 1.0),
+        }
+        for index, spec in enumerate(specs)
+    }
+    if not raw_constraints:
+        return [], effective_bounds, set(), False
+
+    spec_by_id = {str(spec["component_id"]): index for index, spec in enumerate(specs)}
+    constraints: list[dict[str, Any]] = []
+    anchor_indices: set[int] = set()
+    dependent_indices: set[int] = set()
+    fatal = False
+
+    for number, constraint in enumerate(raw_constraints, start=1):
+        if not isinstance(constraint, dict):
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_constraint_ignored",
+                    "A reviewed XPS spin-orbit constraint was ignored because it was not a mapping.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_number=number,
+                )
+            )
+            fatal = True
+            continue
+        constraint_id = str(constraint.get("constraint_id") or constraint.get("group_id") or f"xps-spin-orbit-constraint-{number:03d}")
+        group_id = str(constraint.get("group_id") or constraint_id)
+        anchor_id = str(constraint.get("anchor_component_id") or constraint.get("parent_component_id") or "")
+        dependent_id = str(constraint.get("dependent_component_id") or constraint.get("child_component_id") or "")
+        center_delta = _component_fit_constraint_number(constraint, ("center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"))
+        area_ratio = _component_fit_constraint_number(constraint, ("area_ratio", "dependent_area_ratio"))
+        fwhm_ratio = _component_fit_constraint_number(constraint, ("fwhm_ratio", "dependent_fwhm_ratio"))
+        missing = []
+        if not anchor_id:
+            missing.append("anchor_component_id")
+        if not dependent_id:
+            missing.append("dependent_component_id")
+        if center_delta is None:
+            missing.append("center_delta_eV")
+        if area_ratio is None:
+            missing.append("area_ratio")
+        if fwhm_ratio is None:
+            missing.append("fwhm_ratio")
+        if missing:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_constraint_missing",
+                    "XPS spin-orbit constrained component-fit was skipped because reviewed constraint fields were missing.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    missing_fields=missing,
+                )
+            )
+            fatal = True
+            continue
+        if area_ratio <= 0 or fwhm_ratio <= 0:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_constraint_invalid",
+                    "XPS spin-orbit constrained component-fit was skipped because area_ratio or fwhm_ratio was not positive.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    area_ratio=area_ratio,
+                    fwhm_ratio=fwhm_ratio,
+                )
+            )
+            fatal = True
+            continue
+        if anchor_id not in spec_by_id or dependent_id not in spec_by_id or anchor_id == dependent_id:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_component_missing",
+                    "XPS spin-orbit constrained component-fit was skipped because reviewed anchor/dependent components were not valid.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    anchor_component_id=anchor_id,
+                    dependent_component_id=dependent_id,
+                )
+            )
+            fatal = True
+            continue
+        anchor_index = spec_by_id[anchor_id]
+        dependent_index = spec_by_id[dependent_id]
+        anchor = specs[anchor_index]
+        dependent = specs[dependent_index]
+        if dependent_index in dependent_indices:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_duplicate_dependent",
+                    "XPS spin-orbit constrained component-fit was skipped because one dependent component had multiple constraints.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    dependent_component_id=dependent_id,
+                )
+            )
+            fatal = True
+            continue
+        if anchor_index in dependent_indices or dependent_index in anchor_indices:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_chained_constraint",
+                    "XPS spin-orbit constrained component-fit was skipped because chained or cyclic constraints are not supported in EA v0.2.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    anchor_component_id=anchor_id,
+                    dependent_component_id=dependent_id,
+                )
+            )
+            fatal = True
+            continue
+        if anchor["peak_shape"] != dependent["peak_shape"]:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_shape_mismatch",
+                    "XPS spin-orbit constrained component-fit was skipped because constrained components used different peak shapes.",
+                    severity="medium",
+                    region_id=region_id,
+                    constraint_id=constraint_id,
+                    anchor_peak_shape=anchor["peak_shape"],
+                    dependent_peak_shape=dependent["peak_shape"],
+                )
+            )
+            fatal = True
+            continue
+
+        amplitude_factor = float(area_ratio) / float(fwhm_ratio)
+        bound_candidates = {
+            "center_eV": (float(dependent["bounds"]["center_eV"][0]) - float(center_delta), float(dependent["bounds"]["center_eV"][1]) - float(center_delta)),
+            "fwhm_eV": (float(dependent["bounds"]["fwhm_eV"][0]) / float(fwhm_ratio), float(dependent["bounds"]["fwhm_eV"][1]) / float(fwhm_ratio)),
+            "amplitude": (float(dependent["bounds"]["amplitude"][0]) / amplitude_factor, float(dependent["bounds"]["amplitude"][1]) / amplitude_factor),
+        }
+        if anchor["peak_shape"] == "pseudo_voigt" and dependent["bounds"].get("mixing") is not None:
+            bound_candidates["mixing"] = tuple(dependent["bounds"]["mixing"])
+        adjusted_bounds = dict(effective_bounds[anchor_index])
+        for name, candidate_bounds in bound_candidates.items():
+            intersected = _component_fit_intersect_bounds(adjusted_bounds[name], candidate_bounds)
+            if intersected is None:
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_spin_orbit_bounds_conflict",
+                        "XPS spin-orbit constrained component-fit was skipped because reviewed spin-orbit constraints conflicted with component bounds.",
+                        severity="medium",
+                        region_id=region_id,
+                        constraint_id=constraint_id,
+                        parameter=name,
+                    )
+                )
+                fatal = True
+                break
+            adjusted_bounds[name] = intersected
+        if fatal:
+            continue
+        effective_bounds[anchor_index] = adjusted_bounds
+        anchor_indices.add(anchor_index)
+        dependent_indices.add(dependent_index)
+        constraints.append(
+            {
+                "constraint_id": constraint_id,
+                "group_id": group_id,
+                "anchor_component_id": anchor_id,
+                "dependent_component_id": dependent_id,
+                "anchor_index": anchor_index,
+                "dependent_index": dependent_index,
+                "center_delta_eV": float(center_delta),
+                "area_ratio": float(area_ratio),
+                "fwhm_ratio": float(fwhm_ratio),
+                "amplitude_factor": amplitude_factor,
+                "reference_ids": _coerce_string_list(constraint.get("reference_ids")),
+                "reviewer_notes": _coerce_string_list(constraint.get("reviewer_notes") or constraint.get("notes")),
+                "caveats": _coerce_string_list(constraint.get("caveats")),
+                "confidence": str(constraint.get("confidence") or "low").strip().lower(),
+                "status": "applied",
+            }
+        )
+
+    for spec_index, spec in enumerate(specs):
+        if spec_index in dependent_indices:
+            continue
+        for name, initial_key in [
+            ("center_eV", "initial_center_eV"),
+            ("amplitude", "initial_amplitude"),
+            ("fwhm_eV", "initial_fwhm_eV"),
+        ]:
+            low, high = effective_bounds[spec_index][name]
+            initial = float(spec[initial_key])
+            if initial < low or initial > high:
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_spin_orbit_initial_outside_effective_bounds",
+                        "XPS spin-orbit constrained component-fit was skipped because a reviewed anchor initial value was outside effective constrained bounds.",
+                        severity="medium",
+                        region_id=region_id,
+                        component_id=spec["component_id"],
+                        parameter=name,
+                        initial_value=initial,
+                        lower_bound=low,
+                        upper_bound=high,
+                    )
+                )
+                fatal = True
+        if spec["peak_shape"] == "pseudo_voigt":
+            low, high = effective_bounds[spec_index]["mixing"]
+            initial = float(spec["initial_mixing"])
+            if initial < low or initial > high:
+                warnings.append(
+                    _warning(
+                        "xps_component_fit_spin_orbit_initial_outside_effective_bounds",
+                        "XPS spin-orbit constrained component-fit was skipped because a reviewed anchor initial mixing value was outside effective constrained bounds.",
+                        severity="medium",
+                        region_id=region_id,
+                        component_id=spec["component_id"],
+                        parameter="mixing",
+                        initial_value=initial,
+                        lower_bound=low,
+                        upper_bound=high,
+                    )
+                )
+                fatal = True
+    return constraints, effective_bounds, dependent_indices, fatal
+
+
 def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("component_fit", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
@@ -1929,6 +2196,8 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         "fitted_region_count": 0,
         "component_count": 0,
         "fitted_component_count": 0,
+        "spin_orbit_constraint_count": 0,
+        "constrained_component_count": 0,
         "regions": [],
         "reference_ids": _coerce_string_list(params.get("reference_ids")),
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
@@ -2147,6 +2416,48 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             regions.append(region_record)
             continue
 
+        raw_spin_orbit_constraints: list[Any] = []
+        spin_constraint_inputs_invalid = False
+        for constraint_source in [params.get("spin_orbit_constraints"), region.get("spin_orbit_constraints")]:
+            if constraint_source is None:
+                continue
+            if isinstance(constraint_source, list):
+                raw_spin_orbit_constraints.extend(constraint_source)
+            else:
+                spin_constraint_inputs_invalid = True
+        if spin_constraint_inputs_invalid:
+            warnings.append(
+                _warning(
+                    "xps_component_fit_spin_orbit_constraints_ignored",
+                    "XPS component_fit spin_orbit_constraints must be supplied as a list.",
+                    severity="medium",
+                    region_id=region_id,
+                )
+            )
+            region_record["status"] = "invalid_spin_orbit_constraints"
+            regions.append(region_record)
+            continue
+        spin_constraints, effective_bounds, dependent_indices, spin_constraints_invalid = _component_fit_spin_orbit_constraints(
+            specs,
+            raw_spin_orbit_constraints,
+            region_id=region_id,
+            warnings=warnings,
+        )
+        if spin_constraints_invalid:
+            region_record.update(
+                {
+                    "status": "invalid_spin_orbit_constraints",
+                    "spin_orbit_constraints": [
+                        {key: value for key, value in constraint.items() if not key.endswith("_index")}
+                        for constraint in spin_constraints
+                    ],
+                }
+            )
+            regions.append(region_record)
+            continue
+        for constraint in spin_constraints:
+            all_reference_ids.update(constraint.get("reference_ids", []))
+
         x_region = x[mask]
         observed = target_y_all[mask]
         parameter_map: list[tuple[int, str]] = []
@@ -2154,6 +2465,8 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         lower_bounds: list[float] = []
         upper_bounds: list[float] = []
         for spec_index, spec in enumerate(specs):
+            if spec_index in dependent_indices:
+                continue
             for name, initial_key in [
                 ("center_eV", "initial_center_eV"),
                 ("amplitude", "initial_amplitude"),
@@ -2161,13 +2474,13 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             ]:
                 parameter_map.append((spec_index, name))
                 x0.append(float(spec[initial_key]))
-                low_bound, high_bound = spec["bounds"][name]
+                low_bound, high_bound = effective_bounds[spec_index][name]
                 lower_bounds.append(float(low_bound))
                 upper_bounds.append(float(high_bound))
             if spec["peak_shape"] == "pseudo_voigt":
                 parameter_map.append((spec_index, "mixing"))
                 x0.append(float(spec["initial_mixing"]))
-                low_bound, high_bound = spec["bounds"]["mixing"]
+                low_bound, high_bound = effective_bounds[spec_index]["mixing"]
                 lower_bounds.append(float(low_bound))
                 upper_bounds.append(float(high_bound))
 
@@ -2184,6 +2497,14 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 )
             for value, (spec_index, name) in zip(values, parameter_map, strict=True):
                 fitted_specs[spec_index][name] = float(value)
+            for constraint in spin_constraints:
+                anchor = fitted_specs[int(constraint["anchor_index"])]
+                dependent = fitted_specs[int(constraint["dependent_index"])]
+                dependent["center_eV"] = float(anchor["center_eV"]) + float(constraint["center_delta_eV"])
+                dependent["fwhm_eV"] = float(anchor["fwhm_eV"]) * float(constraint["fwhm_ratio"])
+                dependent["amplitude"] = float(anchor["amplitude"]) * float(constraint["amplitude_factor"])
+                if specs[int(constraint["dependent_index"])]["peak_shape"] == "pseudo_voigt":
+                    dependent["mixing"] = float(anchor["mixing"])
             return fitted_specs
 
         def model(values: np.ndarray) -> np.ndarray:
@@ -2263,7 +2584,14 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         fitted_specs = unpack(result.x)
         fitted_components: list[dict[str, Any]] = []
         fitted_areas: list[float] = []
-        for spec, fitted_spec in zip(specs, fitted_specs, strict=True):
+        spin_constraint_by_component: dict[int, dict[str, Any]] = {}
+        for constraint in spin_constraints:
+            anchor_index = int(constraint["anchor_index"])
+            dependent_index = int(constraint["dependent_index"])
+            spin_constraint_by_component[anchor_index] = {**constraint, "constraint_role": "anchor"}
+            spin_constraint_by_component[dependent_index] = {**constraint, "constraint_role": "dependent"}
+        for spec_index, (spec, fitted_spec) in enumerate(zip(specs, fitted_specs, strict=True)):
+            spin_constraint = spin_constraint_by_component.get(spec_index)
             area = _component_fit_area(
                 fitted_spec["amplitude"],
                 fitted_spec["fwhm_eV"],
@@ -2279,6 +2607,14 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "core_level": spec["core_level"],
                 "peak_shape": spec["peak_shape"],
                 "spin_orbit_group_id": spec.get("spin_orbit_group_id"),
+                "spin_orbit_role": (spin_constraint.get("constraint_role") if spin_constraint else spec.get("spin_orbit_role")),
+                "spin_orbit_constraint_id": spin_constraint.get("constraint_id") if spin_constraint else None,
+                "spin_orbit_anchor_component_id": spin_constraint.get("anchor_component_id") if spin_constraint else None,
+                "spin_orbit_dependent_component_id": spin_constraint.get("dependent_component_id") if spin_constraint else None,
+                "spin_orbit_center_delta_eV": spin_constraint.get("center_delta_eV") if spin_constraint else None,
+                "spin_orbit_area_ratio": spin_constraint.get("area_ratio") if spin_constraint else None,
+                "spin_orbit_fwhm_ratio": spin_constraint.get("fwhm_ratio") if spin_constraint else None,
+                "spin_orbit_constraint_status": spin_constraint.get("status") if spin_constraint else None,
                 "initial_center_eV": spec["initial_center_eV"],
                 "fitted_center_eV": fitted_spec["center_eV"],
                 "initial_amplitude": spec["initial_amplitude"],
@@ -2320,6 +2656,12 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "optimizer_status": optimizer_status,
                 "components": fitted_components,
                 "output_columns": [fit_column, residual_column, region_id_column],
+                "spin_orbit_constraint_count": len(spin_constraints),
+                "constrained_component_count": len(dependent_indices),
+                "spin_orbit_constraints": [
+                    {key: value for key, value in constraint.items() if not key.endswith("_index") and key != "amplitude_factor"}
+                    for constraint in spin_constraints
+                ],
             }
         )
         fitted_regions += 1
@@ -2335,6 +2677,8 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             "fitted_region_count": fitted_regions,
             "component_count": int(sum(int(region.get("component_count", 0)) for region in regions)),
             "fitted_component_count": fitted_component_count,
+            "spin_orbit_constraint_count": int(sum(int(region.get("spin_orbit_constraint_count", 0)) for region in regions)),
+            "constrained_component_count": int(sum(int(region.get("constrained_component_count", 0)) for region in regions)),
             "regions": regions,
             "reference_ids": sorted(all_reference_ids),
             "warnings": warnings,
@@ -2665,9 +3009,19 @@ def _analyze_peaks(
                 for component in region.get("components", [])
                 if isinstance(component, dict) and component.get("component_id")
             ]
+            constraint_count = int(component_fit_record.get("spin_orbit_constraint_count", 0) or 0)
+            constraint_note = (
+                " Reviewed spin-orbit constraints were applied only from user-supplied signed deltas/ratios/bounds."
+                if constraint_count
+                else " No automatic spin-orbit constrained fitting was performed."
+            )
             analysis["possible_interpretations"].append(
                 {
-                    "text": "Reviewed XPS component-fit screening produced fitted component positions, widths, amplitudes, and areas inside explicit user-confirmed regions. Treat these values as numerical screening artifacts, not as chemical-state proof, definitive composition, or automatic spin-orbit constrained fitting.",
+                    "text": (
+                        "Reviewed XPS component-fit screening produced fitted component positions, widths, amplitudes, and areas inside explicit "
+                        "user-confirmed regions. Treat these values as numerical screening artifacts, not as chemical-state proof or definitive composition."
+                        f"{constraint_note}"
+                    ),
                     "confidence": component_fit_record.get("confidence", "low"),
                     "evidence": ["component_fit", *evidence] if evidence else ["component_fit"],
                     "assignment_source": component_fit_record.get("assignment_source", "ea.xps.component_fit:v0.2"),

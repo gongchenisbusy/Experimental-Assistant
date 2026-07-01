@@ -120,7 +120,7 @@ XPS：
 - 必须记录 binding-energy calibration 或 charge correction 的用户确认信息，例如参考峰、能量位移和确认来源。
 - y 轴说明 counts、normalized intensity、reviewed background-subtracted intensity 或 reviewed component-fit intensity；若显示扣背景曲线，必须能追溯到用户确认的 `background_subtraction` 方法、区域、锚点/窗口和方法参数，例如 Shirley 迭代设置或 Tougaard U2 的 kernel、`B`、`C_eV2`、integration direction。
 - 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰或单次拟合直接推出。
-- 若有 reviewed component fitting，报告中必须写明 fit region、component ID、峰形、初值、bounds、所用 intensity/background column、fit-quality 指标、参考依据和可信度；图和报告必须能通过 component/report ID 追溯到 `xps_component_fit.yml`、`xps_component_fit.csv`、processed CSV 和原始数据。
+- 若有 reviewed component fitting，报告中必须写明 fit region、component ID、峰形、初值、bounds、所用 intensity/background column、fit-quality 指标、参考依据和可信度；若使用 reviewed `spin_orbit_constraints`，还必须写明 constraint ID、anchor/dependent component、signed center delta、area ratio、FWHM ratio 和来源。图和报告必须能通过 component/report ID 追溯到 `xps_component_fit.yml`、`xps_component_fit.csv`、processed CSV 和原始数据。
 - 若有 reviewed multi-region records，报告中必须写明 survey/core-level/project-region 角色、binding-energy window、calibration group、linked output refs、参考依据和可信度；这些记录只用于组织和溯源，不能直接推出跨区定量组成、charge correction 有效性或化学态。
 
 Electrochemistry：

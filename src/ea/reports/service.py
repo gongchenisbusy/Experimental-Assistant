@@ -1429,6 +1429,8 @@ def _xps_component_fit_summary(metadata: dict) -> str:
     region_count = fit.get("region_count", 0)
     fitted_components = fit.get("fitted_component_count", 0)
     component_count = fit.get("component_count", 0)
+    spin_constraints = fit.get("spin_orbit_constraint_count", 0)
+    constrained_components = fit.get("constrained_component_count", 0)
     confidence = fit.get("confidence", "insufficient")
     source = fit.get("assignment_source", "ea.xps.component_fit:v0.2")
     record_ref = fit.get("record_ref", "未生成")
@@ -1439,10 +1441,12 @@ def _xps_component_fit_summary(metadata: dict) -> str:
     reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
     return (
         f"Reviewed XPS component_fit 状态为 `{status}`；fitted regions: `{fitted_regions}/{region_count}`；"
-        f"fitted components: `{fitted_components}/{component_count}`；record: `{record_ref}`；table: `{table_ref}`；"
+        f"fitted components: `{fitted_components}/{component_count}`；spin-orbit constraints: `{spin_constraints}`；"
+        f"constrained components: `{constrained_components}`；record: `{record_ref}`；table: `{table_ref}`；"
         f"fit column: `{fit_column}`；residual column: `{residual_column}`；confidence: `{confidence}`；"
         f"assignment_source: `{source}`；references: `{reference_text}`。\n\n"
-        "该记录只表示用户审核过的 component-fit screening；EA 不自动选择组分、背景、bounds、峰形、spin-orbit 常数，"
+        "该记录只表示用户审核过的 component-fit screening；若存在 spin-orbit constraints，也只使用用户审核过的 signed delta/ratio/bounds。"
+        "EA 不自动选择组分、背景、bounds、峰形、spin-orbit 常数，"
         "也不据此证明化学态、组成或正式定量。"
     )
 
@@ -1451,8 +1455,8 @@ def _xps_component_fit_table(metadata: dict) -> str:
     fit = (metadata.get("peak_analysis") or {}).get("component_fit") or {}
     regions = fit.get("regions") or []
     rows = [
-        "| component_id | region_id | shape | center (eV) | FWHM (eV) | area % | RMSE | R^2 | status | confidence |",
-        "|---|---|---|---:|---:|---:|---:|---:|---|---|",
+        "| component_id | region_id | spin-orbit | shape | center (eV) | FWHM (eV) | area % | RMSE | R^2 | status | confidence |",
+        "|---|---|---|---|---:|---:|---:|---:|---:|---|---|",
     ]
     for region in regions:
         if not isinstance(region, dict):
@@ -1465,10 +1469,14 @@ def _xps_component_fit_table(metadata: dict) -> str:
             area_percent = component.get("relative_fit_area_percent")
             rmse = component.get("fit_rmse")
             r2 = component.get("fit_r_squared")
+            spin = component.get("spin_orbit_constraint_id")
+            role = component.get("spin_orbit_role")
+            spin_text = f"{spin}:{role}" if spin and role else (str(spin) if spin else "n/a")
             rows.append(
-                "| {component_id} | {region_id} | {shape} | {center} | {fwhm} | {area_percent} | {rmse} | {r2} | {status} | {confidence} |".format(
+                "| {component_id} | {region_id} | {spin} | {shape} | {center} | {fwhm} | {area_percent} | {rmse} | {r2} | {status} | {confidence} |".format(
                     component_id=component.get("component_id", "n/a"),
                     region_id=component.get("region_id", region.get("region_id", "n/a")),
+                    spin=spin_text,
                     shape=component.get("peak_shape", "n/a"),
                     center=f"{float(center):.3f}" if center is not None else "n/a",
                     fwhm=f"{float(fwhm):.3f}" if fwhm is not None else "n/a",
