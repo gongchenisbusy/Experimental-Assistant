@@ -41,6 +41,7 @@ Release smoke gate:
 - Checks the release signature keygen/sign/verify help entry points without requiring real user keys.
 - Checks the release distribution checklist help entry point.
 - Runs the public-user portability scan.
+- Runs the sensitive-value scan for credential-like assignments and token literals in release-facing files.
 
 Release manifest:
 
@@ -93,4 +94,5 @@ Scope limits:
 - Do not treat the manifest, package, or sidecar checksum as a cryptographic signature.
 - Do not use it to verify scientific correctness.
 - Do not add developer-machine Zotero paths, browser profiles, institution login settings, live web search, PDF downloads, or private literature caches.
+- Do not store API keys, passwords, browser/session tokens, cookies, authorization headers, or institution credentials in repository files; use placeholders or user-managed local config paths.
 - Do not assume developer-machine release key paths. Ask the user for key paths or use paths the user explicitly provides.

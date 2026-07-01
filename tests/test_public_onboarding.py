@@ -32,6 +32,7 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "--include-trace" in text
     assert "focused report traceability YAML/Markdown" in text
     assert "ea-public-release-smoke" in text
+    assert "credential-like values" in text
     assert "developer-machine assumptions" in text
     assert "examples/public-xps-be-project" in text
     assert "examples/public-uv-vis-project" in text

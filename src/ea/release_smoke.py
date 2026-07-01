@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -17,11 +18,79 @@ FORBIDDEN_PORTABILITY_PATTERNS = [
     "Chrome Profile",
     "institution password",
 ]
-DEFAULT_SCAN_ROOTS = ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry", "examples"]
+DEFAULT_SCAN_ROOTS = ["README.md", "pyproject.toml", "src", "docs", "skills/ea-v0-2", "skill-registry", "examples"]
 DEFAULT_EXCLUDED_SCAN_PATHS = {
     "src/ea/config/service.py",
     "src/ea/release_smoke.py",
 }
+SECRET_KEY_RE = re.compile(
+    r"""
+    \b
+    (?P<key>
+      api[_-]?key
+      | access[_-]?token
+      | refresh[_-]?token
+      | auth[_-]?token
+      | bearer[_-]?token
+      | token
+      | password
+      | passphrase
+      | pwd
+      | secret
+      | cookie
+      | session(?:[_-]?(?:id|token))?
+      | authorization
+      | credential
+    )
+    \b
+    \s*[:=]\s*
+    (?P<quote>['"]?)
+    (?P<value>[^'"\s#,\]}]+)
+    (?P=quote)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+TOKEN_LITERAL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("openai_style_token", re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b")),
+    ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")),
+    ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
+    ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("jwt_token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
+]
+PLACEHOLDER_VALUE_FRAGMENTS = {
+    "<",
+    ">",
+    "example",
+    "placeholder",
+    "redacted",
+    "your-",
+    "your_",
+    "changeme",
+    "change-me",
+    "xxxx",
+    "dummy",
+    "sample",
+    "not-set",
+    "not_applicable",
+}
+PLACEHOLDER_VALUES = {
+    "",
+    "none",
+    "null",
+    "true",
+    "false",
+    "password",
+    "passphrase",
+    "token",
+    "secret",
+    "api_key",
+    "apikey",
+    "credential",
+    "credentials",
+    "value",
+    "env",
+}
+VARIABLE_REFERENCE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?(?:\))?$")
 
 
 @dataclass(frozen=True)
@@ -158,6 +227,106 @@ def run_portability_scan(
     }
 
 
+def _line_preview_with_redaction(line: str, start: int, end: int) -> str:
+    redacted = f"{line[:start]}[REDACTED]{line[end:]}"
+    redacted = redacted.strip()
+    return redacted if len(redacted) <= 220 else f"{redacted[:217]}..."
+
+
+def _normalized_secret_value(value: str) -> str:
+    return value.strip().strip("`'\";,)]}")
+
+
+def _is_placeholder_secret_value(value: str) -> bool:
+    normalized = _normalized_secret_value(value)
+    lowered = normalized.lower()
+    if lowered in PLACEHOLDER_VALUES:
+        return True
+    return any(fragment in lowered for fragment in PLACEHOLDER_VALUE_FRAGMENTS)
+
+
+def _looks_like_variable_reference(value: str) -> bool:
+    normalized = _normalized_secret_value(value)
+    if not normalized:
+        return True
+    return bool(VARIABLE_REFERENCE_RE.fullmatch(normalized))
+
+
+def _is_probable_secret_assignment(match: re.Match[str]) -> bool:
+    value = _normalized_secret_value(match.group("value"))
+    if _is_placeholder_secret_value(value):
+        return False
+    if any(pattern.search(value) for _, pattern in TOKEN_LITERAL_PATTERNS):
+        return False
+    if match.group("quote"):
+        return len(value) >= 6
+    if "(" in value or ")" in value:
+        return False
+    return not _looks_like_variable_reference(value) and len(value) >= 6
+
+
+def _secret_assignment_findings(root: Path, path: Path, text: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        for match in SECRET_KEY_RE.finditer(line):
+            if not _is_probable_secret_assignment(match):
+                continue
+            findings.append(
+                {
+                    "path": path.relative_to(root).as_posix(),
+                    "line": line_number,
+                    "detector": "secret_assignment",
+                    "key": match.group("key"),
+                    "preview": _line_preview_with_redaction(line, match.start("value"), match.end("value")),
+                    "remediation": "Remove the value from public artifacts; use a placeholder or user-supplied local config path instead.",
+                }
+            )
+    return findings
+
+
+def _token_literal_findings(root: Path, path: Path, text: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        for detector, pattern in TOKEN_LITERAL_PATTERNS:
+            for match in pattern.finditer(line):
+                if _is_placeholder_secret_value(match.group(0)):
+                    continue
+                findings.append(
+                    {
+                        "path": path.relative_to(root).as_posix(),
+                        "line": line_number,
+                        "detector": detector,
+                        "preview": _line_preview_with_redaction(line, match.start(), match.end()),
+                        "remediation": "Remove the token from public artifacts and rotate it if it was real.",
+                    }
+                )
+    return findings
+
+
+def run_sensitive_value_scan(
+    root: Path,
+    *,
+    scan_roots: Iterable[str] = DEFAULT_SCAN_ROOTS,
+    excluded_paths: set[str] | None = None,
+) -> dict[str, Any]:
+    excluded = set(DEFAULT_EXCLUDED_SCAN_PATHS)
+    if excluded_paths:
+        excluded.update(excluded_paths)
+    findings: list[dict[str, Any]] = []
+    for path in _iter_scan_files(root, scan_roots, excluded):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        findings.extend(_secret_assignment_findings(root, path, text))
+        findings.extend(_token_literal_findings(root, path, text))
+    return {
+        "name": "sensitive_value_scan",
+        "status": "pass" if not findings else "fail",
+        "scan_roots": list(scan_roots),
+        "excluded_paths": sorted(excluded),
+        "detectors": ["secret_assignment", *[name for name, _ in TOKEN_LITERAL_PATTERNS]],
+        "findings": findings,
+    }
+
+
 def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
     root = _repo_root(args.root)
     quick_validate = args.quick_validate or _default_quick_validate_path()
@@ -176,12 +345,15 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
             "root": str(root),
             "commands": [{"name": step.name, "command": step.command} for step in command_steps],
             "portability_scan": not args.skip_portability_scan,
+            "sensitive_value_scan": not args.skip_sensitive_value_scan,
         }
 
     env = smoke_env(root)
     results = [run_command_step(step, root=root, env=env) for step in command_steps]
     if not args.skip_portability_scan:
         results.append(run_portability_scan(root))
+    if not args.skip_sensitive_value_scan:
+        results.append(run_sensitive_value_scan(root))
     status = "pass" if all(result["status"] == "pass" for result in results) else "fail"
     return {
         "schema_version": "0.2",
@@ -200,6 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-skill-validation", action="store_true")
     parser.add_argument("--skip-cli-sanity", action="store_true")
     parser.add_argument("--skip-portability-scan", action="store_true")
+    parser.add_argument("--skip-sensitive-value-scan", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

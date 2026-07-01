@@ -8,6 +8,7 @@ from ea.release_smoke import (
     build_command_steps,
     run_command_step,
     run_portability_scan,
+    run_sensitive_value_scan,
     smoke_env,
 )
 
@@ -68,6 +69,61 @@ def test_portability_scan_reports_forbidden_public_defaults(tmp_path: Path) -> N
 
     assert result["status"] == "fail"
     assert result["findings"] == [{"path": "src/bad.py", "pattern": "/Users/geecoe"}]
+
+
+def test_sensitive_value_scan_reports_secret_assignments_with_redacted_preview(tmp_path: Path) -> None:
+    source = tmp_path / "docs" / "bad.md"
+    source.parent.mkdir(parents=True)
+    source.write_text('api_key = "live-private-key-12345"\n', encoding="utf-8")
+
+    result = run_sensitive_value_scan(tmp_path, scan_roots=["docs"], excluded_paths=set())
+
+    assert result["status"] == "fail"
+    assert result["findings"] == [
+        {
+            "path": "docs/bad.md",
+            "line": 1,
+            "detector": "secret_assignment",
+            "key": "api_key",
+            "preview": 'api_key = "[REDACTED]"',
+            "remediation": "Remove the value from public artifacts; use a placeholder or user-supplied local config path instead.",
+        }
+    ]
+    assert "live-private-key" not in result["findings"][0]["preview"]
+
+
+def test_sensitive_value_scan_allows_placeholders_prose_and_variable_references(tmp_path: Path) -> None:
+    docs = tmp_path / "docs" / "safe.md"
+    docs.parent.mkdir(parents=True)
+    docs.write_text(
+        "\n".join(
+            [
+                'api_key = "<your-api-key>"',
+                "Do not store passwords, cookies, session tokens, or credentials in public artifacts.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    source = tmp_path / "src" / "safe.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("load_private_key(path, password=passphrase)\n", encoding="utf-8")
+
+    result = run_sensitive_value_scan(tmp_path, scan_roots=["docs", "src"], excluded_paths=set())
+
+    assert result["status"] == "pass"
+    assert result["findings"] == []
+
+
+def test_sensitive_value_scan_reports_token_literals(tmp_path: Path) -> None:
+    source = tmp_path / "README.md"
+    source.write_text("temporary token: ghp_1234567890abcdefghijklmnopQRSTUV\n", encoding="utf-8")
+
+    result = run_sensitive_value_scan(tmp_path, scan_roots=["README.md"], excluded_paths=set())
+
+    assert result["status"] == "fail"
+    assert result["findings"][0]["detector"] == "github_token"
+    assert result["findings"][0]["preview"] == "temporary token: [REDACTED]"
+    assert "ghp_" not in result["findings"][0]["preview"]
 
 
 def test_command_step_reports_failure(monkeypatch, tmp_path: Path) -> None:

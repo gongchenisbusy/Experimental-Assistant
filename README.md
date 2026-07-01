@@ -195,7 +195,7 @@ python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.z
 python3 scripts/build_distribution_checklist.py
 ```
 
-`scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, and a portability scan for accidental developer-machine defaults. The installed console entry point is `ea-public-release-smoke`.
+`scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, a portability scan for accidental developer-machine defaults, and a sensitive-value scan for credential-like assignments or token literals in release-facing files. The installed console entry point is `ea-public-release-smoke`.
 `scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.

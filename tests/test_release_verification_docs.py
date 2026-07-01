@@ -28,6 +28,7 @@ def test_release_verification_doc_is_public_safe_and_actionable() -> None:
     assert "ea-verify-release-signature" in text
     assert "ea-release-checklist" in text
     assert "What Each Check Proves" in text
+    assert "sensitive-value scan" in text
     assert "Scope Limits" in text
     for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
         assert forbidden not in text

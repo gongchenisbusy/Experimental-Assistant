@@ -49,7 +49,7 @@ python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-COMMIT-release.zi
 
 ## 3. What Each Check Proves
 
-`ea-public-release-smoke` proves the repository can run the current public gate: tests, skill validation, CLI help, release helper help, and portability scan.
+`ea-public-release-smoke` proves the repository can run the current public gate: tests, skill validation, CLI help, release helper help, portability scan, and sensitive-value scan for accidental credential-like assignments or token literals in release-facing files.
 
 `ea-release-manifest` records package metadata, git state, release input paths, checksums, smoke-gate requirements, public-boundary notes, and optional signing support.
 

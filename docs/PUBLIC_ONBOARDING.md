@@ -269,6 +269,8 @@ ea-release-checklist
 
 For recipient-side artifact verification details, read `docs/RELEASE_VERIFICATION.md`.
 
+The smoke gate also scans release-facing files for developer-machine defaults and accidental credential-like values such as pasted API keys, browser/session tokens, cookies, passwords, or authorization headers. Use placeholders and user-managed local config paths instead of storing those values in the repository or project files.
+
 Optional signing uses explicit user-managed keys:
 
 ```bash
