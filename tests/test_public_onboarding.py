@@ -22,6 +22,7 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea init-project" in text
     assert "ea healthcheck" in text
     assert "ea eval project" in text
+    assert "ea trace view" in text
     assert "ea literature plan" in text
     assert "ea literature prepare-source-candidates" in text
     assert "ea literature preflight-source-candidates" in text

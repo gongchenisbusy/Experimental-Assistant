@@ -242,6 +242,7 @@ def test_builtin_skill_registry_catalogue_is_valid(tmp_path: Path) -> None:
         "ea.electrochemistry-analysis",
         "ea.thermal-analysis",
         "ea.image-analysis",
+        "ea.project-traceability",
     }
     assert {item["id"] for item in registry["skills"]} == expected_ids
 

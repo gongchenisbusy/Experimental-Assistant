@@ -184,7 +184,10 @@ Before handing a project to another user or agent, run:
 ```bash
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea trace view /path/to/ea-project
 ```
+
+`ea trace view` writes `traceability/project_trace.yml` and `.md`, linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, provenance, memory candidates, and committed memory. Use `--focus reports/<report-id>.md` or another project record ref when the handoff should show one connected chain. It is a read-only audit view except for its own trace files; it does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
 
 For a single report handoff:
 

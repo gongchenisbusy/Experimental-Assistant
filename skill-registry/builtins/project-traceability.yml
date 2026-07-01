@@ -1,0 +1,51 @@
+ea_skill:
+  id: ea.project-traceability
+  version: 0.2.0
+  category: project.traceability
+  method: project_trace_view
+  input_artifacts:
+    - reports_index
+    - figures_index
+    - provenance_records
+    - review_records
+    - source_packet_records
+    - suggestion_records
+    - review_package_records
+    - memory_candidate_index
+    - memory_index
+  output_artifacts:
+    - traceability_view
+    - traceability_markdown
+    - report_section
+    - provenance_record
+  review_gates:
+    - confirm_interpretation_before_memory_write
+  required_indices:
+    - reports/index.yml
+    - figures/index.yml
+    - provenance/index.yml
+    - memory/candidates/index.yml
+    - memory/index.yml
+  report_requirements:
+    inline_numeric_citations: false
+    trace_view_is_audit_only: true
+  provenance_requirements:
+    generated_outputs_outside_raw: true
+    read_only_audit_view: true
+  current_v0_2_support:
+    implemented:
+      - project_trace_view_yaml_and_markdown
+      - focus_ref_connected_subgraph
+      - report_figure_result_reference_edges
+      - source_packet_suggestion_review_package_edges
+      - review_record_target_edges
+      - memory_candidate_and_committed_memory_edges
+      - provenance_input_output_review_source_edges
+    boundaries:
+      - no_report_mutation
+      - no_review_record_creation
+      - no_memory_commit
+      - no_reference_registration
+      - no_citation_injection
+      - no_source_packet_or_suggestion_generation
+      - no_scientific_proof_claim

@@ -20,6 +20,7 @@ EA_PROJECT_DIRS = [
     "processed/batches",
     "figures",
     "reports",
+    "traceability",
     "literature",
     "literature/references",
     "skill-registry",

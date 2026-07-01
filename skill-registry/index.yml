@@ -31,6 +31,12 @@ skills:
     category: characterization.spectrum
     method: pl
     notes: Minimal PL workflow implemented for spectra, peak tables, traceable figures, and confidence-labeled reports.
+  - id: ea.project-traceability
+    manifest: skill-registry/builtins/project-traceability.yml
+    status: builtin_v0_2_reference
+    category: project.traceability
+    method: project_trace_view
+    notes: Project traceability view implemented via ea trace view, writing traceability/project_trace.yml and Markdown by linking reports, figures, source packets, source-backed suggestions, review packages, ReviewRecords, provenance, memory candidates, and committed memory; focus refs render connected subgraphs, and the helper is read-only except for its own audit files with no report mutation, review creation, memory commit, reference registration, citation injection, source-packet/suggestion generation, or scientific proof claims.
   - id: ea.raman-analysis
     manifest: skill-registry/builtins/raman-analysis.yml
     status: builtin_v0_2_reference

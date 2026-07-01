@@ -81,6 +81,7 @@ from ea.templates import (
     write_processing_parameters_template,
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
+from ea.traceability import build_project_trace_view
 from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_parameters, inspect_uv_vis_file, process_uv_vis_result
 from ea.xps import (
     XPSProcessingRequest,
@@ -671,6 +672,14 @@ def build_parser() -> argparse.ArgumentParser:
     material_assignments = materials_sub.add_parser("assignments", help="show assignment records for one method")
     material_assignments.add_argument("material")
     material_assignments.add_argument("--method", choices=["raman", "pl", "xrd"])
+
+    trace = sub.add_parser("trace", help="build local traceability views across reports, figures, reviews, suggestions, and memory")
+    trace_sub = trace.add_subparsers(dest="trace_command", required=True)
+    trace_view = trace_sub.add_parser("view", help="write a project traceability YAML/Markdown view")
+    trace_view.add_argument("workspace", type=Path)
+    trace_view.add_argument("--focus")
+    trace_view.add_argument("--output", type=Path)
+    trace_view.add_argument("--markdown-output", type=Path)
 
     figure = sub.add_parser("lookup-figure", help="look up a figure by figure_id")
     figure.add_argument("workspace", type=Path)
@@ -1707,6 +1716,23 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_json(result)
             return 0 if result["ok"] else 2
+    if args.command == "trace":
+        if args.trace_command == "view":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_output_path = args.markdown_output
+            if markdown_output_path and not markdown_output_path.is_absolute():
+                markdown_output_path = args.workspace / markdown_output_path
+            _print_json(
+                build_project_trace_view(
+                    args.workspace,
+                    focus_ref=args.focus,
+                    output_path=output_path,
+                    markdown_output_path=markdown_output_path,
+                )
+            )
+            return 0
     if args.command == "lookup-figure":
         _print_json(lookup_figure(args.workspace, args.figure_id))
         return 0

@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, or thermal analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, optionally sign repository release manifests/packages, produce distribution checklists with user-managed keys when supplied, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, or thermal analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, build report-memory traceability views, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, optionally sign repository release manifests/packages, produce distribution checklists with user-managed keys when supplied, or preserve project memory/provenance without assuming developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -31,6 +31,7 @@ ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd 
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea trace view /path/to/ea-project
 ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001
@@ -144,6 +145,7 @@ ea references validate-report /path/to/ea-project reports/rpt-example.md
 ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
 ea memory review /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --user-response "可以，保存"
 ea memory commit /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --review-ref review-20260630-001
+ea trace view /path/to/ea-project --focus reports/rpt-example.md
 ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
 ```
 
@@ -167,7 +169,7 @@ The smoke gate prints JSON and runs pytest, EA v0.2 skill validation, CLI help s
 
 Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image-data, scientific-figure style, and local-literature-library entries as concrete initial workflows. The literature workflow covers initialization decisions, planning, confirmation, explicit public metadata search, supplied-candidate ranking, FTIR/XPS source-candidate manifest preparation and preflight, handoff/request generation, import, and status sync; Zotero, browser, institution login, and PDF acquisition still run only after user confirmation in a dedicated or explicit workflow. Source-candidate manifest helpers are local deterministic staging only: fill candidate fields and run preflight before using the confirmed manifest with `ea ftir build-assignment-packet --literature-manifest ...` or `ea xps build-source-packet --literature-manifest ...`.
 
-Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level.
+Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level. Use `ea trace view` when the user or a future agent needs a compact YAML/Markdown map from a report or suggestion to figures, source packets, review packages, ReviewRecords, provenance, memory candidates, and committed memory. Trace views are read-only audit artifacts except for their own files under `traceability/`; they do not create reviews, commit memory, register references, inject citations, or prove scientific conclusions.
 
 Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
 
