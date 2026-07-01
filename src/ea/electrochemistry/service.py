@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any
 
 import matplotlib
@@ -11,6 +12,7 @@ matplotlib.use("Agg")
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import least_squares
 from scipy.signal import find_peaks, savgol_filter
 
 from ea.figures import (
@@ -94,6 +96,42 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "enabled": True,
             "method": "nyquist_screening",
             "source": "ea.electrochemistry.eis_nyquist_screening:v0.2",
+        },
+        "eis_circuit_fit": {
+            "enabled": False,
+            "method": "reviewed_eis_circuit_fit",
+            "source": "ea.electrochemistry.eis_circuit_fit:v0.2",
+            "frequency_input_column": "frequency_Hz",
+            "frequency_unit": "Hz",
+            "z_real_input_column": "z_real_ohm",
+            "z_imag_input_column": "z_imag_ohm",
+            "imaginary_input_convention": "signed_z_imag_ohm",
+            "circuit_model": "series_r_rc",
+            "frequency_output_column": "frequency_Hz",
+            "fit_z_real_column": "eis_fit_z_real_ohm",
+            "fit_z_imag_column": "eis_fit_z_imag_ohm",
+            "fit_neg_z_imag_column": "eis_fit_neg_z_imag_ohm",
+            "initial_values": {
+                "rs_ohm": None,
+                "rct_ohm": None,
+                "c_dl_F": None,
+            },
+            "bounds": {
+                "rs_ohm": {"min": 0.0, "max": None},
+                "rct_ohm": {"min": 0.0, "max": None},
+                "c_dl_F": {"min": 0.0, "max": None},
+            },
+            "minimum_points": 8,
+            "fit_quality_thresholds": {
+                "max_reduced_chi_square_ohm2": None,
+                "min_r_squared_complex": None,
+            },
+            "max_nfev": 10000,
+            "perturbation_amplitude_mV": None,
+            "frequency_order_reviewed": False,
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
         },
         "correction_record": {
             "enabled": False,
@@ -367,6 +405,38 @@ def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> 
     if area is not None and area > 0:
         data["current_density_mA_cm-2"] = current_mA / area
     return data
+
+
+def _read_raw_numeric_table(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xlsm"}:
+        frame = pd.read_excel(path)
+        frame.columns = [str(column) for column in frame.columns]
+        return frame
+    rows: list[list[float]] = []
+    header: list[str] | None = None
+    max_width = 0
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [part for part in re.split(r"[\t,\s]+", line) if part]
+        if not parts:
+            continue
+        try:
+            row = [float(value) for value in parts]
+        except ValueError:
+            if header is None:
+                header = parts
+            continue
+        rows.append(row)
+        max_width = max(max_width, len(row))
+    if not rows:
+        return pd.DataFrame()
+    width = len(header) if header else max_width
+    normalized_rows = [row[:width] + [np.nan] * max(width - len(row), 0) for row in rows]
+    columns = header[:width] if header and len(header) >= width else [f"col_{index}" for index in range(width)]
+    return pd.DataFrame(normalized_rows, columns=columns)
 
 
 def _apply_eis_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
@@ -1909,6 +1979,658 @@ def _append_gcd_analysis_interpretation(analysis: dict[str, Any], gcd_record: di
     return analysis
 
 
+_EIS_CIRCUIT_PARAMETERS = ("rs_ohm", "rct_ohm", "c_dl_F")
+
+
+def _eis_fit_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+    value = params.get(name, [])
+    if isinstance(value, list):
+        return deepcopy(value), None
+    if isinstance(value, tuple):
+        return list(value), None
+    if isinstance(value, str) and value.strip():
+        return [value], None
+    if value in (None, "", []):
+        return [], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_eis_circuit_fit_list_ignored",
+            "An EIS circuit-fit list field was ignored because it was not a list or non-empty string.",
+            severity="medium",
+            field=name,
+        ),
+    )
+
+
+def _eis_fit_required_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "electrochemistry_eis_circuit_fit_required_value_missing",
+                "A required numeric EIS circuit-fit value was missing or invalid.",
+                severity="medium",
+                field=field,
+            ),
+        )
+    if not np.isfinite(coerced):
+        return (
+            None,
+            _warning(
+                "electrochemistry_eis_circuit_fit_required_value_missing",
+                "A required numeric EIS circuit-fit value was missing or invalid.",
+                severity="medium",
+                field=field,
+            ),
+        )
+    return coerced, None
+
+
+def _eis_fit_optional_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+    if value in (None, ""):
+        return None, None
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "electrochemistry_eis_circuit_fit_optional_value_ignored",
+                "An optional numeric EIS circuit-fit value was ignored because it was invalid.",
+                severity="medium",
+                field=field,
+            ),
+        )
+    if not np.isfinite(coerced):
+        return (
+            None,
+            _warning(
+                "electrochemistry_eis_circuit_fit_optional_value_ignored",
+                "An optional numeric EIS circuit-fit value was ignored because it was invalid.",
+                severity="medium",
+                field=field,
+            ),
+        )
+    return coerced, None
+
+
+def _eis_fit_column_name(params: dict[str, Any], key: str, fallback: str, frame: pd.DataFrame) -> tuple[str, dict[str, Any] | None]:
+    requested = str(params.get(key) or fallback).strip() or fallback
+    column = requested
+    warning: dict[str, Any] | None = None
+    if column in frame.columns:
+        column = f"{column}_fit"
+        warning = _warning(
+            "electrochemistry_eis_circuit_fit_output_column_adjusted",
+            "An EIS circuit-fit output column already existed and was renamed to avoid overwriting processed data.",
+            severity="medium",
+            requested_output_column=requested,
+            output_column=column,
+        )
+    return column, warning
+
+
+def _eis_frequency_to_hz(values: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+    frequency = values.to_numpy(dtype=float)
+    normalized = unit.strip()
+    if normalized == "Hz":
+        return frequency, None
+    if normalized == "kHz":
+        return frequency * 1000.0, None
+    if normalized == "MHz":
+        return frequency * 1_000_000.0, None
+    if normalized == "mHz":
+        return frequency / 1000.0, None
+    return (
+        frequency,
+        _warning(
+            "electrochemistry_eis_circuit_fit_frequency_unit_defaulted",
+            "EIS circuit-fit frequency_unit was missing or unsupported and defaulted to Hz.",
+            severity="medium",
+            frequency_unit=unit,
+        ),
+    )
+
+
+def _eis_imaginary_series(processed: pd.DataFrame, column: str, convention: str) -> tuple[np.ndarray | None, dict[str, Any] | None]:
+    if column not in processed.columns:
+        return (
+            None,
+            _warning(
+                "electrochemistry_eis_circuit_fit_no_z_imag_column",
+                "EIS circuit-fit was enabled but the reviewed imaginary impedance column was not present in processed data.",
+                severity="medium",
+                z_imag_input_column=column,
+            ),
+        )
+    values = processed[column].to_numpy(dtype=float)
+    normalized = convention.strip() or "signed_z_imag_ohm"
+    if normalized in {"signed_z_imag_ohm", "signed", "z_imag_ohm"}:
+        return values, None
+    if normalized in {"neg_z_imag_positive", "negative_imaginary_plotted_positive", "plotted_negative_imaginary"}:
+        return -values, None
+    return (
+        values,
+        _warning(
+            "electrochemistry_eis_circuit_fit_imaginary_convention_defaulted",
+            "EIS circuit-fit imaginary_input_convention was unsupported and defaulted to signed z_imag in ohm.",
+            severity="medium",
+            imaginary_input_convention=convention,
+        ),
+    )
+
+
+def _eis_initial_values(params: dict[str, Any]) -> tuple[dict[str, float], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    values = params.get("initial_values", {})
+    if not isinstance(values, dict):
+        values = {}
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_initial_values_ignored",
+                "EIS circuit-fit initial_values were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+    parsed: dict[str, float] = {}
+    for name in _EIS_CIRCUIT_PARAMETERS:
+        value, warning = _eis_fit_required_float(values.get(name), f"initial_values.{name}")
+        if warning:
+            warnings.append(warning)
+        if value is not None:
+            parsed[name] = value
+    return parsed, warnings
+
+
+def _eis_bounds(params: dict[str, Any]) -> tuple[dict[str, dict[str, float | None]], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    bounds = params.get("bounds", {})
+    if not isinstance(bounds, dict):
+        bounds = {}
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_bounds_ignored",
+                "EIS circuit-fit bounds were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+    parsed: dict[str, dict[str, float | None]] = {}
+    for name in _EIS_CIRCUIT_PARAMETERS:
+        entry = bounds.get(name, {})
+        if not isinstance(entry, dict):
+            entry = {}
+            warnings.append(
+                _warning(
+                    "electrochemistry_eis_circuit_fit_bound_ignored",
+                    "An EIS circuit-fit parameter bound was ignored because it was not a mapping.",
+                    severity="medium",
+                    parameter=name,
+                )
+            )
+        lower, lower_warning = _eis_fit_optional_float(entry.get("min", 0.0), f"bounds.{name}.min")
+        upper, upper_warning = _eis_fit_optional_float(entry.get("max"), f"bounds.{name}.max")
+        if lower_warning:
+            warnings.append(lower_warning)
+        if upper_warning:
+            warnings.append(upper_warning)
+        if lower is None:
+            lower = 0.0
+        parsed[name] = {"min": lower, "max": upper}
+    return parsed, warnings
+
+
+def _eis_thresholds(params: dict[str, Any]) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    thresholds = params.get("fit_quality_thresholds", {})
+    if not isinstance(thresholds, dict):
+        return (
+            {"max_reduced_chi_square_ohm2": None, "min_r_squared_complex": None},
+            [
+                _warning(
+                    "electrochemistry_eis_circuit_fit_thresholds_ignored",
+                    "EIS circuit-fit quality thresholds were ignored because they were not a mapping.",
+                    severity="medium",
+                )
+            ],
+        )
+    parsed: dict[str, float | None] = {}
+    for name in ["max_reduced_chi_square_ohm2", "min_r_squared_complex"]:
+        value, warning = _eis_fit_optional_float(thresholds.get(name), f"fit_quality_thresholds.{name}")
+        if warning:
+            warnings.append(warning)
+        parsed[name] = value
+    return parsed, warnings
+
+
+def _series_r_rc_impedance(frequency_hz: np.ndarray, rs_ohm: float, rct_ohm: float, c_dl_F: float) -> tuple[np.ndarray, np.ndarray]:
+    omega = 2.0 * np.pi * frequency_hz
+    rct = max(float(rct_ohm), 1e-30)
+    cdl = max(float(c_dl_F), 0.0)
+    z_parallel = 1.0 / ((1.0 / rct) + (1j * omega * cdl))
+    z_model = float(rs_ohm) + z_parallel
+    return np.real(z_model), np.imag(z_model)
+
+
+def _eis_fit_quality(
+    observed_real: np.ndarray,
+    observed_imag: np.ndarray,
+    fitted_real: np.ndarray,
+    fitted_imag: np.ndarray,
+    parameter_count: int,
+) -> dict[str, float | None]:
+    real_residual = observed_real - fitted_real
+    imag_residual = observed_imag - fitted_imag
+    residual = np.concatenate([real_residual, imag_residual])
+    observed = np.concatenate([observed_real, observed_imag])
+    fitted = np.concatenate([fitted_real, fitted_imag])
+    rss = float(np.sum(residual**2))
+    dof = max(int(observed.size - parameter_count), 1)
+    sst_complex = float(np.sum((observed - float(np.mean(observed))) ** 2))
+    sst_real = float(np.sum((observed_real - float(np.mean(observed_real))) ** 2))
+    sst_imag = float(np.sum((observed_imag - float(np.mean(observed_imag))) ** 2))
+    return {
+        "point_count": int(observed_real.size),
+        "residual_sum_squares_ohm2": rss,
+        "rmse_ohm": float(np.sqrt(rss / max(observed.size, 1))),
+        "reduced_chi_square_ohm2": float(rss / dof),
+        "r_squared_complex": float(1.0 - rss / sst_complex) if sst_complex > 0 else None,
+        "r_squared_real": float(1.0 - np.sum(real_residual**2) / sst_real) if sst_real > 0 else None,
+        "r_squared_imag": float(1.0 - np.sum(imag_residual**2) / sst_imag) if sst_imag > 0 else None,
+        "max_abs_real_residual_ohm": float(np.max(np.abs(real_residual))),
+        "max_abs_imag_residual_ohm": float(np.max(np.abs(imag_residual))),
+        "mean_abs_complex_residual_ohm": float(np.mean(np.abs(observed - fitted))),
+    }
+
+
+def _eis_quality_checks(metrics: dict[str, float | None], thresholds: dict[str, float | None]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    checks: dict[str, Any] = {}
+    warnings: list[dict[str, Any]] = []
+    max_chi = thresholds.get("max_reduced_chi_square_ohm2")
+    if max_chi is not None:
+        value = metrics.get("reduced_chi_square_ohm2")
+        passed = value is not None and float(value) <= float(max_chi)
+        checks["max_reduced_chi_square_ohm2"] = {"threshold": max_chi, "value": value, "passed": bool(passed)}
+        if not passed:
+            warnings.append(
+                _warning(
+                    "electrochemistry_eis_circuit_fit_quality_threshold_failed",
+                    "EIS circuit-fit reduced chi-square exceeded the reviewed threshold.",
+                    severity="medium",
+                    metric="reduced_chi_square_ohm2",
+                    value=value,
+                    threshold=max_chi,
+                )
+            )
+    min_r2 = thresholds.get("min_r_squared_complex")
+    if min_r2 is not None:
+        value = metrics.get("r_squared_complex")
+        passed = value is not None and float(value) >= float(min_r2)
+        checks["min_r_squared_complex"] = {"threshold": min_r2, "value": value, "passed": bool(passed)}
+        if not passed:
+            warnings.append(
+                _warning(
+                    "electrochemistry_eis_circuit_fit_quality_threshold_failed",
+                    "EIS circuit-fit complex R-squared was below the reviewed threshold.",
+                    severity="medium",
+                    metric="r_squared_complex",
+                    value=value,
+                    threshold=min_r2,
+                )
+            )
+    return checks, warnings
+
+
+def _apply_eis_circuit_fit(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    measurement_mode: str,
+    raw_path: Path,
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("eis_circuit_fit", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return processed, None, []
+
+    fitted = processed.copy()
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.electrochemistry.eis_circuit_fit:v0.2")
+    method = str(params.get("method") or "reviewed_eis_circuit_fit")
+    if method != "reviewed_eis_circuit_fit":
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_method_unsupported",
+                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this v0.2 workflow.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_eis_circuit_fit"
+
+    circuit_model = str(params.get("circuit_model") or "series_r_rc").strip()
+    if circuit_model not in {"series_r_rc", "randles_rc"}:
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_model_unsupported",
+                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this v0.2 workflow.",
+                severity="medium",
+                circuit_model=circuit_model,
+            )
+        )
+        circuit_model = "series_r_rc"
+
+    reference_ids, reference_warning = _eis_fit_list(params, "reference_ids")
+    if reference_warning:
+        warnings.append(reference_warning)
+    reviewer_notes, notes_warning = _eis_fit_list(params, "reviewer_notes")
+    if notes_warning:
+        warnings.append(notes_warning)
+    caveats, caveats_warning = _eis_fit_list(params, "caveats")
+    if caveats_warning:
+        warnings.append(caveats_warning)
+
+    initial_values, initial_warnings = _eis_initial_values(params)
+    warnings.extend(initial_warnings)
+    bounds, bounds_warnings = _eis_bounds(params)
+    warnings.extend(bounds_warnings)
+    thresholds, threshold_warnings = _eis_thresholds(params)
+    warnings.extend(threshold_warnings)
+    perturbation_mV, perturbation_warning = _eis_fit_optional_float(params.get("perturbation_amplitude_mV"), "perturbation_amplitude_mV")
+    if perturbation_warning:
+        warnings.append(perturbation_warning)
+
+    frequency_column = str(params.get("frequency_input_column") or "frequency_Hz").strip()
+    frequency_unit = str(params.get("frequency_unit") or "Hz").strip()
+    z_real_column = str(params.get("z_real_input_column") or "z_real_ohm").strip()
+    z_imag_column = str(params.get("z_imag_input_column") or "z_imag_ohm").strip()
+    imaginary_convention = str(params.get("imaginary_input_convention") or "signed_z_imag_ohm").strip()
+    minimum_points, minimum_adjusted = _coerce_int(params.get("minimum_points"), 8, minimum=3)
+    if minimum_adjusted:
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_minimum_points_defaulted",
+                "EIS circuit-fit minimum_points was missing or below 3 and defaulted to 8.",
+                severity="medium",
+            )
+        )
+
+    applied = False
+    fitted_parameters: dict[str, float] = {}
+    fit_metrics: dict[str, float | None] = {}
+    quality_checks: dict[str, Any] = {}
+    optimizer_status: dict[str, Any] = {}
+    frequency_output_column = None
+    fit_z_real_column = None
+    fit_z_imag_column = None
+    fit_neg_z_imag_column = None
+
+    if measurement_mode != "eis":
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_wrong_mode",
+                "EIS circuit-fit was skipped because measurement_mode was not eis.",
+                severity="medium",
+                measurement_mode=measurement_mode,
+            )
+        )
+    elif z_real_column not in fitted.columns:
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_no_z_real_column",
+                "EIS circuit-fit was enabled but the reviewed real impedance column was not present in processed data.",
+                severity="medium",
+                z_real_input_column=z_real_column,
+            )
+        )
+    else:
+        z_imag, imag_warning = _eis_imaginary_series(fitted, z_imag_column, imaginary_convention)
+        if imag_warning:
+            warnings.append(imag_warning)
+        if z_imag is not None and len(initial_values) == len(_EIS_CIRCUIT_PARAMETERS):
+            raw_frame = _read_raw_numeric_table(raw_path)
+            raw_frame.columns = [str(column) for column in raw_frame.columns]
+            if frequency_column not in raw_frame.columns:
+                warnings.append(
+                    _warning(
+                        "electrochemistry_eis_circuit_fit_no_frequency_column",
+                        "EIS circuit-fit was enabled but the reviewed frequency column was not present in the raw table.",
+                        severity="medium",
+                        frequency_input_column=frequency_column,
+                    )
+                )
+            else:
+                frequency_raw = pd.to_numeric(raw_frame[frequency_column], errors="coerce").dropna().reset_index(drop=True)
+                frequency_hz, frequency_warning = _eis_frequency_to_hz(frequency_raw, frequency_unit)
+                if frequency_warning:
+                    warnings.append(frequency_warning)
+                if len(frequency_hz) != len(fitted):
+                    warnings.append(
+                        _warning(
+                            "electrochemistry_eis_circuit_fit_frequency_length_mismatch",
+                            "EIS circuit-fit was skipped because numeric frequency values did not align with the reviewed impedance rows.",
+                            severity="medium",
+                            frequency_count=int(len(frequency_hz)),
+                            impedance_count=int(len(fitted)),
+                        )
+                    )
+                elif np.any(~np.isfinite(frequency_hz)) or np.any(frequency_hz <= 0):
+                    warnings.append(
+                        _warning(
+                            "electrochemistry_eis_circuit_fit_frequency_invalid",
+                            "EIS circuit-fit was skipped because reviewed frequency values must be positive finite numbers.",
+                            severity="medium",
+                        )
+                    )
+                elif len(fitted) < minimum_points:
+                    warnings.append(
+                        _warning(
+                            "electrochemistry_eis_circuit_fit_insufficient_points",
+                            "EIS circuit-fit was skipped because the reviewed data had fewer points than minimum_points.",
+                            severity="medium",
+                            point_count=int(len(fitted)),
+                            minimum_points=minimum_points,
+                        )
+                    )
+                else:
+                    lower_bounds: list[float] = []
+                    upper_bounds: list[float] = []
+                    x0: list[float] = []
+                    bounds_valid = True
+                    for name in _EIS_CIRCUIT_PARAMETERS:
+                        initial = float(initial_values[name])
+                        lower = bounds[name]["min"]
+                        upper = bounds[name]["max"]
+                        lower_value = float(lower if lower is not None else 0.0)
+                        upper_value = float(upper) if upper is not None else np.inf
+                        if upper_value <= lower_value or initial < lower_value or initial > upper_value:
+                            bounds_valid = False
+                            warnings.append(
+                                _warning(
+                                    "electrochemistry_eis_circuit_fit_bounds_invalid",
+                                    "EIS circuit-fit was skipped because a reviewed initial value was outside the reviewed parameter bounds.",
+                                    severity="medium",
+                                    parameter=name,
+                                    initial_value=initial,
+                                    lower_bound=lower_value,
+                                    upper_bound=upper_value,
+                                )
+                            )
+                        lower_bounds.append(lower_value)
+                        upper_bounds.append(upper_value)
+                        x0.append(initial)
+                    if bounds_valid:
+                        observed_real = fitted[z_real_column].to_numpy(dtype=float)
+                        observed_imag = np.asarray(z_imag, dtype=float)
+
+                        def residual(values: np.ndarray) -> np.ndarray:
+                            model_real, model_imag = _series_r_rc_impedance(
+                                frequency_hz,
+                                float(values[0]),
+                                float(values[1]),
+                                float(values[2]),
+                            )
+                            return np.concatenate([model_real - observed_real, model_imag - observed_imag])
+
+                        max_nfev, max_nfev_adjusted = _coerce_int(params.get("max_nfev"), 10000, minimum=100)
+                        if max_nfev_adjusted:
+                            warnings.append(
+                                _warning(
+                                    "electrochemistry_eis_circuit_fit_max_nfev_defaulted",
+                                    "EIS circuit-fit max_nfev was missing or below 100 and defaulted to 10000.",
+                                    severity="medium",
+                                )
+                            )
+                        try:
+                            result = least_squares(
+                                residual,
+                                np.asarray(x0, dtype=float),
+                                bounds=(np.asarray(lower_bounds, dtype=float), np.asarray(upper_bounds, dtype=float)),
+                                max_nfev=max_nfev,
+                            )
+                        except ValueError as exc:
+                            warnings.append(
+                                _warning(
+                                    "electrochemistry_eis_circuit_fit_optimizer_failed",
+                                    "EIS circuit-fit optimizer failed before producing reviewed fit parameters.",
+                                    severity="medium",
+                                    error=str(exc),
+                                )
+                            )
+                        else:
+                            model_real, model_imag = _series_r_rc_impedance(
+                                frequency_hz,
+                                float(result.x[0]),
+                                float(result.x[1]),
+                                float(result.x[2]),
+                            )
+                            fit_metrics = _eis_fit_quality(observed_real, observed_imag, model_real, model_imag, len(_EIS_CIRCUIT_PARAMETERS))
+                            quality_checks, quality_warnings = _eis_quality_checks(fit_metrics, thresholds)
+                            warnings.extend(quality_warnings)
+                            for name, value in zip(_EIS_CIRCUIT_PARAMETERS, result.x, strict=True):
+                                fitted_parameters[name] = float(value)
+                            optimizer_status = {
+                                "success": bool(result.success),
+                                "status": int(result.status),
+                                "message": str(result.message),
+                                "nfev": int(result.nfev),
+                                "cost": float(result.cost),
+                            }
+                            applied = bool(result.success)
+                            if result.success:
+                                frequency_output_column, warning = _eis_fit_column_name(params, "frequency_output_column", "frequency_Hz", fitted)
+                                if warning:
+                                    warnings.append(warning)
+                                fit_z_real_column, warning = _eis_fit_column_name(params, "fit_z_real_column", "eis_fit_z_real_ohm", fitted)
+                                if warning:
+                                    warnings.append(warning)
+                                fit_z_imag_column, warning = _eis_fit_column_name(params, "fit_z_imag_column", "eis_fit_z_imag_ohm", fitted)
+                                if warning:
+                                    warnings.append(warning)
+                                fit_neg_z_imag_column, warning = _eis_fit_column_name(params, "fit_neg_z_imag_column", "eis_fit_neg_z_imag_ohm", fitted)
+                                if warning:
+                                    warnings.append(warning)
+                                fitted[frequency_output_column] = frequency_hz
+                                fitted[fit_z_real_column] = model_real
+                                fitted[fit_z_imag_column] = model_imag
+                                fitted[fit_neg_z_imag_column] = -model_imag
+                            else:
+                                warnings.append(
+                                    _warning(
+                                        "electrochemistry_eis_circuit_fit_optimizer_not_converged",
+                                        "EIS circuit-fit optimizer returned without convergence; parameters are recorded as low-confidence screening output.",
+                                        severity="medium",
+                                        optimizer_message=str(result.message),
+                                    )
+                                )
+
+    if not bool(params.get("frequency_order_reviewed", False)):
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_frequency_order_not_reviewed",
+                "EIS circuit-fit frequency_order_reviewed was not true; interpret fitted parameters only as low-confidence screening output.",
+                severity="medium",
+            )
+        )
+    if perturbation_mV is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_circuit_fit_perturbation_missing",
+                "EIS circuit-fit perturbation_amplitude_mV was not recorded; compare fitted values cautiously.",
+                severity="medium",
+            )
+        )
+
+    status = "reviewed_eis_circuit_fit_applied" if applied else "enabled_without_eis_circuit_fit"
+    failed_quality = any(isinstance(item, dict) and item.get("passed") is False for item in quality_checks.values())
+    confidence = str(
+        params.get("confidence")
+        or (
+            "medium"
+            if applied and not failed_quality and bool(params.get("frequency_order_reviewed", False)) and perturbation_mV is not None
+            else "low"
+            if applied
+            else "insufficient"
+        )
+    )
+    record = {
+        "enabled": True,
+        "status": status,
+        "method": method,
+        "assignment_source": source,
+        "confidence": confidence,
+        "circuit_model": circuit_model,
+        "frequency_input_column": frequency_column,
+        "frequency_unit": frequency_unit,
+        "frequency_output_column": frequency_output_column,
+        "z_real_input_column": z_real_column,
+        "z_imag_input_column": z_imag_column,
+        "imaginary_input_convention": imaginary_convention,
+        "fit_z_real_column": fit_z_real_column,
+        "fit_z_imag_column": fit_z_imag_column,
+        "fit_neg_z_imag_column": fit_neg_z_imag_column,
+        "initial_values": initial_values,
+        "bounds": bounds,
+        "fitted_parameters": fitted_parameters,
+        "fit_quality": fit_metrics,
+        "fit_quality_thresholds": thresholds,
+        "fit_quality_checks": quality_checks,
+        "optimizer_status": optimizer_status,
+        "minimum_points": minimum_points,
+        "perturbation_amplitude_mV": perturbation_mV,
+        "frequency_order_reviewed": bool(params.get("frequency_order_reviewed", False)),
+        "applied_to_processed_data": applied,
+        "applied_to_plot_axis": applied,
+        "applied_to_feature_detection": False,
+        "reference_ids": reference_ids,
+        "reviewer_notes": reviewer_notes,
+        "caveats": caveats,
+        "warnings": warnings,
+        "boundary": "EIS circuit fitting is a user-reviewed screening fit for one explicitly selected equivalent-circuit model; it is not automatic model selection, mechanism proof, device-performance proof, replicate statistics, Tafel/GCD analysis, catalyst ranking, or a durable Rct/Warburg conclusion without protocol, replicate, and literature review.",
+    }
+    return fitted, record, warnings
+
+
+def _append_eis_circuit_fit_interpretation(analysis: dict[str, Any], fit_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["eis_circuit_fit"] = fit_record
+    if fit_record and fit_record.get("status") == "reviewed_eis_circuit_fit_applied":
+        parameters = fit_record.get("fitted_parameters") or {}
+        quality = fit_record.get("fit_quality") or {}
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed EIS circuit-fit screening used the {fit_record.get('circuit_model')} model and returned "
+                    f"Rs={parameters.get('rs_ohm')} ohm, Rct={parameters.get('rct_ohm')} ohm, and Cdl={parameters.get('c_dl_F')} F "
+                    f"with complex R^2={quality.get('r_squared_complex')}. Treat these as model-dependent screening parameters until the circuit choice, frequency order, perturbation amplitude, replicates, and literature context are reviewed."
+                ),
+                "confidence": fit_record.get("confidence", "low"),
+                "evidence": ["eis_circuit_fit"],
+                "assignment_source": fit_record.get("assignment_source", "ea.electrochemistry.eis_circuit_fit:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _eis_summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -2031,6 +2753,7 @@ def _plot_electrochemistry(
     *,
     potential_conversion_record: dict[str, Any] | None = None,
     ir_drop_correction_record: dict[str, Any] | None = None,
+    eis_circuit_fit_record: dict[str, Any] | None = None,
     gcd_analysis_record: dict[str, Any] | None = None,
     footer: str | None = None,
 ) -> None:
@@ -2047,6 +2770,18 @@ def _plot_electrochemistry(
                     xytext=(0, 6),
                     ha="center",
                     fontsize=7,
+                )
+        if eis_circuit_fit_record and eis_circuit_fit_record.get("applied_to_plot_axis"):
+            fit_real = eis_circuit_fit_record.get("fit_z_real_column")
+            fit_neg_imag = eis_circuit_fit_record.get("fit_neg_z_imag_column")
+            if isinstance(fit_real, str) and isinstance(fit_neg_imag, str) and fit_real in processed.columns and fit_neg_imag in processed.columns:
+                ax.plot(
+                    processed[fit_real],
+                    processed[fit_neg_imag],
+                    color=NATURE_LIKE_COLORS["orange"],
+                    linewidth=1.1,
+                    linestyle="--",
+                    label="Reviewed circuit fit",
                 )
         style_axis(ax, title="Electrochemistry EIS Nyquist screening", xlabel="Z real (ohm)", ylabel="-Z imag (ohm)")
         ax.set_aspect("equal", adjustable="datalim")
@@ -2177,6 +2912,7 @@ def process_electrochemistry_result(
         ir_drop_correction_record,
     )
     processed, gcd_analysis_record, gcd_analysis_warnings = _apply_gcd_analysis(processed, parameters, request.measurement_mode)
+    processed, eis_circuit_fit_record, eis_circuit_fit_warnings = _apply_eis_circuit_fit(processed, parameters, request.measurement_mode, raw_path)
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
@@ -2184,6 +2920,7 @@ def process_electrochemistry_result(
     analysis = _append_ir_drop_correction_interpretation(analysis, ir_drop_correction_record)
     analysis = _append_tafel_analysis_interpretation(analysis, tafel_analysis_record)
     analysis = _append_gcd_analysis_interpretation(analysis, gcd_analysis_record)
+    analysis = _append_eis_circuit_fit_interpretation(analysis, eis_circuit_fit_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -2201,10 +2938,11 @@ def process_electrochemistry_result(
     ir_drop_correction_yml = output_dir / "electrochemistry_ir_drop_correction.yml"
     tafel_analysis_yml = output_dir / "electrochemistry_tafel_analysis.yml"
     gcd_analysis_yml = output_dir / "electrochemistry_gcd_analysis.yml"
+    eis_circuit_fit_yml = output_dir / "electrochemistry_eis_circuit_fit.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, gcd_analysis_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, gcd_analysis_yml, eis_circuit_fit_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2245,6 +2983,13 @@ def process_electrochemistry_result(
         write_yaml(gcd_analysis_yml, gcd_analysis_record)
         if analysis.get("gcd_analysis"):
             analysis["gcd_analysis"]["record_ref"] = gcd_analysis_ref
+    eis_circuit_fit_ref: str | None = None
+    if eis_circuit_fit_record is not None:
+        eis_circuit_fit_ref = str(eis_circuit_fit_yml.relative_to(root))
+        eis_circuit_fit_record["record_ref"] = eis_circuit_fit_ref
+        write_yaml(eis_circuit_fit_yml, eis_circuit_fit_record)
+        if analysis.get("eis_circuit_fit"):
+            analysis["eis_circuit_fit"]["record_ref"] = eis_circuit_fit_ref
     _plot_electrochemistry(
         processed,
         features,
@@ -2252,6 +2997,7 @@ def process_electrochemistry_result(
         request.measurement_mode,
         potential_conversion_record=potential_conversion_record,
         ir_drop_correction_record=ir_drop_correction_record,
+        eis_circuit_fit_record=eis_circuit_fit_record,
         gcd_analysis_record=gcd_analysis_record,
         footer=figure_footer(figure_id, None) if figure_id else None,
     )
@@ -2270,6 +3016,7 @@ def process_electrochemistry_result(
     warnings.extend(ir_drop_correction_warnings)
     warnings.extend(tafel_analysis_warnings)
     warnings.extend(gcd_analysis_warnings)
+    warnings.extend(eis_circuit_fit_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "feature_table": str(features_csv.relative_to(root)),
@@ -2287,6 +3034,8 @@ def process_electrochemistry_result(
         outputs["tafel_analysis"] = tafel_analysis_ref
     if gcd_analysis_ref:
         outputs["gcd_analysis"] = gcd_analysis_ref
+    if eis_circuit_fit_ref:
+        outputs["eis_circuit_fit"] = eis_circuit_fit_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -2326,6 +3075,8 @@ def process_electrochemistry_result(
         provenance_files.append(tafel_analysis_ref)
     if gcd_analysis_ref:
         provenance_files.append(gcd_analysis_ref)
+    if eis_circuit_fit_ref:
+        provenance_files.append(eis_circuit_fit_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -2357,7 +3108,7 @@ def process_electrochemistry_result(
     write_yaml(result_metadata, result_data)
     if figure_id:
         caption = (
-            "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
+            "EIS Nyquist plot with screening impedance features, optional reviewed circuit-fit screening, reviewed context, and traceable processing parameters."
             if request.measurement_mode == "eis"
             else "Electrochemistry trace with processed current or reviewed GCD voltage, screening features, reviewed context, optional reviewed potential conversion/iR correction/Tafel/GCD records, and traceable processing parameters."
         )
@@ -2395,6 +3146,7 @@ def process_electrochemistry_result(
             + ([potential_conversion_ref] if potential_conversion_ref else [])
             + ([ir_drop_correction_ref] if ir_drop_correction_ref else [])
             + ([tafel_analysis_ref] if tafel_analysis_ref else [])
-            + ([gcd_analysis_ref] if gcd_analysis_ref else []),
+            + ([gcd_analysis_ref] if gcd_analysis_ref else [])
+            + ([eis_circuit_fit_ref] if eis_circuit_fit_ref else []),
         )
     return result_metadata

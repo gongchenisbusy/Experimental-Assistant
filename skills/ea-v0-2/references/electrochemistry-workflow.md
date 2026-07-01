@@ -9,30 +9,32 @@ Required gates:
 3. Ask for or verify electrode/electrolyte/reference-electrode/protocol context before analysis. Record `context_summary`, optional `electrode_area_cm2`, and `context_review_ref`.
 4. Ask for or verify processing parameters before analysis.
 5. Keep raw data untouched; write processed outputs outside `raw/`.
-6. Record unit conversion, optional current-density normalization, smoothing, optional reviewed potential conversion, optional reviewed iR drop correction, optional reviewed Tafel/overpotential screening fit, optional reviewed GCD discharge metrics, detected screening features, optional EIS Nyquist screening features, optional reviewed correction/reference record, generated figure, report, and provenance.
-7. Treat automatic features, EIS screening estimates, potential-conversion records, iR-drop-correction records, Tafel/overpotential screening records, GCD discharge-metrics records, and correction/reference records as screening/provenance evidence. Use protocol context, replicates, normalization, reference-electrode calibration, frequency order, equivalent-circuit assumptions, and literature before writing performance or mechanism conclusions.
+6. Record unit conversion, optional current-density normalization, smoothing, optional reviewed potential conversion, optional reviewed iR drop correction, optional reviewed EIS circuit-fit screening, optional reviewed Tafel/overpotential screening fit, optional reviewed GCD discharge metrics, detected screening features, optional EIS Nyquist screening features, optional reviewed correction/reference record, generated figure, report, and provenance.
+7. Treat automatic features, EIS screening estimates, EIS circuit-fit screening records, potential-conversion records, iR-drop-correction records, Tafel/overpotential screening records, GCD discharge-metrics records, and correction/reference records as screening/provenance evidence. Use protocol context, replicates, normalization, reference-electrode calibration, frequency order, equivalent-circuit assumptions, and literature before writing performance or mechanism conclusions.
 8. Write memory candidates only after user confirmation.
 
 Current v0.2 electrochemistry support:
 
 - Raw import uses `ea raw import --characterization-type electrochemistry`.
 - Inspection identifies common electrochemistry files by path/name, metadata, potential/current columns, time/current columns, and mode hints.
-- Processing supports current conversion to mA, optional current-density calculation from reviewed electrode area, optional Savitzky-Golay smoothing, disabled-by-default reviewed offset potential conversion, disabled-by-default reviewed iR drop correction, disabled-by-default reviewed Tafel/overpotential screening fits, disabled-by-default reviewed GCD discharge metrics, SciPy feature detection for CV/LSV-like traces, simple threshold-current summaries, start/end current summaries for chrono/GCD-style data, EIS Nyquist screening for reviewed two-column impedance data, and disabled-by-default correction/reference records.
+- Processing supports current conversion to mA, optional current-density calculation from reviewed electrode area, optional Savitzky-Golay smoothing, disabled-by-default reviewed offset potential conversion, disabled-by-default reviewed iR drop correction, disabled-by-default reviewed EIS circuit-fit screening, disabled-by-default reviewed Tafel/overpotential screening fits, disabled-by-default reviewed GCD discharge metrics, SciPy feature detection for CV/LSV-like traces, simple threshold-current summaries, start/end current summaries for chrono/GCD-style data, EIS Nyquist screening for reviewed two-column impedance data, and disabled-by-default correction/reference records.
 - Processed CSV files include `axis_raw`, `current_raw`, converted `current_mA`, optional `potential_V` or `time_s`, optional `current_density_mA_cm-2`, and processed current columns. When reviewed `potential_conversion.enabled` is true and `potential_V` exists, EA also writes the configured converted potential column. When reviewed `ir_drop_correction.enabled` is true and valid potential/current/Ru inputs exist, EA writes an iR drop column and corrected potential column. When reviewed `tafel_analysis.enabled` is true and valid potential/current/current-density/window inputs exist, EA writes log-current, fit-potential, and optional overpotential columns. When reviewed `gcd_analysis.enabled` is true and valid time/voltage/current/window inputs exist, EA writes GCD voltage and reviewed-discharge-segment columns.
-- EIS processed CSV files include `z_real_ohm`, signed `z_imag_ohm`, plotted `neg_z_imag_ohm`, impedance magnitude, and an imaginary-column convention record.
+- EIS processed CSV files include `z_real_ohm`, signed `z_imag_ohm`, plotted `neg_z_imag_ohm`, impedance magnitude, and an imaginary-column convention record. When reviewed `eis_circuit_fit.enabled` is true and valid frequency/model/initial/bound inputs exist, EA also writes reviewed frequency and fitted impedance columns.
 - Feature tables include feature ID/type, axis value/unit, potential/time or impedance coordinates when available, current or impedance values, optional current density, prominence, method, confidence, and assignment source.
 - When `potential_conversion.enabled` is reviewed, EA writes `electrochemistry_potential_conversion.yml` with input/target scales, numeric offset, equation/provenance notes, output column, reference electrode, references, caveats, confidence, source, boundary, and record ref. The conversion changes processed/plot coordinates only and keeps the raw `potential_V` column.
 - When `ir_drop_correction.enabled` is reviewed, EA writes `electrochemistry_ir_drop_correction.yml` with Ru, compensation fraction, sign convention/formula, potential/current input columns, iR drop column, corrected potential column, references, caveats, confidence, source, boundary, and record ref. The correction changes processed/plot coordinates only and keeps prior potential columns.
+- When `eis_circuit_fit.enabled` is reviewed, EA writes `electrochemistry_eis_circuit_fit.yml` with frequency/impedance input columns, frequency unit, imaginary convention, circuit model, initial values, parameter bounds, fitted parameters, fit-quality metrics/checks, perturbation/context notes, references, caveats, confidence, source, boundary, and record ref. EA fits only the reviewed model with reviewed inputs and does not choose a circuit automatically.
 - When `tafel_analysis.enabled` is reviewed, EA writes `electrochemistry_tafel_analysis.yml` with potential/current input columns, current unit, reviewed fit window, log-current column, optional overpotential reference/column, fit statistics, references, caveats, confidence, source, boundary, and record ref. EA fits only inside the reviewed window and does not automatically choose a kinetic region.
 - When `gcd_analysis.enabled` is reviewed, EA writes `electrochemistry_gcd_analysis.yml` with time/voltage input columns, voltage unit, reviewed discharge time and voltage windows, reviewed discharge current, mass/area/loading metadata, charge/capacity/capacitance metrics, references, caveats, confidence, source, boundary, and record ref. EA calculates only inside the reviewed discharge window and does not automatically choose charge/discharge segments.
 - When `correction_record.enabled` is reviewed, EA writes `electrochemistry_correction.yml` with reference electrode, converted potential scale, uncompensated resistance, iR compensation, correction notes, confidence, source, boundary, and record ref.
-- Reports include an embedded electrochemistry figure, original figure path, context section, optional potential-conversion summary/link, optional iR-drop-correction summary/link, optional Tafel/overpotential summary/link, optional GCD discharge-metrics summary/link, optional correction/reference record summary/link, feature table, current/EIS Nyquist/GCD summary, confidence-labeled possible interpretations, file links, References, and provenance.
+- Reports include an embedded electrochemistry figure, original figure path, context section, optional potential-conversion summary/link, optional iR-drop-correction summary/link, optional EIS circuit-fit screening summary/link, optional Tafel/overpotential summary/link, optional GCD discharge-metrics summary/link, optional correction/reference record summary/link, feature table, current/EIS Nyquist/GCD summary, confidence-labeled possible interpretations, file links, References, and provenance.
 - `correction_record` is disabled by default. Enable it only after the user reviews reference-electrode scale, converted scale/offset, uncompensated resistance, iR compensation status, and correction notes. This record is metadata/provenance only; EA does not automatically shift potential, apply iR correction, fit circuits, or calculate Tafel/GCD/performance metrics from it in v0.2.
 - `potential_conversion` is disabled by default. Enable it only after the user reviews the input scale, target scale, numeric offset in volts, equation/source, and reference-electrode context. This step is a coordinate transform only; it is not iR compensation, Tafel analysis, equivalent-circuit fitting, GCD performance calculation, catalyst ranking, or mechanistic proof.
 - `ir_drop_correction` is disabled by default. Enable it only after the user reviews Ru, compensation fraction, sign convention/formula, current input column/unit, potential input column, and caveats. This step is a coordinate correction only; it is not Tafel analysis, equivalent-circuit fitting, GCD performance calculation, overpotential proof, catalyst ranking, or mechanistic proof.
+- `eis_circuit_fit` is disabled by default. Enable it only after the user reviews the frequency column/unit/order, real and imaginary impedance columns, imaginary sign convention, circuit model, initial values, parameter bounds, fit-quality thresholds, perturbation amplitude/context, and caveats. This step is a reviewed screening fit only; it is not automatic circuit selection, Rct/Warburg proof, device-performance proof, replicate statistics, catalyst ranking, Tafel analysis, GCD analysis, or mechanistic proof.
 - `tafel_analysis` is disabled by default. Enable it only after the user reviews the potential/current or current-density input columns, current unit, kinetic fit window, reference scale, optional overpotential reference, and caveats. This step is a reviewed screening fit only; it is not automatic kinetic-window selection, exchange-current proof, catalyst ranking, equivalent-circuit fitting, GCD performance calculation, stability assessment, or mechanistic proof.
 - `gcd_analysis` is disabled by default. Enable it only after the user reviews the time column, voltage signal column/unit, discharge current magnitude/sign convention, discharge time window, voltage window, and mass/area/loading metadata. This step is a reviewed discharge-window metrics record only; it is not automatic segment selection, current-sign inference, rate-capability/stability assessment, device-performance proof, catalyst ranking, equivalent-circuit fitting, Tafel analysis, or mechanistic proof.
-- First-pass support does not perform equivalent-circuit fitting, Randles/Rct assignment, Warburg analysis, automatic kinetic/discharge-window selection, formal overpotential proof, automatic IR/Ru inference, automatic reference-electrode constant inference, replicate statistics, rate-capability/cycling-stability assessment, or device-performance claims.
+- First-pass support does not perform automatic equivalent-circuit selection, durable Randles/Rct/Warburg assignment, automatic kinetic/discharge-window selection, formal overpotential proof, automatic IR/Ru inference, automatic reference-electrode constant inference, replicate statistics, rate-capability/cycling-stability assessment, or device-performance claims.
 
 CLI path:
 
@@ -124,6 +126,46 @@ ir_drop_correction:
     - Do not use this correction alone as a Tafel, overpotential, or performance claim.
 ```
 
+Optional reviewed EIS circuit-fit screening can be supplied with `--parameters-json` or `--parameters-file`. This requires a reviewed frequency column in the raw table in addition to reviewed Nyquist x/y columns:
+
+```yaml
+eis_circuit_fit:
+  enabled: true
+  method: reviewed_eis_circuit_fit
+  source: ea.electrochemistry.eis_circuit_fit:v0.2
+  frequency_input_column: frequency_Hz
+  frequency_unit: Hz
+  z_real_input_column: z_real_ohm
+  z_imag_input_column: z_imag_ohm
+  imaginary_input_convention: signed_z_imag_ohm
+  circuit_model: series_r_rc
+  initial_values:
+    rs_ohm: 8.0
+    rct_ohm: 72.0
+    c_dl_F: 0.001
+  bounds:
+    rs_ohm:
+      min: 0.0
+      max: 50.0
+    rct_ohm:
+      min: 0.0
+      max: 500.0
+    c_dl_F:
+      min: 0.000001
+      max: 0.1
+  fit_quality_thresholds:
+    max_reduced_chi_square_ohm2: 10.0
+    min_r_squared_complex: 0.95
+  perturbation_amplitude_mV: 10.0
+  frequency_order_reviewed: true
+  reference_ids:
+    - ref-project-method-001
+  reviewer_notes:
+    - Circuit model, frequency order, initial values, and bounds were reviewed for this protocol.
+  caveats:
+    - Screening fit only; do not claim mechanism or device performance without replicates and model justification.
+```
+
 Optional reviewed Tafel/overpotential screening can be supplied with `--parameters-json` or `--parameters-file`:
 
 ```yaml
@@ -182,4 +224,4 @@ gcd_analysis:
     - Screening metric only; do not claim rate capability or cycling stability without replicates.
 ```
 
-Future electrochemistry work should add dedicated equivalent-circuit fitting, replicate comparison, protocol-aware validation, richer reference-electrode/iR/Tafel/GCD guidance helpers, and user-confirmed memory-candidate generation from report interpretations.
+Future electrochemistry work should add broader equivalent-circuit libraries, replicate comparison, protocol-aware validation, richer reference-electrode/iR/Tafel/GCD/EIS guidance helpers, and user-confirmed memory-candidate generation from report interpretations.

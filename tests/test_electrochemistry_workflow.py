@@ -50,6 +50,27 @@ def _write_eis_fixture(path: Path) -> Path:
     return path
 
 
+def _write_eis_circuit_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = ohm",
+        "# measurement_mode = eis",
+        "# technique = electrochemical impedance spectroscopy nyquist circuit fit",
+        "z_real_ohm neg_z_imag_ohm frequency_Hz",
+    ]
+    rs = 8.0
+    rct = 72.0
+    cdl = 0.001
+    for index in range(80):
+        exponent = 5.0 - index * (6.0 / 79.0)
+        frequency = 10**exponent
+        omega_tau = 2.0 * math.pi * frequency * rct * cdl
+        z_real = rs + rct / (1.0 + omega_tau**2)
+        neg_z_imag = rct * omega_tau / (1.0 + omega_tau**2)
+        lines.append(f"{z_real:.9f} {neg_z_imag:.9f} {frequency:.9f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def _write_tafel_fixture(path: Path) -> Path:
     lines = [
         "# x_unit = V",
@@ -980,6 +1001,218 @@ def test_electrochemistry_gcd_analysis_uses_reviewed_discharge_window(tmp_path: 
     assert "electrochemistry_gcd_analysis.yml" in report_body
 
 
+def test_electrochemistry_eis_circuit_fit_uses_reviewed_frequency_and_model(tmp_path: Path, capsys) -> None:
+    fixture = _write_eis_circuit_fixture(tmp_path / "synthetic-electrochemistry-eis-circuit.txt")
+    workspace = tmp_path / "electrochemistry-eis-circuit-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Electrochemistry EIS Circuit Fit Workflow",
+            "--slug",
+            "electrochemistry-eis-circuit-workflow",
+            "--direction",
+            "electrochemistry EIS circuit-fit screening",
+            "--material",
+            "oxide electrode",
+            "--experiment-type",
+            "electrochemical impedance spectroscopy",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "electrochemistry",
+            "--sample-ref",
+            "sample-ec-eis-fit-001",
+            "--experiment-ref",
+            "exp-ec-eis-fit-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(["electrochemistry", "inspect", str(workspace), raw_output["project_raw_path"]]) == 0
+    inspection = _json_output(capsys)
+    assert inspection["file_kind"] == "electrochemistry"
+    assert inspection["x_unit_candidate"] == "ohm"
+    assert inspection["measurement_mode_candidate"] == "eis"
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=z_real_ohm, y=neg_z_imag_ohm, frequency=frequency_Hz, x_unit=ohm, current_unit=unknown, mode=eis",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "EIS frequency order, 10 mV perturbation, and series R-(Rct||Cdl) model were reviewed by user"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_electrochemistry_processing_parameters()
+    parameters["eis_circuit_fit"].update(
+        {
+            "enabled": True,
+            "frequency_input_column": "frequency_Hz",
+            "frequency_unit": "Hz",
+            "z_real_input_column": "z_real_ohm",
+            "z_imag_input_column": "z_imag_ohm",
+            "imaginary_input_convention": "signed_z_imag_ohm",
+            "circuit_model": "series_r_rc",
+            "initial_values": {"rs_ohm": 9.0, "rct_ohm": 70.0, "c_dl_F": 0.0008},
+            "bounds": {
+                "rs_ohm": {"min": 0.0, "max": 20.0},
+                "rct_ohm": {"min": 10.0, "max": 120.0},
+                "c_dl_F": {"min": 0.0001, "max": 0.01},
+            },
+            "fit_quality_thresholds": {"max_reduced_chi_square_ohm2": 1e-10, "min_r_squared_complex": 0.999999},
+            "perturbation_amplitude_mV": 10.0,
+            "frequency_order_reviewed": True,
+            "reference_ids": ["ref-electrochemistry-eis-fit-001"],
+            "reviewer_notes": ["Circuit model, frequency order, and parameter bounds were reviewed for this synthetic fixture."],
+            "caveats": ["Screening fit only; do not treat one fit as replicate-supported mechanism evidence."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "electrochemistry",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-eis-fit-001",
+            "--x-column",
+            "z_real_ohm",
+            "--y-column",
+            "neg_z_imag_ohm",
+            "--x-unit",
+            "ohm",
+            "--current-unit",
+            "unknown",
+            "--measurement-mode",
+            "eis",
+            "--context-summary",
+            context_text,
+            "--parameters-json",
+            json.dumps({"eis_circuit_fit": parameters["eis_circuit_fit"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    electrochemistry_metadata = Path(process_output["metadata"])
+    electrochemistry = read_yaml(electrochemistry_metadata)
+    fit = electrochemistry["peak_analysis"]["eis_circuit_fit"]
+
+    assert electrochemistry["measurement_mode"] == "eis"
+    assert electrochemistry["status"] == "success"
+    assert fit["status"] == "reviewed_eis_circuit_fit_applied"
+    assert fit["circuit_model"] == "series_r_rc"
+    assert fit["frequency_input_column"] == "frequency_Hz"
+    assert fit["frequency_output_column"] == "frequency_Hz"
+    assert fit["applied_to_processed_data"] is True
+    assert fit["applied_to_plot_axis"] is True
+    assert fit["applied_to_feature_detection"] is False
+    assert "reviewed screening fit" in fit["boundary"]
+    assert math.isclose(fit["fitted_parameters"]["rs_ohm"], 8.0, rel_tol=1e-6, abs_tol=1e-6)
+    assert math.isclose(fit["fitted_parameters"]["rct_ohm"], 72.0, rel_tol=1e-6, abs_tol=1e-6)
+    assert math.isclose(fit["fitted_parameters"]["c_dl_F"], 0.001, rel_tol=1e-6, abs_tol=1e-9)
+    assert fit["fit_quality"]["r_squared_complex"] > 0.999999
+    assert fit["fit_quality_checks"]["min_r_squared_complex"]["passed"] is True
+    assert electrochemistry["outputs"]["eis_circuit_fit"].endswith("electrochemistry_eis_circuit_fit.yml")
+    saved_fit = read_yaml(workspace / electrochemistry["outputs"]["eis_circuit_fit"])
+    assert saved_fit["record_ref"] == electrochemistry["outputs"]["eis_circuit_fit"]
+
+    with (workspace / electrochemistry["outputs"]["processed_csv"]).open(newline="", encoding="utf-8") as handle:
+        processed_rows = list(csv.DictReader(handle))
+    assert "frequency_Hz" in processed_rows[0]
+    assert "eis_fit_z_real_ohm" in processed_rows[0]
+    assert "eis_fit_z_imag_ohm" in processed_rows[0]
+    assert "eis_fit_neg_z_imag_ohm" in processed_rows[0]
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
+    assert electrochemistry["outputs"]["eis_circuit_fit"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "electrochemistry",
+            "report",
+            str(workspace),
+            "--metadata",
+            electrochemistry_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-eis-fit-001",
+            "--experiment-ref",
+            "exp-ec-eis-fit-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## EIS circuit-fit screening" in report_body
+    assert "fitted rs_ohm" in report_body
+    assert "electrochemistry_eis_circuit_fit.yml" in report_body
+    assert "不是自动模型选择" in report_body
+
+
 def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
     fixture = _write_eis_fixture(tmp_path / "synthetic-electrochemistry-eis.txt")
     workspace = tmp_path / "cli-eis-project"
@@ -1175,6 +1408,7 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "correction_record" in reference_text
     assert "potential_conversion" in reference_text
     assert "ir_drop_correction" in reference_text
+    assert "eis_circuit_fit" in reference_text
     assert "tafel_analysis" in reference_text
     assert "gcd_analysis" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
@@ -1183,5 +1417,6 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "correction_records" in electrochemistry_record["notes"]
     assert "potential_conversion" in electrochemistry_record["notes"]
     assert "ir_drop_correction" in electrochemistry_record["notes"]
+    assert "eis_circuit_fit" in electrochemistry_record["notes"]
     assert "tafel_analysis" in electrochemistry_record["notes"]
     assert "gcd_analysis" in electrochemistry_record["notes"]

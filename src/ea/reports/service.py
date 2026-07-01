@@ -1641,6 +1641,56 @@ def _electrochemistry_eis_summary_text(metadata: dict) -> str:
     )
 
 
+def _electrochemistry_eis_circuit_fit_text(metadata: dict) -> str:
+    fit = (metadata.get("peak_analysis") or {}).get("eis_circuit_fit")
+    if not fit:
+        return "当前没有启用或记录 electrochemistry EIS circuit-fit screening。"
+    status = fit.get("status", "unknown")
+    confidence = fit.get("confidence", "insufficient")
+    source = fit.get("assignment_source", "ea.electrochemistry.eis_circuit_fit:v0.2")
+    record_ref = fit.get("record_ref", "未生成")
+    applied = fit.get("applied_to_processed_data", False)
+    fitted_parameters = fit.get("fitted_parameters") or {}
+    quality = fit.get("fit_quality") or {}
+    labels = {
+        "circuit_model": "circuit model",
+        "frequency_input_column": "frequency input column",
+        "frequency_unit": "frequency unit",
+        "frequency_order_reviewed": "frequency order reviewed",
+        "perturbation_amplitude_mV": "perturbation amplitude mV",
+        "z_real_input_column": "Z real input column",
+        "z_imag_input_column": "Z imag input column",
+        "imaginary_input_convention": "imaginary input convention",
+        "initial_values": "initial values",
+        "bounds": "parameter bounds",
+        "fit_quality_thresholds": "fit-quality thresholds",
+        "fit_quality_checks": "fit-quality checks",
+        "reference_ids": "reference ids",
+        "reviewer_notes": "reviewer notes",
+        "caveats": "caveats",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = fit.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    for key in ["rs_ohm", "rct_ohm", "c_dl_F"]:
+        value = fitted_parameters.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- fitted {key}: `{_format_electrochemistry_correction_value(value)}`")
+    for key in ["point_count", "rmse_ohm", "reduced_chi_square_ohm2", "r_squared_complex", "r_squared_real", "r_squared_imag"]:
+        value = quality.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry EIS circuit-fit details: `未记录`"
+    return (
+        f"EIS circuit-fit screening 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
+        f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该步骤只对用户明确选择并审核的等效电路模型做 screening fit；它不是自动模型选择、机理证明、器件性能证明、重复性统计、Tafel/GCD 分析、催化剂排名，也不能单独作为稳定的 Rct/Warburg 结论。"
+    )
+
+
 def _electrochemistry_interpretation_text(metadata: dict, citation_text: str) -> str:
     peak_analysis = metadata.get("peak_analysis") or {}
     interpretations = peak_analysis.get("possible_interpretations") or []
@@ -1951,10 +2001,11 @@ def generate_electrochemistry_report(
     correction_text = _electrochemistry_correction_record_text(metadata)
     potential_conversion_text = _electrochemistry_potential_conversion_text(metadata)
     ir_drop_correction_text = _electrochemistry_ir_drop_correction_text(metadata)
+    eis_circuit_fit_text = _electrochemistry_eis_circuit_fit_text(metadata)
     tafel_analysis_text = _electrochemistry_tafel_analysis_text(metadata)
     gcd_analysis_text = _electrochemistry_gcd_analysis_text(metadata)
     caution_text = (
-        "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
+        "在当前数据范围内，自动 EIS Nyquist screening 和可选 reviewed circuit-fit 只能支持“阻抗弧形状/用户指定模型筛查”。不能仅凭本次自动处理直接确认等效电路、Rct/Warburg 机理、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
         else "在当前数据范围内，自动 electrochemistry feature 只能支持“电流响应摘要/筛查”。不能仅凭本次自动处理直接确认催化机制、过电位、Tafel slope、电容、稳定性、容量、倍率性能或器件性能；正式结论需要用户确认实验协议、归一化方式、参比校正、重复性和文献依据。"
     )
@@ -1997,6 +2048,10 @@ def generate_electrochemistry_report(
 ## iR drop correction
 
 {ir_drop_correction_text}
+
+## EIS circuit-fit screening
+
+{eis_circuit_fit_text}
 
 ## Tafel/overpotential analysis
 
@@ -2043,6 +2098,7 @@ def generate_electrochemistry_report(
 {f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
 {f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
 {f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get('ir_drop_correction') else "- iR drop correction: `未生成`"}
+{f"- EIS circuit-fit screening: `{outputs['eis_circuit_fit']}`" if outputs.get('eis_circuit_fit') else "- EIS circuit-fit screening: `未生成`"}
 {f"- Tafel/overpotential analysis: `{outputs['tafel_analysis']}`" if outputs.get('tafel_analysis') else "- Tafel/overpotential analysis: `未生成`"}
 {f"- GCD discharge metrics: `{outputs['gcd_analysis']}`" if outputs.get('gcd_analysis') else "- GCD discharge metrics: `未生成`"}
 - plot: `{outputs['figure']}`
@@ -2076,6 +2132,7 @@ def generate_electrochemistry_report(
                     outputs.get("correction_record"),
                     outputs.get("potential_conversion"),
                     outputs.get("ir_drop_correction"),
+                    outputs.get("eis_circuit_fit"),
                     outputs.get("tafel_analysis"),
                     outputs.get("gcd_analysis"),
                     outputs["figure"],

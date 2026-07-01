@@ -14,6 +14,7 @@ ea_skill:
     - correction_record
     - potential_conversion_record
     - ir_drop_correction_record
+    - eis_circuit_fit_record
     - tafel_analysis_record
     - gcd_analysis_record
     - figure_record
@@ -73,7 +74,8 @@ ea_skill:
         - µA
         - unknown
     limitations:
-      - eis_nyquist_screening_only_no_equivalent_circuit_fitting
+      - eis_nyquist_screening_only_without_enabled_reviewed_circuit_fit
+      - eis_circuit_fit_requires_reviewed_frequency_model_initial_values_bounds_and_is_screening_only
       - correction_records_preserve_reference_and_ir_metadata_without_numeric_correction
       - potential_conversion_is_reviewed_coordinate_transform_only
       - ir_drop_correction_is_reviewed_coordinate_correction_only
@@ -124,6 +126,30 @@ ea_skill:
         - reviewer_notes
         - caveats
       confidence_boundary: reviewed_coordinate_correction_only_no_tafel_overpotential_eis_gcd_or_performance_claim
+    eis_circuit_fit:
+      implemented: true
+      record_format: yaml
+      method: reviewed_eis_circuit_fit
+      supported_models:
+        - series_r_rc
+      fields:
+        - frequency_input_column
+        - frequency_unit
+        - z_real_input_column
+        - z_imag_input_column
+        - imaginary_input_convention
+        - circuit_model
+        - initial_values
+        - bounds
+        - fitted_parameters
+        - fit_quality
+        - fit_quality_thresholds
+        - perturbation_amplitude_mV
+        - frequency_order_reviewed
+        - reference_ids
+        - reviewer_notes
+        - caveats
+      confidence_boundary: reviewed_circuit_fit_screening_only_no_automatic_model_selection_mechanism_performance_or_replicate_claim
     tafel_analysis:
       implemented: true
       record_format: yaml
