@@ -7,12 +7,14 @@ Current v0.2 scope:
 - Built-in records live in `src/ea/materials/assignments.yml`.
 - Built-in profiles include `mos2` and `ws2` with Raman, PL, and XRD screening records, plus `hbn` with Raman and XRD screening records.
 - `ea materials list` shows available material profiles.
+- `ea materials audit-assignment-library` audits material/method/candidate counts, reference-hint coverage, missing-reference candidate IDs, recommended discovery commands, and no-auto-application boundaries. Add `--material` and/or `--method` to narrow the audit.
 - `ea materials show mos2`, `ea materials show ws2`, or `ea materials show hbn` shows the full material profile.
 - `ea materials assignments mos2 --method raman`, `ea materials assignments ws2 --method pl`, or `ea materials assignments hbn --method xrd` shows method-specific assignment rules. `--method` may be `raman`, `pl`, or `xrd` where that method exists; omitting it returns all method records.
 
 The library is a deterministic local rule source, not a substitute for scientific review:
 
 - Assignment records provide peak/energy/2theta screening windows and report text for confidence-labeled possible interpretations.
+- The audit command is read-only metadata inspection. It does not search literature, register references, create project files, process spectra or diffraction patterns, match peaks, create ReviewRecords, inject citations, write memory, or prove scientific claims.
 - Generated reports still need registered `reference_ids` when a claim is literature-supported. Built-in `reference_hints` are discovery hints, not automatically cited project references.
 - If a project uses a material not present in the library, workflows should keep generic low-confidence interpretation text and avoid invented assignments.
 - New material records should include aliases, caveats, method-specific `assignment_source`, feature rules, interpretation text, and regression tests.

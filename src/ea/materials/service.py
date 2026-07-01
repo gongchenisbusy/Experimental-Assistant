@@ -116,6 +116,182 @@ def assignment_candidates(material: str, method: str | None = None) -> dict[str,
     return result
 
 
+def audit_assignment_library(
+    *,
+    materials: list[str] | None = None,
+    methods: list[str] | None = None,
+) -> dict[str, Any]:
+    """Audit bundled assignment-library coverage without creating project artifacts."""
+
+    library = _library()
+    material_filters = [value for value in (materials or []) if value]
+    method_filters = [value for value in (methods or []) if value]
+    resolved_materials: list[str] = []
+    if material_filters:
+        unknown: list[str] = []
+        for material in material_filters:
+            resolved = resolve_material_id(material)
+            if resolved:
+                resolved_materials.append(resolved)
+            else:
+                unknown.append(material)
+        if unknown:
+            available = ", ".join(record["material_id"] for record in available_materials())
+            raise KeyError(f"Unknown material assignment profile: {', '.join(unknown)}. Available materials: {available}")
+
+    allowed_methods = {"raman", "pl", "xrd"}
+    normalized_methods = sorted({_normalise_key(method) for method in method_filters})
+    unknown_methods = [method for method in normalized_methods if method not in allowed_methods]
+    if unknown_methods:
+        raise KeyError(f"Unknown assignment-library method filter: {', '.join(unknown_methods)}. Available methods: raman, pl, xrd")
+
+    method_counts: dict[str, dict[str, Any]] = {}
+    material_records: list[dict[str, Any]] = []
+    missing_reference_candidates: list[dict[str, Any]] = []
+    source_backed_candidate_ids: list[str] = []
+    reference_hint_index: dict[str, dict[str, Any]] = {}
+    total_candidate_count = 0
+
+    for material_id, profile in sorted(library["materials"].items()):
+        if resolved_materials and material_id not in resolved_materials:
+            continue
+        material_methods = profile.get("methods") or {}
+        method_records: list[dict[str, Any]] = []
+        for method, method_profile in sorted(material_methods.items()):
+            if method not in allowed_methods:
+                continue
+            if normalized_methods and method not in normalized_methods:
+                continue
+            reference_hints = _reference_hints_for_method(profile, method)
+            reference_hint_keys = [hint.get("key") for hint in reference_hints if hint.get("key")]
+            for hint in reference_hints:
+                key = hint.get("key")
+                if key:
+                    reference_hint_index[str(key)] = hint
+            candidate_records: list[dict[str, Any]] = []
+            method_candidate_count = 0
+            method_source_backed_count = 0
+            method_missing_count = 0
+            for rule in method_profile.get("feature_rules", []):
+                feature = str(rule.get("feature") or "")
+                candidate_id = f"{method}-builtin-{material_id}-{feature}"
+                source_backed = bool(reference_hint_keys)
+                candidate = {
+                    "candidate_id": candidate_id,
+                    "material_id": material_id,
+                    "method": method,
+                    "feature": feature,
+                    "label": rule.get("label"),
+                    "assignment_source": method_profile.get("assignment_source"),
+                    "reference_hint_keys": reference_hint_keys,
+                    "source_backed": source_backed,
+                    "requires_user_review": True,
+                }
+                candidate_records.append(candidate)
+                total_candidate_count += 1
+                method_candidate_count += 1
+                if source_backed:
+                    source_backed_candidate_ids.append(candidate_id)
+                    method_source_backed_count += 1
+                else:
+                    missing_reference_candidates.append(candidate)
+                    method_missing_count += 1
+
+            method_summary = method_counts.setdefault(
+                method,
+                {
+                    "method": method,
+                    "material_profile_count": 0,
+                    "candidate_count": 0,
+                    "source_backed_candidate_count": 0,
+                    "missing_reference_candidate_count": 0,
+                    "reference_hint_keys": set(),
+                },
+            )
+            method_summary["material_profile_count"] += 1
+            method_summary["candidate_count"] += method_candidate_count
+            method_summary["source_backed_candidate_count"] += method_source_backed_count
+            method_summary["missing_reference_candidate_count"] += method_missing_count
+            method_summary["reference_hint_keys"].update(reference_hint_keys)
+
+            method_records.append(
+                {
+                    "method": method,
+                    "assignment_source": method_profile.get("assignment_source"),
+                    "candidate_count": method_candidate_count,
+                    "source_backed_candidate_count": method_source_backed_count,
+                    "missing_reference_candidate_count": method_missing_count,
+                    "reference_hint_keys": reference_hint_keys,
+                    "candidates": candidate_records,
+                }
+            )
+
+        if method_records:
+            material_records.append(
+                {
+                    "material_id": material_id,
+                    "display_name": profile.get("display_name", material_id),
+                    "formula": profile.get("formula"),
+                    "method_count": len(method_records),
+                    "candidate_count": sum(record["candidate_count"] for record in method_records),
+                    "source_backed_candidate_count": sum(record["source_backed_candidate_count"] for record in method_records),
+                    "missing_reference_candidate_count": sum(record["missing_reference_candidate_count"] for record in method_records),
+                    "methods": method_records,
+                }
+            )
+
+    source_backed_count = len(source_backed_candidate_ids)
+    missing_count = len(missing_reference_candidates)
+    audited_methods = [
+        {
+            **{key: value for key, value in summary.items() if key != "reference_hint_keys"},
+            "reference_hint_keys": sorted(summary["reference_hint_keys"]),
+        }
+        for _, summary in sorted(method_counts.items())
+    ]
+
+    return {
+        "schema_version": "0.2",
+        "source": "ea.materials.assignment_library_audit:v0.2",
+        "status": "no_matching_candidates" if total_candidate_count == 0 else ("ready" if missing_count == 0 else "ready_with_reference_gaps"),
+        "library_id": "builtin_material_assignments",
+        "library_ref": f"builtin:ea.materials.assignments:{library.get('library_version', 'unknown')}",
+        "library_version": library.get("library_version", "unknown"),
+        "filters": {
+            "materials": material_filters,
+            "resolved_materials": resolved_materials,
+            "methods": method_filters,
+            "normalized_methods": normalized_methods,
+        },
+        "material_profile_count": len(material_records),
+        "method_profile_count": sum(len(record["methods"]) for record in material_records),
+        "candidate_count": total_candidate_count,
+        "source_backed_candidate_count": source_backed_count,
+        "missing_reference_candidate_count": missing_count,
+        "reference_hint_count": len(reference_hint_index),
+        "methods": audited_methods,
+        "materials": material_records,
+        "source_backed_candidate_ids": sorted(source_backed_candidate_ids),
+        "missing_reference_candidates": missing_reference_candidates,
+        "reference_hints": [reference_hint_index[key] for key in sorted(reference_hint_index)],
+        "recommended_discovery_commands": {
+            "raman": "ea raman list-assignment-libraries",
+            "pl": "ea pl list-assignment-libraries",
+            "xrd": "ea xrd list-assignment-libraries",
+        },
+        "recommended_next_actions": [
+            "Use method-specific discovery commands to inspect windows and candidate caveats before interpretation.",
+            "Register project references before citing assignment candidates in reports.",
+            "Treat missing-reference candidates as local screening metadata until the library is enriched or project-specific references are registered.",
+        ],
+        "boundaries": [
+            "This audit reads bundled material-assignment metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download or parse articles, register references, inject report citations, create ReviewRecords, write memory, process spectra or diffraction patterns, match peaks, or apply assignments.",
+            "Assignment-library coverage and reference hints remain audit metadata; they do not prove material identity, phase identity, PL mechanism, layer number, crystallinity, texture, strain, doping, calibration, or sample quality without project context, registered references, and user review.",
+        ],
+    }
+
+
 def _raman_feature_window(rule: Mapping[str, Any]) -> list[float] | None:
     target = _finite_float(rule.get("target_cm_minus_1"))
     tolerance = _finite_float(rule.get("tolerance_cm_minus_1"))

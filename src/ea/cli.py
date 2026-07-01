@@ -56,6 +56,7 @@ from ea.literature import (
     sync_literature_acquisition_status,
 )
 from ea.materials import (
+    audit_assignment_library,
     assignment_candidates,
     available_materials,
     get_material_profile,
@@ -811,6 +812,9 @@ def build_parser() -> argparse.ArgumentParser:
     materials = sub.add_parser("materials", help="inspect built-in material assignment records")
     materials_sub = materials.add_subparsers(dest="materials_command", required=True)
     materials_sub.add_parser("list", help="list materials with built-in assignment records")
+    materials_audit = materials_sub.add_parser("audit-assignment-library", help="audit built-in assignment candidate and reference-hint coverage")
+    materials_audit.add_argument("--material", action="append", default=[])
+    materials_audit.add_argument("--method", action="append", choices=["raman", "pl", "xrd"], default=[])
     material_show = materials_sub.add_parser("show", help="show a material assignment profile")
     material_show.add_argument("material")
     material_assignments = materials_sub.add_parser("assignments", help="show assignment records for one method")
@@ -1692,6 +1696,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "materials":
         if args.materials_command == "list":
             _print_json({"materials": available_materials()})
+            return 0
+        if args.materials_command == "audit-assignment-library":
+            _print_json(audit_assignment_library(materials=args.material, methods=args.method))
             return 0
         if args.materials_command == "show":
             _print_json(get_material_profile(args.material))

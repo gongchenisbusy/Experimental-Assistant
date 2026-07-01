@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ea.cli import main
 from ea.materials import (
+    audit_assignment_library,
     assignment_candidates,
     available_materials,
     infer_material_from_text,
@@ -171,6 +172,57 @@ def test_materials_cli_lists_and_shows_assignments(capsys) -> None:
     assert main(["materials", "assignments", "ws2", "--method", "pl"]) == 0
     pl = _json_output(capsys)
     assert pl["assignment_source"] == "ea.materials.builtin:ws2:pl:v0.2"
+
+
+def test_material_assignment_library_audit_reports_reference_gaps() -> None:
+    audit = audit_assignment_library()
+
+    assert audit["status"] == "ready_with_reference_gaps"
+    assert audit["library_id"] == "builtin_material_assignments"
+    assert audit["library_version"] == "0.2.1"
+    assert audit["material_profile_count"] == 3
+    assert audit["method_profile_count"] == 8
+    assert audit["candidate_count"] == 10
+    assert audit["source_backed_candidate_count"] == 9
+    assert audit["missing_reference_candidate_count"] == 1
+    assert audit["reference_hint_count"] == 7
+
+    methods = {record["method"]: record for record in audit["methods"]}
+    assert methods["raman"]["candidate_count"] == 5
+    assert methods["raman"]["missing_reference_candidate_count"] == 0
+    assert methods["pl"]["candidate_count"] == 2
+    assert methods["pl"]["missing_reference_candidate_count"] == 0
+    assert methods["xrd"]["candidate_count"] == 3
+    assert methods["xrd"]["missing_reference_candidate_count"] == 1
+
+    missing = audit["missing_reference_candidates"]
+    assert [candidate["candidate_id"] for candidate in missing] == ["xrd-builtin-mos2-mos2_002_layered_reflection"]
+    assert missing[0]["source_backed"] is False
+    assert "ea xrd list-assignment-libraries" == audit["recommended_discovery_commands"]["xrd"]
+    assert any("does not run live literature search" in boundary for boundary in audit["boundaries"])
+    assert any("do not prove material identity" in boundary for boundary in audit["boundaries"])
+
+
+def test_cli_audits_material_assignment_library_with_filters(capsys) -> None:
+    assert main(["materials", "audit-assignment-library", "--material", "MoS2", "--method", "xrd"]) == 0
+    audit = _json_output(capsys)
+
+    assert audit["status"] == "ready_with_reference_gaps"
+    assert audit["filters"]["resolved_materials"] == ["mos2"]
+    assert audit["filters"]["normalized_methods"] == ["xrd"]
+    assert audit["material_profile_count"] == 1
+    assert audit["method_profile_count"] == 1
+    assert audit["candidate_count"] == 1
+    assert audit["source_backed_candidate_count"] == 0
+    assert audit["missing_reference_candidate_count"] == 1
+    assert audit["materials"][0]["material_id"] == "mos2"
+    assert audit["materials"][0]["methods"][0]["method"] == "xrd"
+
+    assert main(["materials", "audit-assignment-library", "--material", "hbn", "--method", "pl"]) == 0
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["candidate_count"] == 0
+    assert no_match["materials"] == []
 
 
 def test_raman_assignment_library_summary_filters_source_backed_candidates() -> None:

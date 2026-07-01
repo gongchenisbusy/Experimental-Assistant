@@ -1,4 +1,5 @@
 from ea.materials.service import (
+    audit_assignment_library,
     assignment_candidates,
     available_materials,
     get_material_profile,
@@ -14,6 +15,7 @@ from ea.materials.service import (
 )
 
 __all__ = [
+    "audit_assignment_library",
     "assignment_candidates",
     "available_materials",
     "get_material_profile",
