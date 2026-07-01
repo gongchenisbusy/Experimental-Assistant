@@ -14,6 +14,7 @@ from ea.literature import (
     plan_literature_deployment,
     preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
+    prepare_literature_acceptance_checklist,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     prepare_literature_source_candidate_manifest,
@@ -1041,6 +1042,146 @@ def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tm
     assert acquisition["request"]["target_count"] == 2
 
 
+def test_literature_acceptance_checklist_reports_missing_public_steps(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Literature Acceptance Missing",
+        project_slug="literature-acceptance-missing",
+        research_direction="MoS2 literature setup",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=False,
+        created_at="2026-07-02T02:30:00",
+    )
+
+    result = prepare_literature_acceptance_checklist(tmp_path, checked_at="2026-07-02T02:31:00")
+    checklist = read_yaml(tmp_path / "literature" / "acceptance_checklist.yml")
+    markdown = (tmp_path / "literature" / "acceptance_checklist.md").read_text(encoding="utf-8")
+    steps = {item["step_id"]: item for item in result["checklist"]["steps"]}
+
+    assert result["checklist"]["status"] == "needs_user_action"
+    assert checklist["checklist_id"] == "lit-acceptance-20260702T023100"
+    assert steps["literature_initialization"]["status"] == "needs_user_action"
+    assert steps["literature_initialization"]["evidence_refs"] == ["open-items/openitem-20260702-001.yml"]
+    assert steps["candidate_discovery"]["status"] == "needs_user_action"
+    assert "Should this project enable a local literature library?" in result["checklist"]["questions_for_user"]
+    assert "No Zotero scripts" not in markdown
+    assert "does not run network search" in markdown
+
+
+def test_literature_acceptance_checklist_can_reach_ready_after_local_full_path(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Literature Acceptance Ready",
+        project_slug="literature-acceptance-ready",
+        research_direction="MoS2 Raman literature",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+        created_at="2026-07-02T02:32:00",
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "candidate_input.yml",
+        {
+            "schema_version": "0.2",
+            "candidates": [
+                {
+                    "title": "MoS2 Raman literature acceptance paper",
+                    "authors": ["A. Author"],
+                    "year": 2025,
+                    "venue": "Example Materials",
+                    "doi": "10.1000/lit-acceptance",
+                    "project_relevance": 5,
+                    "venue_authority": 4,
+                    "recency": 5,
+                    "citation_or_influence": 3,
+                    "fulltext_availability_and_usefulness": 4,
+                }
+            ],
+        },
+    )
+    rank_literature_candidates(
+        tmp_path,
+        candidates_path=Path("literature/candidate_input.yml"),
+        reference_year=2026,
+        ranked_at="2026-07-02T02:33:00",
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-02T02:34:00")
+    prepare_zotero_codex_acquisition_bridge(
+        tmp_path,
+        zotero_config=Path("config/zotero-codex.json"),
+        project_collection="Literature Acceptance Ready",
+        created_at="2026-07-02T02:35:00",
+    )
+    write_yaml(
+        tmp_path / "literature" / "acquisition_manifest.yml",
+        {
+            "status": "acquisition_complete",
+            "downloaded_fulltext": 1,
+            "cached_fulltext": 1,
+            "items": [
+                {
+                    "title": "MoS2 Raman literature acceptance paper",
+                    "doi": "10.1000/lit-acceptance",
+                    "citation": "A. Author. MoS2 Raman literature acceptance paper. Example Materials (2025).",
+                    "cache_path": "literature/cache/LITACCEPTANCE",
+                    "rank": 1,
+                }
+            ],
+        },
+    )
+    import_literature_acquisition_manifest(
+        tmp_path,
+        manifest_path=Path("literature/acquisition_manifest.yml"),
+        created_at="2026-07-02T02:36:00",
+    )
+    reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-02T02:37:00")
+
+    result = prepare_literature_acceptance_checklist(tmp_path, checked_at="2026-07-02T02:38:00")
+    checklist = result["checklist"]
+    steps = {item["step_id"]: item for item in checklist["steps"]}
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert checklist["status"] == "ready"
+    assert checklist["summary"]["needs_user_action"] == 0
+    assert steps["candidate_discovery"]["details"]["ranking_row_count"] == 1
+    assert steps["institution_access"]["status"] == "not_applicable"
+    assert steps["zotero_bridge"]["status"] == "ready"
+    assert steps["library_reference_state"]["status"] == "ready"
+    assert steps["reconciliation"]["status"] == "ready"
+    assert status["literature_acceptance_status"] == "ready"
+    assert status["literature_acceptance_checklist_ref"] == "literature/acceptance_checklist.yml"
+
+
+def test_cli_literature_acceptance_checklist_wires_outputs(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_prepare_literature_acceptance_checklist(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["output_path"] == tmp_path / "literature" / "custom_acceptance.yml"
+        assert kwargs["markdown_path"] == tmp_path / "literature" / "custom_acceptance.md"
+        return {"checklist": {"status": "ready"}}
+
+    monkeypatch.setattr("ea.cli.prepare_literature_acceptance_checklist", fake_prepare_literature_acceptance_checklist)
+
+    assert (
+        main(
+            [
+                "literature",
+                "acceptance-checklist",
+                str(tmp_path),
+                "--output",
+                "literature/custom_acceptance.yml",
+                "--markdown-output",
+                "literature/custom_acceptance.md",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["checklist"]["status"] == "ready"
+
+
 def test_literature_prepares_and_preflights_ftir_source_candidate_manifest(tmp_path: Path) -> None:
     initialize_project(
         tmp_path,
@@ -1949,6 +2090,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "import-zotero-status" in readme
     assert "reconcile-acquisition" in readme
     assert "render-reconciliation" in readme
+    assert "acceptance-checklist" in readme
     assert "repair_actions" in readme
     assert "open-items/" in reference
     assert "rank-candidates" in reference
@@ -1964,6 +2106,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "zotero_codex_status_import.yml" in reference
     assert "acquisition_reconciliation.yml" in reference
     assert "acquisition_reconciliation.md" in reference
+    assert "acceptance_checklist.yml" in reference
     assert "questions_for_user" in reference
     assert "--resume" in reference
     assert "source-verified venue metrics" in reference
@@ -1973,6 +2116,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "contract boundaries until their implementation services exist" not in skill
     assert "prepare-source-candidates" in skill
     assert "preflight-source-candidates" in skill
+    assert "acceptance-checklist" in skill
     assert "confirmed_uv_vis_source_candidates.yml" in skill
     assert "ea uv-vis build-source-packet" in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
@@ -1992,6 +2136,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "acquisition_reconciliation" in manifest["output_artifacts"]
     assert "acquisition_reconciliation_repair_guidance" in manifest["output_artifacts"]
     assert "acquisition_reconciliation_markdown" in manifest["output_artifacts"]
+    assert "literature_acceptance_checklist" in manifest["output_artifacts"]
     assert "ranked_candidate_table" in manifest["output_artifacts"]
     assert "institution_access_guidance" in manifest["output_artifacts"]
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
@@ -2006,4 +2151,5 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "acquisition_reconciliation_checks" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_repair_guidance" in manifest["current_v0_2_support"]["implemented"]
     assert "acquisition_reconciliation_markdown_audit" in manifest["current_v0_2_support"]["implemented"]
+    assert "public_literature_workflow_acceptance_checklist" in manifest["current_v0_2_support"]["implemented"]
     assert "supplied_candidate_ranking_and_selection_export" in manifest["current_v0_2_support"]["implemented"]

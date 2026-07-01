@@ -29,6 +29,8 @@ ea_skill:
     - acquisition_reconciliation
     - acquisition_reconciliation_repair_guidance
     - acquisition_reconciliation_markdown
+    - literature_acceptance_checklist
+    - literature_acceptance_checklist_markdown
     - reference_record
     - report_section
     - provenance_record
@@ -79,6 +81,7 @@ ea_skill:
       - acquisition_reconciliation_checks
       - acquisition_reconciliation_repair_guidance
       - acquisition_reconciliation_markdown_audit
+      - public_literature_workflow_acceptance_checklist
       - acquisition_manifest_import_and_reference_registration
       - origin_thread_status_sync
     external_or_user_confirmed:

@@ -292,6 +292,12 @@ def _compact_dict(data: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if value not in (None, "", [], {})}
 
 
+def _local_yaml_or_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return _load_manifest(path)
+
+
 def _as_text(value: Any) -> str:
     if value is None:
         return ""
@@ -1595,6 +1601,408 @@ def import_zotero_codex_batch_status(
         "status_import": status_import,
         "status_update": update,
         "sync": sync_result,
+    }
+
+
+def _standard_literature_refs(root: Path) -> dict[str, Path]:
+    literature_root = root / "literature"
+    return {
+        "deployment_status": literature_root / "deployment_status.yml",
+        "search_queries": literature_root / "search_queries.yml",
+        "confirmation_request": literature_root / "confirmation_request.yml",
+        "selected_items": literature_root / "selected_items.yml",
+        "public_search_candidates": literature_root / "public_search_candidates.yml",
+        "search_coverage": literature_root / "search_coverage.yml",
+        "public_search_state": literature_root / "public_search_state.yml",
+        "ranking": literature_root / "ranking.csv",
+        "acquisition_request": literature_root / "acquisition_request.yml",
+        "institution_access_guidance": literature_root / "institution_access_guidance.yml",
+        "zotero_codex_bridge": literature_root / "zotero_codex_bridge.yml",
+        "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
+        "acquisition_manifest": literature_root / "acquisition_manifest.yml",
+        "library_manifest": literature_root / "library_manifest.yml",
+        "cache_index": literature_root / "cache_index.yml",
+        "reference_index": literature_root / "references" / "index.yml",
+        "acquisition_reconciliation": literature_root / "acquisition_reconciliation.yml",
+        "acquisition_reconciliation_markdown": literature_root / "acquisition_reconciliation.md",
+    }
+
+
+def _existing_refs(root: Path, paths: list[Path]) -> list[str]:
+    return [_project_relative(root, path) for path in paths if path.exists()]
+
+
+def _open_literature_decision_refs(root: Path) -> list[str]:
+    open_items = root / "open-items"
+    if not open_items.exists():
+        return []
+    refs = []
+    for path in sorted(open_items.glob("*.yml")):
+        data = _local_yaml_or_json(path)
+        if data.get("item_type") == "literature_library_decision":
+            refs.append(_project_relative(root, path))
+    return refs
+
+
+def _selected_item_count(path: Path) -> int:
+    return len(_manifest_items(_local_yaml_or_json(path)))
+
+
+def _source_preflight_refs(root: Path) -> tuple[list[str], list[str]]:
+    literature_root = root / "literature"
+    manifest_refs = []
+    preflight_refs = []
+    for method in sorted(SOURCE_CANDIDATE_METHODS):
+        manifest = literature_root / f"confirmed_{method}_source_candidates.yml"
+        if manifest.exists():
+            manifest_refs.append(_project_relative(root, manifest))
+        preflight = literature_root / f"{method}_source_candidates_preflight.yml"
+        if preflight.exists():
+            preflight_refs.append(_project_relative(root, preflight))
+    generic_preflight = literature_root / "source_candidates_preflight.yml"
+    if generic_preflight.exists():
+        preflight_refs.append(_project_relative(root, generic_preflight))
+    return manifest_refs, preflight_refs
+
+
+def _checklist_step(
+    *,
+    step_id: str,
+    title: str,
+    status: str,
+    evidence_refs: list[str] | None = None,
+    details: dict[str, Any] | None = None,
+    next_action: str | None = None,
+    question_for_user: str | None = None,
+) -> dict[str, Any]:
+    return _compact_dict(
+        {
+            "step_id": step_id,
+            "title": title,
+            "status": status,
+            "evidence_refs": evidence_refs or [],
+            "details": details or {},
+            "next_action": next_action,
+            "question_for_user": question_for_user,
+        }
+    )
+
+
+def _literature_acceptance_markdown(checklist: dict[str, Any]) -> str:
+    lines = [
+        "# Literature Workflow Acceptance Checklist",
+        "",
+        f"- checklist_id: `{checklist['checklist_id']}`",
+        f"- project_id: `{checklist['project_id']}`",
+        f"- status: `{checklist['status']}`",
+        f"- checked_at: `{checklist['checked_at']}`",
+        "",
+        "## Summary",
+        "",
+    ]
+    summary = checklist.get("summary", {})
+    for key in ["ready", "needs_user_action", "blocked", "not_applicable", "total_steps"]:
+        lines.append(f"- {key}: {summary.get(key, 0)}")
+    lines.extend(["", "## Steps", ""])
+    for step in checklist.get("steps", []):
+        lines.append(f"### {step['step_id']} - {step['title']}")
+        lines.append("")
+        lines.append(f"- status: `{step['status']}`")
+        for ref in step.get("evidence_refs", []):
+            lines.append(f"- evidence: `{ref}`")
+        if step.get("next_action"):
+            lines.append(f"- next_action: {step['next_action']}")
+        if step.get("question_for_user"):
+            lines.append(f"- question_for_user: {step['question_for_user']}")
+        if step.get("details"):
+            lines.append(f"- details: `{json.dumps(step['details'], ensure_ascii=False, sort_keys=True)}`")
+        lines.append("")
+    if checklist.get("questions_for_user"):
+        lines.extend(["## Questions For User", ""])
+        lines.extend(f"- {item}" for item in checklist["questions_for_user"])
+        lines.append("")
+    lines.extend(["## Boundaries", ""])
+    lines.extend(f"- {item}" for item in checklist.get("boundaries", []))
+    return "\n".join(lines) + "\n"
+
+
+def prepare_literature_acceptance_checklist(
+    root: Path,
+    *,
+    output_path: Path | None = None,
+    markdown_path: Path | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
+    checked_at = checked_at or EARecord.now_iso()
+    project = _project_context(root)
+    project_id = str(project.get("project_id", "unknown-project"))
+    paths = _standard_literature_refs(root)
+    output_path = output_path or (literature_root / "acceptance_checklist.yml")
+    markdown_path = markdown_path or (literature_root / "acceptance_checklist.md")
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    if not markdown_path.is_absolute():
+        markdown_path = root / markdown_path
+
+    status = _local_yaml_or_json(paths["deployment_status"])
+    access_mode = str(status.get("access_mode") or "unknown")
+    selected_count = _selected_item_count(paths["selected_items"])
+    source_manifest_refs, source_preflight_refs = _source_preflight_refs(root)
+    questions_for_user: list[str] = []
+    steps: list[dict[str, Any]] = []
+
+    if paths["deployment_status"].exists():
+        steps.append(
+            _checklist_step(
+                step_id="literature_initialization",
+                title="Literature status initialized",
+                status="ready",
+                evidence_refs=[_project_relative(root, paths["deployment_status"])],
+                details={"deployment_status": status.get("status"), "access_mode": access_mode},
+            )
+        )
+    else:
+        question = "Should this project enable a local literature library?"
+        questions_for_user.append(question)
+        steps.append(
+            _checklist_step(
+                step_id="literature_initialization",
+                title="Literature status initialized",
+                status="needs_user_action",
+                evidence_refs=_open_literature_decision_refs(root),
+                next_action="Ask the user whether to deploy a local literature library, then run `ea literature status` or initialize with `--enable-literature`.",
+                question_for_user=question,
+            )
+        )
+
+    query_count = len((_local_yaml_or_json(paths["search_queries"]).get("queries") or []))
+    search_plan_ready = paths["search_queries"].exists() and paths["confirmation_request"].exists()
+    steps.append(
+        _checklist_step(
+            step_id="search_plan",
+            title="Search plan and confirmation package",
+            status="ready" if search_plan_ready else "needs_user_action",
+            evidence_refs=_existing_refs(root, [paths["search_queries"], paths["confirmation_request"]]),
+            details={"query_count": query_count, "recommended_top_n": status.get("recommended_top_n")},
+            next_action=None if search_plan_ready else "Run `ea literature plan` with a user-confirmed scope and access mode.",
+        )
+    )
+
+    selection_ready = selected_count > 0 and bool(status.get("selected_top_n"))
+    if not selection_ready:
+        questions_for_user.append("Which top N literature candidates should be used for this project?")
+    steps.append(
+        _checklist_step(
+            step_id="selection_confirmation",
+            title="Literature selection confirmed",
+            status="ready" if selection_ready else "needs_user_action",
+            evidence_refs=_existing_refs(root, [paths["selected_items"]]),
+            details={"selected_top_n": status.get("selected_top_n"), "selected_item_count": selected_count},
+            next_action=None
+            if selection_ready
+            else "Run `ea literature confirm` after the user reviews the recommended or ranked candidates.",
+            question_for_user=None if selection_ready else "Which top N literature candidates should be used for this project?",
+        )
+    )
+
+    public_candidate_count = _selected_item_count(paths["public_search_candidates"])
+    ranking_row_count = len(_read_csv_rows(paths["ranking"]))
+    discovery_ready = public_candidate_count > 0 or ranking_row_count > 0
+    discovery_refs = _existing_refs(
+        root,
+        [paths["public_search_candidates"], paths["search_coverage"], paths["public_search_state"], paths["ranking"]],
+    )
+    steps.append(
+        _checklist_step(
+            step_id="candidate_discovery",
+            title="Public metadata search or supplied-candidate ranking",
+            status="ready" if discovery_ready else "needs_user_action",
+            evidence_refs=discovery_refs,
+            details={
+                "public_candidate_count": public_candidate_count,
+                "ranking_row_count": ranking_row_count,
+                "selected_item_count": selected_count,
+            },
+            next_action=None
+            if discovery_ready
+            else "Run `ea literature search-public` or `ea literature rank-candidates` with user-supplied candidate metadata.",
+        )
+    )
+
+    if source_manifest_refs or source_preflight_refs:
+        source_status = "ready" if source_manifest_refs and source_preflight_refs else "needs_user_action"
+        steps.append(
+            _checklist_step(
+                step_id="source_candidate_preflight",
+                title="FTIR/UV-Vis/XPS source-candidate manifests and preflight",
+                status=source_status,
+                evidence_refs=source_manifest_refs + source_preflight_refs,
+                details={"manifest_count": len(source_manifest_refs), "preflight_count": len(source_preflight_refs)},
+                next_action=None
+                if source_status == "ready"
+                else "Run `ea literature preflight-source-candidates` for each confirmed source-candidate manifest before using source-packet builders.",
+            )
+        )
+    else:
+        steps.append(
+            _checklist_step(
+                step_id="source_candidate_preflight",
+                title="FTIR/UV-Vis/XPS source-candidate manifests and preflight",
+                status="not_applicable",
+                next_action="Use this step only when literature items will feed FTIR, UV-Vis, or XPS source-packet builders.",
+            )
+        )
+
+    acquisition_refs = _existing_refs(root, [paths["acquisition_request"]])
+    steps.append(
+        _checklist_step(
+            step_id="acquisition_request",
+            title="Acquisition request and target manifests",
+            status="ready" if acquisition_refs else "needs_user_action",
+            evidence_refs=acquisition_refs,
+            next_action=None if acquisition_refs else "Run `ea literature acquisition-request` after selection is confirmed.",
+        )
+    )
+
+    institution_refs = _existing_refs(root, [paths["institution_access_guidance"]])
+    if access_mode == "user_authenticated":
+        if not institution_refs:
+            questions_for_user.append("What lawful user-managed institution access route should be used?")
+        institution_status = "ready" if institution_refs else "needs_user_action"
+    else:
+        institution_status = "not_applicable"
+    steps.append(
+        _checklist_step(
+            step_id="institution_access",
+            title="Institution access guidance",
+            status=institution_status,
+            evidence_refs=institution_refs,
+            next_action=None
+            if institution_status == "ready"
+            else "Run `ea literature institution-access-guide` only when access_mode is `user_authenticated`.",
+        )
+    )
+
+    bridge_refs = _existing_refs(root, [paths["zotero_codex_bridge"]])
+    steps.append(
+        _checklist_step(
+            step_id="zotero_bridge",
+            title="Dedicated Zotero-Codex bridge runbook",
+            status="ready" if bridge_refs else "needs_user_action",
+            evidence_refs=bridge_refs,
+            next_action=None if bridge_refs else "Run `ea literature zotero-bridge` when the user wants dedicated full-text acquisition.",
+        )
+    )
+
+    import_refs = _existing_refs(root, [paths["zotero_codex_status_import"], paths["acquisition_manifest"]])
+    steps.append(
+        _checklist_step(
+            step_id="acquisition_status_import",
+            title="Acquisition result/status imported",
+            status="ready" if import_refs else "needs_user_action",
+            evidence_refs=import_refs,
+            next_action=None
+            if import_refs
+            else "Import dedicated-workflow results with `ea literature import-zotero-status` or `ea literature import-acquisition`.",
+        )
+    )
+
+    library = _local_yaml_or_json(paths["library_manifest"])
+    cache = _local_yaml_or_json(paths["cache_index"])
+    library_refs = _existing_refs(root, [paths["library_manifest"], paths["cache_index"], paths["reference_index"]])
+    library_ready = bool(library_refs and (library.get("item_count") or library.get("items")))
+    steps.append(
+        _checklist_step(
+            step_id="library_reference_state",
+            title="Library/cache/reference state",
+            status="ready" if library_ready else "needs_user_action",
+            evidence_refs=library_refs,
+            details={"library_item_count": library.get("item_count"), "cached_count": cache.get("cached_count")},
+            next_action=None
+            if library_ready
+            else "Import an acquisition manifest or register references before citing literature-supported claims.",
+        )
+    )
+
+    reconciliation = _local_yaml_or_json(paths["acquisition_reconciliation"])
+    reconciliation_refs = _existing_refs(root, [paths["acquisition_reconciliation"], paths["acquisition_reconciliation_markdown"]])
+    reconciliation_ready = bool(reconciliation_refs and reconciliation.get("status") in {"pass", "warnings"})
+    steps.append(
+        _checklist_step(
+            step_id="reconciliation",
+            title="Acquisition reconciliation and readable audit",
+            status="ready" if reconciliation_ready else "needs_user_action",
+            evidence_refs=reconciliation_refs,
+            details={"reconciliation_status": reconciliation.get("status")},
+            next_action=None
+            if reconciliation_ready
+            else "Run `ea literature reconcile-acquisition` after acquisition/import artifacts exist.",
+        )
+    )
+
+    steps.append(
+        _checklist_step(
+            step_id="public_boundaries",
+            title="Public-user boundary review",
+            status="ready",
+            details={
+                "no_network_search_executed_by_checklist": True,
+                "no_zotero_or_browser_operation": True,
+                "no_credential_or_session_inspection": True,
+                "no_pdf_download_or_fulltext_parse": True,
+            },
+            next_action="Keep credentials, browser sessions, Zotero operation, and PDF acquisition in user-managed or dedicated workflows.",
+        )
+    )
+
+    counts = {
+        "ready": sum(1 for step in steps if step["status"] == "ready"),
+        "needs_user_action": sum(1 for step in steps if step["status"] == "needs_user_action"),
+        "blocked": sum(1 for step in steps if step["status"] == "blocked"),
+        "not_applicable": sum(1 for step in steps if step["status"] == "not_applicable"),
+        "total_steps": len(steps),
+    }
+    checklist_status = "blocked" if counts["blocked"] else "needs_user_action" if counts["needs_user_action"] else "ready"
+    checklist = {
+        "schema_version": "0.2",
+        "checklist_id": f"lit-acceptance-{_timestamp_key(checked_at)}",
+        "project_id": project_id,
+        "checked_at": checked_at,
+        "status": checklist_status,
+        "summary": counts,
+        "output_refs": {
+            "yaml": _project_relative(root, output_path),
+            "markdown": _project_relative(root, markdown_path),
+        },
+        "steps": steps,
+        "questions_for_user": _unique(questions_for_user),
+        "boundaries": [
+            "This checklist reads local EA literature artifacts only.",
+            "It does not run network search, operate Zotero, open browsers, inspect credentials or sessions, resolve DOI pages, download PDFs, parse full text, auto-repair records, or register references.",
+            "Use it as a public-user acceptance walkthrough; it is not proof of exhaustive literature coverage or scientific correctness.",
+        ],
+    }
+    write_yaml(output_path, checklist)
+    markdown_path.write_text(_literature_acceptance_markdown(checklist), encoding="utf-8")
+    status_path = paths["deployment_status"]
+    if status_path.exists():
+        status.update(
+            {
+                "literature_acceptance_checklist_ref": _project_relative(root, output_path),
+                "literature_acceptance_checklist_markdown_ref": _project_relative(root, markdown_path),
+                "literature_acceptance_status": checklist_status,
+                "last_literature_acceptance_check_at": checked_at,
+            }
+        )
+        write_yaml(status_path, status)
+    return {
+        "checklist_path": str(output_path),
+        "markdown_path": str(markdown_path),
+        "status_path": str(status_path) if status_path.exists() else None,
+        "checklist": checklist,
+        "status": status,
     }
 
 

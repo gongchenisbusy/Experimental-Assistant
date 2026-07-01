@@ -43,6 +43,7 @@ from ea.literature import (
     plan_literature_deployment,
     preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
+    prepare_literature_acceptance_checklist,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
     prepare_literature_source_candidate_manifest,
@@ -623,6 +624,10 @@ def build_parser() -> argparse.ArgumentParser:
     lit_render_reconciliation = literature_sub.add_parser("render-reconciliation", help="render acquisition reconciliation markdown audit")
     lit_render_reconciliation.add_argument("workspace", type=Path)
     lit_render_reconciliation.add_argument("--reconciliation", type=Path)
+    lit_acceptance = literature_sub.add_parser("acceptance-checklist", help="write a public-user literature workflow acceptance checklist")
+    lit_acceptance.add_argument("workspace", type=Path)
+    lit_acceptance.add_argument("--output", type=Path)
+    lit_acceptance.add_argument("--markdown-output", type=Path)
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
@@ -1676,6 +1681,21 @@ def main(argv: list[str] | None = None) -> int:
             if reconciliation_path and not reconciliation_path.is_absolute():
                 reconciliation_path = args.workspace / reconciliation_path
             _print_json(render_literature_acquisition_reconciliation(args.workspace, reconciliation_path=reconciliation_path))
+            return 0
+        if args.literature_command == "acceptance-checklist":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_path = args.markdown_output
+            if markdown_path and not markdown_path.is_absolute():
+                markdown_path = args.workspace / markdown_path
+            _print_json(
+                prepare_literature_acceptance_checklist(
+                    args.workspace,
+                    output_path=output_path,
+                    markdown_path=markdown_path,
+                )
+            )
             return 0
         if args.literature_command == "sync-status":
             _print_json(

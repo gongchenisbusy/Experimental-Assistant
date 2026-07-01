@@ -141,6 +141,7 @@ ea-release-checklist
 ea templates parameters
 ea templates batch-manifest
 ea literature status
+ea literature acceptance-checklist
 ea config init
 ea config doctor
 ```
@@ -148,6 +149,7 @@ ea config doctor
 验收：
 
 - 用户能通过 CLI 完成初始化、raw 导入、光谱检查、Raman 处理、报告生成和项目健康检查。
+- 用户能通过 `ea literature acceptance-checklist` 生成本地文献工作流公开验收清单，看到初始化、检索/排序、确认、获取、导入、reconciliation 和公开边界的 ready/missing/not-applicable 状态。
 - 用户能通过 CLI 导出并验证单个报告或单个 batch run 的本地 handoff bundle，包含报告、图片、源数据、结果元数据、引用、batch 记录、provenance 和 checksum manifest，并可选择生成 zip 归档及 `.zip.sha256` sidecar 用于转交。
 - 仓库发布前可通过 `ea-public-release-smoke` 一次性运行测试、EA skill validation、核心 CLI help 检查、公开用户 portability scan，以及面向发布文件的敏感值扫描，避免误把 API key、password、cookie、session token 或 authorization header 这类值写入公开包。
 - 仓库发布时可通过 `ea-release-manifest` 生成 release manifest，记录 package metadata、git state、entry points、核心发布输入 checksum 和公开用户边界说明。

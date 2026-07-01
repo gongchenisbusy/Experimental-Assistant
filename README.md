@@ -140,6 +140,7 @@ ea literature import-zotero-status /path/to/ea-project --batch-status literature
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature reconcile-acquisition /path/to/ea-project
 ea literature render-reconciliation /path/to/ea-project --reconciliation literature/acquisition_reconciliation.yml
+ea literature acceptance-checklist /path/to/ea-project
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills dry-run /path/to/manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
 ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
@@ -158,6 +159,7 @@ Use `ea literature institution-access-guide` before authenticated acquisition to
 Use `ea literature zotero-bridge` after `acquisition-request` to write `literature/zotero_codex_bridge.yml`, `literature/zotero_codex_bridge.md`, and `literature/zotero_codex_settings_request.yml` for a dedicated Zotero-Codex workflow. The bridge emits commands and required user settings; it does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts.
 Use `ea literature import-zotero-status` after a dedicated Zotero-Codex workflow writes batch status artifacts; it converts status JSON and optional sidecar verification into `literature/acquisition_status_update.yml` and syncs EA project status without running Zotero or downloading files.
 Use `ea literature reconcile-acquisition` to write `literature/acquisition_reconciliation.yml` and `literature/acquisition_reconciliation.md`, check whether acquisition/status/library/cache/reference records agree, and include advisory `repair_actions` plus `questions_for_user` for mismatches. Use `ea literature render-reconciliation` to regenerate the Markdown audit view from an existing reconciliation YAML without repairing records.
+Use `ea literature acceptance-checklist` to write `literature/acceptance_checklist.yml` and `.md`, summarizing literature workflow readiness, missing user actions, evidence refs, and public boundaries without running search, Zotero, browser, credential, PDF, full-text, repair, or reference-registration steps.
 
 `ea init-project` writes an `open-items/` literature-library decision record unless `--enable-literature` is supplied. Use `--enable-literature` only when the user explicitly wants a project literature status record created during initialization; all Zotero, browser, cache, proxy/VPN, and institution settings still remain user-supplied.
 

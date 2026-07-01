@@ -150,6 +150,7 @@ ea literature import-zotero-status /path/to/ea-project --batch-status literature
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature reconcile-acquisition /path/to/ea-project
 ea literature render-reconciliation /path/to/ea-project --reconciliation literature/acquisition_reconciliation.yml
+ea literature acceptance-checklist /path/to/ea-project
 ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
 ea add-skills check /path/to/child-skill-manifest.yml
 ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml

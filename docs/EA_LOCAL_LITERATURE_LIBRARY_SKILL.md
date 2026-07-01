@@ -149,6 +149,7 @@ score =
 3. 专用窗口执行检索、去重、排序、下载、缓存和阅读索引。
 4. 专用窗口持续写入 `literature/deployment_status.yml`。
 5. 原始窗口读取 status 文件并同步摘要，知道当前文献库完成到哪一步。
+6. 原始窗口或用户可运行 `ea literature acceptance-checklist` 生成 `literature/acceptance_checklist.yml` 和 `.md`，用 ready/missing/not-applicable 状态审计文献路径，但不执行检索、Zotero、浏览器、凭据、PDF 下载、全文解析或自动修复。
 
 在 Codex 环境中，实际创建新窗口或线程需要可用 thread 工具，并应在用户确认后执行。若没有可用 thread 工具，EA 应生成 handoff 文件，要求用户在新窗口中继续。
 
