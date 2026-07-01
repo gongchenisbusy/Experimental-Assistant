@@ -1147,6 +1147,7 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     assert "ref-missing" in review_package["unresolved_reference_ids"]
     assert "ea review add /path/to/ea-project" in review_package["recommended_commands"]["create_review_record"]
     assert "ea uv-vis suggest-interpretations" in review_package["recommended_commands"]["rerun_after_reference_registration"]
+    assert "ea uv-vis propose-memory" in review_package["recommended_commands"]["propose_memory_after_review"]
     assert "does not create a ReviewRecord" in " ".join(review_package["boundaries"])
     assert "does not apply UV-Vis optical models" in " ".join(review_package["boundaries"])
     assert read_yaml(Path(review_package_output["provenance"]))["workflow"] == "uv_vis_interpretation_review_package"
@@ -1213,6 +1214,61 @@ def test_cli_uv_vis_suggests_source_backed_interpretations(tmp_path: Path, capsy
     assert "Optical gap reporting for oxide films" in report_body
     assert "不能单独证明带隙" in report_body
 
+    assert main(
+        [
+            "uv-vis",
+            "propose-memory",
+            str(workspace),
+            "--project-id",
+            project_id,
+            "--suggestion",
+            suggestion_ref,
+            "--review-ref",
+            suggestion_review["review_id"],
+        ]
+    ) == 0
+    memory_output = _json_output(capsys)
+    assert memory_output["status"] == "memory_candidates_proposed"
+    assert memory_output["proposed_count"] == 3
+    assert memory_output["skipped_count"] == 3
+    assert memory_output["provenance_ref"]
+    assert "does not commit confirmed memory" in " ".join(memory_output["boundaries"])
+    assert "do not by themselves apply optical models/corrections" in " ".join(memory_output["boundaries"])
+    skipped_reasons = {item["candidate_id"]: item["details"] for item in memory_output["skipped"] if item["reason"] == "not_memory_candidate_eligible"}
+    assert "unresolved_reference_ids" in skipped_reasons["uv-transition-unresolved"]
+    assert "status:no_evidence_match" in skipped_reasons["uv-feature-no-match"]
+    assert "missing_required_metadata" in skipped_reasons["uv-gap-invalid"]
+
+    proposed_ids = {item["candidate_id"] for item in memory_output["memory_candidates"]}
+    assert proposed_ids == {"uv-gap-ready", "uv-feature-ready", "uv-correction-ready"}
+    gap_memory = next(item for item in memory_output["memory_candidates"] if item["candidate_id"] == "uv-gap-ready")
+    memory_candidate_path = Path(gap_memory["memory_candidate"])
+    memory_frontmatter, memory_body = read_markdown_record(memory_candidate_path)
+    assert memory_frontmatter["status"] == "draft"
+    assert memory_frontmatter["category"] == "interpretation"
+    assert memory_frontmatter["confidence"] == "medium"
+    assert suggestion_ref in memory_frontmatter["source_refs"]
+    assert record["table_ref"] in memory_frontmatter["source_refs"]
+    assert packet_ref in memory_frontmatter["source_refs"]
+    assert metadata_ref in memory_frontmatter["source_refs"]
+    assert features_ref in memory_frontmatter["source_refs"]
+    assert "raw/uv_vis/char-test/metadata.yml" in memory_frontmatter["source_refs"]
+    assert "ref-uv-gap" in memory_frontmatter["source_refs"]
+    assert record["provenance_ref"] in memory_frontmatter["provenance_refs"]
+    assert memory_frontmatter["review_refs"] == []
+    assert "uv-gap-ready" in memory_body
+    assert "absorption edge screening" in memory_body
+    assert "matched energies (eV): 2.1" in memory_body
+    assert "ref-uv-gap" in memory_body
+    assert "does not apply optical models or corrections" in memory_body
+    assert "prove a band gap" in memory_body
+    correction_memory = next(item for item in memory_output["memory_candidates"] if item["candidate_id"] == "uv-correction-ready")
+    _, correction_body = read_markdown_record(Path(correction_memory["memory_candidate"]))
+    assert "correction_context_type=substrate" in correction_body
+    assert "does not apply optical models or corrections" in correction_body
+    candidate_index = read_yaml(workspace / "memory" / "candidates" / "index.yml")
+    assert memory_frontmatter["memory_candidate_id"] in candidate_index["candidates"]
+
 
 def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
@@ -1226,11 +1282,13 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis build-source-packet" in readme
     assert "ea uv-vis suggest-interpretations" in readme
     assert "ea uv-vis prepare-review" in readme
+    assert "ea uv-vis propose-memory" in readme
     assert "--interpretation-suggestion" in readme
     assert "ea uv-vis process" in skill
     assert "ea uv-vis build-source-packet" in skill
     assert "ea uv-vis suggest-interpretations" in skill
     assert "ea uv-vis prepare-review" in skill
+    assert "ea uv-vis propose-memory" in skill
     assert "--interpretation-review-ref" in skill
     assert "references/uv-vis-workflow.md" in skill
     assert uv_vis_reference.exists()
@@ -1243,6 +1301,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis build-source-packet" in reference_text
     assert "ea uv-vis suggest-interpretations" in reference_text
     assert "ea uv-vis prepare-review" in reference_text
+    assert "ea uv-vis propose-memory" in reference_text
     assert "--interpretation-suggestion" in reference_text
     assert "optical_gap_candidate" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
@@ -1256,3 +1315,4 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "interpretation_suggestions" in uv_vis_record["notes"]
     assert "review packages" in uv_vis_record["notes"]
     assert "reviewed report integration" in uv_vis_record["notes"]
+    assert "memory_candidate proposals" in uv_vis_record["notes"]

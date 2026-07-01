@@ -7,6 +7,7 @@ from ea.uv_vis.service import (
     inspect_uv_vis_file,
     prepare_uv_vis_interpretation_review_package,
     process_uv_vis_result,
+    propose_uv_vis_interpretation_memory_candidates,
     suggest_uv_vis_interpretations,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "inspect_uv_vis_file",
     "prepare_uv_vis_interpretation_review_package",
     "process_uv_vis_result",
+    "propose_uv_vis_interpretation_memory_candidates",
     "suggest_uv_vis_interpretations",
 ]

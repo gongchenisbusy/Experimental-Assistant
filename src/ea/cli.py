@@ -89,6 +89,7 @@ from ea.uv_vis import (
     inspect_uv_vis_file,
     prepare_uv_vis_interpretation_review_package,
     process_uv_vis_result,
+    propose_uv_vis_interpretation_memory_candidates,
     suggest_uv_vis_interpretations,
 )
 from ea.xps import (
@@ -383,6 +384,13 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_prepare_review.add_argument("--suggestion", required=True, type=Path)
     uv_vis_prepare_review.add_argument("--project-id")
     uv_vis_prepare_review.add_argument("--candidate-id", action="append", default=[])
+    uv_vis_memory = uv_vis_sub.add_parser("propose-memory", help="propose draft memory candidates from reviewed UV-Vis interpretation suggestions")
+    uv_vis_memory.add_argument("workspace", type=Path)
+    uv_vis_memory.add_argument("--suggestion", required=True, type=Path)
+    uv_vis_memory.add_argument("--review-ref", required=True)
+    uv_vis_memory.add_argument("--project-id")
+    uv_vis_memory.add_argument("--candidate-id", action="append", default=[])
+    uv_vis_memory.add_argument("--allow-non-ready", action="store_true")
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
@@ -1187,7 +1195,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "uv-vis":
         project_id = getattr(args, "project_id", None)
-        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review"} and not project_id:
+        if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review", "propose-memory"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.uv_vis_command == "inspect":
             inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
@@ -1259,6 +1267,18 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     suggestion_path=_project_path(args.workspace, args.suggestion),
                     candidate_ids=args.candidate_id,
+                )
+            )
+            return 0
+        if args.uv_vis_command == "propose-memory":
+            _print_json(
+                propose_uv_vis_interpretation_memory_candidates(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    review_ref=args.review_ref,
+                    candidate_ids=args.candidate_id,
+                    allow_non_ready=args.allow_non_ready,
                 )
             )
             return 0

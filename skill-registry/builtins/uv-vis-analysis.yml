@@ -54,6 +54,7 @@ ea_skill:
       - ea uv-vis suggest-interpretations
       - ea uv-vis prepare-review
       - ea uv-vis report --interpretation-suggestion
+      - ea uv-vis propose-memory
     supported_signal_modes:
       - absorbance
       - transmittance
@@ -128,6 +129,16 @@ ea_skill:
       requires_confirmed_review_record: true
       reference_policy: registered_reference_ids_are_numbered; unresolved_ids_remain_visible
       confidence_boundary: reviewed_interpretation_context_only
+    memory_candidate_proposals:
+      implemented: true
+      command: ea uv-vis propose-memory --suggestion ... --review-ref ...
+      requires_confirmed_review_record: true
+      source_candidates: ready_for_user_review_only_by_default
+      excluded_context:
+        - needs_reference_registration
+        - no_evidence_match
+        - invalid_or_incomplete
+      confidence_boundary: draft_interpretation_memory_candidate_only
     supported_x_units:
       - nm
       - eV
@@ -138,5 +149,5 @@ ea_skill:
       - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments
       - correction-context records preserve reviewed metadata but do not apply automatic numeric correction
-      - source packets, interpretation suggestions, and review packages preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not create ReviewRecords, inject report citations, write memory, or apply optical models/corrections; reviewed report integration only reads confirmed ReviewRecords and registered references
+      - source packets, interpretation suggestions, and review packages preserve source-backed candidates, reference seeds, registered/unresolved reference IDs, and processed evidence links but do not create ReviewRecords, inject report citations, write memory, or apply optical models/corrections; reviewed report and memory proposal integrations only read confirmed ReviewRecords and registered references, and memory proposal writes draft candidates only
       - formal band-gap conclusions require user-confirmed model context, sample geometry, corrections, and references

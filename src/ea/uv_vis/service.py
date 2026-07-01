@@ -23,6 +23,7 @@ from ea.figures import (
     styled_subplots,
 )
 from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -2023,6 +2024,264 @@ def _uv_vis_candidate_parameter_values_text(candidate: dict[str, Any]) -> str:
     return "; ".join(parts) if parts else "no supported UV-Vis interpretation values recorded"
 
 
+def _memory_confidence(value: Any) -> str:
+    normalized = str(value or "low").strip().lower()
+    if normalized in {"high", "medium", "low", "insufficient"}:
+        return normalized
+    return "low"
+
+
+def _format_memory_list(items: list[Any]) -> str:
+    values = [str(item) for item in items if str(item).strip()]
+    return ", ".join(values) if values else "none recorded"
+
+
+def _normalize_review_target_ref(root: Path, value: Any) -> str:
+    target = str(value or "").strip()
+    if not target:
+        return ""
+    target_path = Path(target)
+    if target_path.is_absolute():
+        return _relative_to_root(root, target_path)
+    return _relative_to_root(root, root / target_path)
+
+
+def _uv_vis_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready: bool) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    status = str(candidate.get("status") or "")
+    candidate_type = str(candidate.get("candidate_type") or "")
+    if status != "ready_for_user_review":
+        reasons.append(f"status:{status or 'missing'}")
+    if candidate.get("auto_applied") is not False:
+        reasons.append("auto_applied_not_false")
+    if candidate_type not in {
+        "optical_transition_model",
+        "optical_gap_candidate",
+        "optical_feature_assignment",
+        "correction_context_candidate",
+    }:
+        reasons.append("unsupported_candidate_type")
+    if candidate.get("unresolved_reference_ids"):
+        reasons.append("unresolved_reference_ids")
+    if candidate.get("missing_fields"):
+        reasons.append("missing_required_metadata")
+    if not candidate.get("reference_ids"):
+        reasons.append("missing_reference_ids")
+    if not str(candidate.get("source_summary") or "").strip():
+        reasons.append("missing_source_summary")
+    if not _coerce_string_list(candidate.get("applicability_notes")):
+        reasons.append("missing_applicability_notes")
+    if not str(candidate.get("optical_target") or candidate.get("feature_label") or "").strip():
+        reasons.append("missing_optical_target_or_feature_label")
+    if candidate_type in {"optical_gap_candidate", "optical_feature_assignment"} and not _coerce_string_list(candidate.get("evidence_refs")):
+        reasons.append("missing_evidence_refs")
+
+    if not allow_non_ready:
+        return not reasons, reasons
+    hard_blockers = {
+        "auto_applied_not_false",
+        "unsupported_candidate_type",
+        "missing_required_metadata",
+        "missing_source_summary",
+        "missing_applicability_notes",
+        "missing_optical_target_or_feature_label",
+    }
+    return not any(reason in hard_blockers or reason.startswith("status:invalid") for reason in reasons), reasons
+
+
+def _format_uv_vis_interpretation_memory_text(candidate: dict[str, Any], *, suggestion_id: str, review_ref: str) -> str:
+    candidate_id = str(candidate.get("candidate_id") or "unknown")
+    candidate_type = str(candidate.get("candidate_type") or "unknown")
+    status = str(candidate.get("status") or "unknown")
+    optical_target = str(candidate.get("optical_target") or "not recorded")
+    feature_label = str(candidate.get("feature_label") or "not recorded")
+    evidence_refs = _format_memory_list(_coerce_string_list(candidate.get("evidence_refs")))
+    matched_feature_ids = _format_memory_list(_coerce_string_list(candidate.get("matched_feature_ids")))
+    matched_energies = _format_memory_list(_coerce_string_list(candidate.get("matched_energies_eV")))
+    matched_wavelengths = _format_memory_list(_coerce_string_list(candidate.get("matched_wavelengths_nm")))
+    reference_ids = _format_memory_list(_coerce_string_list(candidate.get("reference_ids")))
+    applicability = _format_memory_list(_coerce_string_list(candidate.get("applicability_notes")))
+    caveats = _format_memory_list(_coerce_string_list(candidate.get("caveats")))
+    unresolved = _format_memory_list(_coerce_string_list(candidate.get("unresolved_reference_ids")))
+    source_summary = str(candidate.get("source_summary") or "No source summary recorded.").strip()
+    confidence = _memory_confidence(candidate.get("confidence"))
+    parameter_values = _uv_vis_candidate_parameter_values_text(candidate)
+    return (
+        f"UV-Vis source-backed interpretation candidate `{candidate_id}` from suggestion `{suggestion_id}` was reviewed via `{review_ref}` "
+        "and can be preserved as a draft interpretation memory candidate.\n\n"
+        f"- candidate type: `{candidate_type}`\n"
+        f"- suggestion status: `{status}`\n"
+        f"- optical target: {optical_target}\n"
+        f"- feature label: {feature_label}\n"
+        f"- confidence: `{confidence}`\n"
+        f"- parameter values: {parameter_values}\n"
+        f"- evidence refs: {evidence_refs}\n"
+        f"- matched feature IDs: {matched_feature_ids}\n"
+        f"- matched energies (eV): {matched_energies}\n"
+        f"- matched wavelengths (nm): {matched_wavelengths}\n"
+        f"- references: {reference_ids}\n"
+        f"- unresolved references: {unresolved}\n"
+        f"- source summary: {source_summary}\n"
+        f"- applicability notes: {applicability}\n"
+        f"- caveats: {caveats}\n\n"
+        "Boundary: this is a source-backed UV-Vis interpretation candidate only. It does not apply optical models or corrections, "
+        "mutate processed spectra, prove a band gap, transition mechanism, feature assignment, material state, or correction validity, "
+        "or replace the standard memory review/commit flow."
+    )
+
+
+def propose_uv_vis_interpretation_memory_candidates(
+    root: Path,
+    *,
+    project_id: str,
+    suggestion_path: Path,
+    review_ref: str,
+    candidate_ids: list[str] | None = None,
+    allow_non_ready: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    suggestion = read_yaml(resolved_suggestion_path)
+    if suggestion.get("source") != "ea.uv_vis.interpretation_suggestions:v0.2":
+        raise UVVisProcessingError(f"Not a UV-Vis interpretation suggestion record: {suggestion_path}")
+
+    suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
+    suggestion_project_id = str(suggestion.get("project_id") or "")
+    if suggestion_project_id and project_id and suggestion_project_id != project_id:
+        raise UVVisProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+
+    review = require_confirmed_review(root, review_ref)
+    review_target_ref = _normalize_review_target_ref(root, review.get("target_ref"))
+    if review_target_ref and review_target_ref != suggestion_ref:
+        raise UVVisProcessingError(
+            f"ReviewRecord {review_ref} targets {review.get('target_ref')}, not UV-Vis interpretation suggestion {suggestion_ref}"
+        )
+    review_target_type = str(review.get("target_type") or "")
+    if review_target_type and review_target_type != "uv_vis_interpretation_suggestions":
+        raise UVVisProcessingError(
+            f"ReviewRecord {review_ref} target_type is {review_target_type}, not uv_vis_interpretation_suggestions"
+        )
+
+    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
+    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    requested_set = set(requested_ids)
+    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
+    skipped: list[dict[str, Any]] = [
+        {"candidate_id": candidate_id, "reason": "candidate_id_not_found"}
+        for candidate_id in requested_ids
+        if candidate_id not in found_ids
+    ]
+    warnings: list[dict[str, Any]] = []
+    if allow_non_ready and not requested_set:
+        warnings.append(
+            _warning(
+                "uv_vis_interpretation_memory_allow_non_ready_without_selection",
+                "--allow-non-ready only applies to explicitly selected --candidate-id values; default selection still uses ready candidates.",
+                severity="medium",
+            )
+        )
+
+    source_refs = [
+        suggestion_ref,
+        str(suggestion.get("table_ref") or "").strip(),
+        str(suggestion.get("source_packet_ref") or "").strip(),
+        str(suggestion.get("uv_vis_metadata_ref") or "").strip(),
+        str(suggestion.get("feature_table_ref") or "").strip(),
+        *[str(ref).strip() for ref in suggestion.get("related_records", []) or []],
+    ]
+    source_refs = [ref for ref in source_refs if ref]
+    provenance_refs = [str(suggestion.get("provenance_ref") or "").strip()]
+    provenance_refs = [ref for ref in provenance_refs if ref]
+    if not provenance_refs:
+        raise UVVisProcessingError("UV-Vis interpretation suggestion record lacks provenance_ref")
+
+    proposed: list[dict[str, Any]] = []
+    output_refs: list[str] = []
+    for candidate in selected:
+        candidate_id = str(candidate.get("candidate_id") or "")
+        candidate_allow_non_ready = bool(allow_non_ready and requested_set and candidate_id in requested_set)
+        eligible, reasons = _uv_vis_candidate_is_valid_for_memory(candidate, allow_non_ready=candidate_allow_non_ready)
+        if not eligible:
+            skipped.append({"candidate_id": candidate_id, "reason": "not_memory_candidate_eligible", "details": reasons})
+            continue
+
+        candidate_text = _format_uv_vis_interpretation_memory_text(
+            candidate,
+            suggestion_id=str(suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name),
+            review_ref=review_ref,
+        )
+        rationale = (
+            f"Generated from UV-Vis interpretation suggestion `{suggestion_ref}` candidate `{candidate_id}` after confirmed review `{review_ref}`. "
+            "This preserves a source-backed optical interpretation candidate for later user review and commit; it does not create confirmed memory, apply models/corrections, or prove optical claims."
+        )
+        memory_path = propose_memory_candidate(
+            root,
+            project_id=project_id or suggestion_project_id,
+            candidate_text=candidate_text,
+            source_refs=source_refs + _coerce_string_list(candidate.get("reference_ids")),
+            provenance_refs=provenance_refs,
+            category="interpretation",
+            confidence=_memory_confidence(candidate.get("confidence")),
+            rationale=rationale,
+            created_at=created_at,
+        )
+        memory_ref = _relative_to_root(root, memory_path)
+        output_refs.append(memory_ref)
+        proposed.append(
+            {
+                "candidate_id": candidate_id,
+                "memory_candidate": str(memory_path),
+                "memory_candidate_ref": memory_ref,
+                "category": "interpretation",
+                "confidence": _memory_confidence(candidate.get("confidence")),
+                "source_refs": source_refs,
+                "provenance_refs": provenance_refs,
+            }
+        )
+
+    bridge_provenance = None
+    if proposed:
+        bridge_provenance_path = write_provenance_entry(
+            root,
+            workflow="uv_vis_interpretation_memory_candidate_proposal",
+            inputs={"records": [suggestion_ref], "files": []},
+            outputs={"records": output_refs + ["memory/candidates/index.yml"], "files": []},
+            parameters={
+                "suggestion_id": suggestion.get("suggestion_id"),
+                "requested_candidate_ids": requested_ids,
+                "allow_non_ready": allow_non_ready,
+                "proposed_count": len(proposed),
+                "skipped_count": len(skipped),
+            },
+            review_refs=[review_ref],
+            source_refs=source_refs,
+            warnings=warnings,
+            created_at=created_at,
+        )
+        bridge_provenance = _relative_to_root(root, bridge_provenance_path)
+
+    return {
+        "status": "memory_candidates_proposed" if proposed else "no_memory_candidates_proposed",
+        "suggestion_id": suggestion.get("suggestion_id"),
+        "suggestion_ref": suggestion_ref,
+        "review_ref": review_ref,
+        "candidate_count": len(candidates),
+        "selected_count": len(selected),
+        "proposed_count": len(proposed),
+        "skipped_count": len(skipped),
+        "memory_candidates": proposed,
+        "skipped": skipped,
+        "provenance_ref": bridge_provenance,
+        "warnings": warnings,
+        "boundaries": [
+            "This helper writes draft memory candidates only; it does not commit confirmed memory.",
+            "Ready UV-Vis interpretation candidates are used by default; non-ready candidates require explicit --candidate-id plus --allow-non-ready and remain caveated.",
+            "UV-Vis interpretation suggestions do not by themselves apply optical models/corrections, mutate processed spectra, prove band gaps, transition mechanisms, feature assignments, material state, correction validity, or replace user review.",
+        ],
+    }
+
+
 def _uv_vis_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
     status = str(candidate.get("status") or "unknown")
     candidate_type = str(candidate.get("candidate_type") or "unknown")
@@ -2217,6 +2476,9 @@ def prepare_uv_vis_interpretation_review_package(
             "rerun_after_reference_registration": (
                 "ea uv-vis suggest-interpretations /path/to/ea-project --metadata <uv_vis_metadata.yml> "
                 f"--source-file {suggestion.get('source_packet_ref') or '<uv_vis_source_packet.yml>'}"
+            ),
+            "propose_memory_after_review": (
+                f"ea uv-vis propose-memory /path/to/ea-project --suggestion {suggestion_ref} --review-ref <review-id>"
             ),
         },
         "next_steps": [
