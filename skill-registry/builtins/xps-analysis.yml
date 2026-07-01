@@ -57,6 +57,7 @@ ea_skill:
     implemented: true
     commands:
       - ea xps inspect
+      - ea xps list-parameter-libraries
       - ea xps build-source-packet
       - ea xps suggest-parameters
       - ea xps prepare-review
@@ -79,6 +80,7 @@ ea_skill:
       - background_subtraction_linear_preprocessing
       - background_subtraction_shirley_preprocessing
       - background_subtraction_tougaard_u2_preprocessing
+      - xps_parameter_library_discovery_summary
       - source_backed_parameter_source_packets
       - source_backed_parameter_suggestions
       - xps_parameter_review_packages
@@ -115,6 +117,7 @@ ea_skill:
         - Tougaard U2-style background starting point
         - Project-local or confirmed-literature binding-energy/chemical-state candidates with BE center/window and calibration assumptions
       output_artifacts:
+        - cli_json_parameter_library_discovery_summary
         - suggestions/xps/source-packets/<source_packet_id>.yml
         - templates/xps_parameter_source_packet.yml
         - suggestions/xps/<suggestion_id>/xps_parameter_suggestions.yml
@@ -226,6 +229,7 @@ ea_skill:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
+      - xps_parameter_library_discovery_summary lists bundled XPS library/candidate/reference-seed coverage and next commands only; it does not create project files, register references, build source packets, suggest or apply parameters, fit spectra, run live lookup, or prove chemical states/composition
       - source_backed_parameter_source_packets stage candidate metadata and optional filtered reference_seeds/guidance_reference_ids from built-in generic_xps_parameters or oxide_o1s_binding_energy seeds, reviewed local libraries/templates, project literature, user-provided sources, or confirmed literature/source-candidate manifests; manifest inputs require explicit confirmation metadata and reference_seeds require explicit ea references register-seeds registration; the packet builder itself does not perform unconfirmed live lookup, download or parse articles, validate references, register references, inject citations, auto-apply values, apply charge correction, fit backgrounds/components, or choose models
       - source_backed_parameter_suggestions validate supplied source packets and registered references before review and can be displayed in reports with --parameter-suggestion; the suggestion/report steps do not perform unconfirmed live lookup, auto-apply values, choose models, silently calibrate spectra, apply charge correction, or prove chemistry/composition, but EA may prepare source-backed candidates before this step, including spin-orbit energy separations, area ratios, FWHM ratios, Tougaard parameters, component bounds, peak-shape candidates, and binding-energy/chemical-state candidates with calibration/charge-reference assumptions when source and applicability metadata are recorded
       - propose-memory writes draft method-note or interpretation memory candidates from confirmed XPS parameter suggestion reviews only; it does not commit confirmed memory, apply parameters, fit backgrounds/components, prove chemical state/composition, apply charge correction, or calculate composition

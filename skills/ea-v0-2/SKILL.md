@@ -91,6 +91,7 @@ ea xps inspect /path/to/ea-project raw/xps/char-20260630-001/raw-xps.txt
 ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=binding_energy_eV, y=intensity, unit=eV"
 ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
 ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
+ea xps list-parameter-libraries --builtin-library generic_xps_parameters --suggestion-type binding_energy_candidate --element Si --core-level 2p
 ea xps build-source-packet /path/to/ea-project --builtin-library generic_xps_parameters --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea xps build-source-packet /path/to/ea-project --builtin-library oxide_o1s_binding_energy --suggestion-type binding_energy_candidate --output suggestions/xps/source-packets/xps_o1s_oxide_source_packet.yml
 ea xps build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_xps_source_candidates.yml --output suggestions/xps/source-packets/xps_parameter_source_packet.yml

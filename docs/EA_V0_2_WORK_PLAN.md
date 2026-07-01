@@ -142,6 +142,7 @@ ea templates parameters
 ea templates batch-manifest
 ea literature status
 ea literature acceptance-checklist
+ea xps list-parameter-libraries
 ea config init
 ea config doctor
 ```
@@ -158,6 +159,7 @@ ea config doctor
 - 如需要发布者身份/发布意图证明，用户可显式提供自管 Ed25519 key，通过 `ea-sign-release-package` 生成 detached `.sig.yml` sidecar，并通过 `ea-verify-release-signature` 验证；未签名 release 仍可用于本地测试和普通转交。
 - 仓库公开转交前可通过 `ea-release-checklist` 生成 JSON/Markdown distribution checklist，汇总 git/tag 状态、release 命令、manifest/package/checksum/signature artifact 状态和公开用户边界。
 - 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
+- 用户能通过 `ea xps list-parameter-libraries` 查看内置 XPS source-backed 参数库覆盖、候选 ID、reference seeds、过滤条件和下一步命令，而不创建项目文件或自动应用参数。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。
 - 初始化命令会询问项目根目录、project slug、报告语言、Zotero/浏览器/文献缓存等必要配置。

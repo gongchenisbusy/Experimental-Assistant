@@ -773,6 +773,250 @@ def _candidate_matches_filters(
     return True
 
 
+def _xps_parameter_target_path(suggestion_type: str) -> str | None:
+    if suggestion_type == "spin_orbit_constraint":
+        return "component_fit.spin_orbit_constraints"
+    if suggestion_type == "tougaard_parameter":
+        return "background_subtraction.tougaard"
+    if suggestion_type == "binding_energy_candidate":
+        return "interpretation.binding_energy_candidates"
+    return None
+
+
+def _xps_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str, Any]:
+    suggestion_type = _normalize_xps_suggestion_type(
+        raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type")
+    )
+    summary: dict[str, Any] = {
+        "candidate_id": _candidate_identity(raw_candidate),
+        "suggestion_type": suggestion_type or "unknown",
+        "target_parameter_path": _xps_parameter_target_path(suggestion_type),
+        "element": str(raw_candidate.get("element") or "").strip() or None,
+        "core_level": str(raw_candidate.get("core_level") or "").strip() or None,
+        "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
+        "parameter_origin": str(raw_candidate.get("parameter_origin") or "source_suggested").strip() or "source_suggested",
+        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
+        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
+        "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
+        "caveats": _coerce_string_list(raw_candidate.get("caveats")),
+        "auto_applied": False,
+        "requires_user_review": True,
+    }
+    if suggestion_type == "spin_orbit_constraint":
+        summary.update(
+            {
+                "constraint_id": str(raw_candidate.get("constraint_id") or summary["candidate_id"]).strip() or None,
+                "center_delta_eV": _candidate_number(raw_candidate, "center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"),
+                "area_ratio": _candidate_number(raw_candidate, "area_ratio", "dependent_area_ratio"),
+                "fwhm_ratio": _candidate_number(raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio"),
+            }
+        )
+    elif suggestion_type == "tougaard_parameter":
+        summary.update(
+            {
+                "tougaard_B": _candidate_number(raw_candidate, "tougaard_B", "B", "b1"),
+                "tougaard_C_eV2": _candidate_number(raw_candidate, "tougaard_C_eV2", "C_eV2", "C"),
+                "integration_direction": str(raw_candidate.get("integration_direction") or "").strip() or None,
+            }
+        )
+    elif suggestion_type == "binding_energy_candidate":
+        summary.update(
+            {
+                "chemical_state_label": str(
+                    raw_candidate.get("chemical_state_label")
+                    or raw_candidate.get("state_label")
+                    or raw_candidate.get("assignment_label")
+                    or ""
+                ).strip()
+                or None,
+                "expected_binding_energy_eV": _candidate_number(
+                    raw_candidate,
+                    "expected_binding_energy_eV",
+                    "binding_energy_eV",
+                    "center_binding_energy_eV",
+                    "center_eV",
+                    "expected_center_eV",
+                ),
+                "binding_energy_window_eV": _candidate_energy_window(
+                    raw_candidate,
+                    "binding_energy_window_eV",
+                    "binding_energy_range_eV",
+                    "be_window_eV",
+                    "window_eV",
+                ),
+                "calibration_reference": str(
+                    raw_candidate.get("calibration_reference")
+                    or raw_candidate.get("binding_energy_reference")
+                    or raw_candidate.get("energy_reference")
+                    or ""
+                ).strip()
+                or None,
+                "charge_reference_assumption": str(
+                    raw_candidate.get("charge_reference_assumption")
+                    or raw_candidate.get("charge_reference_notes")
+                    or raw_candidate.get("referencing_assumption")
+                    or ""
+                ).strip()
+                or None,
+                "overlap_notes": _coerce_string_list(raw_candidate.get("overlap_notes") or raw_candidate.get("overlap_risks")),
+            }
+        )
+    return summary
+
+
+def _xps_discovery_build_source_command(library_id: str, filters: dict[str, list[str]]) -> str:
+    parts = ["ea xps build-source-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+    for candidate_id in filters["include_candidates"]:
+        parts.extend(["--include-candidate", candidate_id])
+    for suggestion_type in filters["suggestion_types"]:
+        parts.extend(["--suggestion-type", suggestion_type])
+    for element in filters["elements"]:
+        parts.extend(["--element", element])
+    for core_level in filters["core_levels"]:
+        parts.extend(["--core-level", core_level])
+    return " ".join(parts)
+
+
+def summarize_xps_parameter_libraries(
+    *,
+    builtin_libraries: list[str] | None = None,
+    include_candidates: list[str] | None = None,
+    suggestion_types: list[str] | None = None,
+    elements: list[str] | None = None,
+    core_levels: list[str] | None = None,
+) -> dict[str, Any]:
+    """Summarize built-in XPS parameter libraries without creating project artifacts."""
+
+    libraries = _builtin_xps_parameter_libraries()
+    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    if requested_library_ids:
+        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        if unknown:
+            available = ", ".join(sorted(libraries)) or "none"
+            raise XPSProcessingError(f"Unknown built-in XPS parameter library: {', '.join(unknown)}. Available libraries: {available}")
+        library_ids = sorted(dict.fromkeys(requested_library_ids))
+    else:
+        library_ids = sorted(libraries)
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_xps_suggestion_type(item) for item in suggestion_types or [] if str(item).strip()}
+    element_set = {str(item).strip().lower() for item in elements or [] if str(item).strip()}
+    core_level_set = {str(item).strip().lower() for item in core_levels or [] if str(item).strip()}
+    filters = {
+        "builtin_libraries": library_ids,
+        "include_candidates": sorted(include_set),
+        "suggestion_types": sorted(type_set),
+        "elements": sorted(element_set),
+        "core_levels": sorted(core_level_set),
+    }
+
+    summaries: list[dict[str, Any]] = []
+    total_candidate_count = 0
+    matching_candidate_count = 0
+    all_suggestion_types: set[str] = set()
+    all_elements: set[str] = set()
+    all_core_levels: set[str] = set()
+    matching_reference_ids: set[str] = set()
+
+    for library_id in library_ids:
+        library = libraries[library_id]
+        raw_candidates = [candidate for candidate in _xps_parameter_source_candidates(library) if isinstance(candidate, dict)]
+        total_candidate_count += len(raw_candidates)
+        matching_raw_candidates = [
+            candidate
+            for candidate in raw_candidates
+            if _candidate_matches_filters(
+                candidate,
+                include_candidates=include_set,
+                suggestion_types=type_set,
+                elements=element_set,
+                core_levels=core_level_set,
+            )
+        ]
+        candidate_summaries = [_xps_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        matching_candidate_count += len(candidate_summaries)
+        type_counts: dict[str, int] = {}
+        library_elements: set[str] = set()
+        library_core_levels: set[str] = set()
+        for candidate in raw_candidates:
+            suggestion_type = _normalize_xps_suggestion_type(
+                candidate.get("suggestion_type") or candidate.get("parameter_type") or candidate.get("type")
+            )
+            if suggestion_type:
+                type_counts[suggestion_type] = type_counts.get(suggestion_type, 0) + 1
+                all_suggestion_types.add(suggestion_type)
+            element = str(candidate.get("element") or "").strip()
+            if element:
+                library_elements.add(element)
+                all_elements.add(element)
+            core_level = str(candidate.get("core_level") or "").strip()
+            if core_level:
+                library_core_levels.add(core_level)
+                all_core_levels.add(core_level)
+        candidate_reference_ids = {
+            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+        }
+        guidance_reference_ids = _coerce_string_list(library.get("guidance_reference_ids"))
+        matching_reference_ids.update(candidate_reference_ids)
+        if matching_raw_candidates:
+            matching_reference_ids.update(guidance_reference_ids)
+        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
+        matching_reference_seed_ids = sorted(
+            set(reference_seed_ids) & (candidate_reference_ids | (set(guidance_reference_ids) if matching_raw_candidates else set()))
+        )
+        summaries.append(
+            {
+                "library_id": library_id,
+                "description": str(library.get("description") or "").strip(),
+                "source": str(library.get("source") or "").strip(),
+                "total_candidate_count": len(raw_candidates),
+                "matching_candidate_count": len(candidate_summaries),
+                "suggestion_type_counts": dict(sorted(type_counts.items())),
+                "elements": sorted(library_elements),
+                "core_levels": sorted(library_core_levels),
+                "reference_seed_count": len(reference_seed_ids),
+                "reference_seed_ids": reference_seed_ids,
+                "matching_reference_seed_ids": matching_reference_seed_ids,
+                "guidance_reference_ids": guidance_reference_ids,
+                "guidance_notes": _coerce_string_list(library.get("guidance_notes")),
+                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidates": candidate_summaries,
+            }
+        )
+
+    build_source_commands = [
+        _xps_discovery_build_source_command(summary["library_id"], filters)
+        for summary in summaries
+        if summary["matching_candidate_count"] > 0
+    ]
+    return {
+        "schema_version": "0.2",
+        "source": "ea.xps.parameter_library_discovery:v0.2",
+        "status": "ready" if matching_candidate_count else "no_matching_candidates",
+        "available_builtin_libraries": sorted(libraries),
+        "library_count": len(summaries),
+        "total_candidate_count": total_candidate_count,
+        "matching_candidate_count": matching_candidate_count,
+        "available_suggestion_types": sorted(all_suggestion_types),
+        "available_elements": sorted(all_elements),
+        "available_core_levels": sorted(all_core_levels),
+        "matching_reference_ids": sorted(matching_reference_ids),
+        "filters": filters,
+        "libraries": summaries,
+        "next_commands": {
+            "build_source_packet": build_source_commands,
+            "register_reference_seeds": "ea references register-seeds /path/to/ea-project --source-packet suggestions/xps/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "suggest_parameters": "ea xps suggest-parameters /path/to/ea-project --source-file suggestions/xps/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "prepare_review": "ea xps prepare-review /path/to/ea-project --suggestion suggestions/xps/<suggestion_id>/xps_parameter_suggestions.yml --project-id <project-id>",
+        },
+        "boundaries": [
+            "This discovery command reads bundled XPS library metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download/parse full text, register references, create ReviewRecords, build source packets, suggest/apply parameters, fit spectra, apply charge correction, or prove chemical state/composition.",
+            "Use the listed build-source-packet, references register-seeds, suggest-parameters, and prepare-review commands when the user wants traceable project artifacts.",
+        ],
+    }
+
+
 def build_xps_parameter_source_packet(
     root: Path,
     *,

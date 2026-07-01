@@ -10,6 +10,7 @@ from ea.xps.service import (
     process_xps_result,
     propose_xps_parameter_memory_candidates,
     suggest_xps_parameters,
+    summarize_xps_parameter_libraries,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "process_xps_result",
     "propose_xps_parameter_memory_candidates",
     "suggest_xps_parameters",
+    "summarize_xps_parameter_libraries",
 ]

@@ -104,6 +104,7 @@ from ea.xps import (
     process_xps_result,
     propose_xps_parameter_memory_candidates,
     suggest_xps_parameters,
+    summarize_xps_parameter_libraries,
 )
 from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
 
@@ -404,6 +405,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     xps = sub.add_parser("xps", help="XPS inspection, processing, and report helpers")
     xps_sub = xps.add_subparsers(dest="xps_command", required=True)
+    xps_list_libraries = xps_sub.add_parser("list-parameter-libraries", help="list built-in XPS parameter libraries and candidates")
+    xps_list_libraries.add_argument("--builtin-library", action="append", choices=builtin_xps_parameter_libraries(), default=[])
+    xps_list_libraries.add_argument("--include-candidate", action="append", default=[])
+    xps_list_libraries.add_argument(
+        "--suggestion-type",
+        action="append",
+        choices=["spin_orbit_constraint", "tougaard_parameter", "binding_energy_candidate"],
+        default=[],
+    )
+    xps_list_libraries.add_argument("--element", action="append", default=[])
+    xps_list_libraries.add_argument("--core-level", action="append", default=[])
     xps_inspect = xps_sub.add_parser("inspect", help="inspect a surface spectroscopy file and suggest XPS columns/unit")
     xps_inspect.add_argument("workspace", type=Path)
     xps_inspect.add_argument("spectrum", type=Path)
@@ -1317,6 +1329,17 @@ def main(argv: list[str] | None = None) -> int:
             inspection = asdict(inspect_xps_file(_project_path(args.workspace, args.spectrum)))
             inspection["path"] = str(inspection["path"])
             _print_json(inspection)
+            return 0
+        if args.xps_command == "list-parameter-libraries":
+            _print_json(
+                summarize_xps_parameter_libraries(
+                    builtin_libraries=args.builtin_library,
+                    include_candidates=args.include_candidate,
+                    suggestion_types=args.suggestion_type,
+                    elements=args.element,
+                    core_levels=args.core_level,
+                )
+            )
             return 0
         if args.xps_command == "process":
             parameters = _xps_processing_parameters(args, args.workspace)

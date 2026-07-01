@@ -9,7 +9,13 @@ import pytest
 
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml
-from ea.xps import XPSProcessingError, build_xps_parameter_source_packet, default_xps_processing_parameters, inspect_xps_file
+from ea.xps import (
+    XPSProcessingError,
+    build_xps_parameter_source_packet,
+    default_xps_processing_parameters,
+    inspect_xps_file,
+    summarize_xps_parameter_libraries,
+)
 
 
 def _json_output(capsys) -> dict:
@@ -2173,6 +2179,80 @@ def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) 
     }
 
 
+def test_xps_parameter_library_summary_filters_source_backed_candidates() -> None:
+    summary = summarize_xps_parameter_libraries(
+        builtin_libraries=["generic_xps_parameters"],
+        suggestion_types=["binding_energy_candidate"],
+        elements=["Si"],
+        core_levels=["2p"],
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["library_count"] == 1
+    assert summary["matching_candidate_count"] == 2
+    assert summary["filters"]["builtin_libraries"] == ["generic_xps_parameters"]
+    assert summary["filters"]["suggestion_types"] == ["binding_energy_candidate"]
+    assert summary["filters"]["elements"] == ["si"]
+    assert summary["filters"]["core_levels"] == ["2p"]
+    assert "binding_energy_candidate" in summary["available_suggestion_types"]
+    assert "Si" in summary["available_elements"]
+    assert "2p" in summary["available_core_levels"]
+    assert "builtin-xps-charge-reference-guide-2020" in summary["matching_reference_ids"]
+
+    library = summary["libraries"][0]
+    assert library["library_id"] == "generic_xps_parameters"
+    assert library["total_candidate_count"] >= 17
+    assert library["matching_candidate_count"] == 2
+    assert "builtin-xps-thermo-si" in library["matching_reference_seed_ids"]
+    candidates = {candidate["candidate_id"]: candidate for candidate in library["candidates"]}
+    assert candidates["xps-builtin-si2p-elemental-binding-energy-candidate"]["target_parameter_path"] == (
+        "interpretation.binding_energy_candidates"
+    )
+    sio2 = candidates["xps-builtin-si2p-sio2-binding-energy-candidate"]
+    assert sio2["expected_binding_energy_eV"] == 103.5
+    assert sio2["binding_energy_window_eV"] == [103.0, 104.0]
+    assert sio2["auto_applied"] is False
+    assert sio2["requires_user_review"] is True
+    assert "build-source-packet" in summary["next_commands"]["build_source_packet"][0]
+    assert "--element si" in summary["next_commands"]["build_source_packet"][0]
+    assert "does not run live literature search" in " ".join(summary["boundaries"])
+
+
+def test_cli_lists_xps_parameter_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "xps",
+                "list-parameter-libraries",
+                "--builtin-library",
+                "oxide_o1s_binding_energy",
+                "--suggestion-type",
+                "binding_energy_candidate",
+                "--element",
+                "O",
+            ]
+        )
+        == 0
+    )
+    summary = _json_output(capsys)
+    assert summary["status"] == "ready"
+    assert summary["matching_candidate_count"] == 4
+    assert summary["libraries"][0]["library_id"] == "oxide_o1s_binding_energy"
+    assert summary["libraries"][0]["candidate_ids"] == [
+        "xps-builtin-o1s-lattice-oxide-binding-energy-candidate",
+        "xps-builtin-o1s-hydroxyl-adsorbed-oxygen-binding-energy-candidate",
+        "xps-builtin-o1s-carbonate-carbonyl-binding-energy-candidate",
+        "xps-builtin-o1s-silica-organic-co-binding-energy-candidate",
+    ]
+    assert "register-seeds" in summary["next_commands"]["register_reference_seeds"]
+
+    assert main(["xps", "list-parameter-libraries", "--builtin-library", "generic_xps_parameters", "--element", "Al"]) == 0
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["next_commands"]["build_source_packet"] == []
+
+
 def test_cli_builds_oxide_o1s_builtin_source_packet(tmp_path: Path, capsys) -> None:
     workspace = tmp_path / "cli-xps-oxide-o1s-source-packet-project"
     assert main(
@@ -2434,7 +2514,9 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea xps inspect" in readme
+    assert "ea xps list-parameter-libraries" in readme
     assert "ea xps process" in skill
+    assert "ea xps list-parameter-libraries" in skill
     assert "ea xps build-source-packet" in skill
     assert "ea xps suggest-parameters" in skill
     assert "ea xps propose-memory" in skill
@@ -2451,6 +2533,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_fit" in xps_reference_text
     assert "spin_orbit_constraints" in xps_reference_text
     assert "build-source-packet" in xps_reference_text
+    assert "list-parameter-libraries" in xps_reference_text
+    assert "candidate coverage and reference seeds" in xps_reference_text
     assert "xps_parameter_source_packet" in xps_reference_text
     assert "reference_seeds" in xps_reference_text
     assert "guidance_reference_ids" in xps_reference_text
@@ -2484,6 +2568,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
+    assert "parameter_library_discovery_summary" in xps_record["notes"]
+    assert "ea xps list-parameter-libraries" in xps_record["notes"]
     assert "parameter_source_packets" in xps_record["notes"]
     assert "reference_seeds" in xps_record["notes"]
     assert "guidance_reference_ids" in xps_record["notes"]
