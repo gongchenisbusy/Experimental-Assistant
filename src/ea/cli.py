@@ -55,7 +55,13 @@ from ea.literature import (
     search_public_literature_metadata,
     sync_literature_acquisition_status,
 )
-from ea.materials import assignment_candidates, available_materials, get_material_profile, summarize_raman_assignment_libraries
+from ea.materials import (
+    assignment_candidates,
+    available_materials,
+    get_material_profile,
+    summarize_pl_assignment_libraries,
+    summarize_raman_assignment_libraries,
+)
 from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
@@ -233,6 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     pl = sub.add_parser("pl", help="PL inspection, processing, and report helpers")
     pl_sub = pl.add_subparsers(dest="pl_command", required=True)
+    pl_list_libraries = pl_sub.add_parser("list-assignment-libraries", help="list built-in PL assignment libraries and candidates")
+    pl_list_libraries.add_argument("--material", action="append", default=[])
+    pl_list_libraries.add_argument("--feature", action="append", default=[])
+    pl_list_libraries.add_argument("--energy-min-ev", type=float)
+    pl_list_libraries.add_argument("--energy-max-ev", type=float)
+    pl_list_libraries.add_argument("--wavelength-min-nm", type=float)
+    pl_list_libraries.add_argument("--wavelength-max-nm", type=float)
     pl_inspect = pl_sub.add_parser("inspect", help="inspect a spectrum file and suggest PL columns/unit")
     pl_inspect.add_argument("workspace", type=Path)
     pl_inspect.add_argument("spectrum", type=Path)
@@ -1103,6 +1116,18 @@ def main(argv: list[str] | None = None) -> int:
         project_id = getattr(args, "project_id", None)
         if args.pl_command in {"process", "report"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
+        if args.pl_command == "list-assignment-libraries":
+            _print_json(
+                summarize_pl_assignment_libraries(
+                    materials=args.material,
+                    features=args.feature,
+                    energy_min_eV=args.energy_min_ev,
+                    energy_max_eV=args.energy_max_ev,
+                    wavelength_min_nm=args.wavelength_min_nm,
+                    wavelength_max_nm=args.wavelength_max_nm,
+                )
+            )
+            return 0
         if args.pl_command == "inspect":
             inspection = asdict(inspect_pl_file(_project_path(args.workspace, args.spectrum)))
             inspection["path"] = str(inspection["path"])

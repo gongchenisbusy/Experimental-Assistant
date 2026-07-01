@@ -12,6 +12,7 @@ from ea.materials import (
     match_pl_peaks,
     match_raman_peaks,
     match_xrd_peaks,
+    summarize_pl_assignment_libraries,
     summarize_raman_assignment_libraries,
 )
 from ea.storage import write_markdown_record
@@ -245,6 +246,87 @@ def test_cli_lists_raman_assignment_libraries_and_reports_no_matches(capsys) -> 
                 "400",
                 "--shift-max-cm1",
                 "420",
+            ]
+        )
+        == 0
+    )
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["libraries"][0]["material_profiles"] == []
+    assert no_match["next_commands"]["inspect_material_profile"] == []
+
+
+def test_pl_assignment_library_summary_filters_source_backed_candidates() -> None:
+    summary = summarize_pl_assignment_libraries(
+        materials=["WS2"],
+        features=["near_band_edge"],
+        energy_min_eV=1.9,
+        energy_max_eV=2.05,
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["method"] == "pl"
+    assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
+    assert summary["library_version"] == "0.2.1"
+    assert summary["total_candidate_count"] == 1
+    assert summary["matching_candidate_count"] == 1
+    assert summary["available_energy_range_eV"] == [1.9, 2.1]
+    assert summary["matching_reference_hint_keys"] == ["gutierrez-2013-ws2-pl"]
+    assert summary["filters"]["resolved_materials"] == ["ws2"]
+
+    profile = summary["libraries"][0]["material_profiles"][0]
+    assert profile["material_id"] == "ws2"
+    assert profile["assignment_source"] == "ea.materials.builtin:ws2:pl:v0.2"
+    assert profile["axis_units"] == ["eV", "nm"]
+    assert profile["reference_hints"][0]["doi"] == "10.1021/nl3026357"
+    assert profile["reference_hints"][0]["url"] == "https://doi.org/10.1021/nl3026357"
+
+    candidate = profile["candidates"][0]
+    assert candidate["candidate_id"] == "pl-builtin-ws2-ws2_near_band_edge_emission"
+    assert candidate["energy_window_eV"] == [1.9, 2.1]
+    assert round(candidate["wavelength_window_nm"][0], 1) == 590.4
+    assert round(candidate["wavelength_window_nm"][1], 1) == 652.5
+    assert candidate["source_backed"] is True
+    assert candidate["auto_applied"] is False
+    assert candidate["requires_user_review"] is True
+    assert "ea materials assignments ws2 --method pl" in summary["next_commands"]["inspect_material_profile"]
+    assert any("does not run live literature search" in boundary for boundary in summary["boundaries"])
+    assert any("do not prove excitonic mechanism" in boundary for boundary in summary["boundaries"])
+
+
+def test_cli_lists_pl_assignment_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "pl",
+                "list-assignment-libraries",
+                "--material",
+                "mos2",
+                "--energy-min-ev",
+                "1.8",
+                "--energy-max-ev",
+                "1.9",
+            ]
+        )
+        == 0
+    )
+    ready = _json_output(capsys)
+    assert ready["status"] == "ready"
+    assert ready["matching_candidate_count"] == 1
+    assert ready["libraries"][0]["material_profiles"][0]["candidates"][0]["candidate_id"] == "pl-builtin-mos2-mos2_near_band_edge_emission"
+
+    assert (
+        main(
+            [
+                "pl",
+                "list-assignment-libraries",
+                "--material",
+                "mos2",
+                "--wavelength-min-nm",
+                "500",
+                "--wavelength-max-nm",
+                "550",
             ]
         )
         == 0

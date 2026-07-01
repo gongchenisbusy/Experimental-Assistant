@@ -30,7 +30,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.spectrum
     method: pl
-    notes: Minimal PL workflow implemented for spectra, peak tables, traceable figures, and confidence-labeled reports.
+    notes: Minimal PL workflow implemented for review-gated spectrum inspection, smoothing/normalization, peak detection, assignment_library_discovery_summary via ea pl list-assignment-libraries for built-in source-backed MoS2/WS2 near-band-edge emission candidates, traceable figures, and confidence-labeled reports; discovery lists bundled energy/wavelength windows, DOI reference hints, filters, and next commands only without live lookup, project-file creation, spectrum processing, peak matching, reference registration, citation injection, ReviewRecord creation, memory writes, or excitonic-mechanism/material/layer/defect/strain/doping/substrate/calibration proof.
   - id: ea.project-traceability
     manifest: skill-registry/builtins/project-traceability.yml
     status: builtin_v0_2_reference
