@@ -25,6 +25,7 @@ from ea.figures import lookup_figure
 from ea.ftir import (
     FTIRProcessingRequest,
     build_ftir_assignment_source_packet,
+    builtin_ftir_assignment_libraries,
     default_ftir_processing_parameters,
     inspect_ftir_file,
     process_ftir_result,
@@ -285,6 +286,7 @@ def build_parser() -> argparse.ArgumentParser:
     ftir_source_packet = ftir_sub.add_parser("build-assignment-packet", help="build a standard FTIR assignment source packet")
     ftir_source_packet.add_argument("workspace", type=Path)
     ftir_source_packet.add_argument("--library-file", type=Path)
+    ftir_source_packet.add_argument("--builtin-library", choices=builtin_ftir_assignment_libraries(), help="use a bundled FTIR assignment library; defaults to generic_materials when no library file or template is supplied")
     ftir_source_packet.add_argument("--output", type=Path)
     ftir_source_packet.add_argument("--project-id")
     ftir_source_packet.add_argument("--include-candidate", action="append", default=[])
@@ -1026,6 +1028,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.workspace,
                     project_id=project_id,
                     library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    builtin_library=args.builtin_library,
                     output_path=args.output,
                     include_candidates=args.include_candidate,
                     assignment_types=args.assignment_type,

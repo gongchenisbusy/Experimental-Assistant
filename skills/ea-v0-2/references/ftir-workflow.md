@@ -8,7 +8,7 @@ Required gates:
 2. Ask for or verify x/y columns, x-axis unit (`cm^-1` or `unknown`), and `signal_mode` (`absorbance` or `transmittance`).
 3. Ask for or verify processing parameters before analysis.
 4. Keep raw data untouched; write processed outputs outside `raw/`.
-5. If source-backed FTIR assignments are useful, prepare candidate band windows from a reviewed local library, project literature record, user-provided source, or user-confirmed literature/search workflow. Use `ea ftir build-assignment-packet` for local libraries/templates, then run `ea ftir suggest-assignments` with processed metadata before using assignments in reports or memory; pass reviewed suggestion records to `ea ftir report --assignment-suggestion` when the report should include citation-aware advisory assignment sections.
+5. If source-backed FTIR assignments are useful, prepare candidate band windows from the built-in `generic_materials` seed library, a reviewed local library, project literature record, user-provided source, or user-confirmed literature/search workflow. Use `ea ftir build-assignment-packet` for built-in libraries, local libraries, or templates, then run `ea ftir suggest-assignments` with processed metadata before using assignments in reports or memory; pass reviewed suggestion records to `ea ftir report --assignment-suggestion` when the report should include citation-aware advisory assignment sections.
 6. Record baseline handling, smoothing, normalization, band detection, optional reviewed FTIR context, optional assignment suggestion records, generated figure, report, and provenance.
 7. Mark detected bands in figures and put wavenumber, prominence, broad band family, assignment source, and confidence in report tables.
 8. Treat broad FTIR band-family matches, context records, and source-backed assignment suggestions as screening/provenance hints. Use project chemistry, references, and user review before writing durable conclusions.
@@ -23,12 +23,12 @@ Current v0.2 FTIR support:
 - Processed CSV files include `wavenumber_cm-1`, `raw_signal`, optional `baseline_signal`, optional `smoothed_signal`, and `processed_signal`.
 - Band tables include `wavenumber_cm-1`, `prominence`, `signal_mode`, `band_type`, `possible_band_family`, `assignment_confidence`, and `assignment_source`.
 - When `context_record.enabled` is reviewed, EA writes `ftir_context.yml` with instrument/accessory, atmosphere, sample preparation, background, reference, correction notes, confidence, source, boundary, and record ref.
-- `ea ftir build-assignment-packet` creates standard FTIR assignment source packets from project-local candidate libraries or editable templates; local-literature or confirmed search connectors may generate the same packet schema.
+- `ea ftir build-assignment-packet` creates standard FTIR assignment source packets from the built-in `generic_materials` seed library, project-local candidate libraries, or editable templates; local-literature or confirmed search connectors may generate the same packet schema.
 - `ea ftir suggest-assignments` records source-backed band-assignment candidates under `suggestions/ftir/` by matching candidate wavenumber windows to detected FTIR bands without applying them to processing outputs or memory.
 - Built-in band-family windows cover broad regions only, such as O-H/N-H stretching, C-H stretching, carbonyl/amide-adjacent regions, fingerprint regions, and low-wavenumber metal-oxygen regions. They do not identify compounds by themselves.
 - Reports include an embedded FTIR figure, original figure path, band tables, optional context record summary/link, optional source-backed assignment suggestion sections, confidence-labeled possible interpretations, file links, References, and provenance.
 - `context_record` is disabled by default. Enable it only after the user reviews instrument/accessory, atmosphere, sample preparation, background/reference, and correction-note metadata. This record is metadata/provenance only; EA does not apply automatic background/reference/ATR/atmosphere correction from it in v0.2.
-- FTIR assignment suggestions are advisory. They require source summary, applicability notes, reference IDs, confidence, caveats, and user review before report or memory use. `ea ftir report --assignment-suggestion` can display these records and merge registered references into the report bibliography, but EA does not run live lookup inside `suggest-assignments`, auto-apply assignments, or prove composition/functional groups from a band match alone.
+- FTIR assignment suggestions are advisory. They require source summary, applicability notes, reference IDs, confidence, caveats, and user review before report or memory use. Built-in packets include `reference_seeds`; register or replace those sources in the project reference index before treating built-in candidates as report evidence. `ea ftir report --assignment-suggestion` can display these records and merge registered references into the report bibliography, but EA does not run live lookup inside `suggest-assignments`, auto-apply assignments, or prove composition/functional groups from a band match alone.
 
 CLI path:
 
@@ -39,11 +39,20 @@ ea review add /path/to/ea-project --target-type ftir_columns --target-ref raw/ft
 ea review add /path/to/ea-project --target-type ftir_parameters --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default FTIR parameters confirmed"
 ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metadata.yml --x-column wavenumber --y-column absorbance --x-unit cm^-1 --signal-mode absorbance --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
 ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
+ea ftir build-assignment-packet /path/to/ea-project
+ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ```
 
-Optional source-backed FTIR assignment candidate library:
+Built-in FTIR assignment seed library:
+
+- Default source-packet generation uses `generic_materials` when neither `--library-file` nor `--write-template` is supplied.
+- The built-in library includes common generic O-H/N-H, aliphatic C-H, C=O, triple-bond, aromatic C=C, C-O/C-N, Si-O/oxide, and low-wavenumber metal-oxygen candidates.
+- Built-in candidates are generic screening seeds. They carry `reference_seeds`, but their `reference_ids` still need project registration or replacement before report citations can become numbered references.
+- Use `--include-candidate`, `--assignment-type`, and `--material-scope` to narrow the packet before matching.
+
+Optional project-local FTIR assignment candidate library:
 
 ```yaml
 candidates:

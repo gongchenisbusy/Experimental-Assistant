@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import matplotlib
+import yaml
 
 matplotlib.use("Agg")
 
@@ -61,6 +64,31 @@ class FTIRProcessingRequest:
     processing_parameters: dict[str, Any]
     column_review_ref: str
     parameter_review_ref: str
+
+
+BUILTIN_FTIR_ASSIGNMENT_LIBRARY_DEFAULT = "generic_materials"
+
+
+@lru_cache(maxsize=1)
+def _builtin_ftir_assignment_libraries() -> dict[str, Any]:
+    text = resources.files("ea.ftir").joinpath("assignment_libraries.yml").read_text(encoding="utf-8")
+    loaded = yaml.safe_load(text) or {}
+    libraries = loaded.get("libraries")
+    if not isinstance(libraries, dict):
+        return {}
+    return libraries
+
+
+def builtin_ftir_assignment_libraries() -> list[str]:
+    return sorted(_builtin_ftir_assignment_libraries())
+
+
+def _builtin_ftir_assignment_library(name: str) -> dict[str, Any]:
+    libraries = _builtin_ftir_assignment_libraries()
+    if name not in libraries:
+        available = ", ".join(sorted(libraries)) or "none"
+        raise FTIRProcessingError(f"Unknown built-in FTIR assignment library: {name}. Available libraries: {available}")
+    return deepcopy(libraries[name])
 
 
 FTIR_BAND_WINDOWS = [
@@ -381,6 +409,7 @@ def build_ftir_assignment_source_packet(
     *,
     project_id: str,
     library_path: Path | None = None,
+    builtin_library: str | None = None,
     output_path: Path | None = None,
     include_candidates: list[str] | None = None,
     assignment_types: list[str] | None = None,
@@ -388,10 +417,15 @@ def build_ftir_assignment_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
+    if library_path and builtin_library:
+        raise FTIRProcessingError("Use either --library-file or --builtin-library for FTIR assignment source-packet generation, not both")
+    if template and builtin_library:
+        raise FTIRProcessingError("Use either --write-template or --builtin-library for FTIR assignment source-packet generation, not both")
     if not library_path and not template:
-        raise FTIRProcessingError("Provide --library-file or --write-template for FTIR assignment source-packet generation")
+        builtin_library = builtin_library or BUILTIN_FTIR_ASSIGNMENT_LIBRARY_DEFAULT
 
-    template_mode = template and library_path is None
+    template_mode = template and library_path is None and builtin_library is None
+    builtin_mode = builtin_library is not None
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
     source_packet_id = next_id(root, "ftir_assignment_source_packet", day)
@@ -406,8 +440,16 @@ def build_ftir_assignment_source_packet(
 
     warnings: list[dict[str, Any]] = []
     library_ref: str | None = None
+    library_kind = "template" if template_mode else "local_file"
+    reference_seeds: dict[str, Any] = {}
     if template_mode:
         raw_candidates = _ftir_assignment_template_candidates()
+    elif builtin_mode:
+        library = _builtin_ftir_assignment_library(str(builtin_library))
+        raw_candidates = _ftir_assignment_source_candidates(library)
+        reference_seeds = deepcopy(library.get("reference_seeds") or {})
+        library_ref = f"builtin:{builtin_library}"
+        library_kind = "built_in"
     else:
         source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
         if source_path is None or not source_path.exists():
@@ -467,7 +509,9 @@ def build_ftir_assignment_source_packet(
         "created_at": timestamp,
         "updated_at": timestamp,
         "source": "ea.ftir.assignment_source_packet:v0.2",
+        "source_library_kind": library_kind,
         "source_library_ref": library_ref,
+        "reference_seeds": reference_seeds,
         "candidate_count": len(selected),
         "candidates": selected,
         "filters": {
@@ -478,12 +522,13 @@ def build_ftir_assignment_source_packet(
         "reference_ids": reference_ids,
         "warnings": warnings,
         "next_steps": [
+            "If this packet uses built-in reference_seeds, register or replace those references in the project before treating suggestions as report evidence.",
             "Review and edit this packet until every candidate has a wavenumber window, source_summary, applicability_notes, reference_ids, confidence, and caveats.",
             "Run `ea ftir suggest-assignments` with processed FTIR metadata to match candidates against detected bands before using them in reports or memory.",
         ],
         "boundaries": [
             "FTIR assignment source packets are staging artifacts and do not modify processing outputs or confirmed project memory.",
-            "This source-packet builder does not run live lookup or parse full text itself; values may originate from user-provided data, local libraries, project literature, or separately confirmed search connectors.",
+            "This source-packet builder does not run live lookup or parse full text itself; values may originate from built-in generic libraries, user-provided data, local libraries, project literature, or separately confirmed search connectors.",
         ],
     }
     write_yaml(output_path, packet)
@@ -492,7 +537,13 @@ def build_ftir_assignment_source_packet(
         workflow="ftir_assignment_source_packet",
         inputs={"records": [library_ref] if library_ref else [], "files": []},
         outputs={"records": [packet_ref], "files": []},
-        parameters={"candidate_count": len(selected), "template": template_mode, "filters": packet["filters"], "auto_applied": False},
+        parameters={
+            "candidate_count": len(selected),
+            "template": template_mode,
+            "builtin_library": builtin_library if builtin_mode else None,
+            "filters": packet["filters"],
+            "auto_applied": False,
+        },
         warnings=warnings,
         source_refs=reference_ids,
         created_at=created_at,
@@ -505,6 +556,7 @@ def build_ftir_assignment_source_packet(
         "status": status,
         "candidate_count": len(selected),
         "reference_ids": reference_ids,
+        "reference_seed_count": len(reference_seeds),
         "warnings": warnings,
         "provenance": str(provenance_path),
     }

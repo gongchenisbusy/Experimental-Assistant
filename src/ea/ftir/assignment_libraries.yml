@@ -1,0 +1,179 @@
+library_version: "0.2"
+libraries:
+  generic_materials:
+    description: Generic FTIR band-assignment candidates for early source-packet seeding across materials projects.
+    source: ea.ftir.builtin_assignment_library:generic_materials:v0.2
+    reference_seeds:
+      builtin-ftir-socrates-2001:
+        citation: "Socrates, G. Infrared and Raman Characteristic Group Frequencies: Tables and Charts, 3rd ed.; Wiley, 2001."
+        title: "Infrared and Raman Characteristic Group Frequencies: Tables and Charts"
+        author:
+          - "George Socrates"
+        year: 2001
+        venue: "Wiley"
+        source_type: manual
+        notes: "General characteristic group-frequency reference seed. Register or replace with project-specific references before using suggestions as report evidence."
+      builtin-ftir-colthup-1990:
+        citation: "Colthup, N. B.; Daly, L. H.; Wiberley, S. E. Introduction to Infrared and Raman Spectroscopy, 3rd ed.; Academic Press, 1990."
+        title: "Introduction to Infrared and Raman Spectroscopy"
+        author:
+          - "Norman B. Colthup"
+          - "Lawrence H. Daly"
+          - "Stephen E. Wiberley"
+        year: 1990
+        venue: "Academic Press"
+        source_type: manual
+        notes: "General IR/Raman spectroscopy reference seed. Register or replace with project-specific references before using suggestions as report evidence."
+    candidates:
+      - candidate_id: ftir-builtin-oh-nh-stretching-generic
+        assignment_type: functional_group
+        assignment_label: broad O-H or N-H stretching candidate
+        band_label: broad high-wavenumber stretching band
+        material_scope: generic materials; polymers; oxides; hydroxylated surfaces; adsorbed water; amines; amides
+        sample_scope: samples where hydroxyl, amine, amide, moisture, or surface adsorbate context is plausible
+        wavenumber_window_cm1: [3200, 3600]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references list broad O-H and N-H stretching absorptions in this high-wavenumber region, with strong overlap from water and hydrogen bonding.
+        applicability_notes:
+          - Use only as a broad screening candidate until atmosphere, drying, sample preparation, and chemistry are reviewed.
+          - Broadness and band shape matter; a single maximum is weaker evidence than a reviewed broad envelope.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - Moisture, hydrogen bonding, and sample-preparation artifacts commonly affect this region.
+          - This window does not distinguish O-H from N-H without project context and additional evidence.
+      - candidate_id: ftir-builtin-aliphatic-ch-stretching-generic
+        assignment_type: functional_group
+        assignment_label: aliphatic C-H stretching candidate
+        band_label: aliphatic C-H stretching band
+        material_scope: generic materials; polymers; organic ligands; binders; surfactants; carbonaceous residues
+        sample_scope: samples where organic chains, binders, surfactants, ligands, or contamination are plausible
+        wavenumber_window_cm1: [2850, 2970]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references place aliphatic C-H stretching bands in the 2850-2970 cm^-1 region for many organic materials.
+        applicability_notes:
+          - Compare with project chemistry and sample history before interpreting as a real material component.
+          - Check whether binders, solvents, ligands, or handling residues could explain the feature.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - Organic contamination and processing residues can produce similar bands.
+          - Band-window match alone is not proof of alkyl groups in the target material.
+      - candidate_id: ftir-builtin-carbonyl-co-stretching-generic
+        assignment_type: functional_group
+        assignment_label: carbonyl C=O stretching candidate
+        band_label: carbonyl stretching band
+        material_scope: generic materials; polymers; esters; carboxylates; amides; carbonates; oxidized surfaces
+        sample_scope: samples where oxygen-containing organic groups, oxidized ligands, polymers, esters, acids, amides, or carbonates are plausible
+        wavenumber_window_cm1: [1650, 1800]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references place many C=O stretching absorptions in the 1650-1800 cm^-1 region, with position depending strongly on conjugation, hydrogen bonding, and functional group class.
+        applicability_notes:
+          - Treat this as a candidate family, not a specific carbonyl environment.
+          - Use project chemistry, neighboring bands, and references to distinguish ester, acid, amide, carbonate, or other carbonyl-like sources.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - Water bending, amide bands, C=C modes, and other overlapping bands can affect this region.
+          - The candidate does not identify a specific compound or carbonyl environment by itself.
+      - candidate_id: ftir-builtin-nitrile-triple-bond-generic
+        assignment_type: functional_group
+        assignment_label: nitrile or triple-bond stretching candidate
+        band_label: triple-bond stretching region
+        material_scope: generic materials; nitrile polymers; cyano-functionalized materials; alkynes; surface ligands
+        sample_scope: samples where cyano, nitrile, alkyne, or related triple-bond chemistry is plausible
+        wavenumber_window_cm1: [2100, 2260]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references list many nitrile and alkyne stretching absorptions in the 2100-2260 cm^-1 region.
+        applicability_notes:
+          - Use only when project chemistry plausibly includes nitrile, cyano, alkyne, or related groups.
+          - Atmospheric and instrument artifacts should be checked for nearby high-wavenumber features.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - Absence of a matched band does not exclude trace triple-bond species.
+          - Presence of a band in this region does not by itself prove nitrile chemistry.
+      - candidate_id: ftir-builtin-aromatic-cc-stretching-generic
+        assignment_type: functional_group
+        assignment_label: aromatic C=C stretching candidate
+        band_label: aromatic ring stretching band
+        material_scope: generic materials; aromatic polymers; graphitic carbon; organic ligands; conjugated systems
+        sample_scope: samples where aromatic rings, conjugated ligands, graphitic carbon, or aromatic polymers are plausible
+        wavenumber_window_cm1: [1500, 1625]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references list aromatic ring and C=C stretching bands across the 1500-1625 cm^-1 region, with overlap from water bending and amide modes.
+        applicability_notes:
+          - Compare with additional aromatic C-H or out-of-plane bands before interpreting the feature.
+          - Review background water and amide contributions when this region is used.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - This is an overlapping region and is weak evidence without corroborating bands.
+          - It cannot distinguish aromatic, alkene, amide, or water-related sources alone.
+      - candidate_id: ftir-builtin-co-cn-fingerprint-generic
+        assignment_type: functional_group
+        assignment_label: C-O or C-N fingerprint candidate
+        band_label: C-O/C-N fingerprint band
+        material_scope: generic materials; polymers; alcohols; ethers; esters; amines; amides; oxygenated or nitrogenated organics
+        sample_scope: samples where oxygenated or nitrogenated organic functional groups are plausible
+        wavenumber_window_cm1: [1000, 1300]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references list many C-O and C-N stretching modes in the 1000-1300 cm^-1 fingerprint region.
+        applicability_notes:
+          - Treat as a broad fingerprint-region hint and compare against reference spectra where possible.
+          - Use neighboring bands and known chemistry to narrow possible assignments.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - The fingerprint region is highly congested and material-specific.
+          - A match here is not a standalone functional-group assignment.
+      - candidate_id: ftir-builtin-sio-stretching-generic
+        assignment_type: functional_group
+        assignment_label: Si-O or inorganic oxide stretching candidate
+        band_label: Si-O/oxide stretching band
+        material_scope: generic materials; silica; silicates; glass; oxide surfaces; hybrid organic-inorganic materials
+        sample_scope: samples where silica, silicate, glass, oxide, or surface oxygen networks are plausible
+        wavenumber_window_cm1: [900, 1150]
+        expected_feature: absorbance_maximum
+        source_summary: Standard group-frequency references and common FTIR practice associate strong Si-O or related oxide network stretching bands with the 900-1150 cm^-1 region, but exact positions are system-dependent.
+        applicability_notes:
+          - Use project material identity and reference spectra to distinguish Si-O from organic fingerprint bands.
+          - Check whether the sample, substrate, filler, or support contains silica or other oxides.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - Organic C-O/C-N fingerprint bands can overlap this region.
+          - This candidate is not a definitive oxide-network assignment.
+      - candidate_id: ftir-builtin-metal-oxygen-low-region-generic
+        assignment_type: functional_group
+        assignment_label: metal-oxygen low-wavenumber candidate
+        band_label: low-wavenumber inorganic fingerprint band
+        material_scope: generic materials; metal oxides; hydroxides; inorganic composites; catalysts
+        sample_scope: samples where metal-oxygen, oxide, hydroxide, or inorganic lattice vibrations are plausible and the instrument range includes low wavenumbers
+        wavenumber_window_cm1: [400, 700]
+        expected_feature: absorbance_maximum
+        source_summary: Low-wavenumber FTIR features can include metal-oxygen or inorganic lattice-related modes, but assignments are strongly material-specific and often require reference spectra.
+        applicability_notes:
+          - Use only for instruments and spectra with reliable low-wavenumber response.
+          - Compare to project-specific oxide or inorganic reference spectra before interpreting.
+        reference_ids:
+          - builtin-ftir-socrates-2001
+          - builtin-ftir-colthup-1990
+        confidence: low
+        caveats:
+          - This region is system-dependent and often outside reliable ranges for some ATR/FTIR setups.
+          - A low-wavenumber band alone is not proof of a specific metal-oxygen bond.

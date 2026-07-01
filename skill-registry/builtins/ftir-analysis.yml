@@ -71,9 +71,11 @@ ea_skill:
       confidence_boundary: metadata_record_only
     assignment_suggestions:
       implemented: true
+      built_in_assignment_library: generic_materials
       source_packet_format: yaml
       record_format: yaml_and_csv
       report_integration: optional_via_assignment_suggestion_argument
+      reference_seeds_required_for_builtin_sources: true
       required_candidate_fields:
         - assignment_label
         - wavenumber_window_cm1

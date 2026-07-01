@@ -638,6 +638,69 @@ candidates:
     assert (workspace / "templates" / "ftir_assignment_source_packet.yml").exists()
 
 
+def test_cli_builds_builtin_ftir_assignment_source_packet(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "ftir-builtin-library-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "FTIR Builtin Library Workflow",
+            "--slug",
+            "ftir-builtin-library-workflow",
+            "--direction",
+            "FTIR built-in assignment source packet",
+            "--material",
+            "polymer oxide composite",
+            "--experiment-type",
+            "materials FTIR characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(["ftir", "build-assignment-packet", str(workspace), "--project-id", project_id]) == 0
+    packet_output = _json_output(capsys)
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet_output["status"] == "ready_for_suggest_assignments"
+    assert packet_output["candidate_count"] >= 8
+    assert packet_output["reference_seed_count"] == 2
+    assert packet["source_library_kind"] == "built_in"
+    assert packet["source_library_ref"] == "builtin:generic_materials"
+    assert "builtin-ftir-socrates-2001" in packet["reference_seeds"]
+    assert "builtin-ftir-colthup-1990" in packet["reference_seeds"]
+    assert "builtin-ftir-socrates-2001" in packet["reference_ids"]
+    assert any(candidate["candidate_id"] == "ftir-builtin-carbonyl-co-stretching-generic" for candidate in packet["candidates"])
+    assert "built-in reference_seeds" in " ".join(packet["next_steps"])
+    assert "does not run live lookup" in " ".join(packet["boundaries"])
+    assert (workspace / packet["provenance_ref"]).exists()
+
+    assert (
+        main(
+            [
+                "ftir",
+                "build-assignment-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "generic_materials",
+                "--include-candidate",
+                "ftir-builtin-carbonyl-co-stretching-generic",
+                "--material-scope",
+                "polymer",
+            ]
+        )
+        == 0
+    )
+    filtered_output = _json_output(capsys)
+    filtered_packet = read_yaml(Path(filtered_output["source_packet"]))
+    assert filtered_output["candidate_count"] == 1
+    assert filtered_packet["candidates"][0]["candidate_id"] == "ftir-builtin-carbonyl-co-stretching-generic"
+    assert filtered_packet["filters"]["material_scopes"] == ["polymer"]
+
+
 def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
@@ -650,6 +713,7 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "ea ftir process" in skill
     assert "ea ftir suggest-assignments" in skill
     assert "--assignment-suggestion" in skill
+    assert "--builtin-library" in skill
     assert "references/ftir-workflow.md" in skill
     assert ftir_reference.exists()
     reference_text = ftir_reference.read_text(encoding="utf-8")
@@ -658,7 +722,9 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "build-assignment-packet" in reference_text
     assert "suggest-assignments" in reference_text
     assert "--assignment-suggestion" in reference_text
+    assert "generic_materials" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]
     assert "assignment_suggestions" in ftir_record["notes"]
+    assert "built_in_assignment_library" in ftir_record["notes"]
