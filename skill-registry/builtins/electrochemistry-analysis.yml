@@ -15,6 +15,7 @@ ea_skill:
     - potential_conversion_record
     - ir_drop_correction_record
     - tafel_analysis_record
+    - gcd_analysis_record
     - figure_record
     - report_section
     - provenance_record
@@ -77,7 +78,8 @@ ea_skill:
       - potential_conversion_is_reviewed_coordinate_transform_only
       - ir_drop_correction_is_reviewed_coordinate_correction_only
       - tafel_analysis_requires_reviewed_kinetic_window_and_is_screening_only
-      - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
+      - gcd_analysis_requires_reviewed_discharge_window_and_is_screening_only
+      - no_device_performance_claims_without_replicates_and_future_protocol_model
       - no_memory_write_without_user_confirmation
     correction_records:
       implemented: true
@@ -140,3 +142,22 @@ ea_skill:
         - reviewer_notes
         - caveats
       confidence_boundary: reviewed_kinetic_window_screening_fit_only_no_automatic_window_selection_ranking_or_mechanism_claim
+    gcd_analysis:
+      implemented: true
+      record_format: yaml
+      method: reviewed_gcd_discharge_metrics
+      fields:
+        - time_input_column
+        - voltage_input_column
+        - voltage_unit
+        - discharge_time_window_s
+        - voltage_window_V
+        - discharge_current_mA
+        - current_sign_convention
+        - mass_mg
+        - area_cm2
+        - active_material_loading_mg_cm2
+        - reference_ids
+        - reviewer_notes
+        - caveats
+      confidence_boundary: reviewed_discharge_window_metrics_only_no_automatic_segment_selection_rate_stability_or_performance_claim

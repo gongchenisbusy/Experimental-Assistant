@@ -1832,6 +1832,74 @@ def _electrochemistry_tafel_analysis_text(metadata: dict) -> str:
     )
 
 
+def _electrochemistry_gcd_analysis_text(metadata: dict) -> str:
+    gcd = (metadata.get("peak_analysis") or {}).get("gcd_analysis")
+    if not gcd:
+        return "当前没有启用或记录 electrochemistry GCD analysis。"
+    status = gcd.get("status", "unknown")
+    confidence = gcd.get("confidence", "insufficient")
+    source = gcd.get("assignment_source", "ea.electrochemistry.gcd_analysis:v0.2")
+    record_ref = gcd.get("record_ref", "未生成")
+    applied = gcd.get("applied_to_processed_data", False)
+    metrics = gcd.get("metrics") or {}
+    labels = {
+        "time_input_column": "time input column",
+        "voltage_input_column": "voltage input column",
+        "voltage_unit": "voltage unit",
+        "discharge_time_window_s": "reviewed discharge time window s",
+        "voltage_window_V": "reviewed voltage window V",
+        "discharge_current_mA": "reviewed discharge current mA",
+        "current_sign_convention": "current sign convention",
+        "reference_ids": "reference ids",
+        "reviewer_notes": "reviewer notes",
+        "caveats": "caveats",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = gcd.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    for key in [
+        "duration_s",
+        "voltage_span_V",
+        "charge_C",
+        "capacity_mAh",
+        "capacitance_F",
+        "specific_capacity_mAh_g-1",
+        "specific_capacitance_F_g-1",
+        "areal_capacity_mAh_cm-2",
+        "areal_capacitance_F_cm-2",
+    ]:
+        value = metrics.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry GCD analysis details: `未记录`"
+    return (
+        f"GCD analysis 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
+        f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该步骤只在用户已审核 discharge time/voltage window 内计算容量/电容筛查指标；它不是自动放电段选择、电流符号推断、器件性能证明、倍率/循环稳定性评估、催化剂排名、等效电路拟合、Tafel 分析或机理证明。"
+    )
+
+
+def _electrochemistry_gcd_summary_text(metadata: dict) -> str:
+    gcd = (metadata.get("peak_analysis") or {}).get("gcd_analysis") or {}
+    metrics = gcd.get("metrics") or {}
+    if not metrics:
+        return "当前没有可复用的 reviewed GCD discharge metrics；请先确认放电时间窗口、电压窗口、电流、质量/面积/负载量和协议。"
+    parts = [
+        f"reviewed discharge duration = `{metrics.get('duration_s')}` s",
+        f"voltage span = `{metrics.get('voltage_span_V')}` V",
+        f"capacity = `{metrics.get('capacity_mAh')}` mAh",
+        f"capacitance = `{metrics.get('capacitance_F')}` F",
+    ]
+    if metrics.get("specific_capacity_mAh_g-1") is not None:
+        parts.append(f"specific capacity = `{metrics.get('specific_capacity_mAh_g-1')}` mAh g^-1")
+    if metrics.get("specific_capacitance_F_g-1") is not None:
+        parts.append(f"specific capacitance = `{metrics.get('specific_capacitance_F_g-1')}` F g^-1")
+    return "GCD reviewed discharge metrics: " + "；".join(parts) + "。"
+
+
 def generate_electrochemistry_report(
     root: Path,
     *,
@@ -1868,14 +1936,23 @@ def generate_electrochemistry_report(
     outputs = metadata["outputs"]
     feature_table_ref = outputs.get("feature_table", outputs.get("peak_table"))
     is_eis = metadata.get("measurement_mode") == "eis"
+    is_gcd = metadata.get("measurement_mode") == "gcd"
     feature_text = _electrochemistry_eis_feature_summary(root, feature_table_ref) if is_eis else _electrochemistry_feature_summary(root, feature_table_ref)
     feature_table = _electrochemistry_eis_feature_table(root, feature_table_ref) if is_eis else _electrochemistry_feature_table(root, feature_table_ref)
-    current_summary = _electrochemistry_eis_summary_text(metadata) if is_eis else _electrochemistry_current_summary(metadata)
-    summary_heading = "EIS Nyquist screening 摘要" if is_eis else "电流摘要"
+    if is_eis:
+        current_summary = _electrochemistry_eis_summary_text(metadata)
+        summary_heading = "EIS Nyquist screening 摘要"
+    elif is_gcd and (metadata.get("peak_analysis") or {}).get("gcd_analysis"):
+        current_summary = _electrochemistry_gcd_summary_text(metadata)
+        summary_heading = "GCD discharge metrics 摘要"
+    else:
+        current_summary = _electrochemistry_current_summary(metadata)
+        summary_heading = "电流摘要"
     correction_text = _electrochemistry_correction_record_text(metadata)
     potential_conversion_text = _electrochemistry_potential_conversion_text(metadata)
     ir_drop_correction_text = _electrochemistry_ir_drop_correction_text(metadata)
     tafel_analysis_text = _electrochemistry_tafel_analysis_text(metadata)
+    gcd_analysis_text = _electrochemistry_gcd_analysis_text(metadata)
     caution_text = (
         "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
@@ -1925,6 +2002,10 @@ def generate_electrochemistry_report(
 
 {tafel_analysis_text}
 
+## GCD discharge metrics
+
+{gcd_analysis_text}
+
 ## 图谱
 
 {figure_embed}
@@ -1963,6 +2044,7 @@ def generate_electrochemistry_report(
 {f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
 {f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get('ir_drop_correction') else "- iR drop correction: `未生成`"}
 {f"- Tafel/overpotential analysis: `{outputs['tafel_analysis']}`" if outputs.get('tafel_analysis') else "- Tafel/overpotential analysis: `未生成`"}
+{f"- GCD discharge metrics: `{outputs['gcd_analysis']}`" if outputs.get('gcd_analysis') else "- GCD discharge metrics: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1995,6 +2077,7 @@ def generate_electrochemistry_report(
                     outputs.get("potential_conversion"),
                     outputs.get("ir_drop_correction"),
                     outputs.get("tafel_analysis"),
+                    outputs.get("gcd_analysis"),
                     outputs["figure"],
                 ]
                 if value

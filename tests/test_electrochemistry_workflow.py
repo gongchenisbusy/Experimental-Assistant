@@ -66,6 +66,21 @@ def _write_tafel_fixture(path: Path) -> Path:
     return path
 
 
+def _write_gcd_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = s",
+        "# measurement_mode = gcd",
+        "# technique = galvanostatic charge discharge",
+        "time_s voltage_V",
+    ]
+    for index in range(101):
+        time_s = float(index)
+        voltage = 1.0 - 0.5 * time_s / 100.0
+        lines.append(f"{time_s:.6f} {voltage:.9f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def test_inspect_synthetic_electrochemistry_fixture(tmp_path: Path) -> None:
     fixture = _write_electrochemistry_fixture(tmp_path / "synthetic-electrochemistry-cv.txt")
 
@@ -750,6 +765,221 @@ def test_electrochemistry_tafel_analysis_uses_reviewed_window_and_records_fit(tm
     assert "electrochemistry_tafel_analysis.yml" in report_body
 
 
+def test_electrochemistry_gcd_analysis_uses_reviewed_discharge_window(tmp_path: Path, capsys) -> None:
+    fixture = _write_gcd_fixture(tmp_path / "synthetic-electrochemistry-gcd.txt")
+    workspace = tmp_path / "electrochemistry-gcd-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Electrochemistry GCD Workflow",
+            "--slug",
+            "electrochemistry-gcd-workflow",
+            "--direction",
+            "electrochemistry GCD discharge metrics",
+            "--material",
+            "supercapacitor electrode",
+            "--experiment-type",
+            "galvanostatic charge discharge",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "electrochemistry",
+            "--sample-ref",
+            "sample-ec-gcd-001",
+            "--experiment-ref",
+            "exp-ec-gcd-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(["electrochemistry", "inspect", str(workspace), raw_output["project_raw_path"]]) == 0
+    inspection = _json_output(capsys)
+    assert inspection["file_kind"] == "electrochemistry"
+    assert inspection["x_unit_candidate"] == "s"
+    assert inspection["measurement_mode_candidate"] == "gcd"
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=time_s, y=voltage_V, x_unit=s, current_unit=unknown, mode=gcd",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "GCD discharge segment; 2 mA discharge current; 4 mg active mass; 1 cm2 area; voltage window reviewed"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_electrochemistry_processing_parameters()
+    parameters["gcd_analysis"].update(
+        {
+            "enabled": True,
+            "time_input_column": "time_s",
+            "voltage_input_column": "current_raw",
+            "voltage_unit": "V",
+            "voltage_output_column": "gcd_voltage_V",
+            "segment_column": "gcd_discharge_segment",
+            "discharge_time_window_s": {"start": 0.0, "end": 100.0},
+            "voltage_window_V": {"min": 0.5, "max": 1.0},
+            "discharge_current_mA": 2.0,
+            "current_sign_convention": "reviewed_discharge_current_magnitude",
+            "mass_mg": 4.0,
+            "area_cm2": 1.0,
+            "active_material_loading_mg_cm2": 4.0,
+            "reference_ids": ["ref-electrochemistry-gcd-001"],
+            "reviewer_notes": ["Discharge segment and current were reviewed for the synthetic fixture."],
+            "caveats": ["Screening metric only; do not claim rate capability or cycling stability."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "electrochemistry",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-gcd-001",
+            "--x-column",
+            "time_s",
+            "--y-column",
+            "voltage_V",
+            "--x-unit",
+            "s",
+            "--current-unit",
+            "unknown",
+            "--measurement-mode",
+            "gcd",
+            "--context-summary",
+            context_text,
+            "--parameters-json",
+            json.dumps({"gcd_analysis": parameters["gcd_analysis"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    electrochemistry_metadata = Path(process_output["metadata"])
+    electrochemistry = read_yaml(electrochemistry_metadata)
+    gcd = electrochemistry["peak_analysis"]["gcd_analysis"]
+    metrics = gcd["metrics"]
+
+    assert electrochemistry["measurement_mode"] == "gcd"
+    assert electrochemistry["status"] == "success"
+    assert gcd["status"] == "reviewed_gcd_metrics_applied"
+    assert gcd["time_input_column"] == "time_s"
+    assert gcd["voltage_input_column"] == "current_raw"
+    assert gcd["voltage_output_column"] == "gcd_voltage_V"
+    assert gcd["segment_column"] == "gcd_discharge_segment"
+    assert gcd["applied_to_processed_data"] is True
+    assert gcd["applied_to_plot_axis"] is True
+    assert gcd["applied_to_feature_detection"] is False
+    assert "discharge-window metrics record" in gcd["boundary"]
+    assert math.isclose(metrics["duration_s"], 100.0, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["voltage_span_V"], 0.5, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["charge_C"], 0.2, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["capacity_mAh"], 2.0 * 100.0 / 3600.0, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["capacitance_F"], 0.4, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["specific_capacity_mAh_g-1"], (2.0 * 100.0 / 3600.0) / 0.004, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["specific_capacitance_F_g-1"], 100.0, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(metrics["areal_capacitance_F_cm-2"], 0.4, rel_tol=1e-9, abs_tol=1e-9)
+    assert electrochemistry["outputs"]["gcd_analysis"].endswith("electrochemistry_gcd_analysis.yml")
+    saved_gcd = read_yaml(workspace / electrochemistry["outputs"]["gcd_analysis"])
+    assert saved_gcd["record_ref"] == electrochemistry["outputs"]["gcd_analysis"]
+
+    with (workspace / electrochemistry["outputs"]["processed_csv"]).open(newline="", encoding="utf-8") as handle:
+        processed_rows = list(csv.DictReader(handle))
+    assert "gcd_voltage_V" in processed_rows[0]
+    assert "gcd_discharge_segment" in processed_rows[0]
+    assert processed_rows[0]["gcd_discharge_segment"] == "True"
+    assert math.isclose(float(processed_rows[-1]["gcd_voltage_V"]), 0.5, rel_tol=1e-9, abs_tol=1e-9)
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
+    assert electrochemistry["outputs"]["gcd_analysis"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "electrochemistry",
+            "report",
+            str(workspace),
+            "--metadata",
+            electrochemistry_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-gcd-001",
+            "--experiment-ref",
+            "exp-ec-gcd-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## GCD discharge metrics" in report_body
+    assert "GCD discharge metrics 摘要" in report_body
+    assert "specific_capacitance_F_g-1" in report_body
+    assert "100.0" in report_body
+    assert "electrochemistry_gcd_analysis.yml" in report_body
+
+
 def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
     fixture = _write_eis_fixture(tmp_path / "synthetic-electrochemistry-eis.txt")
     workspace = tmp_path / "cli-eis-project"
@@ -946,6 +1176,7 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "potential_conversion" in reference_text
     assert "ir_drop_correction" in reference_text
     assert "tafel_analysis" in reference_text
+    assert "gcd_analysis" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
     assert "eis_nyquist_screening" in electrochemistry_record["notes"]
@@ -953,3 +1184,4 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "potential_conversion" in electrochemistry_record["notes"]
     assert "ir_drop_correction" in electrochemistry_record["notes"]
     assert "tafel_analysis" in electrochemistry_record["notes"]
+    assert "gcd_analysis" in electrochemistry_record["notes"]

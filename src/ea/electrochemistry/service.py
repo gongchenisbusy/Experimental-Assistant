@@ -155,6 +155,27 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "reviewer_notes": [],
             "caveats": [],
         },
+        "gcd_analysis": {
+            "enabled": False,
+            "method": "reviewed_gcd_discharge_metrics",
+            "source": "ea.electrochemistry.gcd_analysis:v0.2",
+            "time_input_column": "time_s",
+            "voltage_input_column": "",
+            "voltage_unit": "V",
+            "voltage_output_column": "gcd_voltage_V",
+            "segment_column": "gcd_discharge_segment",
+            "discharge_time_window_s": {"start": None, "end": None},
+            "voltage_window_V": {"min": None, "max": None},
+            "discharge_current_mA": None,
+            "current_sign_convention": "reviewed_discharge_current_magnitude",
+            "mass_mg": None,
+            "area_cm2": None,
+            "active_material_loading_mg_cm2": None,
+            "minimum_points": 3,
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -221,6 +242,8 @@ def _mode_candidate(text: str) -> str:
 def _x_unit_candidate(text: str) -> str:
     if "ohm" in text or "zreal" in text or "z_real" in text or "impedance" in text or "nyquist" in text:
         return "ohm"
+    if "x_unit = s" in text or "x_unit=s" in text or "time_s" in text or "time (s" in text:
+        return "s"
     if "mv" in text:
         return "mV"
     if "potential" in text or "voltage" in text or " v " in f" {text} " or "(v" in text:
@@ -1506,6 +1529,386 @@ def _append_tafel_analysis_interpretation(analysis: dict[str, Any], tafel_record
     return analysis
 
 
+def _gcd_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+    value = params.get(name, [])
+    if isinstance(value, list):
+        return deepcopy(value), None
+    if isinstance(value, tuple):
+        return list(value), None
+    if isinstance(value, str) and value.strip():
+        return [value], None
+    if value in (None, "", []):
+        return [], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_gcd_analysis_list_ignored",
+            "An electrochemistry GCD analysis list field was ignored because it was not a list or non-empty string.",
+            severity="medium",
+            field=name,
+        ),
+    )
+
+
+def _gcd_required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "electrochemistry_gcd_analysis_required_value_missing",
+                "A required numeric GCD analysis value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    if not np.isfinite(coerced):
+        return (
+            None,
+            _warning(
+                "electrochemistry_gcd_analysis_required_value_missing",
+                "A required numeric GCD analysis value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    return coerced, None
+
+
+def _gcd_window(
+    params: dict[str, Any],
+    field: str,
+    lower_keys: tuple[str, ...],
+    upper_keys: tuple[str, ...],
+) -> tuple[tuple[float | None, float | None], list[dict[str, Any]]]:
+    window = params.get(field) or {}
+    warnings: list[dict[str, Any]] = []
+    if not isinstance(window, dict):
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_window_ignored",
+                "A GCD analysis window was ignored because it was not a mapping with lower/upper values.",
+                severity="medium",
+                field=field,
+            )
+        )
+        return (None, None), warnings
+    lower, lower_warning = _gcd_required_float(_mapping_first_present(window, lower_keys), f"{field}.lower")
+    upper, upper_warning = _gcd_required_float(_mapping_first_present(window, upper_keys), f"{field}.upper")
+    for warning in (lower_warning, upper_warning):
+        if warning:
+            warnings.append(warning)
+    if lower is not None and upper is not None and lower > upper:
+        lower, upper = upper, lower
+    return (lower, upper), warnings
+
+
+def _gcd_voltage_to_v(series: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+    values = series.to_numpy(dtype=float)
+    normalized = unit.strip()
+    if normalized == "V":
+        return values, None
+    if normalized == "mV":
+        return values / 1000.0, None
+    return (
+        values,
+        _warning(
+            "electrochemistry_gcd_analysis_voltage_unit_defaulted",
+            "GCD analysis voltage_unit was missing or unsupported and defaulted to V.",
+            severity="medium",
+            voltage_unit=unit,
+        ),
+    )
+
+
+def _gcd_input_column(processed: pd.DataFrame, params: dict[str, Any], field: str, fallback: str) -> str | None:
+    requested = str(params.get(field) or "").strip()
+    if requested:
+        return requested if requested in processed.columns else None
+    return fallback if fallback in processed.columns else None
+
+
+def _gcd_normalization_metrics(
+    *,
+    charge_c: float,
+    capacity_mAh: float,
+    capacitance_f: float,
+    params: dict[str, Any],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    mass_mg, mass_warning = (None, None)
+    area_cm2, area_warning = (None, None)
+    loading_mg_cm2, loading_warning = (None, None)
+    if params.get("mass_mg") not in (None, ""):
+        mass_mg, mass_warning = _gcd_required_float(params.get("mass_mg"), "mass_mg")
+    if params.get("area_cm2") not in (None, ""):
+        area_cm2, area_warning = _gcd_required_float(params.get("area_cm2"), "area_cm2")
+    if params.get("active_material_loading_mg_cm2") not in (None, ""):
+        loading_mg_cm2, loading_warning = _gcd_required_float(params.get("active_material_loading_mg_cm2"), "active_material_loading_mg_cm2")
+    for warning in (mass_warning, area_warning, loading_warning):
+        if warning:
+            warnings.append(warning)
+    if (mass_mg is None or mass_mg <= 0) and area_cm2 and area_cm2 > 0 and loading_mg_cm2 and loading_mg_cm2 > 0:
+        mass_mg = area_cm2 * loading_mg_cm2
+    metrics: dict[str, Any] = {
+        "mass_mg": mass_mg,
+        "area_cm2": area_cm2,
+        "active_material_loading_mg_cm2": loading_mg_cm2,
+    }
+    if mass_mg is not None and mass_mg > 0:
+        mass_g = mass_mg / 1000.0
+        metrics["mass_g"] = mass_g
+        metrics["specific_capacity_mAh_g-1"] = capacity_mAh / mass_g
+        metrics["specific_capacitance_F_g-1"] = capacitance_f / mass_g
+        metrics["specific_charge_C_g-1"] = charge_c / mass_g
+    else:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_mass_missing",
+                "GCD analysis mass/loading metadata was not supplied; mass-normalized capacity/capacitance were not calculated.",
+                severity="medium",
+            )
+        )
+    if area_cm2 is not None and area_cm2 > 0:
+        metrics["areal_capacity_mAh_cm-2"] = capacity_mAh / area_cm2
+        metrics["areal_capacitance_F_cm-2"] = capacitance_f / area_cm2
+        metrics["areal_charge_C_cm-2"] = charge_c / area_cm2
+    else:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_area_missing",
+                "GCD analysis area metadata was not supplied; area-normalized capacity/capacitance were not calculated.",
+                severity="medium",
+            )
+        )
+    return metrics
+
+
+def _apply_gcd_analysis(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    measurement_mode: str,
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("gcd_analysis", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return processed, None, []
+
+    analyzed = processed.copy()
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.electrochemistry.gcd_analysis:v0.2")
+    method = str(params.get("method") or "reviewed_gcd_discharge_metrics")
+    if method != "reviewed_gcd_discharge_metrics":
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_method_unsupported",
+                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this v0.2 workflow.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_gcd_discharge_metrics"
+
+    time_column = _gcd_input_column(analyzed, params, "time_input_column", "time_s")
+    voltage_column = _gcd_input_column(analyzed, params, "voltage_input_column", "current_raw")
+    voltage_unit = str(params.get("voltage_unit") or "V")
+    voltage_output_column = _unique_processed_column(
+        analyzed,
+        str(params.get("voltage_output_column") or "gcd_voltage_V"),
+        "gcd_voltage",
+        warnings,
+        "electrochemistry_gcd_analysis_voltage_column_adjusted",
+    )
+    segment_column = _unique_processed_column(
+        analyzed,
+        str(params.get("segment_column") or "gcd_discharge_segment"),
+        "gcd_segment",
+        warnings,
+        "electrochemistry_gcd_analysis_segment_column_adjusted",
+    )
+    time_window, time_warnings = _gcd_window(params, "discharge_time_window_s", ("start", "min", "lower", "from"), ("end", "max", "upper", "to"))
+    voltage_window, voltage_warnings = _gcd_window(params, "voltage_window_V", ("min", "lower", "start", "from"), ("max", "upper", "end", "to"))
+    warnings.extend(time_warnings)
+    warnings.extend(voltage_warnings)
+    discharge_current_mA, current_warning = _gcd_required_float(params.get("discharge_current_mA"), "discharge_current_mA")
+    if current_warning:
+        warnings.append(current_warning)
+    if discharge_current_mA is not None and discharge_current_mA < 0:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_current_negative",
+                "GCD analysis discharge_current_mA was negative; absolute magnitude was used after recording the warning.",
+                severity="medium",
+                discharge_current_mA=discharge_current_mA,
+            )
+        )
+        discharge_current_mA = abs(discharge_current_mA)
+    reference_ids, reference_warning = _gcd_list(params, "reference_ids")
+    if reference_warning:
+        warnings.append(reference_warning)
+    reviewer_notes, notes_warning = _gcd_list(params, "reviewer_notes")
+    if notes_warning:
+        warnings.append(notes_warning)
+    caveats, caveats_warning = _gcd_list(params, "caveats")
+    if caveats_warning:
+        warnings.append(caveats_warning)
+
+    applied = False
+    metrics: dict[str, Any] = {}
+    if measurement_mode != "gcd":
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_wrong_mode",
+                "GCD analysis was skipped because measurement_mode was not gcd.",
+                severity="medium",
+                measurement_mode=measurement_mode,
+            )
+        )
+    elif time_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_no_time_column",
+                "GCD analysis was enabled but no reviewed time input column was available.",
+                severity="medium",
+                requested_time_input_column=str(params.get("time_input_column") or "time_s"),
+            )
+        )
+    elif voltage_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_no_voltage_column",
+                "GCD analysis was enabled but no reviewed voltage signal column was available.",
+                severity="medium",
+                requested_voltage_input_column=str(params.get("voltage_input_column") or "current_raw"),
+            )
+        )
+    elif discharge_current_mA is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_gcd_analysis_current_missing",
+                "GCD analysis was enabled but no reviewed discharge_current_mA was supplied.",
+                severity="medium",
+            )
+        )
+    else:
+        time_values = analyzed[time_column].to_numpy(dtype=float)
+        voltage_values, voltage_warning = _gcd_voltage_to_v(analyzed[voltage_column], voltage_unit)
+        if voltage_warning:
+            warnings.append(voltage_warning)
+        analyzed[voltage_output_column] = voltage_values
+        analyzed[segment_column] = False
+        time_start, time_end = time_window
+        voltage_min, voltage_max = voltage_window
+        if time_start is None or time_end is None or voltage_min is None or voltage_max is None:
+            warnings.append(
+                _warning(
+                    "electrochemistry_gcd_analysis_window_missing",
+                    "GCD analysis was enabled but reviewed time and voltage windows were incomplete; no metrics were calculated.",
+                    severity="medium",
+                )
+            )
+        else:
+            finite = np.isfinite(time_values) & np.isfinite(voltage_values)
+            in_window = finite & (time_values >= time_start) & (time_values <= time_end) & (voltage_values >= voltage_min) & (voltage_values <= voltage_max)
+            minimum_points, _ = _coerce_int(params.get("minimum_points"), 3, minimum=2)
+            point_count = int(np.count_nonzero(in_window))
+            if point_count < minimum_points:
+                warnings.append(
+                    _warning(
+                        "electrochemistry_gcd_analysis_insufficient_points",
+                        "GCD analysis reviewed discharge window did not contain enough finite points.",
+                        severity="medium",
+                        point_count=point_count,
+                        minimum_points=minimum_points,
+                    )
+                )
+            else:
+                analyzed.loc[in_window, segment_column] = True
+                selected = analyzed.loc[in_window, [time_column, voltage_output_column]].copy()
+                selected = selected.sort_values(time_column)
+                selected_time = selected[time_column].to_numpy(dtype=float)
+                selected_voltage = selected[voltage_output_column].to_numpy(dtype=float)
+                duration_s = float(selected_time[-1] - selected_time[0])
+                voltage_start = float(selected_voltage[0])
+                voltage_end = float(selected_voltage[-1])
+                voltage_span = float(abs(voltage_start - voltage_end))
+                if duration_s <= 0 or voltage_span <= 0:
+                    warnings.append(
+                        _warning(
+                            "electrochemistry_gcd_analysis_invalid_span",
+                            "GCD analysis reviewed discharge window did not have positive time and voltage spans.",
+                            severity="medium",
+                            duration_s=duration_s,
+                            voltage_span_V=voltage_span,
+                        )
+                    )
+                else:
+                    current_a = discharge_current_mA / 1000.0
+                    charge_c = current_a * duration_s
+                    capacity_mAh = discharge_current_mA * duration_s / 3600.0
+                    capacitance_f = charge_c / voltage_span
+                    metrics = {
+                        "point_count": point_count,
+                        "duration_s": duration_s,
+                        "voltage_start_V": voltage_start,
+                        "voltage_end_V": voltage_end,
+                        "voltage_span_V": voltage_span,
+                        "discharge_current_mA": discharge_current_mA,
+                        "charge_C": charge_c,
+                        "capacity_mAh": capacity_mAh,
+                        "capacitance_F": capacitance_f,
+                    }
+                    metrics.update(_gcd_normalization_metrics(charge_c=charge_c, capacity_mAh=capacity_mAh, capacitance_f=capacitance_f, params=params, warnings=warnings))
+                    applied = True
+
+    status = "reviewed_gcd_metrics_applied" if applied else "enabled_without_gcd_metrics"
+    record = {
+        "enabled": True,
+        "status": status,
+        "method": method,
+        "assignment_source": source,
+        "confidence": str(params.get("confidence") or ("medium" if applied else "insufficient")),
+        "time_input_column": time_column,
+        "voltage_input_column": voltage_column,
+        "voltage_unit": voltage_unit,
+        "voltage_output_column": voltage_output_column if measurement_mode == "gcd" and voltage_column is not None else None,
+        "segment_column": segment_column if measurement_mode == "gcd" and voltage_column is not None else None,
+        "discharge_time_window_s": {"start": time_window[0], "end": time_window[1]},
+        "voltage_window_V": {"min": voltage_window[0], "max": voltage_window[1]},
+        "discharge_current_mA": discharge_current_mA,
+        "current_sign_convention": str(params.get("current_sign_convention") or "reviewed_discharge_current_magnitude"),
+        "metrics": metrics,
+        "applied_to_processed_data": applied,
+        "applied_to_plot_axis": applied,
+        "applied_to_feature_detection": False,
+        "reference_ids": reference_ids,
+        "reviewer_notes": reviewer_notes,
+        "caveats": caveats,
+        "warnings": warnings,
+        "boundary": "GCD analysis is a user-reviewed discharge-window metrics record only; it is not automatic segment selection, current-sign inference, device-performance proof, rate-capability or stability assessment, catalyst ranking, EIS fitting, Tafel analysis, or mechanistic proof.",
+    }
+    return analyzed, record, warnings
+
+
+def _append_gcd_analysis_interpretation(analysis: dict[str, Any], gcd_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["gcd_analysis"] = gcd_record
+    if gcd_record and gcd_record.get("status") == "reviewed_gcd_metrics_applied":
+        metrics = gcd_record.get("metrics") or {}
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed GCD discharge-window metrics used {gcd_record.get('time_input_column')} and {gcd_record.get('voltage_input_column')} "
+                    f"with duration {metrics.get('duration_s')} s and voltage span {metrics.get('voltage_span_V')} V. "
+                    "Treat capacity/capacitance values as protocol-dependent screening evidence until mass/area normalization, replicates, rate protocol, and literature context are reviewed."
+                ),
+                "confidence": gcd_record.get("confidence", "low"),
+                "evidence": ["gcd_analysis"],
+                "assignment_source": gcd_record.get("assignment_source", "ea.electrochemistry.gcd_analysis:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _eis_summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -1628,6 +2031,7 @@ def _plot_electrochemistry(
     *,
     potential_conversion_record: dict[str, Any] | None = None,
     ir_drop_correction_record: dict[str, Any] | None = None,
+    gcd_analysis_record: dict[str, Any] | None = None,
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
@@ -1648,6 +2052,26 @@ def _plot_electrochemistry(
         ax.set_aspect("equal", adjustable="datalim")
         save_styled_figure(fig, output, footer=footer)
         return
+    if measurement_mode == "gcd" and gcd_analysis_record and gcd_analysis_record.get("applied_to_plot_axis"):
+        time_column = gcd_analysis_record.get("time_input_column")
+        voltage_column = gcd_analysis_record.get("voltage_output_column")
+        if isinstance(time_column, str) and isinstance(voltage_column, str) and time_column in processed.columns and voltage_column in processed.columns:
+            ax.plot(processed[time_column], processed[voltage_column], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Reviewed GCD voltage")
+            segment_column = gcd_analysis_record.get("segment_column")
+            if isinstance(segment_column, str) and segment_column in processed.columns:
+                segment = processed[segment_column].astype(bool)
+                if bool(segment.any()):
+                    ax.scatter(
+                        processed.loc[segment, time_column],
+                        processed.loc[segment, voltage_column],
+                        color=NATURE_LIKE_COLORS["black"],
+                        s=12,
+                        label="Reviewed discharge window",
+                        zorder=3,
+                    )
+            style_axis(ax, title="Electrochemistry GCD discharge screening", xlabel="Time (s)", ylabel="Voltage (V)")
+            save_styled_figure(fig, output, footer=footer)
+            return
     ir_column = None
     if ir_drop_correction_record and ir_drop_correction_record.get("applied_to_plot_axis"):
         candidate = ir_drop_correction_record.get("output_column")
@@ -1752,12 +2176,14 @@ def process_electrochemistry_result(
         potential_conversion_record,
         ir_drop_correction_record,
     )
+    processed, gcd_analysis_record, gcd_analysis_warnings = _apply_gcd_analysis(processed, parameters, request.measurement_mode)
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
     analysis = _append_potential_conversion_interpretation(analysis, potential_conversion_record)
     analysis = _append_ir_drop_correction_interpretation(analysis, ir_drop_correction_record)
     analysis = _append_tafel_analysis_interpretation(analysis, tafel_analysis_record)
+    analysis = _append_gcd_analysis_interpretation(analysis, gcd_analysis_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -1774,10 +2200,11 @@ def process_electrochemistry_result(
     potential_conversion_yml = output_dir / "electrochemistry_potential_conversion.yml"
     ir_drop_correction_yml = output_dir / "electrochemistry_ir_drop_correction.yml"
     tafel_analysis_yml = output_dir / "electrochemistry_tafel_analysis.yml"
+    gcd_analysis_yml = output_dir / "electrochemistry_gcd_analysis.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, gcd_analysis_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1811,6 +2238,13 @@ def process_electrochemistry_result(
         write_yaml(tafel_analysis_yml, tafel_analysis_record)
         if analysis.get("tafel_analysis"):
             analysis["tafel_analysis"]["record_ref"] = tafel_analysis_ref
+    gcd_analysis_ref: str | None = None
+    if gcd_analysis_record is not None:
+        gcd_analysis_ref = str(gcd_analysis_yml.relative_to(root))
+        gcd_analysis_record["record_ref"] = gcd_analysis_ref
+        write_yaml(gcd_analysis_yml, gcd_analysis_record)
+        if analysis.get("gcd_analysis"):
+            analysis["gcd_analysis"]["record_ref"] = gcd_analysis_ref
     _plot_electrochemistry(
         processed,
         features,
@@ -1818,6 +2252,7 @@ def process_electrochemistry_result(
         request.measurement_mode,
         potential_conversion_record=potential_conversion_record,
         ir_drop_correction_record=ir_drop_correction_record,
+        gcd_analysis_record=gcd_analysis_record,
         footer=figure_footer(figure_id, None) if figure_id else None,
     )
 
@@ -1825,7 +2260,7 @@ def process_electrochemistry_result(
     if request.x_unit == "unknown":
         message = "EIS impedance unit remains unknown after confirmation." if request.measurement_mode == "eis" else "Electrochemistry x unit remains unknown after confirmation."
         warnings.append(_warning("electrochemistry_x_unit_unknown", message, severity="medium"))
-    if request.current_unit == "unknown" and request.measurement_mode != "eis":
+    if request.current_unit == "unknown" and request.measurement_mode not in {"eis", "gcd"}:
         warnings.append(_warning("electrochemistry_current_unit_unknown", "Electrochemistry current unit remains unknown after confirmation.", severity="medium"))
     if not request.context_summary:
         warnings.append(_warning("electrochemistry_context_missing", "Electrode/electrolyte context summary is empty.", severity="medium"))
@@ -1834,6 +2269,7 @@ def process_electrochemistry_result(
     warnings.extend(potential_conversion_warnings)
     warnings.extend(ir_drop_correction_warnings)
     warnings.extend(tafel_analysis_warnings)
+    warnings.extend(gcd_analysis_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "feature_table": str(features_csv.relative_to(root)),
@@ -1849,6 +2285,8 @@ def process_electrochemistry_result(
         outputs["ir_drop_correction"] = ir_drop_correction_ref
     if tafel_analysis_ref:
         outputs["tafel_analysis"] = tafel_analysis_ref
+    if gcd_analysis_ref:
+        outputs["gcd_analysis"] = gcd_analysis_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -1886,6 +2324,8 @@ def process_electrochemistry_result(
         provenance_files.append(ir_drop_correction_ref)
     if tafel_analysis_ref:
         provenance_files.append(tafel_analysis_ref)
+    if gcd_analysis_ref:
+        provenance_files.append(gcd_analysis_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -1919,7 +2359,7 @@ def process_electrochemistry_result(
         caption = (
             "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
             if request.measurement_mode == "eis"
-            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion/iR correction/Tafel screening records, and traceable processing parameters."
+            else "Electrochemistry trace with processed current or reviewed GCD voltage, screening features, reviewed context, optional reviewed potential conversion/iR correction/Tafel/GCD records, and traceable processing parameters."
         )
         register_figure(
             root,
@@ -1954,6 +2394,7 @@ def process_electrochemistry_result(
             + ([correction_ref] if correction_ref else [])
             + ([potential_conversion_ref] if potential_conversion_ref else [])
             + ([ir_drop_correction_ref] if ir_drop_correction_ref else [])
-            + ([tafel_analysis_ref] if tafel_analysis_ref else []),
+            + ([tafel_analysis_ref] if tafel_analysis_ref else [])
+            + ([gcd_analysis_ref] if gcd_analysis_ref else []),
         )
     return result_metadata

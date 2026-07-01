@@ -128,7 +128,7 @@ Electrochemistry：
 - 必须记录 measurement mode、current unit、electrode/electrolyte/reference-electrode/protocol context 和用户确认来源。
 - 若使用 current density，必须记录电极面积及其 review 来源。
 - 标注 peak-like/threshold/current-summary feature；过电位、Tafel slope、电容、容量、稳定性、倍率或机制解释不能由简单自动 feature 直接推出。
-- EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度；reviewed potential conversion 和 reviewed iR drop correction 只能作为坐标换算/校正记录，不能替代这些模型化分析。已启用的 reviewed Tafel/overpotential screening fit 也只能在用户确认 kinetic window 内报告斜率/过电位筛查结果，不能自动选择区间或直接证明性能/机理。
+- EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度；reviewed potential conversion 和 reviewed iR drop correction 只能作为坐标换算/校正记录，不能替代这些模型化分析。已启用的 reviewed Tafel/overpotential screening fit 只能在用户确认 kinetic window 内报告斜率/过电位筛查结果；已启用的 reviewed GCD discharge metrics 只能在用户确认 discharge time/voltage window、放电电流和归一化信息后报告容量/电容筛查指标。两者都不能自动选择区间或直接证明性能/机理。
 
 Thermal analysis：
 

@@ -6,7 +6,7 @@ skills:
     status: builtin_v0_2_reference
     category: characterization.electrochemistry
     method: electrochemistry
-    notes: Minimal electrochemistry workflow implemented for review-gated CV/LSV/chrono/GCD/EIS-style tabular data, current conversion, optional current-density normalization, reviewed potential_conversion offset transforms, reviewed ir_drop_correction coordinate corrections, reviewed tafel_analysis kinetic-window screening fits, eis_nyquist_screening, correction_records for reviewed reference/iR metadata, traceable figures, and confidence-labeled reports; equivalent-circuit fitting, GCD workflows, automatic kinetic-window selection, formal overpotential proof, and formal performance metrics remain future work.
+    notes: Minimal electrochemistry workflow implemented for review-gated CV/LSV/chrono/GCD/EIS-style tabular data, current conversion, optional current-density normalization, reviewed potential_conversion offset transforms, reviewed ir_drop_correction coordinate corrections, reviewed tafel_analysis kinetic-window screening fits, reviewed gcd_analysis discharge-window capacity/capacitance screening metrics, eis_nyquist_screening, correction_records for reviewed reference/iR metadata, traceable figures, and confidence-labeled reports; equivalent-circuit fitting, automatic kinetic/discharge-window selection, rate/stability assessment, formal overpotential proof, and formal performance metrics remain future work.
   - id: ea.ftir-analysis
     manifest: skill-registry/builtins/ftir-analysis.yml
     status: builtin_v0_2_reference
