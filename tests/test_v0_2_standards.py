@@ -99,7 +99,8 @@ def test_v0_2_source_backed_policy_is_not_user_provided_only() -> None:
     report_standard = Path("docs/EA_REPORT_AND_FIGURE_STANDARD.md").read_text(encoding="utf-8")
     skill = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
     xps_reference = Path("skills/ea-v0-2/references/xps-workflow.md").read_text(encoding="utf-8")
-    combined = "\n".join([design, report_standard, skill, xps_reference])
+    literature_reference = Path("skills/ea-v0-2/references/local-literature-library.md").read_text(encoding="utf-8")
+    combined = "\n".join([design, report_standard, skill, xps_reference, literature_reference])
 
     assert "只接受用户明确给出的能量差" not in combined
     assert "谨慎不等于沉默" in design
@@ -111,6 +112,8 @@ def test_v0_2_source_backed_policy_is_not_user_provided_only() -> None:
     assert "never silently apply values that change processing or conclusions" in skill
     assert "no-live-lookup or no-auto-application boundary" in skill
     assert "not a ban on EA looking up source-backed parameters" in xps_reference
+    assert "source-verified venue metrics" in literature_reference
+    assert "do not invent IF values" in literature_reference
 
 
 def test_v0_2_add_skills_manifest_validation(tmp_path: Path) -> None:

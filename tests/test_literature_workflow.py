@@ -1023,9 +1023,15 @@ def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tm
     assert result["selection_status"] == "selected_from_ranked_candidates"
     assert status["status"] == "ranked_candidates_ready"
     assert status["candidate_ranking_method"]["weights"]["project_relevance"] == 0.40
+    ranking_boundaries = "\n".join(status["candidate_ranking_method"]["boundaries"])
+    assert "supplied/verified metadata" in ranking_boundaries
+    assert "not invented" in ranking_boundaries
+    assert "automatic impact-factor lookup" not in ranking_boundaries
     assert "No live search" in status["summary_for_origin_thread"]
     assert ranking[0]["candidate_id"] == "cand-001"
     assert ranking[0]["title"] == "MoS2 Raman strain review"
+    assert "supplied/verified fields" in ranking[0]["notes"]
+    assert "impact factors are not invented" in ranking[0]["notes"]
     assert selected["items"][0]["candidate_id"] == "cand-001"
     assert selected["items"][1]["candidate_id"] == "cand-002"
     assert len(selected["items"]) == 2
@@ -1815,6 +1821,9 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "acquisition_reconciliation.md" in reference
     assert "questions_for_user" in reference
     assert "--resume" in reference
+    assert "source-verified venue metrics" in reference
+    assert "do not invent IF values" in reference
+    assert "look up or invent journal impact factors" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
     assert "prepare-source-candidates" in skill

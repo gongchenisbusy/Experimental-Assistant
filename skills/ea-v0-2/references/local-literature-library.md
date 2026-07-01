@@ -40,7 +40,7 @@ score = 0.45*project_relevance + 0.20*venue_authority + 0.15*recency + 0.10*cita
 
 Recommended top N: narrow project 30, ordinary project 50, review/broad direction 100-200 in batches.
 
-Treat "full web search" as systematic multi-source coverage with a search log, not a guarantee of no omissions. Use journal impact factors only when the user provides a reliable source or a verified source is available.
+Treat "full web search" as systematic multi-source coverage with a search log, not a guarantee of no omissions. Use journal impact factors or venue metrics when the user provides a reliable source, a dedicated user-confirmed literature workflow records a sourced value, or another verified source is available. Otherwise use labeled venue/citation proxies and state their source; do not invent IF values.
 
 Use the planning commands before any bulk search or full-text acquisition:
 
@@ -70,7 +70,7 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 
 `search-public` explicitly queries public metadata APIs such as Crossref, OpenAlex, and arXiv, writes `public_search_candidates.yml`, `search_coverage.yml`, `public_search_state.yml`, appends `search_log.md`, and feeds the same ranking workflow. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF download. Treat the result as source-limited metadata coverage, not exhaustive web coverage.
 
-`rank-candidates` consumes a user- or dedicated-workflow-supplied CSV/YAML/JSON candidate file, de-duplicates by DOI/URL/title, scores project relevance, venue authority, recency, citation/influence, and full-text availability, writes `ranking.csv`, and refreshes `selected_items.yml`. It does not run live web search, look up journal impact factors, use Zotero/browser access, log into institutions, or download PDFs.
+`rank-candidates` consumes a user- or dedicated-workflow-supplied CSV/YAML/JSON candidate file, de-duplicates by DOI/URL/title, scores project relevance, venue authority, recency, citation/influence, and full-text availability, writes `ranking.csv`, and refreshes `selected_items.yml`. It can score supplied or source-verified venue metrics, but it does not itself run live web search, look up or invent journal impact factors, use Zotero/browser access, log into institutions, or download PDFs.
 
 `prepare-source-candidates` converts local selected literature items into editable FTIR/XPS source-candidate manifests. It prefers `library_manifest.yml` when it contains items, otherwise `selected_items.yml`, unless `--source-items` is supplied. Without confirmation it writes `draft_<method>_source_candidates.yml`; with `--confirm-for-source-packet --user-response ...` it writes `confirmed_<method>_source_candidates.yml` and records user confirmation metadata. Candidate stubs include `reference_seeds` derived from local item metadata but remain disabled with `include_in_source_packet: false` until a user or agent fills source summary, applicability, caveats, method-specific fields, and explicitly enables the candidate.
 

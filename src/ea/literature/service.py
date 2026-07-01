@@ -336,7 +336,11 @@ def _estimate_confirmation(scope: ProjectScope, top_n: int | tuple[int, int], ac
         "requires_user_confirmation_before_download": True,
         "notes": [
             "This plan does not guarantee exhaustive web coverage; it creates a systematic source/query log.",
-            "Journal impact factors must come from user-provided or otherwise verified sources.",
+            (
+                "Journal impact factors or venue metrics may be used when supplied by the user, "
+                "retrieved by a dedicated user-confirmed literature workflow, or otherwise recorded "
+                "from verified sources; otherwise use source-labeled venue/citation proxies and do not invent IF values."
+            ),
             "Credentials, SSO, VPN, browser profiles, and Zotero paths must be supplied by the user, not assumed.",
         ],
     }
@@ -2921,7 +2925,10 @@ def rank_literature_candidates(
         if source_id:
             notes = f"{notes}; source_id={source_id}".strip("; ")
         if not notes:
-            notes = "Ranked from supplied candidate metadata; venue authority uses supplied fields or conservative text heuristics."
+            notes = (
+                "Ranked from supplied or public-search candidate metadata; venue authority uses supplied/verified "
+                "fields or transparent proxy heuristics; impact factors are not invented."
+            )
         record = _candidate_record(candidate, candidate_id=f"cand-raw-{raw_index:03d}", scores=scores, notes=notes)
         candidate_rows.append(
             {
@@ -3024,7 +3031,10 @@ def rank_literature_candidates(
                         if metadata_search_executed
                         else "No live web search, Zotero call, browser automation, DOI resolution, or PDF download was executed."
                     ),
-                    "Venue authority uses supplied metadata or conservative text heuristics; it is not automatic impact-factor lookup.",
+                    (
+                        "Venue authority uses supplied/verified metadata, public-search fields, or transparent proxy "
+                        "heuristics; impact factors are used only when source-recorded and are not invented."
+                    ),
                     "Scores support triage only and require user review before bulk acquisition.",
                 ],
             },
