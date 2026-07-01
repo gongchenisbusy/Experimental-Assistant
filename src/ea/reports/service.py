@@ -1752,6 +1752,44 @@ def _electrochemistry_potential_conversion_text(metadata: dict) -> str:
     )
 
 
+def _electrochemistry_ir_drop_correction_text(metadata: dict) -> str:
+    correction = (metadata.get("peak_analysis") or {}).get("ir_drop_correction")
+    if not correction:
+        return "当前没有启用或记录 electrochemistry iR drop correction。"
+    status = correction.get("status", "unknown")
+    confidence = correction.get("confidence", "insufficient")
+    source = correction.get("assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2")
+    record_ref = correction.get("record_ref", "未生成")
+    applied = correction.get("applied_to_processed_data", False)
+    plot_axis = correction.get("applied_to_plot_axis", False)
+    labels = {
+        "ru_ohm": "Ru ohm",
+        "compensation_fraction": "compensation fraction",
+        "sign_convention": "sign convention",
+        "formula": "formula",
+        "potential_input_column": "potential input column",
+        "current_input_column": "current input column",
+        "current_unit": "current unit",
+        "drop_column": "iR drop column",
+        "output_column": "corrected potential column",
+        "reference_ids": "reference ids",
+        "reviewer_notes": "reviewer notes",
+        "caveats": "caveats",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = correction.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry iR drop correction details: `未记录`"
+    return (
+        f"iR drop correction 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
+        f"applied_to_plot_axis: `{plot_axis}`；record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该步骤是基于用户已审核 Ru、补偿比例和符号约定的 coordinate correction，只对 processed voltammetry 坐标写入校正列，并保留原始/换算电位列；它不是 Tafel 分析、等效电路拟合、GCD 性能计算、过电位证明、催化剂排名或机理证明。"
+    )
+
+
 def generate_electrochemistry_report(
     root: Path,
     *,
@@ -1794,6 +1832,7 @@ def generate_electrochemistry_report(
     summary_heading = "EIS Nyquist screening 摘要" if is_eis else "电流摘要"
     correction_text = _electrochemistry_correction_record_text(metadata)
     potential_conversion_text = _electrochemistry_potential_conversion_text(metadata)
+    ir_drop_correction_text = _electrochemistry_ir_drop_correction_text(metadata)
     caution_text = (
         "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
@@ -1835,6 +1874,10 @@ def generate_electrochemistry_report(
 
 {potential_conversion_text}
 
+## iR drop correction
+
+{ir_drop_correction_text}
+
 ## 图谱
 
 {figure_embed}
@@ -1871,6 +1914,7 @@ def generate_electrochemistry_report(
 - feature table: `{feature_table_ref}`
 {f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
 {f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
+{f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get('ir_drop_correction') else "- iR drop correction: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1901,6 +1945,7 @@ def generate_electrochemistry_report(
                     feature_table_ref,
                     outputs.get("correction_record"),
                     outputs.get("potential_conversion"),
+                    outputs.get("ir_drop_correction"),
                     outputs["figure"],
                 ]
                 if value

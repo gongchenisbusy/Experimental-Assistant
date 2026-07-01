@@ -119,6 +119,23 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "reviewer_notes": [],
             "caveats": [],
         },
+        "ir_drop_correction": {
+            "enabled": False,
+            "method": "reviewed_ir_drop_correction",
+            "source": "ea.electrochemistry.ir_drop_correction:v0.2",
+            "potential_input_column": "",
+            "current_input_column": "processed_current_mA",
+            "current_unit": "mA",
+            "ru_ohm": None,
+            "compensation_fraction": 1.0,
+            "sign_convention": "subtract_i_ru",
+            "formula": "E_corrected = E_input - I_A * Ru_ohm * compensation_fraction",
+            "output_column": "ir_corrected_potential_V",
+            "drop_column": "ir_drop_V",
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -831,6 +848,277 @@ def _append_potential_conversion_interpretation(analysis: dict[str, Any], conver
     return analysis
 
 
+def _ir_correction_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+    value = params.get(name, [])
+    if isinstance(value, list):
+        return deepcopy(value), None
+    if isinstance(value, tuple):
+        return list(value), None
+    if isinstance(value, str) and value.strip():
+        return [value], None
+    if value in (None, "", []):
+        return [], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_ir_drop_correction_list_ignored",
+            "An electrochemistry iR drop correction list field was ignored because it was not a list or non-empty string.",
+            severity="medium",
+            field=name,
+        ),
+    )
+
+
+def _required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "electrochemistry_ir_drop_correction_required_value_missing",
+                "A required numeric iR drop correction value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    if not np.isfinite(coerced):
+        return (
+            None,
+            _warning(
+                "electrochemistry_ir_drop_correction_required_value_missing",
+                "A required numeric iR drop correction value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    return coerced, None
+
+
+def _current_series_to_a(series: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+    values = series.to_numpy(dtype=float)
+    normalized = unit.strip()
+    if normalized == "A":
+        return values, None
+    if normalized == "mA":
+        return values / 1000.0, None
+    if normalized in {"uA", "µA"}:
+        return values / 1_000_000.0, None
+    return (
+        values / 1000.0,
+        _warning(
+            "electrochemistry_ir_drop_correction_current_unit_defaulted",
+            "iR drop correction current_unit was missing or unsupported and defaulted to mA.",
+            severity="medium",
+            current_unit=unit,
+        ),
+    )
+
+
+def _available_potential_input_column(processed: pd.DataFrame, params: dict[str, Any], potential_conversion_record: dict[str, Any] | None) -> str | None:
+    requested = str(params.get("potential_input_column") or "").strip()
+    if requested:
+        return requested if requested in processed.columns else None
+    if potential_conversion_record and potential_conversion_record.get("applied_to_processed_data"):
+        candidate = potential_conversion_record.get("output_column")
+        if isinstance(candidate, str) and candidate in processed.columns:
+            return candidate
+    return "potential_V" if "potential_V" in processed.columns else None
+
+
+def _ir_output_column_name(params: dict[str, Any], fallback: str) -> str:
+    value = str(params.get(fallback) or "").strip()
+    if value:
+        return value
+    return "ir_drop_V" if fallback == "drop_column" else "ir_corrected_potential_V"
+
+
+def _apply_ir_drop_correction(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    measurement_mode: str,
+    potential_conversion_record: dict[str, Any] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("ir_drop_correction", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return processed, None, []
+
+    corrected = processed.copy()
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.electrochemistry.ir_drop_correction:v0.2")
+    method = str(params.get("method") or "reviewed_ir_drop_correction")
+    if method != "reviewed_ir_drop_correction":
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_method_unsupported",
+                "Only reviewed_ir_drop_correction is supported for iR drop correction in this v0.2 workflow.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_ir_drop_correction"
+
+    ru_ohm, ru_warning = _required_float(params.get("ru_ohm"), "ru_ohm")
+    if ru_warning:
+        warnings.append(ru_warning)
+    if ru_ohm is not None and ru_ohm < 0:
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_ru_negative",
+                "iR drop correction Ru must be non-negative.",
+                severity="medium",
+                ru_ohm=ru_ohm,
+            )
+        )
+        ru_ohm = None
+    fraction, fraction_adjusted = _coerce_float(params.get("compensation_fraction"), 1.0, minimum=0.0, maximum=1.0)
+    if fraction_adjusted:
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_fraction_defaulted",
+                "iR drop correction compensation_fraction was missing or outside 0-1 and defaulted to 1.0.",
+                severity="medium",
+            )
+        )
+
+    sign_convention = str(params.get("sign_convention") or "subtract_i_ru").strip()
+    if sign_convention not in {"subtract_i_ru", "add_i_ru"}:
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_sign_convention_defaulted",
+                "iR drop correction sign_convention was unsupported and defaulted to subtract_i_ru.",
+                severity="medium",
+                sign_convention=sign_convention,
+            )
+        )
+        sign_convention = "subtract_i_ru"
+
+    potential_input_column = _available_potential_input_column(corrected, params, potential_conversion_record)
+    requested_potential_input = str(params.get("potential_input_column") or "").strip()
+    current_input_column = str(params.get("current_input_column") or "processed_current_mA").strip() or "processed_current_mA"
+    current_unit = str(params.get("current_unit") or "mA")
+    output_column = _ir_output_column_name(params, "output_column")
+    drop_column = _ir_output_column_name(params, "drop_column")
+    for column_name, label in [(output_column, "output_column"), (drop_column, "drop_column")]:
+        if column_name in corrected.columns:
+            adjusted = f"{column_name}_ir_corrected" if label == "output_column" else f"{column_name}_calculated"
+            warnings.append(
+                _warning(
+                    "electrochemistry_ir_drop_correction_output_column_adjusted",
+                    "An iR drop correction output column already existed and was renamed to avoid overwriting processed data.",
+                    severity="medium",
+                    requested_column=column_name,
+                    output_column=adjusted,
+                )
+            )
+            if label == "output_column":
+                output_column = adjusted
+            else:
+                drop_column = adjusted
+
+    reference_ids, reference_warning = _ir_correction_list(params, "reference_ids")
+    if reference_warning:
+        warnings.append(reference_warning)
+    reviewer_notes, notes_warning = _ir_correction_list(params, "reviewer_notes")
+    if notes_warning:
+        warnings.append(notes_warning)
+    caveats, caveats_warning = _ir_correction_list(params, "caveats")
+    if caveats_warning:
+        warnings.append(caveats_warning)
+
+    applied = False
+    potential_offset = 0.0
+    if measurement_mode == "eis":
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_skipped_for_eis",
+                "iR drop correction was skipped for EIS mode because the reviewed data are impedance coordinates, not potential/current coordinates.",
+                severity="medium",
+            )
+        )
+    elif potential_input_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_no_potential_column",
+                "iR drop correction was enabled but no usable potential input column was available in the processed electrochemistry table.",
+                severity="medium",
+                requested_potential_input_column=requested_potential_input or "auto",
+            )
+        )
+    elif current_input_column not in corrected.columns:
+        warnings.append(
+            _warning(
+                "electrochemistry_ir_drop_correction_no_current_column",
+                "iR drop correction was enabled but the reviewed current input column was not available in the processed electrochemistry table.",
+                severity="medium",
+                current_input_column=current_input_column,
+            )
+        )
+    elif ru_ohm is not None:
+        current_a, current_warning = _current_series_to_a(corrected[current_input_column], current_unit)
+        if current_warning:
+            warnings.append(current_warning)
+        potential = corrected[potential_input_column].to_numpy(dtype=float)
+        drop_v = current_a * ru_ohm * fraction
+        if sign_convention == "subtract_i_ru":
+            corrected_potential = potential - drop_v
+        else:
+            corrected_potential = potential + drop_v
+        corrected[drop_column] = drop_v
+        corrected[output_column] = corrected_potential
+        applied = True
+        if potential_input_column == "potential_V":
+            potential_offset = 0.0
+        elif potential_conversion_record and potential_input_column == potential_conversion_record.get("output_column"):
+            potential_offset = float(potential_conversion_record.get("offset_V") or 0.0)
+
+    status = "reviewed_ir_drop_correction_applied" if applied else "enabled_without_ir_drop_correction"
+    record = {
+        "enabled": True,
+        "status": status,
+        "method": method,
+        "assignment_source": source,
+        "confidence": str(params.get("confidence") or ("medium" if applied else "insufficient")),
+        "ru_ohm": ru_ohm,
+        "compensation_fraction": fraction,
+        "sign_convention": sign_convention,
+        "formula": str(params.get("formula") or "E_corrected = E_input - I_A * Ru_ohm * compensation_fraction"),
+        "potential_input_column": potential_input_column,
+        "current_input_column": current_input_column,
+        "current_unit": current_unit,
+        "output_column": output_column if applied else None,
+        "drop_column": drop_column if applied else None,
+        "potential_input_offset_from_potential_V": potential_offset,
+        "applied_to_processed_data": applied,
+        "applied_to_plot_axis": applied,
+        "applied_to_feature_detection": False,
+        "reference_ids": reference_ids,
+        "reviewer_notes": reviewer_notes,
+        "caveats": caveats,
+        "warnings": warnings,
+        "boundary": "iR drop correction is a user-reviewed numeric coordinate correction applied to processed voltammetry tables and plots only; it is not Tafel analysis, equivalent-circuit fitting, GCD performance calculation, overpotential proof, catalyst ranking, or mechanistic proof.",
+    }
+    return corrected, record, warnings
+
+
+def _append_ir_drop_correction_interpretation(analysis: dict[str, Any], ir_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["ir_drop_correction"] = ir_record
+    if ir_record and ir_record.get("applied_to_processed_data"):
+        output_column = ir_record.get("output_column") or "iR-corrected potential column"
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed iR drop correction was applied to processed voltammetry coordinates as {output_column}. "
+                    "Use this coordinate only with the reviewed Ru, compensation fraction, sign convention, and protocol context."
+                ),
+                "confidence": ir_record.get("confidence", "low"),
+                "evidence": ["ir_drop_correction"],
+                "assignment_source": ir_record.get("assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _eis_summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -952,6 +1240,7 @@ def _plot_electrochemistry(
     measurement_mode: str,
     *,
     potential_conversion_record: dict[str, Any] | None = None,
+    ir_drop_correction_record: dict[str, Any] | None = None,
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
@@ -972,12 +1261,20 @@ def _plot_electrochemistry(
         ax.set_aspect("equal", adjustable="datalim")
         save_styled_figure(fig, output, footer=footer)
         return
+    ir_column = None
+    if ir_drop_correction_record and ir_drop_correction_record.get("applied_to_plot_axis"):
+        candidate = ir_drop_correction_record.get("output_column")
+        if isinstance(candidate, str) and candidate in processed.columns:
+            ir_column = candidate
     conversion_column = None
     if potential_conversion_record and potential_conversion_record.get("applied_to_plot_axis"):
         candidate = potential_conversion_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             conversion_column = candidate
-    if conversion_column:
+    if ir_column:
+        x = processed[ir_column]
+        xlabel = "iR-corrected potential (V)"
+    elif conversion_column:
         x = processed[conversion_column]
         target_scale = potential_conversion_record.get("target_scale") or "converted scale"
         xlabel = f"Potential vs {target_scale} (V)"
@@ -995,14 +1292,33 @@ def _plot_electrochemistry(
     ax.plot(x, processed[y_column], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed current")
     if not features.empty:
         feature_y = "current_density_mA_cm-2" if y_column == "processed_current_density_mA_cm-2" else "current_mA"
-        if conversion_column and "potential_V" in features.columns:
+        if ir_column and "potential_V" in features.columns:
+            offset = float(ir_drop_correction_record.get("potential_input_offset_from_potential_V") or 0.0)
+            ru_ohm = float(ir_drop_correction_record.get("ru_ohm") or 0.0)
+            fraction = float(ir_drop_correction_record.get("compensation_fraction") or 1.0)
+            feature_current_a = features["current_mA"] / 1000.0
+            feature_drop = feature_current_a * ru_ohm * fraction
+            if ir_drop_correction_record.get("sign_convention") == "add_i_ru":
+                feature_x = features["potential_V"] + offset + feature_drop
+            else:
+                feature_x = features["potential_V"] + offset - feature_drop
+        elif conversion_column and "potential_V" in features.columns:
             feature_x = features["potential_V"] + float(potential_conversion_record.get("offset_V", 0.0))
         else:
             feature_x = features["axis_value"]
         ax.scatter(feature_x, features[feature_y], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected features", zorder=3)
         for _, feature in features.head(8).iterrows():
             feature_x_value = float(feature["axis_value"])
-            if conversion_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
+            if ir_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
+                offset = float(ir_drop_correction_record.get("potential_input_offset_from_potential_V") or 0.0)
+                ru_ohm = float(ir_drop_correction_record.get("ru_ohm") or 0.0)
+                fraction = float(ir_drop_correction_record.get("compensation_fraction") or 1.0)
+                feature_drop = float(feature["current_mA"]) / 1000.0 * ru_ohm * fraction
+                if ir_drop_correction_record.get("sign_convention") == "add_i_ru":
+                    feature_x_value = float(feature["potential_V"]) + offset + feature_drop
+                else:
+                    feature_x_value = float(feature["potential_V"]) + offset - feature_drop
+            elif conversion_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
                 feature_x_value = float(feature["potential_V"]) + float(potential_conversion_record.get("offset_V", 0.0))
             ax.annotate(
                 str(feature["feature_id"]).replace("ec-", ""),
@@ -1041,10 +1357,12 @@ def process_electrochemistry_result(
     else:
         processed, processing_warnings = _apply_processing(confirmed, parameters)
     processed, potential_conversion_record, potential_conversion_warnings = _apply_potential_conversion(processed, parameters, request.measurement_mode)
+    processed, ir_drop_correction_record, ir_drop_correction_warnings = _apply_ir_drop_correction(processed, parameters, request.measurement_mode, potential_conversion_record)
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
     analysis = _append_potential_conversion_interpretation(analysis, potential_conversion_record)
+    analysis = _append_ir_drop_correction_interpretation(analysis, ir_drop_correction_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -1059,10 +1377,11 @@ def process_electrochemistry_result(
     features_csv = output_dir / "electrochemistry_features.csv"
     correction_yml = output_dir / "electrochemistry_correction.yml"
     potential_conversion_yml = output_dir / "electrochemistry_potential_conversion.yml"
+    ir_drop_correction_yml = output_dir / "electrochemistry_ir_drop_correction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1082,12 +1401,20 @@ def process_electrochemistry_result(
         write_yaml(potential_conversion_yml, potential_conversion_record)
         if analysis.get("potential_conversion"):
             analysis["potential_conversion"]["record_ref"] = potential_conversion_ref
+    ir_drop_correction_ref: str | None = None
+    if ir_drop_correction_record is not None:
+        ir_drop_correction_ref = str(ir_drop_correction_yml.relative_to(root))
+        ir_drop_correction_record["record_ref"] = ir_drop_correction_ref
+        write_yaml(ir_drop_correction_yml, ir_drop_correction_record)
+        if analysis.get("ir_drop_correction"):
+            analysis["ir_drop_correction"]["record_ref"] = ir_drop_correction_ref
     _plot_electrochemistry(
         processed,
         features,
         figure,
         request.measurement_mode,
         potential_conversion_record=potential_conversion_record,
+        ir_drop_correction_record=ir_drop_correction_record,
         footer=figure_footer(figure_id, None) if figure_id else None,
     )
 
@@ -1102,6 +1429,7 @@ def process_electrochemistry_result(
     warnings.extend(processing_warnings)
     warnings.extend(correction_warnings)
     warnings.extend(potential_conversion_warnings)
+    warnings.extend(ir_drop_correction_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "feature_table": str(features_csv.relative_to(root)),
@@ -1113,6 +1441,8 @@ def process_electrochemistry_result(
         outputs["correction_record"] = correction_ref
     if potential_conversion_ref:
         outputs["potential_conversion"] = potential_conversion_ref
+    if ir_drop_correction_ref:
+        outputs["ir_drop_correction"] = ir_drop_correction_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -1146,6 +1476,8 @@ def process_electrochemistry_result(
         provenance_files.append(correction_ref)
     if potential_conversion_ref:
         provenance_files.append(potential_conversion_ref)
+    if ir_drop_correction_ref:
+        provenance_files.append(ir_drop_correction_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -1179,7 +1511,7 @@ def process_electrochemistry_result(
         caption = (
             "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
             if request.measurement_mode == "eis"
-            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion, and traceable processing parameters."
+            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion/iR correction, and traceable processing parameters."
         )
         register_figure(
             root,
@@ -1212,6 +1544,7 @@ def process_electrochemistry_result(
                 str(features_csv.relative_to(root)),
             ]
             + ([correction_ref] if correction_ref else [])
-            + ([potential_conversion_ref] if potential_conversion_ref else []),
+            + ([potential_conversion_ref] if potential_conversion_ref else [])
+            + ([ir_drop_correction_ref] if ir_drop_correction_ref else []),
         )
     return result_metadata

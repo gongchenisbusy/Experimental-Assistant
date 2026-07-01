@@ -124,11 +124,11 @@ XPS：
 
 Electrochemistry：
 
-- x 轴为 potential (`V`/`mV`)、reviewed converted potential (`V vs target scale`) 或 time (`s`)；y 轴为 current 或 current density，并明确单位。
+- x 轴为 potential (`V`/`mV`)、reviewed converted potential (`V vs target scale`)、reviewed iR-corrected potential (`V`) 或 time (`s`)；y 轴为 current 或 current density，并明确单位。
 - 必须记录 measurement mode、current unit、electrode/electrolyte/reference-electrode/protocol context 和用户确认来源。
 - 若使用 current density，必须记录电极面积及其 review 来源。
 - 标注 peak-like/threshold/current-summary feature；过电位、Tafel slope、电容、容量、稳定性、倍率或机制解释不能由简单自动 feature 直接推出。
-- EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度；reviewed potential conversion 只能作为坐标换算记录，不能替代这些模型化分析。
+- EIS、Tafel、GCD 容量/电容等模型化分析必须写明协议、公式、参数、归一化方式、参考电极校正和可信度；reviewed potential conversion 和 reviewed iR drop correction 只能作为坐标换算/校正记录，不能替代这些模型化分析。
 
 Thermal analysis：
 

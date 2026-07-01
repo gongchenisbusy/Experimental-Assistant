@@ -359,6 +359,23 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
             "caveats": ["Confirm pH and reference calibration before overpotential comparisons."],
         }
     )
+    parameters["ir_drop_correction"].update(
+        {
+            "enabled": True,
+            "potential_input_column": "potential_RHE_V",
+            "current_input_column": "processed_current_mA",
+            "current_unit": "mA",
+            "ru_ohm": 18.5,
+            "compensation_fraction": 0.85,
+            "sign_convention": "subtract_i_ru",
+            "formula": "E_iR = E_RHE - I_A * Ru * 0.85",
+            "output_column": "potential_RHE_iR_corrected_V",
+            "drop_column": "ir_drop_V",
+            "reference_ids": ["ref-electrochemistry-method-001"],
+            "reviewer_notes": ["Ru and compensation fraction reviewed for the synthetic fixture protocol."],
+            "caveats": ["Do not use this correction alone as a Tafel or overpotential claim."],
+        }
+    )
     assert main(
         [
             "review",
@@ -406,6 +423,7 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
                 {
                     "correction_record": parameters["correction_record"],
                     "potential_conversion": parameters["potential_conversion"],
+                    "ir_drop_correction": parameters["ir_drop_correction"],
                 },
                 ensure_ascii=False,
             ),
@@ -422,6 +440,7 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     electrochemistry = read_yaml(electrochemistry_metadata)
     correction_record = electrochemistry["peak_analysis"]["correction_record"]
     potential_conversion = electrochemistry["peak_analysis"]["potential_conversion"]
+    ir_drop_correction = electrochemistry["peak_analysis"]["ir_drop_correction"]
 
     assert correction_record["status"] == "reviewed_correction_recorded"
     assert correction_record["confidence"] == "low"
@@ -446,16 +465,39 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     assert electrochemistry["outputs"]["potential_conversion"].endswith("electrochemistry_potential_conversion.yml")
     saved_conversion = read_yaml(workspace / electrochemistry["outputs"]["potential_conversion"])
     assert saved_conversion["record_ref"] == electrochemistry["outputs"]["potential_conversion"]
+    assert ir_drop_correction["status"] == "reviewed_ir_drop_correction_applied"
+    assert ir_drop_correction["ru_ohm"] == 18.5
+    assert ir_drop_correction["compensation_fraction"] == 0.85
+    assert ir_drop_correction["sign_convention"] == "subtract_i_ru"
+    assert ir_drop_correction["potential_input_column"] == "potential_RHE_V"
+    assert ir_drop_correction["current_input_column"] == "processed_current_mA"
+    assert ir_drop_correction["output_column"] == "potential_RHE_iR_corrected_V"
+    assert ir_drop_correction["drop_column"] == "ir_drop_V"
+    assert ir_drop_correction["applied_to_processed_data"] is True
+    assert ir_drop_correction["applied_to_plot_axis"] is True
+    assert ir_drop_correction["applied_to_feature_detection"] is False
+    assert "coordinate correction" in ir_drop_correction["boundary"]
+    assert electrochemistry["outputs"]["ir_drop_correction"].endswith("electrochemistry_ir_drop_correction.yml")
+    saved_ir_correction = read_yaml(workspace / electrochemistry["outputs"]["ir_drop_correction"])
+    assert saved_ir_correction["record_ref"] == electrochemistry["outputs"]["ir_drop_correction"]
 
     with (workspace / electrochemistry["outputs"]["processed_csv"]).open(newline="", encoding="utf-8") as handle:
         processed_rows = list(csv.DictReader(handle))
     assert "potential_RHE_V" in processed_rows[0]
+    assert "ir_drop_V" in processed_rows[0]
+    assert "potential_RHE_iR_corrected_V" in processed_rows[0]
     first_row = processed_rows[0]
-    assert math.isclose(float(first_row["potential_RHE_V"]) - float(first_row["potential_V"]), 0.966, rel_tol=1e-9, abs_tol=1e-9)
+    potential_rhe = float(first_row["potential_RHE_V"])
+    current_a = float(first_row["processed_current_mA"]) / 1000.0
+    expected_drop = current_a * 18.5 * 0.85
+    assert math.isclose(potential_rhe - float(first_row["potential_V"]), 0.966, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(float(first_row["ir_drop_V"]), expected_drop, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(float(first_row["potential_RHE_iR_corrected_V"]), potential_rhe - expected_drop, rel_tol=1e-9, abs_tol=1e-9)
 
     figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
     assert electrochemistry["outputs"]["correction_record"] in figure_record["source_data_refs"]
     assert electrochemistry["outputs"]["potential_conversion"] in figure_record["source_data_refs"]
+    assert electrochemistry["outputs"]["ir_drop_correction"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -476,10 +518,13 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     _, report_body = read_markdown_record(Path(report_output["report"]))
     assert "## Correction/reference record" in report_body
     assert "## Potential conversion" in report_body
+    assert "## iR drop correction" in report_body
     assert "Ag/AgCl" in report_body
     assert "RHE" in report_body
     assert "potential_RHE_V" in report_body
+    assert "potential_RHE_iR_corrected_V" in report_body
     assert "coordinate transform" in report_body
+    assert "coordinate correction" in report_body
     assert "correction_record 自动平移电位" in report_body
 
 
@@ -677,8 +722,10 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "equivalent-circuit" in reference_text
     assert "correction_record" in reference_text
     assert "potential_conversion" in reference_text
+    assert "ir_drop_correction" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
     assert "eis_nyquist_screening" in electrochemistry_record["notes"]
     assert "correction_records" in electrochemistry_record["notes"]
     assert "potential_conversion" in electrochemistry_record["notes"]
+    assert "ir_drop_correction" in electrochemistry_record["notes"]

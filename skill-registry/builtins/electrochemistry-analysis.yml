@@ -13,6 +13,7 @@ ea_skill:
     - eis_screening_summary
     - correction_record
     - potential_conversion_record
+    - ir_drop_correction_record
     - figure_record
     - report_section
     - provenance_record
@@ -73,6 +74,7 @@ ea_skill:
       - eis_nyquist_screening_only_no_equivalent_circuit_fitting
       - correction_records_preserve_reference_and_ir_metadata_without_numeric_correction
       - potential_conversion_is_reviewed_coordinate_transform_only
+      - ir_drop_correction_is_reviewed_coordinate_correction_only
       - no_tafel_or_overpotential_extraction
       - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
       - no_memory_write_without_user_confirmation
@@ -101,3 +103,21 @@ ea_skill:
         - reviewer_notes
         - caveats
       confidence_boundary: reviewed_coordinate_transform_only_no_ir_tafel_eis_or_performance_claim
+    ir_drop_correction:
+      implemented: true
+      record_format: yaml
+      method: reviewed_ir_drop_correction
+      fields:
+        - ru_ohm
+        - compensation_fraction
+        - sign_convention
+        - formula
+        - potential_input_column
+        - current_input_column
+        - current_unit
+        - drop_column
+        - output_column
+        - reference_ids
+        - reviewer_notes
+        - caveats
+      confidence_boundary: reviewed_coordinate_correction_only_no_tafel_overpotential_eis_gcd_or_performance_claim

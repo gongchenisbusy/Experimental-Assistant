@@ -204,4 +204,4 @@ v0.2 建议先实现以下最小架构能力：
 - `raman-analysis`、`pl-analysis`、`xrd-analysis`、`ftir-analysis`、`uv-vis-analysis`、`xps-analysis`、`electrochemistry-analysis` 和 `thermal-analysis` 作为第一批可运行表征 workflow 样例。
 - `local-literature-library` 作为项目初始化时的知识基础样例。
 
-Thermal analysis 当前只覆盖 TGA/DSC/DTG 风格表格数据的 review-gated first-pass workflow，Tg/Tm/Tc、基线模型、动力学、重复性统计和正式热稳定性判断仍应由后续协议化模块实现。Electrochemistry 当前覆盖 CV/LSV/chrono/GCD 风格表格数据的 review-gated first-pass workflow、EIS Nyquist screening，以及用户确认 offset 的 potential conversion 坐标换算；Tafel、容量/电容、等效电路、iR 数值校正和正式性能指标仍应由后续协议化模块实现。更复杂的显微/散射模块可继续进入设计和接口测试，不必一次性完整实现。
+Thermal analysis 当前只覆盖 TGA/DSC/DTG 风格表格数据的 review-gated first-pass workflow，Tg/Tm/Tc、基线模型、动力学、重复性统计和正式热稳定性判断仍应由后续协议化模块实现。Electrochemistry 当前覆盖 CV/LSV/chrono/GCD 风格表格数据的 review-gated first-pass workflow、EIS Nyquist screening、用户确认 offset 的 potential conversion 坐标换算，以及用户确认 Ru/fraction/sign convention 的 iR drop coordinate correction；Tafel、容量/电容、等效电路和正式性能指标仍应由后续协议化模块实现。更复杂的显微/散射模块可继续进入设计和接口测试，不必一次性完整实现。
