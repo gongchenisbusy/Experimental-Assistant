@@ -94,6 +94,20 @@ def test_v0_2_literature_defaults_and_status(tmp_path: Path) -> None:
     assert "Ask the user before bulk search" in status["summary_for_origin_thread"]
 
 
+def test_v0_2_source_backed_policy_is_not_user_provided_only() -> None:
+    design = Path("docs/EA_PROJECT_DESIGN.md").read_text(encoding="utf-8")
+    report_standard = Path("docs/EA_REPORT_AND_FIGURE_STANDARD.md").read_text(encoding="utf-8")
+    skill = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
+    combined = "\n".join([design, report_standard, skill])
+
+    assert "只接受用户明确给出的能量差" not in combined
+    assert "谨慎不等于沉默" in design
+    assert "用户不必手动输入每一个科学参数" in design
+    assert "spin-orbit 能量差、面积比、FWHM/宽度比" in report_standard
+    assert "Do not require every numeric value to be typed by the user" in skill
+    assert "never silently apply values that change processing or conclusions" in skill
+
+
 def test_v0_2_add_skills_manifest_validation(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.yml"
     manifest.write_text(

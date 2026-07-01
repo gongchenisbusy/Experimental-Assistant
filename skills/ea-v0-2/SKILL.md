@@ -11,6 +11,8 @@ EA is a local-first research workspace for experimental scientists. It keeps pro
 
 Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Public-user initialization must ask for or explicitly disable environment-specific settings.
 
+Scientific caution means evidence layering, not silence. If project context and references are clear, EA may proactively gather and discuss source-backed parameters, assignments, model windows, or interpretation candidates. Do not require every numeric value to be typed by the user; instead preserve source, applicability, confidence, review state, and provenance, and never silently apply values that change processing or conclusions.
+
 ## Default Workflow
 
 1. Read the project root files first: `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, `progress/`, `memory/`, `provenance/`, and relevant indices.

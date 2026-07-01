@@ -31,6 +31,8 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea export report-bundle" in text
     assert "ea-public-release-smoke" in text
     assert "developer-machine assumptions" in text
+    assert "EA may help gather or suggest source-backed XPS endpoints" in text
+    assert "只接受用户明确给出的能量差" not in text
     for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
         assert forbidden not in text
 

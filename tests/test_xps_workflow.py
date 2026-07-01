@@ -2198,6 +2198,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "screening-only" in xps_reference_text
     assert "no unconfirmed live lookup" in xps_reference_text
     assert "not a ban on EA preparing source-backed candidates" in xps_reference_text
+    assert "does not require every signed energy separation, area ratio, FWHM ratio" in xps_reference_text
+    assert "without reducing EA to a user-provided-only calculator" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
@@ -2216,3 +2218,4 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "background_subtraction" in xps_record["notes"]
     assert "reviewed_shirley_background_subtraction" in xps_record["notes"]
     assert "reviewed_tougaard_u2_background_subtraction" in xps_record["notes"]
+    assert "spin-orbit energy separations, area ratios, FWHM ratios" in xps_record["notes"]
