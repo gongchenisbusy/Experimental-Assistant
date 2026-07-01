@@ -566,7 +566,8 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert subtraction_record["corrected_region_count"] == 1
     assert subtraction_record["record_ref"] == xps["outputs"]["background_subtraction"]
     assert subtraction_record["corrected_intensity_column"] == "xps_background_subtracted_intensity"
-    assert "does not automatically choose endpoints" in subtraction_record["boundary"]
+    assert "may suggest source-backed endpoints/windows" in subtraction_record["boundary"]
+    assert "does not silently choose or apply them" in subtraction_record["boundary"]
     assert xps["outputs"]["background_subtraction"].endswith("xps_background_subtraction.yml")
     saved_subtraction = read_yaml(workspace / xps["outputs"]["background_subtraction"])
     assert saved_subtraction["record_ref"] == xps["outputs"]["background_subtraction"]
@@ -1059,7 +1060,8 @@ def test_cli_runs_reviewed_component_fit_screening(tmp_path: Path, capsys) -> No
     assert fit_record["fitted_region_count"] == 1
     assert fit_record["fitted_component_count"] == 1
     assert "components" in fit_record["regions"][0]
-    assert "does not automatically choose components" in fit_record["boundary"]
+    assert "may use reviewed user-provided or source-backed" in fit_record["boundary"]
+    assert "does not silently choose them" in fit_record["boundary"]
     assert xps["outputs"]["component_fit"].endswith("xps_component_fit.yml")
     assert xps["outputs"]["component_fit_table"].endswith("xps_component_fit.csv")
     saved_fit = read_yaml(workspace / xps["outputs"]["component_fit"])
@@ -1268,7 +1270,7 @@ def test_cli_runs_reviewed_spin_orbit_constrained_component_fit(tmp_path: Path, 
     assert "source-backed" in report_body
     assert "xps-spin-fe2p-001" in report_body
     assert "dependent" in report_body
-    assert "不自动选择" in report_body or "screening" in report_body
+    assert "不静默选择" in report_body or "screening" in report_body
 
 
 def test_cli_records_source_backed_xps_parameter_suggestions(tmp_path: Path, capsys) -> None:
@@ -1647,7 +1649,7 @@ def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     region_record = xps["peak_analysis"]["region_records"]
     assert region_record["status"] == "reviewed_multi_region_project_record"
     assert region_record["reviewed_region_count"] == 2
-    assert "does not automatically share" in region_record["boundary"]
+    assert "without review/provenance" in region_record["boundary"]
     assert xps["outputs"]["region_records"].endswith("xps_region_records.yml")
     assert xps["outputs"]["region_records_table"].endswith("xps_region_records.csv")
     saved_regions = read_yaml(workspace / xps["outputs"]["region_records"])
@@ -1683,7 +1685,8 @@ def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     assert "## XPS reviewed multi-region records" in report_body
     assert "xps-region-c1s-001" in report_body
     assert "xps_region_records.yml" in report_body
-    assert "不自动共享 charge correction" in report_body
+    assert "不在缺少审核记录时共享 charge correction" in report_body
+    assert "不静默对齐 survey/core-level" in report_body
 
 
 def test_xps_docs_and_skill_references_are_discoverable() -> None:

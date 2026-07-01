@@ -1525,8 +1525,9 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
         f"Reviewed XPS {method_label} background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
         f"record: `{record_ref}`；background column: `{background_column}`；corrected column: `{corrected_column}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
-        "该记录只表示用户审核过的数值扣背景预处理；EA 不自动选择端点/窗口，不自动拟合 Tougaard 参数，"
-        "不执行 QUASES/depth-profile modeling 或峰拟合模型，也不据此证明化学态、组成或 spin-orbit constrained fitting。"
+        "该记录只表示用户审核过的数值扣背景预处理；EA 可以建议有来源的端点/窗口或 Tougaard 参数，"
+        "但不能在缺少来源、适用性和审核记录时静默套用；本记录不执行 QUASES/depth-profile modeling 或峰拟合模型，"
+        "也不据此证明化学态、组成或 spin-orbit constrained fitting。"
     )
 
 
@@ -1597,8 +1598,8 @@ def _xps_component_fit_summary(metadata: dict) -> str:
         f"assignment_source: `{source}`；references: `{reference_text}`。\n\n"
         "该记录只表示用户审核过的 component-fit screening；若存在 spin-orbit constraints，signed delta/ratio/bounds "
         "可以来自用户报告值或有 reference_id 的 source-backed 建议值，但参数来源、适用性和确认状态必须保存在记录中。"
-        "EA 可以讨论有来源的候选参数，但不在缺少来源或适用性记录时把它们当作拟合约束；EA 不自动选择组分、背景、bounds 或峰形，"
-        "也不据此证明化学态、组成或正式定量。"
+        "EA 可以讨论或建议有来源的候选参数，但不在缺少来源或适用性记录时把它们当作拟合约束；"
+        "本记录不静默选择组分、背景、bounds 或峰形，也不据此证明化学态、组成或正式定量。"
     )
 
 
@@ -1660,8 +1661,8 @@ def _xps_region_records_summary(metadata: dict) -> str:
         f"Reviewed XPS region_records 状态为 `{status}`；reviewed regions: `{reviewed_regions}/{region_count}`；"
         f"record: `{record_ref}`；table: `{table_ref}`；confidence: `{confidence}`；assignment_source: `{source}`；"
         f"linked outputs: `{linked}`。\n\n"
-        "该记录只表示用户审核过的 XPS survey/core-level/project region 组织和 provenance；EA 不自动共享 charge correction，"
-        "不自动对齐 survey/core-level 谱图，不据此证明化学态、正式组成或样品排名。"
+        "该记录只表示用户审核过的 XPS survey/core-level/project region 组织和 provenance；EA 不在缺少审核记录时共享 charge correction，"
+        "不静默对齐 survey/core-level 谱图，也不据此证明化学态、正式组成或样品排名。"
     )
 
 

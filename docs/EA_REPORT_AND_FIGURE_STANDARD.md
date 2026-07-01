@@ -120,6 +120,7 @@ XPS：
 - 必须记录 binding-energy calibration 或 charge correction 的用户确认信息，例如参考峰、能量位移和确认来源。
 - y 轴说明 counts、normalized intensity、reviewed background-subtracted intensity 或 reviewed component-fit intensity；若显示扣背景曲线，必须能追溯到用户确认的 `background_subtraction` 方法、区域、锚点/窗口和方法参数，例如 Shirley 迭代设置或 Tougaard U2 的 kernel、`B`、`C_eV2`、integration direction。
 - 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰或单次拟合直接推出。
+- 若样品背景、元素/能区、处理目标和参考来源足够明确，EA 可以主动整理 source-backed 的 spin-orbit 参数、Tougaard/Shirley/background 建议、component/bounds/peak-shape 候选或化学态解释候选；报告必须把它们标为候选依据，写清来源、适用性、review 状态和可信度。
 - 若使用 `ea xps suggest-parameters` 生成的 source-backed 参数建议，报告只能把它们作为候选依据讨论；必须标注 suggestion ID、candidate ID、source summary、applicability notes、reference IDs 和 review 状态，且不能把未确认候选值自动写入拟合或扣背景参数。
 - 若有 reviewed component fitting，报告中必须写明 fit region、component ID、峰形、初值、bounds、所用 intensity/background column、fit-quality 指标、参考依据和可信度；若使用 reviewed `spin_orbit_constraints`，还必须写明 constraint ID、anchor/dependent component、signed center delta、area ratio、FWHM ratio、`parameter_origin`、source summary、applicability notes、reference IDs 和确认状态。来源支持的候选参数可以进入分析讨论，但不能在缺少来源和适用性记录时作为拟合约束。图和报告必须能通过 component/report ID 追溯到 `xps_component_fit.yml`、`xps_component_fit.csv`、processed CSV 和原始数据。
 - 若有 reviewed multi-region records，报告中必须写明 survey/core-level/project-region 角色、binding-energy window、calibration group、linked output refs、参考依据和可信度；这些记录只用于组织和溯源，不能直接推出跨区定量组成、charge correction 有效性或化学态。

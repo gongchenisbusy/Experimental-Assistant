@@ -34,7 +34,7 @@ Current v0.2 XPS support:
 - When `suggest-parameters` is run, EA writes `xps_parameter_suggestions.yml` and `xps_parameter_suggestions.csv` with candidate status, target parameter path, source summary, applicability notes, reference IDs, unresolved-reference warnings, and `auto_applied: false`.
 - When `region_records.enabled` is true, EA writes `xps_region_records.yml` and `xps_region_records.csv` with reviewed region roles, binding-energy windows, calibration group IDs, linked output refs, reference IDs, caveats, confidence, and record/table refs.
 - Reports include an embedded XPS figure, original figure path, calibration/background section, peak table, optional component screening table, optional component-fit section/table, optional multi-region section/table, confidence-labeled possible interpretations, file links, References, and provenance.
-- XPS component quantification is screening-only. XPS background model records are provenance only. XPS background subtraction is reviewed numeric preprocessing only. XPS component fitting, including reviewed `spin_orbit_constraints`, is reviewed screening-level numerical modeling only. XPS region records are project organization/provenance only. EA may discuss source-backed candidate parameters when sources and applicability are recorded, but does not perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, automatic endpoint/background/component/bounds/peak-shape selection, automatic survey-core-level alignment, silent charge-correction sharing, automatic Tougaard parameter fitting, QUASES/depth-profile modeling, use unsourced spin-orbit constants, or run unreviewed spin-orbit constrained fitting.
+- XPS component quantification is screening-only. XPS background model records are provenance only. XPS background subtraction is reviewed numeric preprocessing only. XPS component fitting, including reviewed `spin_orbit_constraints`, is reviewed screening-level numerical modeling only. XPS region records are project organization/provenance only. EA may proactively gather and discuss source-backed endpoint/background/component/bounds/peak-shape, spin-orbit, Tougaard, and chemical-state candidates when sources and applicability are recorded, but does not silently apply them, perform definitive chemical-state assignment, formal quantitative composition, surface stoichiometry, survey-core-level alignment without review, silent charge-correction sharing, Tougaard parameter fitting without a reviewed protocol, QUASES/depth-profile modeling, use unsourced spin-orbit constants, or run unreviewed spin-orbit constrained fitting.
 
 CLI path:
 
@@ -301,7 +301,7 @@ component_fit:
           confidence: low
 ```
 
-Component-fit screening writes reviewed fit/residual/region columns, `xps_component_fit.yml`, and `xps_component_fit.csv`. Spin-orbit constraints may use values reported by the user or values suggested from traceable sources, but source-backed values must preserve `parameter_origin`, source summary, applicability notes, and `reference_ids` before they are used as constraints. EA may discuss such candidate parameters in the report, but it does not choose components, backgrounds, bounds, peak shapes, chemical states, or final composition.
+Component-fit screening writes reviewed fit/residual/region columns, `xps_component_fit.yml`, and `xps_component_fit.csv`. Spin-orbit constraints may use values reported by the user or values suggested from traceable sources, but source-backed values must preserve `parameter_origin`, source summary, applicability notes, and `reference_ids` before they are used as constraints. EA may discuss such candidate parameters in the report, but it does not silently apply components, backgrounds, bounds, peak shapes, chemical states, or final composition without source, applicability, and review records.
 
 Optional reviewed spin-orbit constraints can be nested under a component-fit region:
 
@@ -364,7 +364,7 @@ component_fit:
           fwhm_bounds_eV: [0.8, 5.0]
 ```
 
-Spin-orbit constraints derive the dependent component from the fitted anchor using reviewed signed `center_delta_eV`, `area_ratio`, and `fwhm_ratio`, while intersecting reviewed bounds. The numbers may come from the user, a local reference library, or a source-backed lookup, but source-backed values must carry reference IDs and applicability notes. EA skips invalid constraints rather than silently fitting an unconstrained doublet. EA does not infer doublet identities, choose components, or prove chemical states/composition from the constraint alone.
+Spin-orbit constraints derive the dependent component from the fitted anchor using reviewed signed `center_delta_eV`, `area_ratio`, and `fwhm_ratio`, while intersecting reviewed bounds. The numbers may come from the user, a local reference library, or a source-backed lookup, but source-backed values must carry reference IDs and applicability notes. EA skips invalid constraints rather than silently fitting an unconstrained doublet. A constraint can support a candidate doublet interpretation, but it does not by itself prove component identity, chemical state, or composition.
 
 Optional reviewed multi-region project-record parameters:
 

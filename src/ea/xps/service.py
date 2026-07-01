@@ -1597,8 +1597,8 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
             "XPS background_subtraction applies only user-reviewed numeric preprocessing inside explicit binding-energy regions. "
-            "EA v0.2 does not automatically choose endpoints/windows, fit Tougaard parameters, run QUASES/depth-profile modeling or peak fitting, assign chemical states, "
-            "prove composition, or perform spin-orbit constrained fitting from this record."
+            "EA v0.2 may suggest source-backed endpoints/windows or Tougaard parameters through traceable records, but this record does not silently choose or apply them, "
+            "fit Tougaard parameters, run QUASES/depth-profile modeling or peak fitting, assign chemical states, prove composition, or perform spin-orbit constrained fitting."
         ),
     }
     if method not in supported_methods:
@@ -2791,8 +2791,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS component_fit is reviewed screening-level numerical modeling only. EA v0.2 does not automatically choose components, "
-            "backgrounds, bounds, peak shapes, unsourced spin-orbit constants, chemical states, or definitive composition from this record."
+            "XPS component_fit is reviewed screening-level numerical modeling only. EA v0.2 may use reviewed user-provided or source-backed "
+            "component/background/bounds/peak-shape candidates, but this record does not silently choose them, use unsourced spin-orbit constants, "
+            "or prove chemical states or definitive composition."
         ),
     }
 
@@ -3374,8 +3375,8 @@ def _apply_region_records(
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS region_records are reviewed project-organization and provenance records only. EA v0.2 does not automatically share "
-            "charge correction, align survey/core-level spectra, assign chemical states, calculate formal multi-region composition, or rank samples."
+            "XPS region_records are reviewed project-organization and provenance records only. EA v0.2 does not share charge correction "
+            "or align survey/core-level spectra without review/provenance, assign chemical states, calculate formal multi-region composition, or rank samples."
         ),
     }
 
