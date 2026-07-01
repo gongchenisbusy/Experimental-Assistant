@@ -1305,6 +1305,26 @@ candidates:
     confidence: low
     caveats:
       - Candidate constraint only; report discussion does not apply parameters.
+  - candidate_id: xps-param-fe2p-be-report-001
+    suggestion_type: binding_energy_candidate
+    element: Fe
+    core_level: 2p3/2
+    chemical_state_label: Fe(III) oxide binding-energy candidate
+    expected_binding_energy_eV: 710.8
+    binding_energy_window_eV: [710.0, 711.8]
+    calibration_reference: C 1s 284.8 eV user-confirmed reference from the processed XPS calibration record.
+    charge_reference_assumption: Same calibrated spectrum; no automatic charge correction is applied by this suggestion record.
+    parameter_origin: source_suggested
+    source_summary: Fe 2p3/2 oxide binding-energy discussion candidate from the registered XPS reference.
+    applicability_notes:
+      - Applies only to calibrated Fe 2p spectra with reviewed background/model context; check satellite and multiplet overlap before interpretation.
+    overlap_notes:
+      - Fe 2p satellites and mixed-valence components may overlap this window.
+    reference_ids:
+      - ref-xps-spin-orbit-001
+    confidence: low
+    caveats:
+      - Binding-energy candidate only; not a chemical-state proof.
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -1358,6 +1378,11 @@ candidates:
     assert "target_parameter_path: `component_fit.spin_orbit_constraints`" in report_body
     assert "review_state: `ready_for_user_review`" in report_body
     assert "Fe 2p spin-orbit screening values" in report_body
+    assert "xps-param-fe2p-be-report-001" in report_body
+    assert "binding_energy_candidate" in report_body
+    assert "Fe(III) oxide binding-energy candidate" in report_body
+    assert "expected_binding_energy_eV=710.8" in report_body
+    assert "charge_reference_assumption=Same calibrated spectrum" in report_body
     assert "不会自动写入 processing parameters" in report_body
     assert "不能单独证明化学态" in report_body
     assert "User-reviewed XPS spin-orbit reference note" in report_body
@@ -1438,6 +1463,29 @@ candidates:
     reference_ids:
       - {ref_id}
     confidence: low
+  - candidate_id: xps-param-fe2p-be-001
+    suggestion_type: binding_energy_candidate
+    element: Fe
+    core_level: 2p3/2
+    chemical_state_label: Fe(III) oxide binding-energy candidate
+    expected_binding_energy_eV: 710.8
+    binding_energy_window_eV:
+      - 710.0
+      - 711.8
+    calibration_reference: C 1s 284.8 eV user-confirmed reference from the project calibration record.
+    charge_reference_assumption: Same calibrated spectrum; this suggestion does not apply a new charge correction.
+    calibration_group_id: cal-fe2p-c1s-001
+    parameter_origin: source_suggested
+    source_summary: Fe 2p3/2 oxide BE candidate from the registered project XPS reference.
+    applicability_notes:
+      - Use only with reviewed Fe 2p calibration/background/model context and cross-check nearby satellites.
+    overlap_notes:
+      - Multiplet splitting, satellites, and mixed Fe states may overlap the proposed window.
+    reference_ids:
+      - {ref_id}
+    confidence: low
+    caveats:
+      - Candidate discussion only; not chemical-state proof.
   - candidate_id: xps-param-unregistered-ref-001
     suggestion_type: spin_orbit_constraint
     center_delta_eV: 5.0
@@ -1469,26 +1517,36 @@ candidates:
     ) == 0
     output = _json_output(capsys)
     assert output["status"] == "ready_for_user_review"
-    assert output["candidate_count"] == 3
-    assert output["ready_for_user_review_count"] == 2
+    assert output["candidate_count"] == 4
+    assert output["ready_for_user_review_count"] == 3
     assert output["needs_reference_registration_count"] == 1
 
     record = read_yaml(Path(output["record"]))
     table = pd.read_csv(Path(output["table"]))
     assert record["source"] == "ea.xps.parameter_suggestions:v0.2"
-    assert record["ready_for_user_review_count"] == 2
+    assert record["ready_for_user_review_count"] == 3
     assert record["needs_reference_registration_count"] == 1
     assert record["candidates"][0]["auto_applied"] is False
     assert record["candidates"][0]["target_parameter_path"] == "component_fit.spin_orbit_constraints"
     assert record["candidates"][1]["target_parameter_path"] == "background_subtraction.tougaard"
-    assert record["candidates"][2]["status"] == "needs_reference_registration"
-    assert "ref-missing-001" in record["candidates"][2]["unresolved_reference_ids"]
+    assert record["candidates"][2]["target_parameter_path"] == "interpretation.binding_energy_candidates"
+    assert record["candidates"][2]["chemical_state_label"] == "Fe(III) oxide binding-energy candidate"
+    assert record["candidates"][2]["expected_binding_energy_eV"] == 710.8
+    assert record["candidates"][2]["binding_energy_window_eV"] == [710.0, 711.8]
+    assert record["candidates"][2]["calibration_reference"].startswith("C 1s 284.8 eV")
+    assert record["candidates"][2]["charge_reference_assumption"].startswith("Same calibrated spectrum")
+    assert record["candidates"][2]["status"] == "ready_for_user_review"
+    assert record["candidates"][3]["status"] == "needs_reference_registration"
+    assert "ref-missing-001" in record["candidates"][3]["unresolved_reference_ids"]
     assert "Ask the user to review ready candidates" in " ".join(record["next_steps"])
+    assert "binding-energy candidates" in " ".join(record["next_steps"])
     assert "does not perform unconfirmed live network lookup" in " ".join(record["boundaries"])
     assert "EA may prepare source packets" in " ".join(record["boundaries"])
     assert (workspace / record["provenance_ref"]).exists()
     assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration"}
     assert set(table["auto_applied"]) == {False}
+    assert "chemical_state_label" in table.columns
+    assert "Fe(III) oxide binding-energy candidate" in set(table["chemical_state_label"].dropna())
     assert "processed" not in output["record"]
 
     suggestion_ref = Path(output["record"]).relative_to(workspace).as_posix()
@@ -1496,8 +1554,8 @@ candidates:
     assert main(["xps", "prepare-review", str(workspace), "--project-id", project_id, "--suggestion", suggestion_ref]) == 0
     review_package_output = _json_output(capsys)
     assert review_package_output["status"] == "review_package_prepared"
-    assert review_package_output["selected_candidate_count"] == 3
-    assert review_package_output["selected_status_counts"]["ready_for_user_review"] == 2
+    assert review_package_output["selected_candidate_count"] == 4
+    assert review_package_output["selected_status_counts"]["ready_for_user_review"] == 3
     assert review_package_output["selected_status_counts"]["needs_reference_registration"] == 1
     assert len(list((workspace / "reviews").glob("*.yml"))) == review_count_before_package
 
@@ -1507,13 +1565,20 @@ candidates:
     assert review_package["review_target_type"] == "xps_parameter_suggestions"
     assert review_package["review_target_ref"] == suggestion_ref
     assert review_package["groups"][0]["group"] == "ready_for_user_review"
-    assert set(review_package["groups"][0]["candidate_ids"]) == {"xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"}
+    assert set(review_package["groups"][0]["candidate_ids"]) == {
+        "xps-param-fe2p-spin-001",
+        "xps-param-tougaard-u2-001",
+        "xps-param-fe2p-be-001",
+    }
     assert "ref-missing-001" in review_package["unresolved_reference_ids"]
     assert "ea review add /path/to/ea-project" in review_package["recommended_commands"]["create_review_record"]
     assert "ea xps propose-memory" in review_package["recommended_commands"]["propose_memory_after_review"]
     assert "does not create a ReviewRecord" in " ".join(review_package["boundaries"])
     assert "XPS Parameter Suggestion Review Package" in review_package_markdown
     assert "xps-param-fe2p-spin-001" in review_package_markdown
+    assert "xps-param-fe2p-be-001" in review_package_markdown
+    assert "Fe(III) oxide binding-energy candidate" in review_package_markdown
+    assert "expected_binding_energy_eV=710.8" in review_package_markdown
     assert "does not apply XPS parameters" in review_package_markdown
 
     assert (
@@ -1554,7 +1619,7 @@ candidates:
     )
     memory_output = _json_output(capsys)
     assert memory_output["status"] == "memory_candidates_proposed"
-    assert memory_output["proposed_count"] == 2
+    assert memory_output["proposed_count"] == 3
     assert memory_output["skipped_count"] == 1
     assert memory_output["provenance_ref"]
     assert "does not commit confirmed memory" in " ".join(memory_output["boundaries"])
@@ -1563,7 +1628,7 @@ candidates:
     assert "unresolved_reference_ids" in skipped_reasons["xps-param-unregistered-ref-001"]
 
     proposed_ids = {item["candidate_id"] for item in memory_output["memory_candidates"]}
-    assert proposed_ids == {"xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"}
+    assert proposed_ids == {"xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001", "xps-param-fe2p-be-001"}
     memory_candidate_path = Path(memory_output["memory_candidates"][0]["memory_candidate"])
     memory_frontmatter, memory_body = read_markdown_record(memory_candidate_path)
     assert memory_frontmatter["status"] == "draft"
@@ -1580,6 +1645,14 @@ candidates:
     assert "target parameter path" in memory_body
     assert "source-backed XPS parameter candidate only" in memory_body
     assert "does not copy values into processing parameters" in memory_body
+    be_memory = next(item for item in memory_output["memory_candidates"] if item["candidate_id"] == "xps-param-fe2p-be-001")
+    assert be_memory["category"] == "interpretation"
+    be_frontmatter, be_body = read_markdown_record(Path(be_memory["memory_candidate"]))
+    assert be_frontmatter["category"] == "interpretation"
+    assert "Fe(III) oxide binding-energy candidate" in be_body
+    assert "expected_binding_energy_eV=710.8" in be_body
+    assert "does not copy values into processing parameters" in be_body
+    assert "prove chemical state/composition" in be_body
     candidate_index = read_yaml(workspace / "memory" / "candidates" / "index.yml")
     assert memory_frontmatter["memory_candidate_id"] in candidate_index["candidates"]
 
@@ -1750,9 +1823,11 @@ candidates:
     template_output = _json_output(capsys)
     template_packet = read_yaml(Path(template_output["source_packet"]))
     assert template_output["status"] == "template_requires_user_edit"
-    assert template_packet["candidate_count"] == 2
+    assert template_packet["candidate_count"] == 3
     assert template_packet["source_packet_id"].startswith("xps_source_packet-")
     assert template_packet["candidates"][0]["center_delta_eV"] is None
+    assert template_packet["candidates"][2]["suggestion_type"] == "binding_energy_candidate"
+    assert template_packet["candidates"][2]["chemical_state_label"] == "TODO candidate state label"
 
 
 def test_cli_builds_xps_parameter_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
@@ -2234,7 +2309,7 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "propose-memory" in xps_reference_text
-    assert "draft method-note memory candidates" in xps_reference_text
+    assert "draft method-note or interpretation memory candidates" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
     assert "--parameter-suggestion" in xps_reference_text
     assert "source-backed parameter suggestion section" in xps_reference_text
@@ -2248,6 +2323,10 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "not a ban on EA preparing source-backed candidates" in xps_reference_text
     assert "does not require every signed energy separation, area ratio, FWHM ratio" in xps_reference_text
     assert "without reducing EA to a user-provided-only calculator" in xps_reference_text
+    assert "binding_energy_candidate" in xps_reference_text
+    assert "expected BE center or BE window" in xps_reference_text
+    assert "calibration reference" in xps_reference_text
+    assert "charge-reference assumption" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]
@@ -2267,3 +2346,5 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "reviewed_shirley_background_subtraction" in xps_record["notes"]
     assert "reviewed_tougaard_u2_background_subtraction" in xps_record["notes"]
     assert "spin-orbit energy separations, area ratios, FWHM ratios" in xps_record["notes"]
+    assert "binding_energy_candidate" in xps_record["notes"]
+    assert "calibration reference" in xps_record["notes"]

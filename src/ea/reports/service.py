@@ -859,6 +859,16 @@ def _xps_parameter_values_text(candidate: dict) -> str:
             "tougaard_C_eV2": candidate.get("tougaard_C_eV2"),
             "integration_direction": candidate.get("integration_direction"),
         }
+    elif suggestion_type == "binding_energy_candidate":
+        values = {
+            "chemical_state_label": candidate.get("chemical_state_label"),
+            "expected_binding_energy_eV": candidate.get("expected_binding_energy_eV"),
+            "binding_energy_window_eV": candidate.get("binding_energy_window_eV"),
+            "calibration_reference": candidate.get("calibration_reference"),
+            "charge_reference_assumption": candidate.get("charge_reference_assumption"),
+            "calibration_group_id": candidate.get("calibration_group_id"),
+            "overlap_notes": _format_report_list(candidate.get("overlap_notes")),
+        }
     else:
         values = {"suggestion_type": suggestion_type}
     return "；".join(f"{key}={value}" for key, value in values.items() if value not in [None, "", []]) or "未记录"
@@ -868,7 +878,7 @@ def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -
     if not records:
         return (
             "当前报告未附加 XPS parameter suggestion record。若需要讨论 source-backed spin-orbit、"
-            "Tougaard/background 或 component/bounds/peak-shape 参数候选，请先运行 `ea xps suggest-parameters`，"
+            "Tougaard/background、component/bounds/peak-shape 或 binding-energy/chemical-state 候选，请先运行 `ea xps suggest-parameters`，"
             "再在报告生成时传入对应记录。"
         )
     lines: list[str] = []
@@ -930,7 +940,7 @@ def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -
         if len(sorted_candidates) > 8:
             lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
     lines.append(
-        "- 上述 XPS parameter suggestions 是 source-backed advisory records；它们可以帮助组织 spin-orbit、Tougaard/background、component/bounds/peak-shape 或化学态候选讨论，但不会自动写入 processing parameters，不能单独证明化学态、组成或正式定量。"
+        "- 上述 XPS parameter suggestions 是 source-backed advisory records；它们可以帮助组织 spin-orbit、Tougaard/background、component/bounds/peak-shape 或 binding-energy/chemical-state 候选讨论，但不会自动写入 processing parameters、不会静默校准谱图或应用荷电校正，不能单独证明化学态、组成或正式定量。"
     )
     return "\n".join(lines)
 

@@ -101,12 +101,14 @@ ea_skill:
       supported_suggestion_types:
         - spin_orbit_constraint
         - tougaard_parameter
+        - binding_energy_candidate
       built_in_candidate_scope:
         - Fe 2p, Si 2p, Cu 2p starter spin-orbit constraints
         - Ti 2p, Ni 2p, Co 2p, Zn 2p transition-metal starter spin-orbit constraints
         - Mo 3d and W 4f chalcogenide/oxide-relevant starter spin-orbit constraints
         - S 2p and P 2p non-metal starter spin-orbit constraints
         - Tougaard U2-style background starting point
+        - Project-local or confirmed-literature binding-energy/chemical-state candidates with BE center/window and calibration assumptions
       output_artifacts:
         - suggestions/xps/source-packets/<source_packet_id>.yml
         - templates/xps_parameter_source_packet.yml
@@ -220,8 +222,8 @@ ea_skill:
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
       - source_backed_parameter_source_packets stage candidate metadata and optional filtered reference_seeds/guidance_reference_ids from built-in generic_xps_parameters seeds, reviewed local libraries/templates, project literature, user-provided sources, or confirmed literature/source-candidate manifests; manifest inputs require explicit confirmation metadata and reference_seeds require explicit ea references register-seeds registration; the packet builder itself does not perform unconfirmed live lookup, download or parse articles, validate references, register references, inject citations, auto-apply values, apply charge correction, fit backgrounds/components, or choose models
-      - source_backed_parameter_suggestions validate supplied source packets and registered references before review and can be displayed in reports with --parameter-suggestion; the suggestion/report steps do not perform unconfirmed live lookup, auto-apply values, choose models, or prove chemistry/composition, but EA may prepare source-backed candidates before this step, including spin-orbit energy separations, area ratios, FWHM ratios, Tougaard parameters, component bounds, and peak-shape candidates when source and applicability metadata are recorded
-      - propose-memory writes draft method-note memory candidates from confirmed XPS parameter suggestion reviews only; it does not commit confirmed memory, apply parameters, fit backgrounds/components, prove chemical state, or calculate composition
+      - source_backed_parameter_suggestions validate supplied source packets and registered references before review and can be displayed in reports with --parameter-suggestion; the suggestion/report steps do not perform unconfirmed live lookup, auto-apply values, choose models, silently calibrate spectra, apply charge correction, or prove chemistry/composition, but EA may prepare source-backed candidates before this step, including spin-orbit energy separations, area ratios, FWHM ratios, Tougaard parameters, component bounds, peak-shape candidates, and binding-energy/chemical-state candidates with calibration/charge-reference assumptions when source and applicability metadata are recorded
+      - propose-memory writes draft method-note or interpretation memory candidates from confirmed XPS parameter suggestion reviews only; it does not commit confirmed memory, apply parameters, fit backgrounds/components, prove chemical state/composition, apply charge correction, or calculate composition
       - reviewed linear, Shirley, and Tougaard U2 background_subtraction writes preprocessing columns only; automatic Tougaard parameter fitting, QUASES/depth-profile modeling, and formal multi-region quantification remain future work
       - reviewed_component_fit_screening uses explicit reviewed components, peak shapes, initial values, bounds, selected intensity columns, and optional reviewed spin_orbit_constraints with parameter_origin/source metadata when values are source-backed; EA may suggest source-backed candidates, while chemical-state proof, composition proof, silent background/component application without source/review, unsourced constants, and unreviewed constrained fitting remain out of scope
       - reviewed_region_records organize survey/core-level/project-region provenance and linked refs only; automatic spectrum alignment, silent charge-correction sharing, formal multi-region composition, sample ranking, and chemical-state proof remain future work

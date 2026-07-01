@@ -396,7 +396,12 @@ def build_parser() -> argparse.ArgumentParser:
     xps_source_packet.add_argument("--output", type=Path)
     xps_source_packet.add_argument("--project-id")
     xps_source_packet.add_argument("--include-candidate", action="append", default=[])
-    xps_source_packet.add_argument("--suggestion-type", action="append", choices=["spin_orbit_constraint", "tougaard_parameter"], default=[])
+    xps_source_packet.add_argument(
+        "--suggestion-type",
+        action="append",
+        choices=["spin_orbit_constraint", "tougaard_parameter", "binding_energy_candidate"],
+        default=[],
+    )
     xps_source_packet.add_argument("--element", action="append", default=[])
     xps_source_packet.add_argument("--core-level", action="append", default=[])
     xps_source_packet.add_argument("--write-template", action="store_true")

@@ -70,7 +70,7 @@ class XPSProcessingRequest:
     parameter_review_ref: str
 
 
-XPS_PARAMETER_SUGGESTION_TYPES = {"spin_orbit_constraint", "tougaard_parameter"}
+XPS_PARAMETER_SUGGESTION_TYPES = {"spin_orbit_constraint", "tougaard_parameter", "binding_energy_candidate"}
 XPS_PARAMETER_ORIGINS = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
 BUILTIN_XPS_PARAMETER_LIBRARY_DEFAULT = "generic_xps_parameters"
 
@@ -547,6 +547,35 @@ def _candidate_number(value: Any, *names: str) -> float | None:
     return None
 
 
+def _candidate_energy_window(value: Any, *names: str) -> list[float] | None:
+    if not isinstance(value, dict):
+        return None
+    for name in names:
+        raw = value.get(name)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            raw = [part.strip() for part in raw.replace("to", ",").replace("-", ",").split(",")]
+        if isinstance(raw, dict):
+            low_raw = raw.get("min_eV", raw.get("min", raw.get("low_eV", raw.get("low"))))
+            high_raw = raw.get("max_eV", raw.get("max", raw.get("high_eV", raw.get("high"))))
+            raw = [low_raw, high_raw]
+        if not isinstance(raw, list | tuple) or len(raw) != 2:
+            continue
+        try:
+            low = float(raw[0])
+            high = float(raw[1])
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(low) and np.isfinite(high):
+            return [min(low, high), max(low, high)]
+    low = _candidate_number(value, "binding_energy_min_eV", "be_min_eV", "window_min_eV", "min_binding_energy_eV")
+    high = _candidate_number(value, "binding_energy_max_eV", "be_max_eV", "window_max_eV", "max_binding_energy_eV")
+    if low is not None and high is not None:
+        return [min(low, high), max(low, high)]
+    return None
+
+
 def _normalize_parameter_origin(value: Any, warnings: list[dict[str, Any]], *, candidate_id: str) -> str:
     origin = str(value or "source_suggested").strip().lower().replace(" ", "_")
     if origin in XPS_PARAMETER_ORIGINS:
@@ -588,6 +617,13 @@ def _xps_parameter_suggestion_columns() -> list[str]:
         "tougaard_B",
         "tougaard_C_eV2",
         "integration_direction",
+        "chemical_state_label",
+        "expected_binding_energy_eV",
+        "binding_energy_window_eV",
+        "calibration_reference",
+        "charge_reference_assumption",
+        "calibration_group_id",
+        "overlap_notes",
         "missing_fields",
         "caveats",
     ]
@@ -688,6 +724,28 @@ def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
             "caveats": ["Template candidate only; fill numeric values and source metadata before running suggest-parameters."],
+        },
+        {
+            "candidate_id": "xps-param-template-binding-energy-001",
+            "suggestion_type": "binding_energy_candidate",
+            "element": "TODO",
+            "core_level": "TODO",
+            "chemical_state_label": "TODO candidate state label",
+            "expected_binding_energy_eV": None,
+            "binding_energy_window_eV": [None, None],
+            "calibration_reference": "TODO: record the BE reference, e.g. user-confirmed C 1s/adventitious carbon/instrument calibration.",
+            "charge_reference_assumption": "TODO: record charge-neutralization or charge-reference assumptions; do not silently apply correction.",
+            "parameter_origin": "source_suggested",
+            "source_summary": "TODO: summarize the source that supports the binding-energy/chemical-state candidate.",
+            "applicability_notes": [
+                "TODO: describe sample chemistry, calibration state, fitting/background context, and nearby overlapping peaks where this candidate applies."
+            ],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": [
+                "Template candidate only; fill BE center/window, calibration assumptions, and source metadata before running suggest-parameters.",
+                "This candidate may support discussion but does not prove chemical state or composition by itself.",
+            ],
         },
     ]
 
@@ -874,7 +932,7 @@ def build_xps_parameter_source_packet(
         "warnings": warnings,
         "next_steps": [
             "If this packet includes built-in or local reference_seeds, or confirmed-literature reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
-            "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric fields.",
+            "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric or binding-energy/calibration-assumption fields for its suggestion_type.",
             "Run `ea xps suggest-parameters` on this packet to create traceable suggestion records before copying values into processing parameters.",
         ],
         "boundaries": [
@@ -1024,6 +1082,66 @@ def _normalize_xps_parameter_candidate(
                 "integration_direction": str(raw_candidate.get("integration_direction") or "").strip() or None,
             }
         )
+    elif suggestion_type == "binding_energy_candidate":
+        expected_binding_energy = _candidate_number(
+            raw_candidate,
+            "expected_binding_energy_eV",
+            "binding_energy_eV",
+            "center_binding_energy_eV",
+            "center_eV",
+            "expected_center_eV",
+        )
+        binding_energy_window = _candidate_energy_window(
+            raw_candidate,
+            "binding_energy_window_eV",
+            "binding_energy_range_eV",
+            "be_window_eV",
+            "window_eV",
+        )
+        chemical_state_label = str(
+            raw_candidate.get("chemical_state_label")
+            or raw_candidate.get("state_label")
+            or raw_candidate.get("assignment_label")
+            or ""
+        ).strip()
+        calibration_reference = str(
+            raw_candidate.get("calibration_reference")
+            or raw_candidate.get("binding_energy_reference")
+            or raw_candidate.get("energy_reference")
+            or ""
+        ).strip()
+        charge_reference_assumption = str(
+            raw_candidate.get("charge_reference_assumption")
+            or raw_candidate.get("charge_reference_notes")
+            or raw_candidate.get("referencing_assumption")
+            or ""
+        ).strip()
+        if not chemical_state_label:
+            missing_fields.append("chemical_state_label")
+        if expected_binding_energy is None and binding_energy_window is None:
+            missing_fields.append("expected_binding_energy_eV_or_binding_energy_window_eV")
+        if not calibration_reference:
+            missing_fields.append("calibration_reference")
+        if not charge_reference_assumption:
+            missing_fields.append("charge_reference_assumption")
+        if expected_binding_energy is not None and binding_energy_window is not None:
+            low, high = binding_energy_window
+            if expected_binding_energy < low or expected_binding_energy > high:
+                missing_fields.append("expected_binding_energy_within_window")
+        candidate.update(
+            {
+                "target_parameter_path": "interpretation.binding_energy_candidates",
+                "chemical_state_label": chemical_state_label or None,
+                "expected_binding_energy_eV": expected_binding_energy,
+                "binding_energy_window_eV": binding_energy_window,
+                "binding_energy_min_eV": binding_energy_window[0] if binding_energy_window else None,
+                "binding_energy_max_eV": binding_energy_window[1] if binding_energy_window else None,
+                "calibration_reference": calibration_reference or None,
+                "charge_reference_assumption": charge_reference_assumption or None,
+                "calibration_group_id": str(raw_candidate.get("calibration_group_id") or "").strip() or None,
+                "overlap_notes": _coerce_string_list(raw_candidate.get("overlap_notes") or raw_candidate.get("overlap_risks")),
+            }
+        )
     else:
         candidate["target_parameter_path"] = None
 
@@ -1098,9 +1216,17 @@ def suggest_xps_parameters(
         for index, candidate in enumerate(raw_candidates, start=1)
     ]
     table = pd.DataFrame(candidates, columns=_xps_parameter_suggestion_columns())
-    for column in ["reference_ids", "unresolved_reference_ids", "applicability_notes", "missing_fields", "caveats"]:
+    for column in [
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "binding_energy_window_eV",
+        "overlap_notes",
+        "missing_fields",
+        "caveats",
+    ]:
         if column in table.columns:
-            table[column] = table[column].apply(lambda value: "; ".join(value) if isinstance(value, list) else value)
+            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
 
     ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
     unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
@@ -1134,10 +1260,11 @@ def suggest_xps_parameters(
             "If no suitable source packet exists, create one from a reviewed local library, project literature record, or user-confirmed literature/search workflow before review.",
             "Ask the user to review ready candidates before copying any values into XPS processing parameters.",
             "When accepted, copy spin-orbit candidates into component_fit.spin_orbit_constraints or Tougaard candidates into background_subtraction parameters with review refs.",
+            "When accepted, keep binding-energy candidates in report/memory interpretation context only unless a later reviewed component model explicitly uses them.",
         ],
         "boundaries": [
             "Suggestion records are advisory and auto_applied is always false.",
-            "This suggestion-record step is a validation/review-record step and does not perform unconfirmed live network lookup itself. EA may prepare source packets from reviewed local libraries, project literature, user-provided sources, or user-confirmed literature/search workflows before this step; this step validates supplied source packets/reference IDs and does not auto-select or apply components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
+            "This suggestion-record step is a validation/review-record step and does not perform unconfirmed live network lookup itself. EA may prepare source packets from reviewed local libraries, project literature, user-provided sources, or user-confirmed literature/search workflows before this step; this step validates supplied source packets/reference IDs and does not auto-select or apply components/backgrounds/bounds/peak shapes, apply fitting, silently calibrate spectra, apply charge correction, prove chemical states/composition, or calculate composition.",
         ],
     }
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1209,6 +1336,17 @@ def _xps_candidate_parameter_values_text(candidate: dict[str, Any]) -> str:
             f"integration_direction={candidate.get('integration_direction') or 'not recorded'}",
         ]
         return "; ".join(values)
+    if suggestion_type == "binding_energy_candidate":
+        values = [
+            f"chemical_state_label={candidate.get('chemical_state_label') or 'not recorded'}",
+            f"expected_binding_energy_eV={candidate.get('expected_binding_energy_eV')}",
+            f"binding_energy_window_eV={candidate.get('binding_energy_window_eV') or 'not recorded'}",
+            f"calibration_reference={candidate.get('calibration_reference') or 'not recorded'}",
+            f"charge_reference_assumption={candidate.get('charge_reference_assumption') or 'not recorded'}",
+            f"calibration_group_id={candidate.get('calibration_group_id') or 'not recorded'}",
+            f"overlap_notes={_format_memory_list(_coerce_string_list(candidate.get('overlap_notes')))}",
+        ]
+        return "; ".join(values)
     return "no supported XPS parameter values recorded"
 
 
@@ -1244,7 +1382,10 @@ def _review_value(value: Any) -> str:
 def _xps_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
     status = str(candidate.get("status") or "unknown")
     if status == "ready_for_user_review":
-        action = "Ask the user to accept, reject, or edit this source-backed parameter candidate before any report/memory/processing reuse."
+        if candidate.get("suggestion_type") == "binding_energy_candidate":
+            action = "Ask the user to accept, reject, or edit this source-backed binding-energy candidate before any report or memory discussion; do not treat it as chemical-state proof."
+        else:
+            action = "Ask the user to accept, reject, or edit this source-backed parameter candidate before any report/memory/processing reuse."
     elif status == "needs_reference_registration":
         action = "Register, replace, or remove unresolved reference_ids before treating this candidate as report evidence or method memory."
     elif status.startswith("invalid"):
@@ -1262,6 +1403,7 @@ def _xps_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "confidence": str(candidate.get("confidence") or "low"),
         "parameter_origin": str(candidate.get("parameter_origin") or "not recorded"),
         "parameter_values": _xps_candidate_parameter_values_text(candidate),
+        "chemical_state_label": str(candidate.get("chemical_state_label") or "not recorded"),
         "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
         "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
         "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
@@ -1302,6 +1444,7 @@ def _render_xps_review_package_markdown(package: dict[str, Any]) -> str:
                 f"- suggestion_type: `{candidate.get('suggestion_type')}`",
                 f"- target_parameter_path: `{candidate.get('target_parameter_path')}`",
                 f"- element/core_level: `{candidate.get('element')}` / `{candidate.get('core_level')}`",
+                f"- chemical_state_label: `{candidate.get('chemical_state_label')}`",
                 f"- parameter_values: {candidate.get('parameter_values')}",
                 f"- references: `{_review_value(candidate.get('reference_ids'))}`",
                 f"- unresolved_references: `{_review_value(candidate.get('unresolved_reference_ids'))}`",
@@ -1499,6 +1642,15 @@ def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_r
     elif suggestion_type == "tougaard_parameter":
         if candidate.get("tougaard_B") is None and candidate.get("tougaard_C_eV2") is None:
             reasons.append("missing_tougaard_B_or_tougaard_C_eV2")
+    elif suggestion_type == "binding_energy_candidate":
+        if not str(candidate.get("chemical_state_label") or "").strip():
+            reasons.append("missing_chemical_state_label")
+        if candidate.get("expected_binding_energy_eV") is None and not candidate.get("binding_energy_window_eV"):
+            reasons.append("missing_expected_binding_energy_eV_or_binding_energy_window_eV")
+        if not str(candidate.get("calibration_reference") or "").strip():
+            reasons.append("missing_calibration_reference")
+        if not str(candidate.get("charge_reference_assumption") or "").strip():
+            reasons.append("missing_charge_reference_assumption")
 
     if not allow_non_ready:
         return not reasons, reasons
@@ -1509,6 +1661,10 @@ def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_r
         "missing_source_summary",
         "missing_applicability_notes",
         "missing_target_parameter_path",
+        "missing_chemical_state_label",
+        "missing_expected_binding_energy_eV_or_binding_energy_window_eV",
+        "missing_calibration_reference",
+        "missing_charge_reference_assumption",
     }
     return not any(reason in hard_blockers or reason.startswith("status:invalid") for reason in reasons), reasons
 
@@ -1528,13 +1684,15 @@ def _format_xps_parameter_memory_text(candidate: dict[str, Any], *, suggestion_i
     unresolved = _format_memory_list(_coerce_string_list(candidate.get("unresolved_reference_ids")))
     source_summary = str(candidate.get("source_summary") or "No source summary recorded.").strip()
     parameter_values = _xps_candidate_parameter_values_text(candidate)
+    memory_kind = "interpretation" if suggestion_type == "binding_energy_candidate" else "method-note"
     return (
         f"XPS source-backed parameter candidate `{candidate_id}` from suggestion `{suggestion_id}` was reviewed via `{review_ref}` "
-        "and can be preserved as a draft method-note memory candidate.\n\n"
+        f"and can be preserved as a draft {memory_kind} memory candidate.\n\n"
         f"- suggestion type: `{suggestion_type}`\n"
         f"- target parameter path: `{target_path}`\n"
         f"- suggestion status: `{status}`\n"
         f"- element/core level: {element} {core_level}\n"
+        f"- chemical-state label: {candidate.get('chemical_state_label') or 'not recorded'}\n"
         f"- confidence: `{confidence}`\n"
         f"- parameter origin: `{parameter_origin}`\n"
         f"- parameter values: {parameter_values}\n"
@@ -1544,7 +1702,7 @@ def _format_xps_parameter_memory_text(candidate: dict[str, Any], *, suggestion_i
         f"- applicability notes: {applicability}\n"
         f"- caveats: {caveats}\n\n"
         "Boundary: this is a source-backed XPS parameter candidate only. It does not copy values into processing parameters, "
-        "perform fitting or background subtraction, prove chemical state, calculate composition, or replace the standard memory review/commit flow."
+        "silently calibrate spectra, apply charge correction, perform fitting or background subtraction, prove chemical state/composition, calculate composition, or replace the standard memory review/commit flow."
     )
 
 
@@ -1622,9 +1780,11 @@ def propose_xps_parameter_memory_candidates(
             suggestion_id=str(suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name),
             review_ref=review_ref,
         )
+        suggestion_type = str(candidate.get("suggestion_type") or "")
+        memory_category = "interpretation" if suggestion_type == "binding_energy_candidate" else "method_note"
         rationale = (
             f"Generated from XPS parameter suggestion `{suggestion_ref}` candidate `{candidate_id}` after confirmed review `{review_ref}`. "
-            "This preserves a source-backed method candidate for later user review and commit; it does not create confirmed memory or apply parameters."
+            f"This preserves a source-backed {memory_category.replace('_', ' ')} candidate for later user review and commit; it does not create confirmed memory, apply parameters, apply charge correction, or prove chemistry."
         )
         memory_path = propose_memory_candidate(
             root,
@@ -1632,7 +1792,7 @@ def propose_xps_parameter_memory_candidates(
             candidate_text=candidate_text,
             source_refs=source_refs + _coerce_string_list(candidate.get("reference_ids")),
             provenance_refs=provenance_refs,
-            category="method_note",
+            category=memory_category,
             confidence=_memory_confidence(candidate.get("confidence")),
             rationale=rationale,
             created_at=created_at,
@@ -1644,6 +1804,7 @@ def propose_xps_parameter_memory_candidates(
                 "candidate_id": candidate_id,
                 "memory_candidate": str(memory_path),
                 "memory_candidate_ref": memory_ref,
+                "category": memory_category,
                 "confidence": _memory_confidence(candidate.get("confidence")),
                 "source_refs": source_refs,
                 "provenance_refs": provenance_refs,
@@ -1687,7 +1848,7 @@ def propose_xps_parameter_memory_candidates(
         "boundaries": [
             "This helper writes draft memory candidates only; it does not commit confirmed memory.",
             "Ready XPS parameter candidates are used by default; non-ready candidates require explicit --candidate-id plus --allow-non-ready and remain caveated.",
-            "XPS parameter suggestions do not by themselves apply processing/fitting/background parameters, prove chemical state, calculate composition, or replace user review.",
+            "XPS parameter suggestions do not by themselves apply processing/fitting/background parameters, silently calibrate spectra, apply charge correction, prove chemical state/composition, calculate composition, or replace user review.",
         ],
     }
 
