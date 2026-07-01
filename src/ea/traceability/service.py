@@ -60,6 +60,12 @@ def _string_list(value: Any) -> list[str]:
     return [str(item) for item in _as_list(value) if str(item).strip()]
 
 
+def _mapping_records(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        return [item for item in value.values() if isinstance(item, dict)]
+    return [item for item in _as_list(value) if isinstance(item, dict)]
+
+
 def _clean_ref(value: Any) -> str:
     return str(value or "").strip()
 
@@ -69,8 +75,59 @@ def _id_ref(prefix: str, value: Any) -> str:
     return f"{prefix}:{value}" if value else ""
 
 
+def _reference_ref(value: Any) -> str:
+    return _id_ref("reference", value)
+
+
+def _source_library_ref(value: Any) -> str:
+    return _id_ref("source_library", value)
+
+
 def _looks_like_path(value: str) -> bool:
     return "/" in value or "." in Path(value).name
+
+
+def _add_reference_node(
+    builder: TraceBuilder,
+    reference_id: Any,
+    *,
+    kind: str = "reference",
+    status: str | None = None,
+    path: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    reference_id = _clean_ref(reference_id)
+    if not reference_id:
+        return ""
+    node_id = _reference_ref(reference_id)
+    node_ref = builder.add_node(
+        node_id,
+        kind=kind,
+        label=reference_id,
+        path=path,
+        status=status,
+        metadata={"reference_id": reference_id, **(metadata or {})},
+    )
+    builder.add_alias(reference_id, node_ref)
+    builder.add_alias(node_id, node_ref)
+    return node_ref
+
+
+def _add_source_library_node(builder: TraceBuilder, source_library_ref: Any) -> str:
+    source_library_ref = _clean_ref(source_library_ref)
+    if not source_library_ref:
+        return ""
+    node_id = _source_library_ref(source_library_ref)
+    node_ref = builder.add_node(
+        node_id,
+        kind="source_library",
+        label=source_library_ref,
+        status="referenced",
+        metadata={"source_library_ref": source_library_ref},
+    )
+    builder.add_alias(source_library_ref, node_ref)
+    builder.add_alias(node_id, node_ref)
+    return node_ref
 
 
 class TraceBuilder:
@@ -164,6 +221,32 @@ class TraceBuilder:
         self.edges.append({"from": source_id, "to": target_id, "relation": relation})
 
 
+def _load_references(root: Path, builder: TraceBuilder) -> None:
+    references = _safe_yaml(root / "literature" / "references" / "index.yml").get("references", {})
+    if not isinstance(references, dict):
+        return
+    for reference_id, reference in references.items():
+        if not isinstance(reference, dict):
+            continue
+        reference_ref = str(reference.get("path") or f"literature/references/{reference_id}.yml")
+        detail = _safe_yaml(_project_path(root, reference_ref))
+        metadata = {
+            "citation": detail.get("citation") or reference.get("citation"),
+            "title": detail.get("title") or reference.get("title"),
+            "doi": detail.get("doi") or reference.get("doi"),
+            "url": detail.get("url") or reference.get("url"),
+            "source_type": detail.get("source_type") or reference.get("source_type"),
+            "local_path": detail.get("local_path") or reference.get("local_path"),
+        }
+        node_id = _add_reference_node(builder, reference_id, status="registered", path=reference_ref, metadata=metadata)
+        for source_ref in _string_list(detail.get("source_refs") or reference.get("source_refs")):
+            builder.add_edge(node_id, source_ref, "has_source")
+        for provenance_ref in _string_list(detail.get("provenance_refs") or reference.get("provenance_refs")):
+            builder.add_edge(node_id, provenance_ref, "has_provenance")
+        for review_ref in _string_list(detail.get("review_refs") or reference.get("review_refs")):
+            builder.add_edge(node_id, review_ref, "has_review")
+
+
 def _load_reports(root: Path, builder: TraceBuilder) -> None:
     reports = _safe_yaml(root / "reports" / "index.yml").get("reports", {})
     if not isinstance(reports, dict):
@@ -197,8 +280,8 @@ def _load_reports(root: Path, builder: TraceBuilder) -> None:
             builder.add_node(_id_ref("experiment", experiment_id), kind="experiment", label=experiment_id)
             builder.add_edge(node_id, _id_ref("experiment", experiment_id), "about_experiment")
         for reference_id in _string_list(report.get("reference_ids") or frontmatter.get("reference_ids")):
-            builder.add_node(_id_ref("reference", reference_id), kind="reference", label=reference_id)
-            builder.add_edge(node_id, _id_ref("reference", reference_id), "cites_reference")
+            reference_ref = _add_reference_node(builder, reference_id)
+            builder.add_edge(node_id, reference_ref, "cites_reference")
         for provenance_ref in _string_list(frontmatter.get("provenance_refs")):
             builder.add_edge(node_id, provenance_ref, "has_provenance")
 
@@ -355,6 +438,8 @@ def _load_suggestion_artifacts(root: Path, builder: TraceBuilder) -> None:
         for key in ["suggestion_id", "source_packet_id", "review_package_id"]:
             if data.get(key):
                 builder.add_alias(str(data[key]), node_id)
+        if data.get("source_library_ref"):
+            _add_source_library_node(builder, data["source_library_ref"])
         link_fields = {
             "source_packet_ref": "from_source_packet",
             "source_manifest_ref": "from_source_manifest",
@@ -372,10 +457,27 @@ def _load_suggestion_artifacts(root: Path, builder: TraceBuilder) -> None:
                 builder.add_edge(node_id, str(data[field]), relation)
         for related_ref in _string_list(data.get("related_records")):
             builder.add_edge(node_id, related_ref, "related_record")
-        for reference_id in _string_list(data.get("reference_ids") or data.get("guidance_reference_ids")):
-            reference_ref = _id_ref("reference", reference_id)
-            builder.add_node(reference_ref, kind="reference", label=reference_id)
+        reference_seed_data = data.get("reference_seeds") if isinstance(data.get("reference_seeds"), dict) else {}
+        for reference_id, seed in reference_seed_data.items():
+            seed_metadata = seed if isinstance(seed, dict) else {}
+            reference_ref = _add_reference_node(builder, reference_id, kind="reference_seed", status="seed_or_registered", metadata=seed_metadata)
+            builder.add_edge(node_id, reference_ref, "has_reference_seed")
+        for reference_id in _string_list(data.get("reference_ids")):
+            reference_ref = _add_reference_node(builder, reference_id)
             builder.add_edge(node_id, reference_ref, "uses_reference")
+        for reference_id in _string_list(data.get("guidance_reference_ids")):
+            reference_ref = _add_reference_node(builder, reference_id)
+            builder.add_edge(node_id, reference_ref, "uses_guidance_reference")
+        for unresolved_id in _string_list(data.get("unresolved_reference_ids")):
+            reference_ref = _add_reference_node(builder, unresolved_id, status="unresolved")
+            builder.add_edge(node_id, reference_ref, "has_unresolved_reference")
+        for candidate in _mapping_records(data.get("candidates")) + _mapping_records(data.get("candidate_summaries")):
+            for reference_id in _string_list(candidate.get("reference_ids")):
+                reference_ref = _add_reference_node(builder, reference_id)
+                builder.add_edge(node_id, reference_ref, "candidate_uses_reference")
+            for unresolved_id in _string_list(candidate.get("unresolved_reference_ids")):
+                reference_ref = _add_reference_node(builder, unresolved_id, status="unresolved")
+                builder.add_edge(node_id, reference_ref, "candidate_unresolved_reference")
 
 
 def _load_provenance(root: Path, builder: TraceBuilder) -> None:
@@ -400,7 +502,14 @@ def _load_provenance(root: Path, builder: TraceBuilder) -> None:
         for ref in _string_list(outputs.get("records")):
             builder.add_edge(node_id, ref, "output_record")
         for ref in _string_list(provenance.get("source_refs")):
-            builder.add_edge(node_id, _id_ref("reference", ref), "source_reference")
+            if _looks_like_path(ref):
+                builder.add_edge(node_id, ref, "source_record")
+            elif ref.startswith("builtin:"):
+                source_library_ref = _add_source_library_node(builder, ref)
+                builder.add_edge(node_id, source_library_ref, "source_library")
+            else:
+                reference_ref = _add_reference_node(builder, ref)
+                builder.add_edge(node_id, reference_ref, "source_reference")
         for ref in _string_list(provenance.get("review_refs")):
             builder.add_edge(node_id, ref, "review_ref")
 
@@ -467,7 +576,20 @@ def _render_markdown(trace: dict[str, Any]) -> str:
     for kind, count in sorted(kind_counts.items()):
         lines.append(f"| {kind} | {count} |")
     lines.extend(["", "## Key Records", ""])
-    priority_kinds = {"report", "figure", "source_packet", "suggestion_record", "review_package", "review", "memory_candidate", "memory", "provenance"}
+    priority_kinds = {
+        "report",
+        "figure",
+        "reference",
+        "reference_seed",
+        "source_library",
+        "source_packet",
+        "suggestion_record",
+        "review_package",
+        "review",
+        "memory_candidate",
+        "memory",
+        "provenance",
+    }
     for node in trace["nodes"]:
         if node["kind"] not in priority_kinds:
             continue
@@ -504,6 +626,7 @@ def build_project_trace_view(
         markdown_output_path = root / markdown_output_path
 
     builder = TraceBuilder(root)
+    _load_references(root, builder)
     _load_reports(root, builder)
     _load_figures(root, builder)
     _load_reviews(root, builder)

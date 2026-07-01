@@ -11,6 +11,7 @@ ea_skill:
     - source_packet_records
     - suggestion_records
     - review_package_records
+    - literature_reference_index
     - memory_candidate_index
     - memory_index
   output_artifacts:
@@ -37,6 +38,8 @@ ea_skill:
       - project_trace_view_yaml_and_markdown
       - focus_ref_connected_subgraph
       - report_figure_result_reference_edges
+      - registered_reference_and_reference_seed_edges
+      - source_library_reference_edges
       - source_packet_suggestion_review_package_edges
       - review_record_target_edges
       - memory_candidate_and_committed_memory_edges
