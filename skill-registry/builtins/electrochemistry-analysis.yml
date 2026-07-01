@@ -14,6 +14,7 @@ ea_skill:
     - correction_record
     - potential_conversion_record
     - ir_drop_correction_record
+    - tafel_analysis_record
     - figure_record
     - report_section
     - provenance_record
@@ -75,7 +76,7 @@ ea_skill:
       - correction_records_preserve_reference_and_ir_metadata_without_numeric_correction
       - potential_conversion_is_reviewed_coordinate_transform_only
       - ir_drop_correction_is_reviewed_coordinate_correction_only
-      - no_tafel_or_overpotential_extraction
+      - tafel_analysis_requires_reviewed_kinetic_window_and_is_screening_only
       - no_capacitance_capacity_or_device_performance_claims_without_future_protocol_model
       - no_memory_write_without_user_confirmation
     correction_records:
@@ -121,3 +122,21 @@ ea_skill:
         - reviewer_notes
         - caveats
       confidence_boundary: reviewed_coordinate_correction_only_no_tafel_overpotential_eis_gcd_or_performance_claim
+    tafel_analysis:
+      implemented: true
+      record_format: yaml
+      method: reviewed_tafel_linear_fit
+      fields:
+        - potential_input_column
+        - current_input_column
+        - current_unit
+        - fit_window_V
+        - log_current_column
+        - fit_potential_column
+        - overpotential_reference_V
+        - overpotential_column
+        - reference_scale
+        - reference_ids
+        - reviewer_notes
+        - caveats
+      confidence_boundary: reviewed_kinetic_window_screening_fit_only_no_automatic_window_selection_ranking_or_mechanism_claim

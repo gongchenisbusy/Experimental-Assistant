@@ -136,6 +136,25 @@ def default_electrochemistry_processing_parameters() -> dict[str, Any]:
             "reviewer_notes": [],
             "caveats": [],
         },
+        "tafel_analysis": {
+            "enabled": False,
+            "method": "reviewed_tafel_linear_fit",
+            "source": "ea.electrochemistry.tafel_analysis:v0.2",
+            "potential_input_column": "",
+            "current_input_column": "",
+            "current_unit": "",
+            "fit_window_V": {"min": None, "max": None},
+            "minimum_points": 4,
+            "minimum_log_span_decades": 0.2,
+            "log_current_column": "",
+            "fit_potential_column": "tafel_fit_potential_V",
+            "overpotential_reference_V": None,
+            "overpotential_column": "overpotential_V",
+            "reference_scale": "",
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -1119,6 +1138,374 @@ def _append_ir_drop_correction_interpretation(analysis: dict[str, Any], ir_recor
     return analysis
 
 
+def _tafel_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+    value = params.get(name, [])
+    if isinstance(value, list):
+        return deepcopy(value), None
+    if isinstance(value, tuple):
+        return list(value), None
+    if isinstance(value, str) and value.strip():
+        return [value], None
+    if value in (None, "", []):
+        return [], None
+    return (
+        [],
+        _warning(
+            "electrochemistry_tafel_analysis_list_ignored",
+            "An electrochemistry Tafel analysis list field was ignored because it was not a list or non-empty string.",
+            severity="medium",
+            field=name,
+        ),
+    )
+
+
+def _tafel_required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return (
+            None,
+            _warning(
+                "electrochemistry_tafel_analysis_required_value_missing",
+                "A required numeric Tafel analysis value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    if not np.isfinite(coerced):
+        return (
+            None,
+            _warning(
+                "electrochemistry_tafel_analysis_required_value_missing",
+                "A required numeric Tafel analysis value was missing or invalid.",
+                severity="medium",
+                field=name,
+            ),
+        )
+    return coerced, None
+
+
+def _mapping_first_present(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in mapping and mapping[key] not in (None, ""):
+            return mapping[key]
+    return None
+
+
+def _tafel_fit_window(params: dict[str, Any]) -> tuple[tuple[float | None, float | None], list[dict[str, Any]]]:
+    window = params.get("fit_window_V") or params.get("kinetic_window_V") or {}
+    warnings: list[dict[str, Any]] = []
+    if not isinstance(window, dict):
+        warnings.append(
+            _warning(
+                "electrochemistry_tafel_analysis_window_ignored",
+                "Tafel analysis fit_window_V was ignored because it was not a mapping with min/max values.",
+                severity="medium",
+            )
+        )
+        return (None, None), warnings
+    lower, lower_warning = _tafel_required_float(_mapping_first_present(window, ("min", "lower", "start", "from")), "fit_window_V.min")
+    upper, upper_warning = _tafel_required_float(_mapping_first_present(window, ("max", "upper", "end", "to")), "fit_window_V.max")
+    for warning in (lower_warning, upper_warning):
+        if warning:
+            warnings.append(warning)
+    if lower is not None and upper is not None and lower > upper:
+        lower, upper = upper, lower
+    return (lower, upper), warnings
+
+
+def _tafel_potential_column(
+    processed: pd.DataFrame,
+    params: dict[str, Any],
+    potential_conversion_record: dict[str, Any] | None,
+    ir_drop_correction_record: dict[str, Any] | None,
+) -> str | None:
+    requested = str(params.get("potential_input_column") or "").strip()
+    if requested:
+        return requested if requested in processed.columns else None
+    if ir_drop_correction_record and ir_drop_correction_record.get("applied_to_processed_data"):
+        candidate = ir_drop_correction_record.get("output_column")
+        if isinstance(candidate, str) and candidate in processed.columns:
+            return candidate
+    if potential_conversion_record and potential_conversion_record.get("applied_to_processed_data"):
+        candidate = potential_conversion_record.get("output_column")
+        if isinstance(candidate, str) and candidate in processed.columns:
+            return candidate
+    return "potential_V" if "potential_V" in processed.columns else None
+
+
+def _tafel_current_column(processed: pd.DataFrame, params: dict[str, Any]) -> str | None:
+    requested = str(params.get("current_input_column") or "").strip()
+    if requested:
+        return requested if requested in processed.columns else None
+    if "processed_current_density_mA_cm-2" in processed.columns:
+        return "processed_current_density_mA_cm-2"
+    return "processed_current_mA" if "processed_current_mA" in processed.columns else None
+
+
+def _tafel_current_unit(params: dict[str, Any], current_column: str | None) -> str:
+    requested = str(params.get("current_unit") or "").strip()
+    if requested:
+        return requested
+    if current_column == "processed_current_density_mA_cm-2":
+        return "mA cm^-2"
+    if current_column == "processed_current_mA":
+        return "mA"
+    return "unknown"
+
+
+def _tafel_log_column_name(params: dict[str, Any], current_column: str | None) -> str:
+    requested = str(params.get("log_current_column") or "").strip()
+    if requested:
+        return requested
+    if current_column == "processed_current_density_mA_cm-2":
+        return "tafel_log10_abs_current_density_mA_cm-2"
+    return "tafel_log10_abs_current"
+
+
+def _unique_processed_column(processed: pd.DataFrame, requested: str, suffix: str, warnings: list[dict[str, Any]], code: str) -> str:
+    column = requested.strip() or suffix
+    if column not in processed.columns:
+        return column
+    adjusted = f"{column}_{suffix}"
+    counter = 2
+    while adjusted in processed.columns:
+        adjusted = f"{column}_{suffix}_{counter}"
+        counter += 1
+    warnings.append(
+        _warning(
+            code,
+            "A reviewed electrochemistry output column already existed and was renamed to avoid overwriting processed data.",
+            severity="medium",
+            requested_column=column,
+            output_column=adjusted,
+        )
+    )
+    return adjusted
+
+
+def _apply_tafel_analysis(
+    processed: pd.DataFrame,
+    parameters: dict[str, Any],
+    measurement_mode: str,
+    potential_conversion_record: dict[str, Any] | None = None,
+    ir_drop_correction_record: dict[str, Any] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("tafel_analysis", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return processed, None, []
+
+    analyzed = processed.copy()
+    warnings: list[dict[str, Any]] = []
+    source = str(params.get("source") or "ea.electrochemistry.tafel_analysis:v0.2")
+    method = str(params.get("method") or "reviewed_tafel_linear_fit")
+    if method != "reviewed_tafel_linear_fit":
+        warnings.append(
+            _warning(
+                "electrochemistry_tafel_analysis_method_unsupported",
+                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this v0.2 workflow.",
+                severity="medium",
+                requested_method=method,
+            )
+        )
+        method = "reviewed_tafel_linear_fit"
+
+    fit_window, window_warnings = _tafel_fit_window(params)
+    warnings.extend(window_warnings)
+    potential_column = _tafel_potential_column(analyzed, params, potential_conversion_record, ir_drop_correction_record)
+    current_column = _tafel_current_column(analyzed, params)
+    current_unit = _tafel_current_unit(params, current_column)
+    log_column = _unique_processed_column(
+        analyzed,
+        _tafel_log_column_name(params, current_column),
+        "tafel_log",
+        warnings,
+        "electrochemistry_tafel_analysis_log_column_adjusted",
+    )
+    fit_column = _unique_processed_column(
+        analyzed,
+        str(params.get("fit_potential_column") or "tafel_fit_potential_V"),
+        "tafel_fit",
+        warnings,
+        "electrochemistry_tafel_analysis_fit_column_adjusted",
+    )
+    overpotential_column = _unique_processed_column(
+        analyzed,
+        str(params.get("overpotential_column") or "overpotential_V"),
+        "overpotential",
+        warnings,
+        "electrochemistry_tafel_analysis_overpotential_column_adjusted",
+    )
+
+    reference_ids, reference_warning = _tafel_list(params, "reference_ids")
+    if reference_warning:
+        warnings.append(reference_warning)
+    reviewer_notes, notes_warning = _tafel_list(params, "reviewer_notes")
+    if notes_warning:
+        warnings.append(notes_warning)
+    caveats, caveats_warning = _tafel_list(params, "caveats")
+    if caveats_warning:
+        warnings.append(caveats_warning)
+
+    overpotential_reference: float | None = None
+    overpotential_reference_raw = params.get("overpotential_reference_V")
+    if overpotential_reference_raw not in (None, ""):
+        overpotential_reference, overpotential_warning = _tafel_required_float(overpotential_reference_raw, "overpotential_reference_V")
+        if overpotential_warning:
+            warnings.append(overpotential_warning)
+
+    fit_applied = False
+    overpotential_applied = False
+    fit_stats: dict[str, Any] = {}
+    if measurement_mode == "eis":
+        warnings.append(
+            _warning(
+                "electrochemistry_tafel_analysis_skipped_for_eis",
+                "Tafel analysis was skipped for EIS mode because the reviewed data are impedance coordinates, not potential/current coordinates.",
+                severity="medium",
+            )
+        )
+    elif potential_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_tafel_analysis_no_potential_column",
+                "Tafel analysis was enabled but no reviewed potential input column was available in the processed electrochemistry table.",
+                severity="medium",
+                requested_potential_input_column=str(params.get("potential_input_column") or "auto"),
+            )
+        )
+    elif current_column is None:
+        warnings.append(
+            _warning(
+                "electrochemistry_tafel_analysis_no_current_column",
+                "Tafel analysis was enabled but no reviewed current/current-density input column was available in the processed electrochemistry table.",
+                severity="medium",
+                requested_current_input_column=str(params.get("current_input_column") or "auto"),
+            )
+        )
+    else:
+        potential = analyzed[potential_column].to_numpy(dtype=float)
+        current = analyzed[current_column].to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_current = np.where(np.abs(current) > 0, np.log10(np.abs(current)), np.nan)
+        analyzed[log_column] = log_current
+        if overpotential_reference is not None:
+            analyzed[overpotential_column] = potential - overpotential_reference
+            overpotential_applied = True
+
+        window_min, window_max = fit_window
+        if window_min is None or window_max is None:
+            warnings.append(
+                _warning(
+                    "electrochemistry_tafel_analysis_window_missing",
+                    "Tafel analysis was enabled but no complete reviewed fit_window_V min/max was supplied; no Tafel fit was performed.",
+                    severity="medium",
+                )
+            )
+        else:
+            finite = np.isfinite(potential) & np.isfinite(log_current)
+            in_window = finite & (potential >= window_min) & (potential <= window_max)
+            minimum_points, _ = _coerce_int(params.get("minimum_points"), 4, minimum=2)
+            point_count = int(np.count_nonzero(in_window))
+            if point_count < minimum_points:
+                warnings.append(
+                    _warning(
+                        "electrochemistry_tafel_analysis_insufficient_points",
+                        "Tafel analysis fit window did not contain enough finite non-zero-current points.",
+                        severity="medium",
+                        point_count=point_count,
+                        minimum_points=minimum_points,
+                    )
+                )
+            else:
+                x = log_current[in_window]
+                y = potential[in_window]
+                log_span = float(np.nanmax(x) - np.nanmin(x))
+                min_log_span, _ = _coerce_float(params.get("minimum_log_span_decades"), 0.2, minimum=0.0)
+                if log_span < min_log_span:
+                    warnings.append(
+                        _warning(
+                            "electrochemistry_tafel_analysis_low_log_span",
+                            "Tafel analysis fit window has a small log-current span; treat the slope as low-confidence screening evidence.",
+                            severity="medium",
+                            log_span_decades=log_span,
+                            minimum_log_span_decades=min_log_span,
+                        )
+                    )
+                slope_v_decade, intercept_v = np.polyfit(x, y, 1)
+                fitted = slope_v_decade * log_current + intercept_v
+                analyzed[fit_column] = np.nan
+                analyzed.loc[in_window, fit_column] = fitted[in_window]
+                fitted_window = slope_v_decade * x + intercept_v
+                ss_res = float(np.sum((y - fitted_window) ** 2))
+                ss_tot = float(np.sum((y - float(np.mean(y))) ** 2))
+                r_squared = 1.0 if ss_tot == 0.0 else 1.0 - ss_res / ss_tot
+                fit_stats = {
+                    "fit_point_count": point_count,
+                    "log_current_min": float(np.nanmin(x)),
+                    "log_current_max": float(np.nanmax(x)),
+                    "log_current_span_decades": log_span,
+                    "potential_min_V": float(np.nanmin(y)),
+                    "potential_max_V": float(np.nanmax(y)),
+                    "tafel_slope_V_decade": float(slope_v_decade),
+                    "tafel_slope_mV_decade": float(slope_v_decade * 1000.0),
+                    "absolute_tafel_slope_mV_decade": float(abs(slope_v_decade * 1000.0)),
+                    "intercept_V": float(intercept_v),
+                    "r_squared": float(r_squared),
+                }
+                fit_applied = True
+
+    status = "reviewed_tafel_fit_applied" if fit_applied else "enabled_without_tafel_fit"
+    record = {
+        "enabled": True,
+        "status": status,
+        "method": method,
+        "assignment_source": source,
+        "confidence": str(params.get("confidence") or ("medium" if fit_applied else "insufficient")),
+        "potential_input_column": potential_column,
+        "current_input_column": current_column,
+        "current_unit": current_unit,
+        "current_input_is_density": bool(current_unit and "cm" in current_unit),
+        "fit_window_V": {"min": fit_window[0], "max": fit_window[1]},
+        "log_current_column": log_column if current_column is not None and measurement_mode != "eis" else None,
+        "fit_potential_column": fit_column if fit_applied else None,
+        "overpotential_reference_V": overpotential_reference,
+        "overpotential_column": overpotential_column if overpotential_applied else None,
+        "reference_scale": str(params.get("reference_scale") or ""),
+        "fit_statistics": fit_stats,
+        "applied_to_processed_data": bool(fit_applied or overpotential_applied),
+        "applied_to_plot_axis": False,
+        "applied_to_feature_detection": False,
+        "reference_ids": reference_ids,
+        "reviewer_notes": reviewer_notes,
+        "caveats": caveats,
+        "warnings": warnings,
+        "boundary": "Tafel/overpotential analysis is a user-reviewed screening fit applied only inside the reviewed kinetic window; it is not automatic kinetic-window selection, exchange-current proof, catalyst ranking, EIS fitting, GCD capacity/capacitance calculation, stability assessment, or mechanistic proof.",
+    }
+    return analyzed, record, warnings
+
+
+def _append_tafel_analysis_interpretation(analysis: dict[str, Any], tafel_record: dict[str, Any] | None) -> dict[str, Any]:
+    analysis["tafel_analysis"] = tafel_record
+    if tafel_record and tafel_record.get("status") == "reviewed_tafel_fit_applied":
+        stats = tafel_record.get("fit_statistics") or {}
+        slope = stats.get("tafel_slope_mV_decade")
+        window = tafel_record.get("fit_window_V") or {}
+        analysis.setdefault("possible_interpretations", []).append(
+            {
+                "text": (
+                    f"Reviewed Tafel screening fit used {tafel_record.get('potential_input_column')} vs {tafel_record.get('current_input_column')} "
+                    f"within {window.get('min')} to {window.get('max')} V and produced a slope of {slope} mV dec^-1. "
+                    "Treat it as protocol-dependent screening evidence until normalization, reference scale, replicates, and literature context are reviewed."
+                ),
+                "confidence": tafel_record.get("confidence", "low"),
+                "evidence": ["tafel_analysis"],
+                "assignment_source": tafel_record.get("assignment_source", "ea.electrochemistry.tafel_analysis:v0.2"),
+            }
+        )
+    return analysis
+
+
 def _eis_summary(
     processed: pd.DataFrame,
     features: pd.DataFrame,
@@ -1358,11 +1745,19 @@ def process_electrochemistry_result(
         processed, processing_warnings = _apply_processing(confirmed, parameters)
     processed, potential_conversion_record, potential_conversion_warnings = _apply_potential_conversion(processed, parameters, request.measurement_mode)
     processed, ir_drop_correction_record, ir_drop_correction_warnings = _apply_ir_drop_correction(processed, parameters, request.measurement_mode, potential_conversion_record)
+    processed, tafel_analysis_record, tafel_analysis_warnings = _apply_tafel_analysis(
+        processed,
+        parameters,
+        request.measurement_mode,
+        potential_conversion_record,
+        ir_drop_correction_record,
+    )
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
     analysis = _append_potential_conversion_interpretation(analysis, potential_conversion_record)
     analysis = _append_ir_drop_correction_interpretation(analysis, ir_drop_correction_record)
+    analysis = _append_tafel_analysis_interpretation(analysis, tafel_analysis_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -1378,10 +1773,11 @@ def process_electrochemistry_result(
     correction_yml = output_dir / "electrochemistry_correction.yml"
     potential_conversion_yml = output_dir / "electrochemistry_potential_conversion.yml"
     ir_drop_correction_yml = output_dir / "electrochemistry_ir_drop_correction.yml"
+    tafel_analysis_yml = output_dir / "electrochemistry_tafel_analysis.yml"
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, figure, result_metadata]:
+    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1408,6 +1804,13 @@ def process_electrochemistry_result(
         write_yaml(ir_drop_correction_yml, ir_drop_correction_record)
         if analysis.get("ir_drop_correction"):
             analysis["ir_drop_correction"]["record_ref"] = ir_drop_correction_ref
+    tafel_analysis_ref: str | None = None
+    if tafel_analysis_record is not None:
+        tafel_analysis_ref = str(tafel_analysis_yml.relative_to(root))
+        tafel_analysis_record["record_ref"] = tafel_analysis_ref
+        write_yaml(tafel_analysis_yml, tafel_analysis_record)
+        if analysis.get("tafel_analysis"):
+            analysis["tafel_analysis"]["record_ref"] = tafel_analysis_ref
     _plot_electrochemistry(
         processed,
         features,
@@ -1430,6 +1833,7 @@ def process_electrochemistry_result(
     warnings.extend(correction_warnings)
     warnings.extend(potential_conversion_warnings)
     warnings.extend(ir_drop_correction_warnings)
+    warnings.extend(tafel_analysis_warnings)
     outputs = {
         "figure": str(figure.relative_to(root)),
         "feature_table": str(features_csv.relative_to(root)),
@@ -1443,6 +1847,8 @@ def process_electrochemistry_result(
         outputs["potential_conversion"] = potential_conversion_ref
     if ir_drop_correction_ref:
         outputs["ir_drop_correction"] = ir_drop_correction_ref
+    if tafel_analysis_ref:
+        outputs["tafel_analysis"] = tafel_analysis_ref
     result = ElectrochemistryProcessingResult(
         electrochemistry_result_id=result_id,
         result_id=result_id,
@@ -1478,6 +1884,8 @@ def process_electrochemistry_result(
         provenance_files.append(potential_conversion_ref)
     if ir_drop_correction_ref:
         provenance_files.append(ir_drop_correction_ref)
+    if tafel_analysis_ref:
+        provenance_files.append(tafel_analysis_ref)
     provenance_path = write_provenance_entry(
         root,
         workflow="electrochemistry_processing",
@@ -1511,7 +1919,7 @@ def process_electrochemistry_result(
         caption = (
             "EIS Nyquist plot with screening impedance features, reviewed context, and traceable processing parameters."
             if request.measurement_mode == "eis"
-            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion/iR correction, and traceable processing parameters."
+            else "Electrochemistry trace with processed current, screening features, reviewed context, optional reviewed potential conversion/iR correction/Tafel screening records, and traceable processing parameters."
         )
         register_figure(
             root,
@@ -1545,6 +1953,7 @@ def process_electrochemistry_result(
             ]
             + ([correction_ref] if correction_ref else [])
             + ([potential_conversion_ref] if potential_conversion_ref else [])
-            + ([ir_drop_correction_ref] if ir_drop_correction_ref else []),
+            + ([ir_drop_correction_ref] if ir_drop_correction_ref else [])
+            + ([tafel_analysis_ref] if tafel_analysis_ref else []),
         )
     return result_metadata

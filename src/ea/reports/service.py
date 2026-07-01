@@ -1790,6 +1790,48 @@ def _electrochemistry_ir_drop_correction_text(metadata: dict) -> str:
     )
 
 
+def _electrochemistry_tafel_analysis_text(metadata: dict) -> str:
+    tafel = (metadata.get("peak_analysis") or {}).get("tafel_analysis")
+    if not tafel:
+        return "当前没有启用或记录 electrochemistry Tafel/overpotential analysis。"
+    status = tafel.get("status", "unknown")
+    confidence = tafel.get("confidence", "insufficient")
+    source = tafel.get("assignment_source", "ea.electrochemistry.tafel_analysis:v0.2")
+    record_ref = tafel.get("record_ref", "未生成")
+    applied = tafel.get("applied_to_processed_data", False)
+    stats = tafel.get("fit_statistics") or {}
+    labels = {
+        "potential_input_column": "potential input column",
+        "current_input_column": "current/current-density input column",
+        "current_unit": "current unit",
+        "fit_window_V": "reviewed fit window V",
+        "log_current_column": "log current column",
+        "fit_potential_column": "fit potential column",
+        "overpotential_reference_V": "overpotential reference V",
+        "overpotential_column": "overpotential column",
+        "reference_scale": "reference scale",
+        "reference_ids": "reference ids",
+        "reviewer_notes": "reviewer notes",
+        "caveats": "caveats",
+    }
+    rows = []
+    for key, label in labels.items():
+        value = tafel.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+    for key in ["fit_point_count", "tafel_slope_mV_decade", "absolute_tafel_slope_mV_decade", "intercept_V", "r_squared"]:
+        value = stats.get(key)
+        if _has_electrochemistry_correction_value(value):
+            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
+    detail_text = "\n".join(rows) if rows else "- electrochemistry Tafel/overpotential analysis details: `未记录`"
+    return (
+        f"Tafel/overpotential analysis 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
+        f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
+        f"{detail_text}\n\n"
+        "该步骤只在用户已审核 kinetic window 内做 log-current 线性 screening fit，并可记录 reviewed overpotential reference；它不是自动选区、交换电流证明、催化剂排名、等效电路拟合、GCD 容量/电容计算、稳定性评估或机理证明。"
+    )
+
+
 def generate_electrochemistry_report(
     root: Path,
     *,
@@ -1833,6 +1875,7 @@ def generate_electrochemistry_report(
     correction_text = _electrochemistry_correction_record_text(metadata)
     potential_conversion_text = _electrochemistry_potential_conversion_text(metadata)
     ir_drop_correction_text = _electrochemistry_ir_drop_correction_text(metadata)
+    tafel_analysis_text = _electrochemistry_tafel_analysis_text(metadata)
     caution_text = (
         "在当前数据范围内，自动 EIS Nyquist screening 只能支持“阻抗弧形状/截距筛查”。不能仅凭本次自动处理直接确认等效电路、Rct、Warburg 扩散、电容、电荷转移机制或器件性能；正式结论需要用户确认频率顺序、扰动幅值、等效电路模型、重复性和文献依据。"
         if is_eis
@@ -1878,6 +1921,10 @@ def generate_electrochemistry_report(
 
 {ir_drop_correction_text}
 
+## Tafel/overpotential analysis
+
+{tafel_analysis_text}
+
 ## 图谱
 
 {figure_embed}
@@ -1915,6 +1962,7 @@ def generate_electrochemistry_report(
 {f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
 {f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
 {f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get('ir_drop_correction') else "- iR drop correction: `未生成`"}
+{f"- Tafel/overpotential analysis: `{outputs['tafel_analysis']}`" if outputs.get('tafel_analysis') else "- Tafel/overpotential analysis: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 
@@ -1946,6 +1994,7 @@ def generate_electrochemistry_report(
                     outputs.get("correction_record"),
                     outputs.get("potential_conversion"),
                     outputs.get("ir_drop_correction"),
+                    outputs.get("tafel_analysis"),
                     outputs["figure"],
                 ]
                 if value

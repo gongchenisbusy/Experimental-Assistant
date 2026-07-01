@@ -50,6 +50,22 @@ def _write_eis_fixture(path: Path) -> Path:
     return path
 
 
+def _write_tafel_fixture(path: Path) -> Path:
+    lines = [
+        "# x_unit = V",
+        "# current_unit = mA",
+        "# measurement_mode = lsv",
+        "# technique = linear sweep voltammetry tafel screening",
+        "potential_V current_mA",
+    ]
+    for index in range(121):
+        potential = 0.2 + index * 0.001
+        current = 10 ** ((potential - 0.2) / 0.06)
+        lines.append(f"{potential:.6f} {current:.9f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def test_inspect_synthetic_electrochemistry_fixture(tmp_path: Path) -> None:
     fixture = _write_electrochemistry_fixture(tmp_path / "synthetic-electrochemistry-cv.txt")
 
@@ -528,6 +544,212 @@ def test_electrochemistry_correction_record_preserves_reviewed_reference_and_ir_
     assert "correction_record 自动平移电位" in report_body
 
 
+def test_electrochemistry_tafel_analysis_uses_reviewed_window_and_records_fit(tmp_path: Path, capsys) -> None:
+    fixture = _write_tafel_fixture(tmp_path / "synthetic-electrochemistry-tafel-lsv.txt")
+    workspace = tmp_path / "electrochemistry-tafel-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "Electrochemistry Tafel Workflow",
+            "--slug",
+            "electrochemistry-tafel-workflow",
+            "--direction",
+            "electrochemistry Tafel screening records",
+            "--material",
+            "oxide catalyst",
+            "--experiment-type",
+            "materials electrochemistry Tafel screening",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(
+        [
+            "raw",
+            "import",
+            str(workspace),
+            str(fixture),
+            "--characterization-type",
+            "electrochemistry",
+            "--sample-ref",
+            "sample-ec-tafel-001",
+            "--experiment-ref",
+            "exp-ec-tafel-001",
+        ]
+    ) == 0
+    raw_output = _json_output(capsys)
+    raw_metadata_ref = Path(raw_output["metadata"]).relative_to(workspace).as_posix()
+
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_columns",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            "x=potential_V, y=current_mA, x_unit=V, current_unit=mA, mode=lsv",
+        ]
+    ) == 0
+    column_review = _json_output(capsys)
+
+    context_text = "1.0 cm2 reviewed geometric area; RHE scale already reviewed; LSV kinetic window selected by user"
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_context",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            context_text,
+        ]
+    ) == 0
+    context_review = _json_output(capsys)
+
+    parameters = default_electrochemistry_processing_parameters()
+    parameters["tafel_analysis"].update(
+        {
+            "enabled": True,
+            "potential_input_column": "potential_V",
+            "current_input_column": "processed_current_density_mA_cm-2",
+            "current_unit": "mA cm^-2",
+            "fit_window_V": {"min": 0.22, "max": 0.30},
+            "minimum_points": 5,
+            "minimum_log_span_decades": 0.5,
+            "fit_potential_column": "tafel_fit_potential_V",
+            "overpotential_reference_V": 0.2,
+            "overpotential_column": "eta_RHE_V",
+            "reference_scale": "synthetic_reviewed_RHE",
+            "reference_ids": ["ref-electrochemistry-tafel-001"],
+            "reviewer_notes": ["Kinetic window was user-reviewed for the synthetic fixture."],
+            "caveats": ["Screening fit only; do not rank catalysts from one trace."],
+        }
+    )
+    assert main(
+        [
+            "review",
+            "add",
+            str(workspace),
+            "--target-type",
+            "electrochemistry_parameters",
+            "--target-ref",
+            raw_metadata_ref,
+            "--user-response",
+            "可以，保存",
+            "--reviewed-content",
+            json.dumps(parameters, ensure_ascii=False),
+        ]
+    ) == 0
+    parameter_review = _json_output(capsys)
+
+    assert main(
+        [
+            "electrochemistry",
+            "process",
+            str(workspace),
+            "--metadata",
+            raw_metadata_ref,
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-tafel-001",
+            "--x-column",
+            "potential_V",
+            "--y-column",
+            "current_mA",
+            "--x-unit",
+            "V",
+            "--current-unit",
+            "mA",
+            "--measurement-mode",
+            "lsv",
+            "--context-summary",
+            context_text,
+            "--electrode-area-cm2",
+            "1.0",
+            "--parameters-json",
+            json.dumps({"tafel_analysis": parameters["tafel_analysis"]}, ensure_ascii=False),
+            "--column-review-ref",
+            column_review["review_id"],
+            "--context-review-ref",
+            context_review["review_id"],
+            "--parameter-review-ref",
+            parameter_review["review_id"],
+        ]
+    ) == 0
+    process_output = _json_output(capsys)
+    electrochemistry_metadata = Path(process_output["metadata"])
+    electrochemistry = read_yaml(electrochemistry_metadata)
+    tafel = electrochemistry["peak_analysis"]["tafel_analysis"]
+
+    assert tafel["status"] == "reviewed_tafel_fit_applied"
+    assert tafel["potential_input_column"] == "potential_V"
+    assert tafel["current_input_column"] == "processed_current_density_mA_cm-2"
+    assert tafel["current_input_is_density"] is True
+    assert tafel["fit_window_V"] == {"min": 0.22, "max": 0.3}
+    assert tafel["overpotential_reference_V"] == 0.2
+    assert tafel["overpotential_column"] == "eta_RHE_V"
+    assert tafel["applied_to_processed_data"] is True
+    assert tafel["applied_to_plot_axis"] is False
+    assert tafel["applied_to_feature_detection"] is False
+    assert "screening fit" in tafel["boundary"]
+    assert electrochemistry["outputs"]["tafel_analysis"].endswith("electrochemistry_tafel_analysis.yml")
+    saved_tafel = read_yaml(workspace / electrochemistry["outputs"]["tafel_analysis"])
+    assert saved_tafel["record_ref"] == electrochemistry["outputs"]["tafel_analysis"]
+    assert saved_tafel["fit_statistics"]["fit_point_count"] >= 70
+    assert math.isclose(saved_tafel["fit_statistics"]["tafel_slope_mV_decade"], 60.0, rel_tol=1e-6, abs_tol=1e-6)
+    assert saved_tafel["fit_statistics"]["r_squared"] > 0.999999
+
+    with (workspace / electrochemistry["outputs"]["processed_csv"]).open(newline="", encoding="utf-8") as handle:
+        processed_rows = list(csv.DictReader(handle))
+    assert "tafel_log10_abs_current_density_mA_cm-2" in processed_rows[0]
+    assert "tafel_fit_potential_V" in processed_rows[0]
+    assert "eta_RHE_V" in processed_rows[0]
+    fit_row = processed_rows[40]
+    assert math.isclose(float(fit_row["potential_V"]), 0.24, rel_tol=1e-9, abs_tol=1e-9)
+    assert math.isclose(float(fit_row["tafel_log10_abs_current_density_mA_cm-2"]), (0.24 - 0.2) / 0.06, rel_tol=1e-7, abs_tol=1e-7)
+    assert math.isclose(float(fit_row["tafel_fit_potential_V"]), 0.24, rel_tol=1e-7, abs_tol=1e-7)
+    assert math.isclose(float(fit_row["eta_RHE_V"]), 0.04, rel_tol=1e-9, abs_tol=1e-9)
+
+    figure_record = read_yaml(workspace / "figures" / "index.yml")["figures"][electrochemistry["figure_id"]]
+    assert electrochemistry["outputs"]["tafel_analysis"] in figure_record["source_data_refs"]
+
+    assert main(
+        [
+            "electrochemistry",
+            "report",
+            str(workspace),
+            "--metadata",
+            electrochemistry_metadata.relative_to(workspace).as_posix(),
+            "--project-id",
+            project_id,
+            "--sample-ref",
+            "sample-ec-tafel-001",
+            "--experiment-ref",
+            "exp-ec-tafel-001",
+        ]
+    ) == 0
+    report_output = _json_output(capsys)
+    _, report_body = read_markdown_record(Path(report_output["report"]))
+    assert "## Tafel/overpotential analysis" in report_body
+    assert "tafel_slope_mV_decade" in report_body
+    assert "60.0" in report_body
+    assert "electrochemistry_tafel_analysis.yml" in report_body
+
+
 def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None:
     fixture = _write_eis_fixture(tmp_path / "synthetic-electrochemistry-eis.txt")
     workspace = tmp_path / "cli-eis-project"
@@ -723,9 +945,11 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
     assert "correction_record" in reference_text
     assert "potential_conversion" in reference_text
     assert "ir_drop_correction" in reference_text
+    assert "tafel_analysis" in reference_text
     electrochemistry_record = next(item for item in registry["skills"] if item["id"] == "ea.electrochemistry-analysis")
     assert "Minimal electrochemistry workflow implemented" in electrochemistry_record["notes"]
     assert "eis_nyquist_screening" in electrochemistry_record["notes"]
     assert "correction_records" in electrochemistry_record["notes"]
     assert "potential_conversion" in electrochemistry_record["notes"]
     assert "ir_drop_correction" in electrochemistry_record["notes"]
+    assert "tafel_analysis" in electrochemistry_record["notes"]
