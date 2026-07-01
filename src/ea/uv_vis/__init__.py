@@ -3,6 +3,7 @@ from ea.uv_vis.service import (
     UVVisProcessingError,
     UVVisProcessingRequest,
     build_uv_vis_source_packet,
+    builtin_uv_vis_source_libraries,
     compare_uv_vis_replicates,
     default_uv_vis_processing_parameters,
     inspect_uv_vis_file,
@@ -10,6 +11,7 @@ from ea.uv_vis.service import (
     process_uv_vis_result,
     propose_uv_vis_interpretation_memory_candidates,
     suggest_uv_vis_interpretations,
+    summarize_uv_vis_source_libraries,
 )
 
 __all__ = [
@@ -17,6 +19,7 @@ __all__ = [
     "UVVisProcessingError",
     "UVVisProcessingRequest",
     "build_uv_vis_source_packet",
+    "builtin_uv_vis_source_libraries",
     "compare_uv_vis_replicates",
     "default_uv_vis_processing_parameters",
     "inspect_uv_vis_file",
@@ -24,4 +27,5 @@ __all__ = [
     "process_uv_vis_result",
     "propose_uv_vis_interpretation_memory_candidates",
     "suggest_uv_vis_interpretations",
+    "summarize_uv_vis_source_libraries",
 ]

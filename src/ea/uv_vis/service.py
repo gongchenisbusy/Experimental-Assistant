@@ -1177,6 +1177,154 @@ def _uv_vis_source_candidates(source_packet: Any) -> list[Any]:
     return []
 
 
+def _builtin_uv_vis_source_libraries() -> dict[str, dict[str, Any]]:
+    return {
+        "generic_optical_interpretation": {
+            "schema_version": "0.2",
+            "source": "ea.uv_vis.builtin_source_library:v0.2",
+            "description": "Generic source-backed UV-Vis interpretation starter candidates for materials projects.",
+            "guidance_notes": [
+                "Use these candidates as low-confidence discussion starters only after sample geometry, substrate/background/reference context, signal mode, and references are reviewed.",
+                "Register or replace reference seeds before treating a candidate as report evidence.",
+            ],
+            "guidance_reference_ids": [
+                "builtin-uvvis-tauc-1966",
+                "builtin-uvvis-pankove-1971",
+                "builtin-uvvis-kubelka-munk-1931",
+            ],
+            "reference_seeds": {
+                "builtin-uvvis-tauc-1966": {
+                    "citation": "Tauc, J., Grigorovici, R. and Vancu, A. Optical Properties and Electronic Structure of Amorphous Germanium. Physica Status Solidi (b) 15, 627-637 (1966).",
+                    "title": "Optical Properties and Electronic Structure of Amorphous Germanium",
+                    "authors": ["J. Tauc", "R. Grigorovici", "A. Vancu"],
+                    "year": 1966,
+                    "doi": "10.1002/pssb.19660150224",
+                    "url": "https://doi.org/10.1002/pssb.19660150224",
+                    "source_type": "builtin_reference_seed",
+                },
+                "builtin-uvvis-kubelka-munk-1931": {
+                    "citation": "Kubelka, P. and Munk, F. Ein Beitrag zur Optik der Farbanstriche. Zeitschrift fuer Technische Physik 12, 593-601 (1931).",
+                    "title": "Ein Beitrag zur Optik der Farbanstriche",
+                    "authors": ["P. Kubelka", "F. Munk"],
+                    "year": 1931,
+                    "url": "https://www.scirp.org/reference/referencespapers?referenceid=1264627",
+                    "source_type": "builtin_reference_seed",
+                },
+                "builtin-uvvis-pankove-1971": {
+                    "citation": "Pankove, J. I. Optical Processes in Semiconductors. Prentice-Hall, Englewood Cliffs (1971).",
+                    "title": "Optical Processes in Semiconductors",
+                    "authors": ["J. I. Pankove"],
+                    "year": 1971,
+                    "url": "https://archive.org/details/opticalprocesses0000pank",
+                    "source_type": "builtin_reference_seed",
+                },
+            },
+            "candidates": [
+                {
+                    "candidate_id": "uvvis-builtin-tauc-direct-transition-model",
+                    "candidate_type": "optical_transition_model",
+                    "optical_target": "direct allowed semiconductor Tauc screening",
+                    "transition_model": "direct_allowed",
+                    "transition_assumption": "Direct-allowed Tauc-style screening may be discussed only when the user has reviewed material context, signal mode, and fit window.",
+                    "tauc_transform": "absorbance_or_kubelka_munk_context_after_review",
+                    "source_summary": "Classic optical-absorption and semiconductor-optics sources support using transition-specific Tauc-style plots as reviewed screening context, not as automatic proof.",
+                    "applicability_notes": [
+                        "Use only after a reviewed Tauc window or comparable optical-edge evidence exists.",
+                        "Direct-allowed assumptions are material- and electronic-structure dependent.",
+                    ],
+                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "confidence": "low",
+                    "caveats": [
+                        "Transition-model candidate only; EA does not choose the transition model automatically.",
+                        "A Tauc intercept is not definitive band-gap proof without reviewed sample context and references.",
+                    ],
+                },
+                {
+                    "candidate_id": "uvvis-builtin-tauc-indirect-transition-model",
+                    "candidate_type": "optical_transition_model",
+                    "optical_target": "indirect allowed semiconductor Tauc screening",
+                    "transition_model": "indirect_allowed",
+                    "transition_assumption": "Indirect-allowed Tauc-style screening may be discussed only when the user has reviewed material context, signal mode, and fit window.",
+                    "tauc_transform": "absorbance_or_kubelka_munk_context_after_review",
+                    "source_summary": "Classic optical-absorption and semiconductor-optics sources support transition-specific optical-gap screening when assumptions are explicit and reviewed.",
+                    "applicability_notes": [
+                        "Use only after a reviewed Tauc window or comparable optical-edge evidence exists.",
+                        "Indirect-transition assumptions are not interchangeable with direct-transition assumptions.",
+                    ],
+                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "confidence": "low",
+                    "caveats": [
+                        "Transition-model candidate only; EA does not infer the transition type automatically.",
+                        "A linear fit can be visually plausible while physically inappropriate for the sample.",
+                    ],
+                },
+                {
+                    "candidate_id": "uvvis-builtin-wide-gap-oxide-edge-window",
+                    "candidate_type": "optical_gap_candidate",
+                    "optical_target": "wide band gap oxide semiconductor absorption edge discussion",
+                    "reported_energy_eV": 3.2,
+                    "energy_window_eV": [2.8, 3.6],
+                    "wavelength_window_nm": [344.0, 443.0],
+                    "transition_assumption": "Wide-gap oxide absorption-edge discussion starter; material-specific literature and reviewed Tauc/edge context are required before use.",
+                    "source_summary": "Semiconductor-optics and Tauc-style sources support discussing absorption-edge/gap candidates only as source-backed screening context with explicit model assumptions.",
+                    "applicability_notes": [
+                        "Useful for oxide-semiconductor projects where UV-edge evidence appears around 2.8-3.6 eV.",
+                        "Substrate, scattering, thickness, and reference/background treatment can shift or obscure the apparent edge.",
+                    ],
+                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "confidence": "low",
+                    "caveats": [
+                        "This is not a material-specific band-gap assignment.",
+                        "Do not use it to rank samples without reviewed replicate and correction context.",
+                    ],
+                },
+                {
+                    "candidate_id": "uvvis-builtin-visible-subgap-feature-discussion",
+                    "candidate_type": "optical_feature_assignment",
+                    "optical_target": "visible sub-band-gap absorption feature discussion",
+                    "feature_label": "possible defect, charge-transfer, excitonic, or scattering-influenced visible feature",
+                    "energy_window_eV": [1.5, 2.8],
+                    "wavelength_window_nm": [443.0, 827.0],
+                    "expected_feature": "absorbance_maximum",
+                    "source_summary": "Semiconductor-optics sources support treating sub-band-gap or visible absorption features as context-dependent candidates rather than direct mechanism proof.",
+                    "applicability_notes": [
+                        "Use only when project chemistry, sample form, baseline/reference context, and possible scattering are reviewed.",
+                        "Compare against material-specific literature before writing durable interpretations.",
+                    ],
+                    "reference_ids": ["builtin-uvvis-pankove-1971"],
+                    "confidence": "low",
+                    "caveats": [
+                        "A detected feature in this range does not prove defect, exciton, or charge-transfer origin.",
+                        "Reflectance/transmittance artifacts and scattering can mimic broad visible features.",
+                    ],
+                },
+                {
+                    "candidate_id": "uvvis-builtin-kubelka-munk-reflectance-context",
+                    "candidate_type": "correction_context_candidate",
+                    "optical_target": "diffuse reflectance Kubelka-Munk context",
+                    "correction_context_type": "diffuse_reflectance",
+                    "correction_method": "kubelka_munk_transform_context",
+                    "source_summary": "Kubelka-Munk theory is a source-backed reflectance-transform context for optically scattering layers, but its assumptions must be reviewed for the sample.",
+                    "applicability_notes": [
+                        "Use only for reflectance/diffuse-reflectance workflows with reviewed scattering, thickness, and reference context.",
+                        "Record the context before applying or interpreting any Kubelka-Munk-style transform.",
+                    ],
+                    "reference_ids": ["builtin-uvvis-kubelka-munk-1931"],
+                    "confidence": "low",
+                    "caveats": [
+                        "This candidate records interpretation context only; it does not apply a numeric correction.",
+                        "Kubelka-Munk assumptions may fail for thin, transparent, glossy, or non-diffuse samples.",
+                    ],
+                },
+            ],
+        }
+    }
+
+
+def builtin_uv_vis_source_libraries() -> list[str]:
+    return sorted(_builtin_uv_vis_source_libraries())
+
+
 def _normalize_uv_vis_candidate_type(value: Any) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
 
@@ -1205,6 +1353,290 @@ def _uv_vis_candidate_matches_filters(
         if not any(target in target_text for target in optical_targets):
             return False
     return True
+
+
+def _uv_vis_target_terms(candidate: dict[str, Any]) -> list[str]:
+    terms: list[str] = []
+    for key in ["optical_target", "target", "feature_label", "transition_model", "correction_context_type"]:
+        value = str(candidate.get(key) or "").strip()
+        if value:
+            terms.append(value)
+    return terms
+
+
+def _axis_window_overlaps(window: list[float] | None, lower: float | None, upper: float | None) -> bool:
+    if lower is None and upper is None:
+        return True
+    if window is None or len(window) != 2:
+        return False
+    if lower is not None and window[1] < lower:
+        return False
+    if upper is not None and window[0] > upper:
+        return False
+    return True
+
+
+def _uv_vis_candidate_energy_window(candidate: dict[str, Any]) -> list[float] | None:
+    window = _candidate_window(candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV")
+    if window is not None:
+        return window
+    reported = _candidate_number(candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV")
+    if reported is None:
+        return None
+    return [reported, reported]
+
+
+def _uv_vis_candidate_wavelength_window(candidate: dict[str, Any]) -> list[float] | None:
+    window = _candidate_window(candidate, "wavelength_window_nm", "reported_wavelength_window_nm", "window_nm")
+    if window is not None:
+        return window
+    reported = _candidate_number(candidate, "reported_wavelength_nm", "expected_wavelength_nm", "wavelength_nm")
+    if reported is None:
+        return None
+    return [reported, reported]
+
+
+def _uv_vis_candidate_range_matches(
+    candidate: dict[str, Any],
+    *,
+    energy_min_eV: float | None,
+    energy_max_eV: float | None,
+    wavelength_min_nm: float | None,
+    wavelength_max_nm: float | None,
+) -> bool:
+    return _axis_window_overlaps(
+        _uv_vis_candidate_energy_window(candidate),
+        energy_min_eV,
+        energy_max_eV,
+    ) and _axis_window_overlaps(
+        _uv_vis_candidate_wavelength_window(candidate),
+        wavelength_min_nm,
+        wavelength_max_nm,
+    )
+
+
+def _uv_vis_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "candidate_id": _uv_vis_candidate_identity(raw_candidate),
+        "candidate_type": _normalize_uv_vis_candidate_type(raw_candidate.get("candidate_type") or raw_candidate.get("type")),
+        "optical_target": str(raw_candidate.get("optical_target") or raw_candidate.get("target") or "").strip() or None,
+        "transition_model": str(raw_candidate.get("transition_model") or "").strip() or None,
+        "transition_assumption": str(raw_candidate.get("transition_assumption") or raw_candidate.get("model_assumption") or "").strip()
+        or None,
+        "tauc_transform": str(raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or "").strip() or None,
+        "reported_energy_eV": _candidate_number(raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV"),
+        "energy_window_eV": _uv_vis_candidate_energy_window(raw_candidate) or [],
+        "wavelength_window_nm": _uv_vis_candidate_wavelength_window(raw_candidate) or [],
+        "feature_label": str(raw_candidate.get("feature_label") or raw_candidate.get("assignment_label") or "").strip() or None,
+        "expected_feature": _normalize_uv_vis_expected_feature(raw_candidate.get("expected_feature")),
+        "correction_context_type": str(raw_candidate.get("correction_context_type") or raw_candidate.get("correction_type") or "").strip()
+        or None,
+        "correction_method": str(raw_candidate.get("correction_method") or raw_candidate.get("method") or "").strip() or None,
+        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
+        "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
+        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
+        "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
+        "caveats": _coerce_string_list(raw_candidate.get("caveats")),
+        "auto_applied": False,
+        "requires_user_review": True,
+    }
+
+
+def _uv_vis_discovery_build_source_command(library_id: str, filters: dict[str, Any], candidate_ids: list[str]) -> str:
+    parts = ["ea uv-vis build-source-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+    include_candidates = list(filters["include_candidates"])
+    if not include_candidates and (
+        filters["energy_min_eV"] is not None
+        or filters["energy_max_eV"] is not None
+        or filters["wavelength_min_nm"] is not None
+        or filters["wavelength_max_nm"] is not None
+    ):
+        include_candidates = list(candidate_ids)
+    for candidate_id in include_candidates:
+        parts.extend(["--include-candidate", candidate_id])
+    for candidate_type in filters["candidate_types"]:
+        parts.extend(["--candidate-type", candidate_type])
+    for optical_target in filters["optical_targets"]:
+        parts.extend(["--optical-target", optical_target])
+    return " ".join(parts)
+
+
+def summarize_uv_vis_source_libraries(
+    *,
+    builtin_libraries: list[str] | None = None,
+    include_candidates: list[str] | None = None,
+    candidate_types: list[str] | None = None,
+    optical_targets: list[str] | None = None,
+    energy_min_eV: float | None = None,
+    energy_max_eV: float | None = None,
+    wavelength_min_nm: float | None = None,
+    wavelength_max_nm: float | None = None,
+) -> dict[str, Any]:
+    """Summarize built-in UV-Vis source libraries without creating project artifacts."""
+
+    libraries = _builtin_uv_vis_source_libraries()
+    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    if requested_library_ids:
+        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        if unknown:
+            available = ", ".join(sorted(libraries)) or "none"
+            raise UVVisProcessingError(f"Unknown built-in UV-Vis source library: {', '.join(unknown)}. Available libraries: {available}")
+        library_ids = sorted(dict.fromkeys(requested_library_ids))
+    else:
+        library_ids = sorted(libraries)
+
+    if energy_min_eV is not None and energy_max_eV is not None and energy_min_eV > energy_max_eV:
+        energy_min_eV, energy_max_eV = energy_max_eV, energy_min_eV
+    if wavelength_min_nm is not None and wavelength_max_nm is not None and wavelength_min_nm > wavelength_max_nm:
+        wavelength_min_nm, wavelength_max_nm = wavelength_max_nm, wavelength_min_nm
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    type_set = {_normalize_uv_vis_candidate_type(item) for item in candidate_types or [] if str(item).strip()}
+    target_set = {str(item).strip().lower() for item in optical_targets or [] if str(item).strip()}
+    filters = {
+        "builtin_libraries": library_ids,
+        "include_candidates": sorted(include_set),
+        "candidate_types": sorted(type_set),
+        "optical_targets": sorted(target_set),
+        "energy_min_eV": energy_min_eV,
+        "energy_max_eV": energy_max_eV,
+        "wavelength_min_nm": wavelength_min_nm,
+        "wavelength_max_nm": wavelength_max_nm,
+    }
+
+    summaries: list[dict[str, Any]] = []
+    total_candidate_count = 0
+    matching_candidate_count = 0
+    all_candidate_types: set[str] = set()
+    all_optical_targets: set[str] = set()
+    matching_reference_ids: set[str] = set()
+    global_energy_min: float | None = None
+    global_energy_max: float | None = None
+    global_wavelength_min: float | None = None
+    global_wavelength_max: float | None = None
+
+    for library_id in library_ids:
+        library = libraries[library_id]
+        raw_candidates = [candidate for candidate in _uv_vis_source_candidates(library) if isinstance(candidate, dict)]
+        total_candidate_count += len(raw_candidates)
+        matching_raw_candidates = [
+            candidate
+            for candidate in raw_candidates
+            if _uv_vis_candidate_matches_filters(
+                candidate,
+                include_candidates=include_set,
+                candidate_types=type_set,
+                optical_targets=target_set,
+            )
+            and _uv_vis_candidate_range_matches(
+                candidate,
+                energy_min_eV=energy_min_eV,
+                energy_max_eV=energy_max_eV,
+                wavelength_min_nm=wavelength_min_nm,
+                wavelength_max_nm=wavelength_max_nm,
+            )
+        ]
+        candidate_summaries = [_uv_vis_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        matching_candidate_count += len(candidate_summaries)
+        type_counts: dict[str, int] = {}
+        library_optical_targets: set[str] = set()
+        library_energy_min: float | None = None
+        library_energy_max: float | None = None
+        library_wavelength_min: float | None = None
+        library_wavelength_max: float | None = None
+        for candidate in raw_candidates:
+            candidate_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+            if candidate_type:
+                type_counts[candidate_type] = type_counts.get(candidate_type, 0) + 1
+                all_candidate_types.add(candidate_type)
+            for target in _uv_vis_target_terms(candidate):
+                library_optical_targets.add(target)
+                all_optical_targets.add(target)
+            energy_window = _uv_vis_candidate_energy_window(candidate)
+            if energy_window is not None:
+                library_energy_min = energy_window[0] if library_energy_min is None else min(library_energy_min, energy_window[0])
+                library_energy_max = energy_window[1] if library_energy_max is None else max(library_energy_max, energy_window[1])
+                global_energy_min = energy_window[0] if global_energy_min is None else min(global_energy_min, energy_window[0])
+                global_energy_max = energy_window[1] if global_energy_max is None else max(global_energy_max, energy_window[1])
+            wavelength_window = _uv_vis_candidate_wavelength_window(candidate)
+            if wavelength_window is not None:
+                library_wavelength_min = (
+                    wavelength_window[0] if library_wavelength_min is None else min(library_wavelength_min, wavelength_window[0])
+                )
+                library_wavelength_max = (
+                    wavelength_window[1] if library_wavelength_max is None else max(library_wavelength_max, wavelength_window[1])
+                )
+                global_wavelength_min = (
+                    wavelength_window[0] if global_wavelength_min is None else min(global_wavelength_min, wavelength_window[0])
+                )
+                global_wavelength_max = (
+                    wavelength_window[1] if global_wavelength_max is None else max(global_wavelength_max, wavelength_window[1])
+                )
+        candidate_reference_ids = {
+            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+        }
+        matching_reference_ids.update(candidate_reference_ids)
+        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
+        matching_reference_seed_ids = sorted(set(reference_seed_ids) & candidate_reference_ids)
+        summaries.append(
+            {
+                "library_id": library_id,
+                "description": str(library.get("description") or "").strip(),
+                "source": str(library.get("source") or "").strip(),
+                "total_candidate_count": len(raw_candidates),
+                "matching_candidate_count": len(candidate_summaries),
+                "candidate_type_counts": dict(sorted(type_counts.items())),
+                "optical_targets": sorted(library_optical_targets),
+                "energy_range_eV": [library_energy_min, library_energy_max]
+                if library_energy_min is not None and library_energy_max is not None
+                else [],
+                "wavelength_range_nm": [library_wavelength_min, library_wavelength_max]
+                if library_wavelength_min is not None and library_wavelength_max is not None
+                else [],
+                "reference_seed_count": len(reference_seed_ids),
+                "reference_seed_ids": reference_seed_ids,
+                "matching_reference_seed_ids": matching_reference_seed_ids,
+                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidates": candidate_summaries,
+            }
+        )
+
+    build_source_commands = [
+        _uv_vis_discovery_build_source_command(summary["library_id"], filters, summary["candidate_ids"])
+        for summary in summaries
+        if summary["matching_candidate_count"] > 0
+    ]
+    return {
+        "schema_version": "0.2",
+        "source": "ea.uv_vis.source_library_discovery:v0.2",
+        "status": "ready" if matching_candidate_count else "no_matching_candidates",
+        "available_builtin_libraries": sorted(libraries),
+        "library_count": len(summaries),
+        "total_candidate_count": total_candidate_count,
+        "matching_candidate_count": matching_candidate_count,
+        "available_candidate_types": sorted(all_candidate_types),
+        "available_optical_targets": sorted(all_optical_targets),
+        "available_energy_range_eV": [global_energy_min, global_energy_max]
+        if global_energy_min is not None and global_energy_max is not None
+        else [],
+        "available_wavelength_range_nm": [global_wavelength_min, global_wavelength_max]
+        if global_wavelength_min is not None and global_wavelength_max is not None
+        else [],
+        "matching_reference_ids": sorted(matching_reference_ids),
+        "filters": filters,
+        "libraries": summaries,
+        "next_commands": {
+            "build_source_packet": build_source_commands,
+            "register_reference_seeds": "ea references register-seeds /path/to/ea-project --source-packet suggestions/uv_vis/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "suggest_interpretations": "ea uv-vis suggest-interpretations /path/to/ea-project --metadata processed/sample-001/uv_vis/<result_id>/uv_vis_metadata.yml --source-file suggestions/uv_vis/source-packets/<source_packet_id>.yml --project-id <project-id>",
+            "prepare_review": "ea uv-vis prepare-review /path/to/ea-project --suggestion suggestions/uv_vis/<suggestion_id>/uv_vis_interpretation_suggestions.yml --project-id <project-id>",
+        },
+        "boundaries": [
+            "This discovery command reads bundled UV-Vis source library metadata only and does not create project files.",
+            "It does not run live literature search, operate Zotero or browsers, download/parse full text, register references, create source packets, generate suggestions, create ReviewRecords, inject citations, write memory, apply optical models or corrections, or prove band gaps, transition mechanisms, feature assignments, or correction validity.",
+            "Use the listed build-source-packet, references register-seeds, suggest-interpretations, and prepare-review commands when the user wants traceable project artifacts.",
+        ],
+    }
 
 
 def _uv_vis_source_reference_seeds(
@@ -1317,6 +1749,7 @@ def build_uv_vis_source_packet(
     *,
     project_id: str,
     library_path: Path | None = None,
+    builtin_library: str | None = None,
     literature_manifest_path: Path | None = None,
     output_path: Path | None = None,
     include_candidates: list[str] | None = None,
@@ -1325,13 +1758,14 @@ def build_uv_vis_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    selected_source_count = sum(bool(value) for value in [library_path, literature_manifest_path, template])
+    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
     if selected_source_count != 1:
         raise UVVisProcessingError(
-            "Use exactly one of --library-file, --literature-manifest, or --write-template for UV-Vis source-packet generation"
+            "Use exactly one of --library-file, --builtin-library, --literature-manifest, or --write-template for UV-Vis source-packet generation"
         )
 
-    template_mode = template and library_path is None and literature_manifest_path is None
+    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
+    builtin_mode = bool(builtin_library)
     literature_mode = literature_manifest_path is not None
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
@@ -1351,6 +1785,16 @@ def build_uv_vis_source_packet(
     source_library: Any = {}
     if template_mode:
         raw_candidates = _uv_vis_source_packet_template_candidates()
+    elif builtin_mode:
+        libraries = _builtin_uv_vis_source_libraries()
+        library_id = str(builtin_library or "").strip()
+        if library_id not in libraries:
+            available = ", ".join(sorted(libraries)) or "none"
+            raise UVVisProcessingError(f"Unknown built-in UV-Vis source library: {library_id}. Available libraries: {available}")
+        source_library = deepcopy(libraries[library_id])
+        raw_candidates = _uv_vis_source_candidates(source_library)
+        library_ref = f"builtin:{library_id}"
+        library_kind = "builtin_source_library"
     elif literature_mode:
         source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
         if source_path is None:

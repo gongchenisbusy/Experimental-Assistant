@@ -143,6 +143,7 @@ ea templates batch-manifest
 ea literature status
 ea literature acceptance-checklist
 ea ftir list-assignment-libraries
+ea uv-vis list-source-libraries
 ea xps list-parameter-libraries
 ea config init
 ea config doctor
@@ -161,6 +162,7 @@ ea config doctor
 - 仓库公开转交前可通过 `ea-release-checklist` 生成 JSON/Markdown distribution checklist，汇总 git/tag 状态、release 命令、manifest/package/checksum/signature artifact 状态和公开用户边界。
 - 用户能通过 CLI 生成可编辑处理参数 YAML 和 batch manifest skeleton，且模板不会替代 review gate。
 - 用户能通过 `ea ftir list-assignment-libraries` 查看内置 FTIR source-backed assignment 库覆盖、候选 ID、assignment types、material scopes、wavenumber ranges、reference seeds、过滤条件和下一步命令，而不创建项目文件或自动生成 source packet/assignment。
+- 用户能通过 `ea uv-vis list-source-libraries` 查看内置 UV-Vis source-backed interpretation 库覆盖、候选 ID、candidate types、optical targets、energy/wavelength ranges、reference seeds、过滤条件和下一步命令，而不创建项目文件或自动生成 source packet/suggestion。
 - 用户能通过 `ea xps list-parameter-libraries` 查看内置 XPS source-backed 参数库覆盖、候选 ID、reference seeds、过滤条件和下一步命令，而不创建项目文件或自动应用参数。
 - CLI 输出适合 agent 继续接手，也适合用户直接阅读。
 - 所有命令保留 review/provenance 机制。

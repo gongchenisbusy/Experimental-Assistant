@@ -14,6 +14,7 @@ ea_skill:
     - derivative_screening_table
     - correction_context_record
     - numeric_correction_record
+    - source_library_discovery_summary
     - source_packet
     - interpretation_suggestion_record
     - replicate_comparison_record
@@ -52,6 +53,7 @@ ea_skill:
       - ea uv-vis inspect
       - ea uv-vis process
       - ea uv-vis report
+      - ea uv-vis list-source-libraries
       - ea uv-vis build-source-packet
       - ea uv-vis suggest-interpretations
       - ea uv-vis prepare-review
@@ -103,16 +105,22 @@ ea_skill:
       confidence_boundary: reviewed_preprocessing_only
     source_packets:
       implemented: true
+      discovery_helper: ea uv-vis list-source-libraries
+      discovery_output: source_library_discovery_summary
       command: ea uv-vis build-source-packet
       sources:
+        - builtin_source_library
         - editable_template
         - local_yaml_library
         - confirmed_literature_manifest
+      built_in_source_library: generic_optical_interpretation
       candidate_types:
         - optical_transition_model
         - optical_gap_candidate
         - optical_feature_assignment
         - correction_context_candidate
+      reference_seed_registration_helper: ea references register-seeds
+      discovery_boundary: local_builtin_metadata_only_no_project_files_no_lookup_no_registration_no_source_packet_no_suggestions_no_review_no_citations_no_memory_no_optical_proof
       confidence_boundary: staging_only
     interpretation_suggestions:
       implemented: true
@@ -190,6 +198,7 @@ ea_skill:
       - unknown
     limitations:
       - automatic features are screening evidence, not standalone material assignments
+      - source library discovery lists bundled UV-Vis source-library and candidate coverage only; it does not create project files, run live lookup, register references, build source packets, generate suggestions, inject citations, create ReviewRecords, write memory, apply optical models/corrections, or prove band gaps/transition mechanisms/feature assignments/correction validity
       - threshold optical-edge estimates are low-confidence orientation values
       - Tauc/Kubelka-Munk intercepts are screening records, not definitive band-gap assignments
       - derivative extrema and inflection hints are screening records, not definitive transition or mechanism assignments

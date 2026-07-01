@@ -87,6 +87,7 @@ from ea.traceability import build_project_trace_view, lookup_trace_record
 from ea.uv_vis import (
     UVVisProcessingRequest,
     build_uv_vis_source_packet,
+    builtin_uv_vis_source_libraries,
     compare_uv_vis_replicates,
     default_uv_vis_processing_parameters,
     inspect_uv_vis_file,
@@ -94,6 +95,7 @@ from ea.uv_vis import (
     process_uv_vis_result,
     propose_uv_vis_interpretation_memory_candidates,
     suggest_uv_vis_interpretations,
+    summarize_uv_vis_source_libraries,
 )
 from ea.xps import (
     XPSProcessingRequest,
@@ -339,6 +341,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     uv_vis = sub.add_parser("uv-vis", help="UV-Vis inspection, processing, and report helpers")
     uv_vis_sub = uv_vis.add_subparsers(dest="uv_vis_command", required=True)
+    uv_vis_list_libraries = uv_vis_sub.add_parser("list-source-libraries", help="list built-in UV-Vis source libraries and candidates")
+    uv_vis_list_libraries.add_argument("--builtin-library", action="append", choices=builtin_uv_vis_source_libraries(), default=[])
+    uv_vis_list_libraries.add_argument("--include-candidate", action="append", default=[])
+    uv_vis_list_libraries.add_argument(
+        "--candidate-type",
+        action="append",
+        choices=[
+            "optical_transition_model",
+            "optical_gap_candidate",
+            "optical_feature_assignment",
+            "correction_context_candidate",
+        ],
+        default=[],
+    )
+    uv_vis_list_libraries.add_argument("--optical-target", action="append", default=[])
+    uv_vis_list_libraries.add_argument("--energy-min-ev", type=float)
+    uv_vis_list_libraries.add_argument("--energy-max-ev", type=float)
+    uv_vis_list_libraries.add_argument("--wavelength-min-nm", type=float)
+    uv_vis_list_libraries.add_argument("--wavelength-max-nm", type=float)
     uv_vis_inspect = uv_vis_sub.add_parser("inspect", help="inspect an optical spectrum file and suggest UV-Vis columns/unit")
     uv_vis_inspect.add_argument("workspace", type=Path)
     uv_vis_inspect.add_argument("spectrum", type=Path)
@@ -367,6 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
     uv_vis_source_packet = uv_vis_sub.add_parser("build-source-packet", help="build a standard UV-Vis source packet")
     uv_vis_source_packet.add_argument("workspace", type=Path)
     uv_vis_source_packet.add_argument("--library-file", type=Path)
+    uv_vis_source_packet.add_argument("--builtin-library", choices=builtin_uv_vis_source_libraries(), help="use a bundled UV-Vis source library")
     uv_vis_source_packet.add_argument("--literature-manifest", type=Path, help="build from a user-confirmed UV-Vis literature/source-candidate manifest")
     uv_vis_source_packet.add_argument("--output", type=Path)
     uv_vis_source_packet.add_argument("--project-id")
@@ -1243,6 +1265,20 @@ def main(argv: list[str] | None = None) -> int:
         project_id = getattr(args, "project_id", None)
         if args.uv_vis_command in {"process", "report", "build-source-packet", "suggest-interpretations", "prepare-review", "propose-memory", "compare-replicates"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
+        if args.uv_vis_command == "list-source-libraries":
+            _print_json(
+                summarize_uv_vis_source_libraries(
+                    builtin_libraries=args.builtin_library,
+                    include_candidates=args.include_candidate,
+                    candidate_types=args.candidate_type,
+                    optical_targets=args.optical_target,
+                    energy_min_eV=args.energy_min_ev,
+                    energy_max_eV=args.energy_max_ev,
+                    wavelength_min_nm=args.wavelength_min_nm,
+                    wavelength_max_nm=args.wavelength_max_nm,
+                )
+            )
+            return 0
         if args.uv_vis_command == "inspect":
             inspection = asdict(inspect_uv_vis_file(_project_path(args.workspace, args.spectrum)))
             inspection["path"] = str(inspection["path"])
@@ -1286,6 +1322,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.workspace,
                     project_id=project_id,
                     library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    builtin_library=args.builtin_library,
                     literature_manifest_path=_project_path(args.workspace, args.literature_manifest) if args.literature_manifest else None,
                     output_path=args.output,
                     include_candidates=args.include_candidate,

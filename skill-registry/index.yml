@@ -65,8 +65,10 @@ skills:
       threshold edge estimates, tauc_kubelka_munk_screening, derivative_screening,
       correction_context_records, reviewed numeric_correction for constant-offset
       and reference-column subtraction, literature source-candidate manifest/preflight
-      staging, traceable source_packet building from editable templates, local
-      libraries, or confirmed literature manifests for optical-transition/gap/feature/
+      staging, source_library_discovery_summary via ea uv-vis list-source-libraries
+      for bundled generic_optical_interpretation starter coverage, traceable
+      source_packet building from built-in source libraries, editable templates,
+      local libraries, or confirmed literature manifests for optical-transition/gap/feature/
       correction-context candidates, advisory interpretation_suggestions under
       suggestions/uv_vis that link source-backed candidates to processed
       feature/Tauc/edge/derivative/correction-context evidence with
@@ -79,11 +81,15 @@ skills:
       descriptive statistics from processed metadata plus optional reviewed
       feature matching through explicit eV/nm tolerances and a confirmed
       uv_vis_feature_matching ReviewRecord, traceable figures,
-      and confidence-labeled reports; formal band-gap or transition conclusions,
-      ReviewRecord creation by report/memory commands, optical model/correction
-      auto-selection, substrate/reference validity proof, raw reprocessing, hidden
-      replicate grouping, hidden feature matching by comparison commands, sample
-      ranking, and confirmed memory commit still require later reviewed workflows.
+      and confidence-labeled reports; discovery lists bundled candidate/reference-seed/
+      filter coverage only without live lookup, project-file creation, reference
+      registration, packet creation, suggestion generation, citation injection,
+      ReviewRecord creation, memory writes, optical model/correction application,
+      or optical proof; formal band-gap or transition conclusions, ReviewRecord
+      creation by report/memory commands, optical model/correction auto-selection,
+      substrate/reference validity proof, raw reprocessing, hidden replicate
+      grouping, hidden feature matching by comparison commands, sample ranking,
+      and confirmed memory commit still require later reviewed workflows.
   - id: ea.xps-analysis
     manifest: skill-registry/builtins/xps-analysis.yml
     status: builtin_v0_2_reference

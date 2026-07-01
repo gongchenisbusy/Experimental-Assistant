@@ -9,7 +9,13 @@ import pandas as pd
 from ea.cli import main
 from ea.references import register_reference
 from ea.storage import read_markdown_record, read_yaml, write_yaml
-from ea.uv_vis import build_uv_vis_source_packet, default_uv_vis_processing_parameters, inspect_uv_vis_file
+from ea.uv_vis import (
+    build_uv_vis_source_packet,
+    builtin_uv_vis_source_libraries,
+    default_uv_vis_processing_parameters,
+    inspect_uv_vis_file,
+    summarize_uv_vis_source_libraries,
+)
 
 
 def _json_output(capsys) -> dict:
@@ -888,6 +894,158 @@ def test_uv_vis_source_packet_template_contains_expected_candidate_types(tmp_pat
     assert (tmp_path / packet["provenance_ref"]).exists()
 
 
+def test_uv_vis_source_library_summary_filters_source_backed_candidates() -> None:
+    assert "generic_optical_interpretation" in builtin_uv_vis_source_libraries()
+
+    summary = summarize_uv_vis_source_libraries(
+        builtin_libraries=["generic_optical_interpretation"],
+        candidate_types=["optical_gap_candidate"],
+        optical_targets=["oxide"],
+        energy_min_eV=3.0,
+        energy_max_eV=3.4,
+    )
+
+    assert summary["status"] == "ready"
+    assert summary["library_count"] == 1
+    assert summary["total_candidate_count"] == 5
+    assert summary["matching_candidate_count"] == 1
+    assert summary["filters"]["candidate_types"] == ["optical_gap_candidate"]
+    assert summary["filters"]["optical_targets"] == ["oxide"]
+    assert summary["available_energy_range_eV"] == [1.5, 3.6]
+    assert summary["available_wavelength_range_nm"] == [344.0, 827.0]
+    assert "builtin-uvvis-tauc-1966" in summary["matching_reference_ids"]
+
+    library = summary["libraries"][0]
+    assert library["library_id"] == "generic_optical_interpretation"
+    assert library["matching_candidate_count"] == 1
+    assert "builtin-uvvis-tauc-1966" in library["matching_reference_seed_ids"]
+    candidate = library["candidates"][0]
+    assert candidate["candidate_id"] == "uvvis-builtin-wide-gap-oxide-edge-window"
+    assert candidate["candidate_type"] == "optical_gap_candidate"
+    assert candidate["energy_window_eV"] == [2.8, 3.6]
+    assert candidate["auto_applied"] is False
+    assert candidate["requires_user_review"] is True
+    command = summary["next_commands"]["build_source_packet"][0]
+    assert "build-source-packet" in command
+    assert "--builtin-library generic_optical_interpretation" in command
+    assert "--include-candidate uvvis-builtin-wide-gap-oxide-edge-window" in command
+    assert "does not run live literature search" in " ".join(summary["boundaries"])
+    assert "prove band gaps" in " ".join(summary["boundaries"])
+
+
+def test_cli_lists_uv_vis_source_libraries_and_reports_no_matches(capsys) -> None:
+    assert (
+        main(
+            [
+                "uv-vis",
+                "list-source-libraries",
+                "--builtin-library",
+                "generic_optical_interpretation",
+                "--candidate-type",
+                "correction_context_candidate",
+                "--optical-target",
+                "reflectance",
+            ]
+        )
+        == 0
+    )
+    summary = _json_output(capsys)
+    assert summary["status"] == "ready"
+    assert summary["matching_candidate_count"] == 1
+    assert "uvvis-builtin-kubelka-munk-reflectance-context" in summary["libraries"][0]["candidate_ids"]
+    assert "suggest-interpretations" in summary["next_commands"]["suggest_interpretations"]
+
+    assert (
+        main(
+            [
+                "uv-vis",
+                "list-source-libraries",
+                "--builtin-library",
+                "generic_optical_interpretation",
+                "--candidate-type",
+                "optical_gap_candidate",
+                "--optical-target",
+                "oxide",
+                "--energy-min-ev",
+                "4.0",
+                "--energy-max-ev",
+                "4.5",
+            ]
+        )
+        == 0
+    )
+    no_match = _json_output(capsys)
+    assert no_match["status"] == "no_matching_candidates"
+    assert no_match["matching_candidate_count"] == 0
+    assert no_match["next_commands"]["build_source_packet"] == []
+
+
+def test_cli_uv_vis_builds_source_packet_from_builtin_library(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "uv-vis-builtin-source-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "UV Vis Builtin Source",
+            "--slug",
+            "uv-vis-builtin-source",
+            "--direction",
+            "source-backed UV-Vis builtin source library",
+            "--material",
+            "oxide semiconductor film",
+            "--experiment-type",
+            "UV-Vis source packet staging",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert (
+        main(
+            [
+                "uv-vis",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "generic_optical_interpretation",
+                "--candidate-type",
+                "optical_gap_candidate",
+                "--optical-target",
+                "oxide",
+            ]
+        )
+        == 0
+    )
+    output = _json_output(capsys)
+    packet = read_yaml(Path(output["source_packet"]))
+    provenance = read_yaml(workspace / packet["provenance_ref"])
+
+    assert output["status"] == "staged_for_future_uv_vis_suggestions"
+    assert output["source_library_kind"] == "builtin_source_library"
+    assert output["source_library_ref"] == "builtin:generic_optical_interpretation"
+    assert output["candidate_count"] == 1
+    assert output["reference_seed_count"] == 3
+    assert packet["candidates"][0]["candidate_id"] == "uvvis-builtin-wide-gap-oxide-edge-window"
+    assert packet["source_library_kind"] == "builtin_source_library"
+    assert packet["reference_seed_count"] == 3
+    assert "builtin-uvvis-tauc-1966" in packet["reference_seeds"]
+    assert "builtin-uvvis-pankove-1971" in packet["reference_seeds"]
+    assert "builtin-uvvis-kubelka-munk-1931" in packet["reference_seeds"]
+    assert packet["filters"]["candidate_types"] == ["optical_gap_candidate"]
+    assert packet["filters"]["optical_targets"] == ["oxide"]
+    assert "does not perform live lookup" in " ".join(packet["boundaries"])
+    assert provenance["workflow"] == "uv_vis_source_packet"
+    assert provenance["source_refs"] == [
+        "builtin-uvvis-kubelka-munk-1931",
+        "builtin-uvvis-pankove-1971",
+        "builtin-uvvis-tauc-1966",
+    ]
+
+
 def test_cli_uv_vis_builds_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
     workspace = tmp_path / "uv-vis-source-packet-project"
     assert main(
@@ -1680,6 +1838,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea uv-vis inspect" in readme
+    assert "ea uv-vis list-source-libraries" in readme
     assert "ea uv-vis build-source-packet" in readme
     assert "ea uv-vis suggest-interpretations" in readme
     assert "ea uv-vis prepare-review" in readme
@@ -1688,6 +1847,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "--feature-match-tolerance-ev" in readme
     assert "--interpretation-suggestion" in readme
     assert "ea uv-vis process" in skill
+    assert "ea uv-vis list-source-libraries" in skill
     assert "ea uv-vis build-source-packet" in skill
     assert "ea uv-vis suggest-interpretations" in skill
     assert "ea uv-vis prepare-review" in skill
@@ -1703,6 +1863,8 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "derivative_analysis" in reference_text
     assert "correction_context" in reference_text
     assert "numeric_correction" in reference_text
+    assert "ea uv-vis list-source-libraries" in reference_text
+    assert "candidate counts, candidate types, optical targets, energy ranges, wavelength ranges" in reference_text
     assert "prepare-source-candidates --method uv_vis" in reference_text
     assert "ea uv-vis build-source-packet" in reference_text
     assert "ea uv-vis suggest-interpretations" in reference_text
@@ -1712,9 +1874,13 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "uv_vis_feature_matching" in reference_text
     assert "--interpretation-suggestion" in reference_text
     assert "optical_gap_candidate" in reference_text
+    assert "generic_optical_interpretation" in reference_text
     assert "examples/public-uv-vis-project" in reference_text
     uv_vis_record = next(item for item in registry["skills"] if item["id"] == "ea.uv-vis-analysis")
     assert "Minimal UV-Vis workflow implemented" in uv_vis_record["notes"]
+    assert "source_library_discovery_summary" in uv_vis_record["notes"]
+    assert "ea uv-vis list-source-libraries" in uv_vis_record["notes"]
+    assert "generic_optical_interpretation" in uv_vis_record["notes"]
     assert "tauc_kubelka_munk_screening" in uv_vis_record["notes"]
     assert "derivative_screening" in uv_vis_record["notes"]
     assert "correction_context_records" in uv_vis_record["notes"]
