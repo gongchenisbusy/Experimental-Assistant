@@ -108,6 +108,10 @@ ea literature plan /path/to/ea-project --scope ordinary --access-mode open_acces
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
 ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
+ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed FTIR source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project --method ftir --manifest literature/confirmed_ftir_source_candidates.yml
+ea literature prepare-source-candidates /path/to/ea-project --method xps --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed XPS source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project --method xps --manifest literature/confirmed_xps_source_candidates.yml
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
 ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
@@ -127,6 +131,7 @@ ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref
 ```
 
 Use `ea literature search-public --page-limit N --delay-seconds S --resume` for longer public metadata runs that should write and reuse `literature/public_search_state.yml`.
+Use `ea literature prepare-source-candidates` after ranking or literature import when selected literature items should become editable FTIR/XPS source-candidate manifests. It writes `literature/draft_<method>_source_candidates.yml` or, with explicit `--confirm-for-source-packet --user-response`, `literature/confirmed_<method>_source_candidates.yml`; candidate stubs remain disabled until method fields are filled and `include_in_source_packet: true` is set. Use `ea literature preflight-source-candidates` before `ea ftir build-assignment-packet --literature-manifest ...` or `ea xps build-source-packet --literature-manifest ...`. These helpers read local YAML only and do not search, download or parse full text, register references, inject citations, build source packets by themselves, or apply assignments/parameters.
 Use `ea literature institution-access-guide` before authenticated acquisition to write `literature/institution_access_guidance.yml` and `.md` with user-supplied institution route, browser/profile, authorization status, safe manual-login steps, and no stored credentials.
 Use `ea literature zotero-bridge` after `acquisition-request` to write `literature/zotero_codex_bridge.yml`, `literature/zotero_codex_bridge.md`, and `literature/zotero_codex_settings_request.yml` for a dedicated Zotero-Codex workflow. The bridge emits commands and required user settings; it does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts.
 Use `ea literature import-zotero-status` after a dedicated Zotero-Codex workflow writes batch status artifacts; it converts status JSON and optional sidecar verification into `literature/acquisition_status_update.yml` and syncs EA project status without running Zotero or downloading files.

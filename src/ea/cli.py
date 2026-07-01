@@ -41,9 +41,11 @@ from ea.literature import (
     import_literature_acquisition_manifest,
     import_zotero_codex_batch_status,
     plan_literature_deployment,
+    preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    prepare_literature_source_candidate_manifest,
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     reconcile_literature_acquisition,
@@ -558,6 +560,19 @@ def build_parser() -> argparse.ArgumentParser:
     lit_sync = literature_sub.add_parser("sync-status", help="sync acquisition workflow status back into the origin project")
     lit_sync.add_argument("workspace", type=Path)
     lit_sync.add_argument("--update", type=Path)
+    lit_prepare_sources = literature_sub.add_parser("prepare-source-candidates", help="prepare an editable FTIR/XPS source-candidate manifest from local literature items")
+    lit_prepare_sources.add_argument("workspace", type=Path)
+    lit_prepare_sources.add_argument("--method", required=True, choices=["ftir", "xps"])
+    lit_prepare_sources.add_argument("--source-items", type=Path)
+    lit_prepare_sources.add_argument("--output", type=Path)
+    lit_prepare_sources.add_argument("--confirm-for-source-packet", action="store_true")
+    lit_prepare_sources.add_argument("--user-response")
+    lit_prepare_sources.add_argument("--max-items", type=int)
+    lit_preflight_sources = literature_sub.add_parser("preflight-source-candidates", help="preflight a confirmed FTIR/XPS source-candidate manifest")
+    lit_preflight_sources.add_argument("workspace", type=Path)
+    lit_preflight_sources.add_argument("--method", required=True, choices=["ftir", "xps"])
+    lit_preflight_sources.add_argument("--manifest", required=True, type=Path)
+    lit_preflight_sources.add_argument("--output", type=Path)
 
     image_data = sub.add_parser("image-data", help="image characterization helpers for SEM, TEM, and microscopy data")
     image_sub = image_data.add_subparsers(dest="image_command", required=True)
@@ -1517,6 +1532,39 @@ def main(argv: list[str] | None = None) -> int:
                 sync_literature_acquisition_status(
                     args.workspace,
                     update_path=args.update,
+                )
+            )
+            return 0
+        if args.literature_command == "prepare-source-candidates":
+            source_items_path = args.source_items
+            if source_items_path and not source_items_path.is_absolute():
+                source_items_path = args.workspace / source_items_path
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            _print_json(
+                prepare_literature_source_candidate_manifest(
+                    args.workspace,
+                    method=args.method,
+                    source_items_path=source_items_path,
+                    output_path=output_path,
+                    confirm_for_source_packet=args.confirm_for_source_packet,
+                    user_response=args.user_response,
+                    max_items=args.max_items,
+                )
+            )
+            return 0
+        if args.literature_command == "preflight-source-candidates":
+            manifest_path = args.manifest if args.manifest.is_absolute() else args.workspace / args.manifest
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            _print_json(
+                preflight_literature_source_candidate_manifest(
+                    args.workspace,
+                    method=args.method,
+                    manifest_path=manifest_path,
+                    output_path=output_path,
                 )
             )
             return 0

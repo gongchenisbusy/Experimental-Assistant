@@ -24,6 +24,9 @@ literature/
 ├── acquisition_status_update.yml
 ├── origin_thread_sync.yml
 ├── selected_items.yml
+├── draft_<method>_source_candidates.yml
+├── confirmed_<method>_source_candidates.yml
+├── <method>_source_candidates_preflight.yml
 ├── references.bib
 ├── notes/
 └── cache_index.yml
@@ -47,6 +50,10 @@ ea literature plan /path/to/ea-project --scope ordinary --access-mode open_acces
 ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
 ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
+ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed FTIR source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project --method ftir --manifest literature/confirmed_ftir_source_candidates.yml
+ea literature prepare-source-candidates /path/to/ea-project --method xps --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed XPS source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project --method xps --manifest literature/confirmed_xps_source_candidates.yml
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
 ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
@@ -64,6 +71,10 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 `search-public` explicitly queries public metadata APIs such as Crossref, OpenAlex, and arXiv, writes `public_search_candidates.yml`, `search_coverage.yml`, `public_search_state.yml`, appends `search_log.md`, and feeds the same ranking workflow. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF download. Treat the result as source-limited metadata coverage, not exhaustive web coverage.
 
 `rank-candidates` consumes a user- or dedicated-workflow-supplied CSV/YAML/JSON candidate file, de-duplicates by DOI/URL/title, scores project relevance, venue authority, recency, citation/influence, and full-text availability, writes `ranking.csv`, and refreshes `selected_items.yml`. It does not run live web search, look up journal impact factors, use Zotero/browser access, log into institutions, or download PDFs.
+
+`prepare-source-candidates` converts local selected literature items into editable FTIR/XPS source-candidate manifests. It prefers `library_manifest.yml` when it contains items, otherwise `selected_items.yml`, unless `--source-items` is supplied. Without confirmation it writes `draft_<method>_source_candidates.yml`; with `--confirm-for-source-packet --user-response ...` it writes `confirmed_<method>_source_candidates.yml` and records user confirmation metadata. Candidate stubs include `reference_seeds` derived from local item metadata but remain disabled with `include_in_source_packet: false` until a user or agent fills source summary, applicability, caveats, method-specific fields, and explicitly enables the candidate.
+
+`preflight-source-candidates` checks a confirmed FTIR/XPS source-candidate manifest before the user builds a source packet. It verifies confirmation, included candidates, required method fields, reference IDs, and available `reference_seeds`, then writes `<method>_source_candidates_preflight.yml`. A ready preflight means the manifest can be passed to `ea ftir build-assignment-packet --literature-manifest ...` or `ea xps build-source-packet --literature-manifest ...`; it does not build source packets, register references, inject citations, apply assignments/parameters, download or parse full text, or prove material conclusions.
 
 `handoff` writes an acquisition packet for a dedicated literature workflow after confirmation. It records selected top N, access mode, input/output refs, forbidden actions, and the sync contract. It does not run search, browser automation, Zotero calls, institution login, or PDF downloads.
 

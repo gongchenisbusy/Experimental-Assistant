@@ -24,7 +24,7 @@ skills:
     status: builtin_v0_2_reference
     category: literature.library
     method: local_literature_library
-    notes: Literature initialization decision, planning, confirmation, explicit public metadata search, supplied-candidate ranking, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
+    notes: Literature initialization decision, planning, confirmation, explicit public metadata search, supplied-candidate ranking, FTIR/XPS source-candidate manifest preparation/preflight, handoff/request generation, acquisition-manifest import, reference registration, and status-sync workflow implemented; source-candidate helpers are local deterministic staging and do not search/download/parse full text, register references, inject citations, build source packets, or apply assignments/parameters; Zotero, browser, institution login, and PDF acquisition remain user-confirmed external/dedicated workflow steps.
   - id: ea.pl-analysis
     manifest: skill-registry/builtins/pl-analysis.yml
     status: builtin_v0_2_reference

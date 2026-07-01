@@ -13,6 +13,7 @@ from typing import Any, Callable, Literal
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
+from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
@@ -31,6 +32,7 @@ SEARCH_SOURCES = [
 ]
 
 PUBLIC_METADATA_SOURCES: list[PublicMetadataSource] = ["crossref", "openalex", "arxiv"]
+SOURCE_CANDIDATE_METHODS = {"ftir", "xps"}
 
 RANKING_HEADERS = [
     "candidate_id",
@@ -67,6 +69,27 @@ STATUS_UPDATE_FIELDS = [
     "zotero_codex_sidecar_verification_ref",
     "zotero_codex_status_import_ref",
     "sidecar_verification",
+]
+
+FTIR_SOURCE_CANDIDATE_REQUIRED_FIELDS = [
+    "candidate_id",
+    "assignment_label",
+    "wavenumber_window_cm1",
+    "source_summary",
+    "applicability_notes",
+    "reference_ids",
+    "confidence",
+    "caveats",
+]
+
+XPS_SOURCE_CANDIDATE_REQUIRED_FIELDS = [
+    "candidate_id",
+    "suggestion_type",
+    "source_summary",
+    "applicability_notes",
+    "reference_ids",
+    "confidence",
+    "caveats",
 ]
 
 
@@ -2274,6 +2297,393 @@ def _load_candidate_items(path: Path) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
     return _manifest_items(data)
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _source_candidate_method(method: str) -> str:
+    normalized = str(method or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {"infrared": "ftir", "ir": "ftir", "surface_spectroscopy": "xps"}
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in SOURCE_CANDIDATE_METHODS:
+        raise ValueError(f"Unsupported source-candidate method: {method}. Expected one of {sorted(SOURCE_CANDIDATE_METHODS)}")
+    return normalized
+
+
+def _source_candidate_default_path(root: Path, method: str, *, confirmed: bool) -> Path:
+    stem = "confirmed" if confirmed else "draft"
+    return root / "literature" / f"{stem}_{method}_source_candidates.yml"
+
+
+def _source_candidate_source_items_path(root: Path, source_items_path: Path | None) -> Path:
+    if source_items_path is not None:
+        return source_items_path if source_items_path.is_absolute() else root / source_items_path
+    library_manifest = root / "literature" / "library_manifest.yml"
+    if library_manifest.exists() and _manifest_items(_load_manifest(library_manifest)):
+        return library_manifest
+    return root / "literature" / "selected_items.yml"
+
+
+def _source_candidate_seed_id(method: str, item: dict[str, Any], index: int) -> str:
+    reference_id = str(item.get("reference_id") or "").strip()
+    if reference_id:
+        return reference_id
+    raw_id = str(item.get("candidate_id") or item.get("id") or item.get("doi") or item.get("title") or index).strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", raw_id).strip("-")[:48]
+    return f"ref-lit-{method}-{slug}" if slug else f"ref-lit-{method}-{index:03d}"
+
+
+def _source_candidate_reference_seed(item: dict[str, Any], *, seed_id: str, source_ref: str) -> dict[str, Any]:
+    seed: dict[str, Any] = {
+        "citation": _item_citation(item) or str(item.get("title") or seed_id),
+        "title": item.get("title"),
+        "authors": _item_authors(item),
+        "year": item.get("year") or item.get("publication_year") or item.get("published_year"),
+        "venue": item.get("venue") or item.get("journal") or item.get("container_title"),
+        "doi": item.get("doi") or item.get("DOI"),
+        "url": item.get("url") or item.get("article_url") or item.get("landing_page_url"),
+        "local_path": item.get("local_path") or item.get("pdf_path"),
+        "source_type": "literature_library",
+        "source_item_ref": source_ref,
+        "source_item_id": item.get("reference_id") or item.get("candidate_id") or item.get("id"),
+    }
+    return _compact_dict(seed)
+
+
+def _source_candidate_base(method: str, item: dict[str, Any], *, index: int, seed_id: str) -> dict[str, Any]:
+    title = str(item.get("title") or "untitled literature item").strip()
+    summary = (
+        f"Literature item `{title}` was selected from the project literature workflow. "
+        "Replace this summary with the specific source statement that supports the candidate before enabling it."
+    )
+    common: dict[str, Any] = {
+        "method": method,
+        "include_in_source_packet": False,
+        "candidate_id": f"{method}-lit-source-candidate-{index:03d}",
+        "source_summary": summary,
+        "applicability_notes": [
+            "TODO: record the sample/material conditions and why this literature item applies to this project."
+        ],
+        "reference_ids": [seed_id],
+        "confidence": "low",
+        "caveats": [
+            "Draft literature-derived source candidate; fill method-specific fields and confirm before source-packet use."
+        ],
+        "source_item": _compact_dict(
+            {
+                "title": item.get("title"),
+                "year": item.get("year") or item.get("publication_year") or item.get("published_year"),
+                "doi": item.get("doi") or item.get("DOI"),
+                "url": item.get("url") or item.get("article_url") or item.get("landing_page_url"),
+                "rank": item.get("rank"),
+                "score": item.get("score"),
+                "reference_id": item.get("reference_id"),
+            }
+        ),
+    }
+    if method == "ftir":
+        common.update(
+            {
+                "assignment_type": "functional_group",
+                "assignment_label": None,
+                "band_label": None,
+                "material_scope": None,
+                "sample_scope": None,
+                "wavenumber_window_cm1": [None, None],
+                "expected_feature": "absorbance_maximum",
+            }
+        )
+    else:
+        common.update(
+            {
+                "suggestion_type": None,
+                "element": None,
+                "core_level": None,
+                "parameter_origin": "source_suggested",
+                "center_delta_eV": None,
+                "area_ratio": None,
+                "fwhm_ratio": None,
+                "tougaard_B": None,
+                "tougaard_C_eV2": None,
+                "integration_direction": None,
+            }
+        )
+    return common
+
+
+def prepare_literature_source_candidate_manifest(
+    root: Path,
+    *,
+    method: str,
+    source_items_path: Path | None = None,
+    output_path: Path | None = None,
+    confirm_for_source_packet: bool = False,
+    user_response: str | None = None,
+    max_items: int | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    method = _source_candidate_method(method)
+    literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
+    source_path = _source_candidate_source_items_path(root, source_items_path)
+    if not source_path.exists():
+        raise FileNotFoundError(source_path)
+    items = _load_candidate_items(source_path)
+    if max_items is not None:
+        if max_items <= 0:
+            raise ValueError("max_items must be positive")
+        items = items[:max_items]
+    if not items:
+        raise ValueError("source item file contains no literature items")
+    if confirm_for_source_packet and not str(user_response or "").strip():
+        raise ValueError("--confirm-for-source-packet requires --user-response")
+
+    created_at = created_at or EARecord.now_iso()
+    project = _project_context(root)
+    project_id = str(project.get("project_id", "unknown-project"))
+    output_path = output_path or _source_candidate_default_path(root, method, confirmed=confirm_for_source_packet)
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    source_ref = _project_relative(root, source_path)
+    output_ref = _project_relative(root, output_path)
+
+    reference_seeds: dict[str, Any] = {}
+    candidates: list[dict[str, Any]] = []
+    for index, item in enumerate(items, start=1):
+        seed_id = _source_candidate_seed_id(method, item, index)
+        reference_seeds[seed_id] = _source_candidate_reference_seed(item, seed_id=seed_id, source_ref=source_ref)
+        candidates.append(_source_candidate_base(method, item, index=index, seed_id=seed_id))
+
+    manifest: dict[str, Any] = {
+        "schema_version": "0.2",
+        "source": "ea.literature.source_candidates:v0.2",
+        "project_id": project_id,
+        "method_scope": [method],
+        "status": "confirmed_for_source_packet" if confirm_for_source_packet else "draft_requires_candidate_edit",
+        "prepared_at": created_at,
+        "source_items_ref": source_ref,
+        "source_item_count": len(items),
+        "confirmed_for_source_packet": bool(confirm_for_source_packet),
+        "reference_seeds": reference_seeds,
+        "candidates": candidates,
+        "next_steps": [
+            "Fill method-specific candidate fields and set include_in_source_packet: true only for candidates the user wants staged.",
+            f"Run `ea literature preflight-source-candidates /path/to/ea-project --method {method} --manifest {output_ref}` before building a source packet.",
+            (
+                f"After preflight passes, run `ea {'ftir build-assignment-packet' if method == 'ftir' else 'xps build-source-packet'} "
+                f"/path/to/ea-project --literature-manifest {output_ref}`."
+            ),
+        ],
+        "boundaries": [
+            "This manifest preparation is local deterministic staging only.",
+            "It does not search the web, download or parse articles/PDFs, register references, inject report citations, apply assignments/parameters, or prove material conclusions.",
+            "Draft candidate stubs are disabled by include_in_source_packet: false until a user or agent fills method-specific fields and confirms applicability.",
+        ],
+    }
+    if confirm_for_source_packet:
+        manifest["confirmation"] = {
+            "status": "user_confirmed",
+            "confirmed_at": created_at,
+            "user_response": str(user_response),
+            "reviewed_content": "User confirmed this source-candidate manifest may be used for source-packet staging after candidate-level edits.",
+        }
+    write_yaml(output_path, manifest)
+
+    status_path = ensure_literature_status(root, project_id=project_id)
+    status = read_yaml(status_path)
+    status.update(
+        {
+            f"{method}_source_candidate_manifest_ref": output_ref,
+            f"{method}_source_candidate_manifest_status": manifest["status"],
+            f"{method}_source_candidate_manifest_updated_at": created_at,
+        }
+    )
+    write_yaml(status_path, status)
+
+    return {
+        "manifest_path": str(output_path),
+        "manifest_ref": output_ref,
+        "status": manifest["status"],
+        "method": method,
+        "source_items_ref": source_ref,
+        "source_item_count": len(items),
+        "candidate_count": len(candidates),
+        "reference_seed_count": len(reference_seeds),
+        "confirmed_for_source_packet": bool(confirm_for_source_packet),
+    }
+
+
+def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    required = FTIR_SOURCE_CANDIDATE_REQUIRED_FIELDS if method == "ftir" else XPS_SOURCE_CANDIDATE_REQUIRED_FIELDS
+    for field in required:
+        value = candidate.get(field)
+        if value in (None, "", [], {}):
+            missing.append(field)
+    if method == "ftir":
+        window = candidate.get("wavenumber_window_cm1")
+        if not (isinstance(window, list | tuple) and len(window) >= 2 and _as_float(window[0]) is not None and _as_float(window[1]) is not None):
+            if "wavenumber_window_cm1" not in missing:
+                missing.append("wavenumber_window_cm1")
+    else:
+        suggestion_type = str(candidate.get("suggestion_type") or "").strip().lower().replace("-", "_")
+        if suggestion_type == "spin_orbit_constraint":
+            for field in ["center_delta_eV", "area_ratio", "fwhm_ratio"]:
+                if _as_float(candidate.get(field)) is None:
+                    missing.append(field)
+        elif suggestion_type == "tougaard_parameter":
+            if _as_float(candidate.get("tougaard_B")) is None and _as_float(candidate.get("tougaard_C_eV2")) is None:
+                missing.append("tougaard_B_or_tougaard_C_eV2")
+        elif "suggestion_type" not in missing:
+            missing.append("supported_suggestion_type")
+    return _unique(missing)
+
+
+def preflight_literature_source_candidate_manifest(
+    root: Path,
+    *,
+    method: str,
+    manifest_path: Path,
+    output_path: Path | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    method = _source_candidate_method(method)
+    resolved_manifest = manifest_path if manifest_path.is_absolute() else root / manifest_path
+    literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
+    checked_at = checked_at or EARecord.now_iso()
+    output_path = output_path or literature_root / f"{method}_source_candidates_preflight.yml"
+    if not output_path.is_absolute():
+        output_path = root / output_path
+
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
+    reference_seeds: dict[str, Any] = {}
+    confirmation_status = ""
+    source_manifest_ref = _project_relative(root, resolved_manifest) if resolved_manifest.exists() else str(manifest_path)
+    try:
+        library, manifest_warnings = confirmed_source_packet_library(
+            root,
+            manifest_path=resolved_manifest,
+            method=method,
+            method_aliases={"ftir", "infrared", "ftir_assignment", "ftir_assignment_source_packet"}
+            if method == "ftir"
+            else {"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"},
+        )
+        warnings.extend(manifest_warnings)
+        candidates = [candidate for candidate in library.get("candidates") or [] if isinstance(candidate, dict)]
+        reference_seeds = library.get("reference_seeds") if isinstance(library.get("reference_seeds"), dict) else {}
+        confirmation_status = str(library.get("confirmation_status") or "")
+        source_manifest_ref = str(library.get("source_manifest_ref") or source_manifest_ref)
+    except (SourcePacketManifestError, FileNotFoundError) as exc:
+        errors.append(
+            {
+                "code": "source_candidate_manifest_not_ready",
+                "message": str(exc),
+                "severity": "high",
+            }
+        )
+
+    candidate_reports: list[dict[str, Any]] = []
+    ready_count = 0
+    invalid_count = 0
+    referenced_ids: set[str] = set()
+    for index, candidate in enumerate(candidates, start=1):
+        reference_ids = _coerce_string_list(candidate.get("reference_ids"))
+        referenced_ids.update(reference_ids)
+        missing_fields = _source_candidate_missing_fields(method, candidate)
+        candidate_id = str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or f"candidate-{index:03d}")
+        status = "ready_for_source_packet" if not missing_fields else "missing_required_metadata"
+        if missing_fields:
+            invalid_count += 1
+            warnings.append(
+                {
+                    "code": "source_candidate_missing_required_metadata",
+                    "message": "A source candidate is missing required metadata before packet staging.",
+                    "severity": "high",
+                    "candidate_id": candidate_id,
+                    "missing_fields": missing_fields,
+                }
+            )
+        else:
+            ready_count += 1
+        candidate_reports.append(
+            {
+                "candidate_id": candidate_id,
+                "status": status,
+                "missing_fields": missing_fields,
+                "reference_ids": reference_ids,
+            }
+        )
+
+    if not errors and not candidates:
+        errors.append(
+            {
+                "code": "source_candidate_manifest_has_no_included_candidates",
+                "message": "The manifest has no candidates selected for source-packet staging. Set include_in_source_packet: true on edited candidates.",
+                "severity": "high",
+            }
+        )
+    missing_seed_ids = sorted(reference_id for reference_id in referenced_ids if reference_id not in reference_seeds)
+    if missing_seed_ids:
+        warnings.append(
+            {
+                "code": "source_candidate_reference_seed_missing",
+                "message": "Some reference_ids do not have matching reference_seeds; this is acceptable only if they are already registered project references.",
+                "severity": "medium",
+                "reference_ids": missing_seed_ids,
+            }
+        )
+
+    status = "ready_for_source_packet" if not errors and invalid_count == 0 else "not_ready"
+    preflight = {
+        "schema_version": "0.2",
+        "source": "ea.literature.source_candidate_manifest_preflight:v0.2",
+        "status": status,
+        "method": method,
+        "checked_at": checked_at,
+        "manifest_ref": source_manifest_ref,
+        "confirmation_status": confirmation_status,
+        "candidate_count": len(candidates),
+        "ready_count": ready_count,
+        "invalid_count": invalid_count,
+        "reference_seed_count": len(reference_seeds),
+        "candidate_reports": candidate_reports,
+        "errors": errors,
+        "warnings": warnings,
+        "next_steps": [
+            "Fix errors and missing required metadata before building FTIR/XPS source packets.",
+            "Run `ea references register-seeds --source-packet ...` only after a source packet is built and the user wants those seeds registered.",
+        ],
+        "boundaries": [
+            "Preflight reads local YAML only; it does not search, download, parse full text, register references, inject citations, or apply assignments/parameters.",
+            "Preflight status does not prove FTIR composition/functional groups or XPS chemical states/composition.",
+        ],
+    }
+    write_yaml(output_path, preflight)
+    return {
+        "preflight_path": str(output_path),
+        "preflight_ref": _project_relative(root, output_path),
+        "status": status,
+        "method": method,
+        "manifest_ref": source_manifest_ref,
+        "candidate_count": len(candidates),
+        "ready_count": ready_count,
+        "invalid_count": invalid_count,
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+        "errors": errors,
+        "warnings": warnings,
+    }
 
 
 def _normalized_title(value: Any) -> str:

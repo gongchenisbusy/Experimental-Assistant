@@ -12,9 +12,11 @@ from ea.literature import (
     import_literature_acquisition_manifest,
     import_zotero_codex_batch_status,
     plan_literature_deployment,
+    preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
     prepare_literature_acquisition_request,
     prepare_literature_acquisition_handoff,
+    prepare_literature_source_candidate_manifest,
     prepare_zotero_codex_acquisition_bridge,
     rank_literature_candidates,
     reconcile_literature_acquisition,
@@ -1033,6 +1035,188 @@ def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tm
     assert acquisition["request"]["target_count"] == 2
 
 
+def test_literature_prepares_and_preflights_ftir_source_candidate_manifest(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="FTIR Source Candidate Manifest",
+        project_slug="ftir-source-candidate-manifest",
+        research_direction="polymer oxide FTIR literature",
+        material_system="polymer oxide composite",
+        experiment_type="FTIR characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "candidate_input.yml",
+        {
+            "schema_version": "0.2",
+            "candidates": [
+                {
+                    "title": "FTIR carbonyl assignments in polymer oxides",
+                    "authors": ["A. Spectroscopist"],
+                    "year": 2025,
+                    "venue": "Example Spectroscopy",
+                    "doi": "10.1000/ftir-carbonyl-source",
+                    "project_relevance": 5,
+                    "venue_authority": 3,
+                    "recency": 5,
+                    "citation_or_influence": 2,
+                    "fulltext_availability_and_usefulness": 4,
+                }
+            ],
+        },
+    )
+    rank_literature_candidates(
+        tmp_path,
+        candidates_path=Path("literature/candidate_input.yml"),
+        ranked_at="2026-07-01T15:00:00",
+    )
+
+    result = prepare_literature_source_candidate_manifest(
+        tmp_path,
+        method="ftir",
+        source_items_path=Path("literature/selected_items.yml"),
+        confirm_for_source_packet=True,
+        user_response="User confirmed FTIR source-candidate manifest staging.",
+        created_at="2026-07-01T15:05:00",
+    )
+    manifest_path = Path(result["manifest_path"])
+    manifest = read_yaml(manifest_path)
+    assert result["status"] == "confirmed_for_source_packet"
+    assert manifest["confirmed_for_source_packet"] is True
+    assert manifest["confirmation"]["status"] == "user_confirmed"
+    assert manifest["source_items_ref"] == "literature/selected_items.yml"
+    assert manifest["candidates"][0]["include_in_source_packet"] is False
+    assert "ref-lit-ftir-cand-001" in manifest["reference_seeds"]
+
+    draft_preflight = preflight_literature_source_candidate_manifest(
+        tmp_path,
+        method="ftir",
+        manifest_path=Path(result["manifest_ref"]),
+        checked_at="2026-07-01T15:06:00",
+    )
+    assert draft_preflight["status"] == "not_ready"
+    assert draft_preflight["errors"][0]["code"] == "source_candidate_manifest_has_no_included_candidates"
+
+    manifest["candidates"][0].update(
+        {
+            "include_in_source_packet": True,
+            "assignment_label": "literature carbonyl C=O candidate",
+            "band_label": "C=O stretching",
+            "wavenumber_window_cm1": [1705, 1740],
+            "source_summary": "The selected FTIR source discusses carbonyl stretching in the reviewed polymer oxide context.",
+            "applicability_notes": ["Use after checking band overlap and sample chemistry."],
+            "caveats": ["Source-backed assignment candidate only; not composition proof."],
+        }
+    )
+    write_yaml(manifest_path, manifest)
+
+    ready_preflight = preflight_literature_source_candidate_manifest(
+        tmp_path,
+        method="ftir",
+        manifest_path=Path(result["manifest_ref"]),
+        checked_at="2026-07-01T15:07:00",
+    )
+    preflight_record = read_yaml(tmp_path / "literature" / "ftir_source_candidates_preflight.yml")
+    assert ready_preflight["status"] == "ready_for_source_packet"
+    assert ready_preflight["candidate_count"] == 1
+    assert ready_preflight["ready_count"] == 1
+    assert ready_preflight["invalid_count"] == 0
+    assert preflight_record["status"] == "ready_for_source_packet"
+    assert "does not search" in " ".join(preflight_record["boundaries"])
+
+
+def test_cli_literature_prepares_and_preflights_xps_source_candidate_manifest(tmp_path: Path, capsys) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="XPS Source Candidate Manifest",
+        project_slug="xps-source-candidate-manifest",
+        research_direction="oxide XPS parameter literature",
+        material_system="oxide thin film",
+        experiment_type="XPS characterization",
+        enable_literature=True,
+    )
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "project_id": "prj-xps-source-candidate-manifest",
+            "selection_status": "selected_from_ranked_candidates",
+            "items": [
+                {
+                    "rank": 1,
+                    "candidate_id": "cand-001",
+                    "title": "Tougaard background parameters for oxide XPS",
+                    "authors": "B. Surface",
+                    "year": 2024,
+                    "venue": "Example Surface Science",
+                    "doi": "10.1000/xps-tougaard-source",
+                    "url": "https://doi.org/10.1000/xps-tougaard-source",
+                }
+            ],
+        },
+    )
+
+    assert (
+        main(
+            [
+                "literature",
+                "prepare-source-candidates",
+                str(tmp_path),
+                "--method",
+                "xps",
+                "--source-items",
+                "literature/selected_items.yml",
+                "--confirm-for-source-packet",
+                "--user-response",
+                "User confirmed XPS source-candidate manifest staging.",
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    manifest_path = Path(output["manifest_path"])
+    manifest = read_yaml(manifest_path)
+    assert output["status"] == "confirmed_for_source_packet"
+    assert output["candidate_count"] == 1
+    assert manifest["method_scope"] == ["xps"]
+    assert manifest["candidates"][0]["suggestion_type"] is None
+
+    manifest["candidates"][0].update(
+        {
+            "include_in_source_packet": True,
+            "suggestion_type": "tougaard_parameter",
+            "tougaard_C_eV2": 1643.0,
+            "source_summary": "The selected XPS source provides a Tougaard-style background parameter candidate.",
+            "applicability_notes": ["Use only after reviewed oxide core-level background region selection."],
+            "caveats": ["Source-backed background candidate only; not chemical-state proof."],
+        }
+    )
+    write_yaml(manifest_path, manifest)
+
+    assert (
+        main(
+            [
+                "literature",
+                "preflight-source-candidates",
+                str(tmp_path),
+                "--method",
+                "xps",
+                "--manifest",
+                output["manifest_ref"],
+            ]
+        )
+        == 0
+    )
+    preflight_output = json.loads(capsys.readouterr().out)
+    preflight_record = read_yaml(tmp_path / "literature" / "xps_source_candidates_preflight.yml")
+    assert preflight_output["status"] == "ready_for_source_packet"
+    assert preflight_output["ready_count"] == 1
+    assert preflight_record["candidate_reports"][0]["status"] == "ready_for_source_packet"
+    assert "does not search" in " ".join(preflight_record["boundaries"])
+
+
 def test_cli_literature_rank_candidates_populates_acquisition_targets(tmp_path: Path, capsys) -> None:
     initialize_project(
         tmp_path,
@@ -1606,6 +1790,10 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "literature-library decision record" in readme
     assert "rank-candidates" in readme
     assert "search-public" in readme
+    assert "prepare-source-candidates" in readme
+    assert "preflight-source-candidates" in readme
+    assert "confirmed_ftir_source_candidates.yml" in readme
+    assert "confirmed_xps_source_candidates.yml" in readme
     assert "public_search_state.yml" in readme
     assert "institution-access-guide" in readme
     assert "zotero-bridge" in readme
@@ -1616,6 +1804,10 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
+    assert "prepare-source-candidates" in reference
+    assert "preflight-source-candidates" in reference
+    assert "source_candidates_preflight.yml" in reference
+    assert "include_in_source_packet: false" in reference
     assert "institution_access_guidance.yml" in reference
     assert "zotero_codex_bridge.yml" in reference
     assert "zotero_codex_status_import.yml" in reference
@@ -1625,11 +1817,16 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "--resume" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
+    assert "prepare-source-candidates" in skill
+    assert "preflight-source-candidates" in skill
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
+    assert "source-candidate manifest preparation/preflight" in literature_record["notes"]
     assert "open_item" in manifest["output_artifacts"]
     assert "public_search_candidate_manifest" in manifest["output_artifacts"]
     assert "public_search_state_record" in manifest["output_artifacts"]
+    assert "source_candidate_manifest" in manifest["output_artifacts"]
+    assert "source_candidate_manifest_preflight" in manifest["output_artifacts"]
     assert "zotero_codex_bridge_runbook" in manifest["output_artifacts"]
     assert "zotero_codex_settings_request" in manifest["output_artifacts"]
     assert "zotero_codex_status_import" in manifest["output_artifacts"]
@@ -1642,6 +1839,8 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "initialization_open_item_when_literature_not_enabled" in manifest["current_v0_2_support"]["implemented"]
     assert "explicit_public_metadata_search_connectors" in manifest["current_v0_2_support"]["implemented"]
     assert "public_metadata_search_resume_state" in manifest["current_v0_2_support"]["implemented"]
+    assert "ftir_xps_source_candidate_manifest_preparation" in manifest["current_v0_2_support"]["implemented"]
+    assert "ftir_xps_source_candidate_manifest_preflight" in manifest["current_v0_2_support"]["implemented"]
     assert "institution_access_guidance_packet" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_acquisition_bridge_runbook" in manifest["current_v0_2_support"]["implemented"]
     assert "zotero_codex_status_import_and_sync" in manifest["current_v0_2_support"]["implemented"]

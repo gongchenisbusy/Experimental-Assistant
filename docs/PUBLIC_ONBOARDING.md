@@ -141,6 +141,22 @@ ea literature search-public /path/to/ea-project \
 ea literature rank-candidates /path/to/ea-project \
   --candidates literature/candidate_results.yml \
   --reference-year 2026
+ea literature prepare-source-candidates /path/to/ea-project \
+  --method ftir \
+  --source-items literature/selected_items.yml \
+  --confirm-for-source-packet \
+  --user-response "User confirmed FTIR source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project \
+  --method ftir \
+  --manifest literature/confirmed_ftir_source_candidates.yml
+ea literature prepare-source-candidates /path/to/ea-project \
+  --method xps \
+  --source-items literature/selected_items.yml \
+  --confirm-for-source-packet \
+  --user-response "User confirmed XPS source-candidate manifest staging."
+ea literature preflight-source-candidates /path/to/ea-project \
+  --method xps \
+  --manifest literature/confirmed_xps_source_candidates.yml
 ea literature acquisition-request /path/to/ea-project
 ea literature institution-access-guide /path/to/ea-project \
   --institution-name "Institution" \
@@ -159,7 +175,7 @@ ea literature render-reconciliation /path/to/ea-project \
   --reconciliation literature/acquisition_reconciliation.yml
 ```
 
-`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `institution-access-guide` writes a public-safe guidance packet for user-managed institution access; it records user-supplied route/browser/profile status but does not open browsers, store credentials, probe URLs, or fetch papers. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes YAML plus Markdown audit reports with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. `render-reconciliation` regenerates the Markdown audit view from an existing reconciliation YAML without repairing records. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
+`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it does not look up impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `prepare-source-candidates` turns selected local literature items into editable FTIR/XPS source-candidate manifests, with disabled candidate stubs and source-derived `reference_seeds`; with explicit confirmation it writes `literature/confirmed_ftir_source_candidates.yml` or `literature/confirmed_xps_source_candidates.yml`. `preflight-source-candidates` checks confirmation, included candidates, required method metadata, and reference seed coverage before the user passes the manifest into FTIR/XPS source-packet builders. These source-candidate helpers read local YAML only: they do not search, download or parse full text, register references, inject citations, build source packets, or apply assignments/parameters. `institution-access-guide` writes a public-safe guidance packet for user-managed institution access; it records user-supplied route/browser/profile status but does not open browsers, store credentials, probe URLs, or fetch papers. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes YAML plus Markdown audit reports with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. `render-reconciliation` regenerates the Markdown audit view from an existing reconciliation YAML without repairing records. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
 
 ## 6. Traceability And Handoff Checks
 
