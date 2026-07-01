@@ -76,6 +76,7 @@ ea_skill:
       implemented: true
       built_in_assignment_library: generic_materials
       source_packet_format: yaml
+      confirmed_literature_manifest_input: true
       record_format: yaml_and_csv
       review_package_helper: ea ftir prepare-review
       review_package_format: yaml_and_markdown
@@ -94,6 +95,7 @@ ea_skill:
       boundary: source_backed_advisory_only_no_auto_apply_no_composition_or_functional_group_proof
     limitations:
       - broad band-family windows are screening hints, not definitive chemical assignments
+      - confirmed literature/source-candidate manifests can populate source packets only when explicit confirmation metadata is present; the packet builder does not run live search, download or parse articles, register references, inject citations, apply assignments, or prove composition/functional groups
       - source-backed assignment suggestions match reviewed candidate windows to detected bands and can be shown in reports, but remain advisory until user review
       - prepare-review writes grouped review packages only and does not create ReviewRecords or confirmed interpretations
       - propose-memory writes draft memory candidates only and does not commit confirmed memory

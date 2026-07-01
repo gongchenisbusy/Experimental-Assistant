@@ -5,10 +5,11 @@ import math
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml
-from ea.xps import default_xps_processing_parameters, inspect_xps_file
+from ea.xps import XPSProcessingError, build_xps_parameter_source_packet, default_xps_processing_parameters, inspect_xps_file
 
 
 def _json_output(capsys) -> dict:
@@ -1752,6 +1753,155 @@ candidates:
     assert template_packet["candidate_count"] == 2
     assert template_packet["source_packet_id"].startswith("xps_source_packet-")
     assert template_packet["candidates"][0]["center_delta_eV"] is None
+
+
+def test_cli_builds_xps_parameter_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "xps-literature-manifest-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "XPS Literature Source Packet",
+            "--slug",
+            "xps-literature-source-packet",
+            "--direction",
+            "XPS literature source packet workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    manifest = workspace / "literature" / "confirmed_xps_source_candidates.yml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        """
+schema_version: "0.2"
+source: ea.literature.source_candidates:v0.2
+method_scope:
+  - xps
+confirmation_status: user_confirmed
+guidance_notes:
+  - Charge referencing guidance was reviewed as source context only.
+guidance_reference_ids:
+  - ref-lit-xps-guidance-001
+reference_seeds:
+  ref-lit-xps-fe2p-001:
+    citation: "Literature Fe 2p XPS reference. Example Journal (2026)."
+    title: "Literature Fe 2p XPS reference"
+    year: 2026
+    url: "https://example.org/lit-xps-fe2p"
+    source_type: literature_library
+  ref-lit-xps-guidance-001:
+    citation: "Literature XPS charge reference guidance. Example Journal (2026)."
+    title: "Literature XPS charge reference guidance"
+    year: 2026
+    url: "https://example.org/lit-xps-guidance"
+    source_type: literature_library
+  ref-lit-xps-excluded-001:
+    citation: "Excluded XPS source. Example Journal (2026)."
+    title: "Excluded XPS source"
+    year: 2026
+    url: "https://example.org/lit-xps-excluded"
+    source_type: literature_library
+candidates:
+  - method: xps
+    candidate_id: xps-lit-fe2p-spin-001
+    suggestion_type: spin_orbit_constraint
+    element: Fe
+    core_level: 2p
+    constraint_id: xps-lit-fe2p-source-001
+    center_delta_eV: 13.4
+    area_ratio: 0.5
+    fwhm_ratio: 1.0
+    parameter_origin: source_suggested
+    source_summary: Literature source reports Fe 2p spin-orbit screening values for the reviewed oxide context.
+    applicability_notes:
+      - Use only after reviewed Fe 2p component IDs, bounds, and background are confirmed.
+    reference_ids:
+      - ref-lit-xps-fe2p-001
+    confidence: low
+    caveats:
+      - Literature-derived candidate only; not chemical-state proof.
+  - method: xps
+    include_in_source_packet: false
+    candidate_id: xps-lit-excluded-001
+    suggestion_type: tougaard_parameter
+    reference_ids:
+      - ref-lit-xps-excluded-001
+  - method: ftir
+    candidate_id: ftir-lit-ignored-001
+    assignment_label: ignored FTIR candidate
+    reference_ids:
+      - ref-lit-xps-excluded-001
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "xps",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--literature-manifest",
+                manifest.relative_to(workspace).as_posix(),
+                "--output",
+                "suggestions/xps/source-packets/literature_xps_packet.yml",
+            ]
+        )
+        == 0
+    )
+    packet_output = _json_output(capsys)
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet_output["status"] == "ready_for_suggest_parameters"
+    assert packet_output["candidate_count"] == 1
+    assert packet_output["reference_seed_count"] == 2
+    assert packet_output["source_library_kind"] == "confirmed_literature_manifest"
+    assert packet["source_library_kind"] == "confirmed_literature_manifest"
+    assert packet["source_manifest_ref"] == manifest.relative_to(workspace).as_posix()
+    assert packet["confirmation_status"] == "user_confirmed"
+    assert packet["guidance_reference_ids"] == ["ref-lit-xps-guidance-001"]
+    assert packet["candidates"][0]["candidate_id"] == "xps-lit-fe2p-spin-001"
+    assert set(packet["reference_seeds"]) == {"ref-lit-xps-fe2p-001", "ref-lit-xps-guidance-001"}
+    assert "ref-lit-xps-excluded-001" not in packet["reference_seeds"]
+    assert "registration hints only" in " ".join(packet["boundaries"])
+    assert "do not register references" in " ".join(packet["boundaries"])
+    assert (workspace / packet["provenance_ref"]).exists()
+
+    unconfirmed_manifest = workspace / "literature" / "unconfirmed_xps_source_candidates.yml"
+    unconfirmed_manifest.write_text(
+        """
+schema_version: "0.2"
+method_scope: [xps]
+candidates:
+  - method: xps
+    candidate_id: xps-unconfirmed-001
+    suggestion_type: tougaard_parameter
+    tougaard_C_eV2: 1643.0
+    source_summary: Unconfirmed source candidate.
+    applicability_notes:
+      - Missing manifest confirmation should block this packet.
+    reference_ids:
+      - ref-lit-xps-fe2p-001
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(XPSProcessingError, match="confirmed_for_source_packet"):
+        build_xps_parameter_source_packet(
+            workspace,
+            project_id=project_id,
+            literature_manifest_path=unconfirmed_manifest,
+        )
 
 
 def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) -> None:

@@ -787,6 +787,119 @@ def test_cli_builds_builtin_ftir_assignment_source_packet(tmp_path: Path, capsys
     assert filtered_packet["filters"]["material_scopes"] == ["polymer"]
 
 
+def test_cli_builds_ftir_assignment_source_packet_from_confirmed_literature_manifest(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "ftir-literature-manifest-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "FTIR Literature Source Packet",
+            "--slug",
+            "ftir-literature-source-packet",
+            "--direction",
+            "FTIR literature source packet workflow",
+            "--material",
+            "polymer oxide composite",
+            "--experiment-type",
+            "materials FTIR characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    manifest = workspace / "literature" / "confirmed_ftir_source_candidates.yml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        """
+schema_version: "0.2"
+source: ea.literature.source_candidates:v0.2
+confirmed_for_source_packet: true
+method_scope:
+  - ftir
+confirmation:
+  status: user_confirmed
+  reviewed_by: user
+  reviewed_content: Literature-derived FTIR carbonyl assignment candidate approved for source-packet staging.
+reference_seeds:
+  ref-lit-ftir-carbonyl-001:
+    citation: "Literature FTIR carbonyl reference. Example Journal (2026)."
+    title: "Literature FTIR carbonyl reference"
+    year: 2026
+    url: "https://example.org/lit-ftir-carbonyl"
+    source_type: literature_library
+  ref-lit-ftir-excluded-001:
+    citation: "Excluded FTIR reference. Example Journal (2026)."
+    title: "Excluded FTIR reference"
+    year: 2026
+    url: "https://example.org/lit-ftir-excluded"
+    source_type: literature_library
+candidates:
+  - method: ftir
+    candidate_id: ftir-lit-carbonyl-001
+    assignment_type: functional_group
+    assignment_label: literature carbonyl C=O candidate
+    wavenumber_window_cm1: [1705, 1740]
+    expected_feature: absorbance_maximum
+    source_summary: Literature source reports a carbonyl stretching region relevant to the reviewed polymer context.
+    applicability_notes:
+      - Use only after sample chemistry and band overlap are reviewed.
+    reference_ids:
+      - ref-lit-ftir-carbonyl-001
+    confidence: medium
+    caveats:
+      - Literature-derived candidate only; not composition proof.
+  - method: xps
+    candidate_id: xps-lit-ignored-001
+    suggestion_type: tougaard_parameter
+    reference_ids:
+      - ref-lit-ftir-excluded-001
+  - method: ftir
+    include_in_source_packet: false
+    candidate_id: ftir-lit-excluded-001
+    assignment_label: excluded assignment
+    reference_ids:
+      - ref-lit-ftir-excluded-001
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "ftir",
+                "build-assignment-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--literature-manifest",
+                manifest.relative_to(workspace).as_posix(),
+                "--output",
+                "suggestions/ftir/source-packets/literature_ftir_packet.yml",
+            ]
+        )
+        == 0
+    )
+    packet_output = _json_output(capsys)
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet_output["status"] == "ready_for_suggest_assignments"
+    assert packet_output["candidate_count"] == 1
+    assert packet_output["reference_seed_count"] == 1
+    assert packet_output["source_library_kind"] == "confirmed_literature_manifest"
+    assert packet["source_library_kind"] == "confirmed_literature_manifest"
+    assert packet["source_manifest_ref"] == manifest.relative_to(workspace).as_posix()
+    assert packet["confirmation_status"] == "user_confirmed"
+    assert packet["candidates"][0]["candidate_id"] == "ftir-lit-carbonyl-001"
+    assert "ref-lit-ftir-carbonyl-001" in packet["reference_seeds"]
+    assert "ref-lit-ftir-excluded-001" not in packet["reference_seeds"]
+    assert "confirmed-literature reference_seeds" in " ".join(packet["next_steps"])
+    assert "does not perform unconfirmed live lookup" in " ".join(packet["boundaries"])
+    assert "do not register references" in " ".join(packet["boundaries"])
+    assert (workspace / packet["provenance_ref"]).exists()
+
+
 def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 

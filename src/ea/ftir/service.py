@@ -25,6 +25,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
@@ -405,12 +406,52 @@ def _candidate_matches_filters(
     return True
 
 
+def _source_reference_seeds(
+    source_library: Any,
+    *,
+    referenced_ids: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(source_library, dict):
+        return {}
+    raw_seeds = source_library.get("reference_seeds") or {}
+    if not raw_seeds:
+        return {}
+    if not isinstance(raw_seeds, dict):
+        warnings.append(
+            _warning(
+                "ftir_assignment_source_reference_seeds_invalid",
+                "FTIR assignment source reference_seeds were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+        return {}
+    seeds: dict[str, Any] = {}
+    for raw_seed_id, raw_seed in raw_seeds.items():
+        seed_id = str(raw_seed_id).strip()
+        if not seed_id or seed_id not in referenced_ids:
+            continue
+        if not isinstance(raw_seed, dict):
+            warnings.append(
+                _warning(
+                    "ftir_assignment_source_reference_seed_ignored",
+                    "An FTIR assignment source reference_seed was skipped because its metadata was not a mapping.",
+                    severity="medium",
+                    seed_id=seed_id,
+                )
+            )
+            continue
+        seeds[seed_id] = deepcopy(raw_seed)
+    return seeds
+
+
 def build_ftir_assignment_source_packet(
     root: Path,
     *,
     project_id: str,
     library_path: Path | None = None,
     builtin_library: str | None = None,
+    literature_manifest_path: Path | None = None,
     output_path: Path | None = None,
     include_candidates: list[str] | None = None,
     assignment_types: list[str] | None = None,
@@ -418,15 +459,17 @@ def build_ftir_assignment_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    if library_path and builtin_library:
-        raise FTIRProcessingError("Use either --library-file or --builtin-library for FTIR assignment source-packet generation, not both")
-    if template and builtin_library:
-        raise FTIRProcessingError("Use either --write-template or --builtin-library for FTIR assignment source-packet generation, not both")
-    if not library_path and not template:
+    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    if selected_source_count > 1:
+        raise FTIRProcessingError(
+            "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for FTIR assignment source-packet generation"
+        )
+    if not library_path and not literature_manifest_path and not template:
         builtin_library = builtin_library or BUILTIN_FTIR_ASSIGNMENT_LIBRARY_DEFAULT
 
-    template_mode = template and library_path is None and builtin_library is None
+    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
     builtin_mode = builtin_library is not None
+    literature_mode = literature_manifest_path is not None
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
     source_packet_id = next_id(root, "ftir_assignment_source_packet", day)
@@ -443,20 +486,39 @@ def build_ftir_assignment_source_packet(
     library_ref: str | None = None
     library_kind = "template" if template_mode else "local_file"
     reference_seeds: dict[str, Any] = {}
+    source_library: dict[str, Any] = {}
     if template_mode:
         raw_candidates = _ftir_assignment_template_candidates()
     elif builtin_mode:
-        library = _builtin_ftir_assignment_library(str(builtin_library))
-        raw_candidates = _ftir_assignment_source_candidates(library)
-        reference_seeds = deepcopy(library.get("reference_seeds") or {})
+        source_library = _builtin_ftir_assignment_library(str(builtin_library))
+        raw_candidates = _ftir_assignment_source_candidates(source_library)
+        reference_seeds = deepcopy(source_library.get("reference_seeds") or {})
         library_ref = f"builtin:{builtin_library}"
         library_kind = "built_in"
+    elif literature_mode:
+        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        if source_path is None:
+            raise FTIRProcessingError("FTIR literature manifest path was not supplied")
+        try:
+            source_library, manifest_warnings = confirmed_source_packet_library(
+                root,
+                manifest_path=source_path,
+                method="ftir",
+                method_aliases={"ftir", "infrared", "ftir_assignment", "ftir_assignment_source_packet"},
+            )
+        except SourcePacketManifestError as exc:
+            raise FTIRProcessingError(str(exc)) from exc
+        warnings.extend(manifest_warnings)
+        raw_candidates = _ftir_assignment_source_candidates(source_library)
+        library_ref = _relative_to_root(root, source_path)
+        library_kind = "confirmed_literature_manifest"
     else:
         source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
         if source_path is None or not source_path.exists():
             raise FTIRProcessingError(f"FTIR assignment library file not found: {library_path}")
         library_ref = _relative_to_root(root, source_path)
-        raw_candidates = _ftir_assignment_source_candidates(read_yaml(source_path))
+        source_library = read_yaml(source_path)
+        raw_candidates = _ftir_assignment_source_candidates(source_library)
 
     include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
     type_set = {_normalize_assignment_type(item) for item in assignment_types or [] if str(item).strip()}
@@ -500,6 +562,12 @@ def build_ftir_assignment_source_packet(
         )
 
     reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    if not builtin_mode:
+        reference_seeds = _source_reference_seeds(
+            source_library,
+            referenced_ids=set(reference_ids),
+            warnings=warnings,
+        )
     packet_ref = _relative_to_root(root, output_path)
     status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_assignments" if selected else "no_matching_candidates")
     packet = {
@@ -512,7 +580,10 @@ def build_ftir_assignment_source_packet(
         "source": "ea.ftir.assignment_source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
+        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode else None,
+        "confirmation_status": source_library.get("confirmation_status") if literature_mode else None,
         "reference_seeds": reference_seeds,
+        "reference_seed_count": len(reference_seeds),
         "candidate_count": len(selected),
         "candidates": selected,
         "filters": {
@@ -523,13 +594,14 @@ def build_ftir_assignment_source_packet(
         "reference_ids": reference_ids,
         "warnings": warnings,
         "next_steps": [
-            "If this packet uses built-in reference_seeds, register or replace those references in the project before treating suggestions as report evidence.",
+            "If this packet uses built-in reference_seeds or local/confirmed-literature reference_seeds, register or replace those references in the project before treating suggestions as report evidence.",
             "Review and edit this packet until every candidate has a wavenumber window, source_summary, applicability_notes, reference_ids, confidence, and caveats.",
             "Run `ea ftir suggest-assignments` with processed FTIR metadata to match candidates against detected bands before using them in reports or memory.",
         ],
         "boundaries": [
             "FTIR assignment source packets are staging artifacts and do not modify processing outputs or confirmed project memory.",
-            "This source-packet builder is a deterministic staging step and does not perform unconfirmed live lookup or parse full text during the command. Values may originate from built-in generic libraries, user-provided data, local libraries, project literature, or separately confirmed search connectors, and EA may use those sources to prepare assignment candidates.",
+            "This source-packet builder is a deterministic staging step and does not perform unconfirmed live lookup, download articles, or parse full text during the command. Values may originate from built-in generic libraries, user-provided data, local libraries, project literature, or separately confirmed search connectors, and EA may use those sources to prepare assignment candidates.",
+            "Confirmed-literature manifests are source-candidate manifests only; they do not register references, inject report citations, apply FTIR assignments, prove composition, or prove functional groups.",
         ],
     }
     write_yaml(output_path, packet)
@@ -542,6 +614,7 @@ def build_ftir_assignment_source_packet(
             "candidate_count": len(selected),
             "template": template_mode,
             "builtin_library": builtin_library if builtin_mode else None,
+            "source_library_kind": library_kind,
             "filters": packet["filters"],
             "auto_applied": False,
         },
@@ -558,6 +631,8 @@ def build_ftir_assignment_source_packet(
         "candidate_count": len(selected),
         "reference_ids": reference_ids,
         "reference_seed_count": len(reference_seeds),
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
         "warnings": warnings,
         "provenance": str(provenance_path),
     }

@@ -62,6 +62,7 @@ ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-proj
 ea ftir build-assignment-packet /path/to/ea-project
 ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
 ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
+ea ftir build-assignment-packet /path/to/ea-project --literature-manifest literature/confirmed_ftir_source_candidates.yml
 ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ea ftir prepare-review /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
 ea review add /path/to/ea-project --target-type ftir_assignment_suggestions --target-ref suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed FTIR assignment suggestion candidates"
@@ -78,6 +79,7 @@ ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps
 ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
 ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
 ea xps build-source-packet /path/to/ea-project --builtin-library generic_xps_parameters --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
+ea xps build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_xps_source_candidates.yml --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea references register-seeds /path/to/ea-project --source-packet suggestions/xps/source-packets/xps_parameter_source_packet.yml
 ea xps suggest-parameters /path/to/ea-project --source-file suggestions/xps/source-packets/xps_parameter_source_packet.yml --related-record raw/xps/char-20260630-001/metadata.yml
 ea xps prepare-review /path/to/ea-project --suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml

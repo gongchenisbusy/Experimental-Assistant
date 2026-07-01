@@ -304,6 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     ftir_source_packet.add_argument("workspace", type=Path)
     ftir_source_packet.add_argument("--library-file", type=Path)
     ftir_source_packet.add_argument("--builtin-library", choices=builtin_ftir_assignment_libraries(), help="use a bundled FTIR assignment library; defaults to generic_materials when no library file or template is supplied")
+    ftir_source_packet.add_argument("--literature-manifest", type=Path, help="build from a user-confirmed literature/source-candidate manifest")
     ftir_source_packet.add_argument("--output", type=Path)
     ftir_source_packet.add_argument("--project-id")
     ftir_source_packet.add_argument("--include-candidate", action="append", default=[])
@@ -386,6 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     xps_source_packet.add_argument("workspace", type=Path)
     xps_source_packet.add_argument("--library-file", type=Path)
     xps_source_packet.add_argument("--builtin-library", choices=builtin_xps_parameter_libraries(), help="use a bundled XPS parameter library; defaults to generic_xps_parameters when no library file or template is supplied")
+    xps_source_packet.add_argument("--literature-manifest", type=Path, help="build from a user-confirmed literature/source-candidate manifest")
     xps_source_packet.add_argument("--output", type=Path)
     xps_source_packet.add_argument("--project-id")
     xps_source_packet.add_argument("--include-candidate", action="append", default=[])
@@ -1089,6 +1091,7 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
                     builtin_library=args.builtin_library,
+                    literature_manifest_path=_project_path(args.workspace, args.literature_manifest) if args.literature_manifest else None,
                     output_path=args.output,
                     include_candidates=args.include_candidate,
                     assignment_types=args.assignment_type,
@@ -1217,6 +1220,7 @@ def main(argv: list[str] | None = None) -> int:
                     project_id=project_id,
                     library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
                     builtin_library=args.builtin_library,
+                    literature_manifest_path=_project_path(args.workspace, args.literature_manifest) if args.literature_manifest else None,
                     output_path=args.output,
                     include_candidates=args.include_candidate,
                     suggestion_types=args.suggestion_type,

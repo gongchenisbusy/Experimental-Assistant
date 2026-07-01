@@ -26,6 +26,7 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
+from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
@@ -720,6 +721,7 @@ def build_xps_parameter_source_packet(
     project_id: str,
     library_path: Path | None = None,
     builtin_library: str | None = None,
+    literature_manifest_path: Path | None = None,
     output_path: Path | None = None,
     include_candidates: list[str] | None = None,
     suggestion_types: list[str] | None = None,
@@ -728,13 +730,15 @@ def build_xps_parameter_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    if library_path and builtin_library:
-        raise XPSProcessingError("Use either --library-file or --builtin-library for XPS source-packet generation, not both")
-    if template and builtin_library:
-        raise XPSProcessingError("Use either --write-template or --builtin-library for XPS source-packet generation, not both")
+    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    if selected_source_count > 1:
+        raise XPSProcessingError(
+            "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for XPS source-packet generation"
+        )
 
-    template_mode = template and library_path is None
-    builtin_mode = not template_mode and library_path is None
+    template_mode = template and library_path is None and literature_manifest_path is None
+    literature_mode = literature_manifest_path is not None
+    builtin_mode = not template_mode and not literature_mode and library_path is None
     if builtin_mode and not builtin_library:
         builtin_library = BUILTIN_XPS_PARAMETER_LIBRARY_DEFAULT
     day = _created_day(created_at)
@@ -760,6 +764,23 @@ def build_xps_parameter_source_packet(
         raw_candidates = _xps_parameter_source_candidates(source_library)
         library_ref = f"builtin:{builtin_library}"
         library_kind = "built_in"
+    elif literature_mode:
+        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        if source_path is None:
+            raise XPSProcessingError("XPS literature manifest path was not supplied")
+        try:
+            source_library, manifest_warnings = confirmed_source_packet_library(
+                root,
+                manifest_path=source_path,
+                method="xps",
+                method_aliases={"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"},
+            )
+        except SourcePacketManifestError as exc:
+            raise XPSProcessingError(str(exc)) from exc
+        warnings.extend(manifest_warnings)
+        raw_candidates = _xps_parameter_source_candidates(source_library)
+        library_ref = _relative_to_root(root, source_path)
+        library_kind = "confirmed_literature_manifest"
     else:
         source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
         if source_path is None or not source_path.exists():
@@ -835,6 +856,8 @@ def build_xps_parameter_source_packet(
         "source": "ea.xps.parameter_source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
+        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
+        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
         "reference_seed_count": len(reference_seeds),
         "reference_seeds": reference_seeds,
         "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
@@ -850,7 +873,7 @@ def build_xps_parameter_source_packet(
         "reference_ids": reference_ids,
         "warnings": warnings,
         "next_steps": [
-            "If this packet includes built-in or local reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
+            "If this packet includes built-in or local reference_seeds, or confirmed-literature reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
             "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric fields.",
             "Run `ea xps suggest-parameters` on this packet to create traceable suggestion records before copying values into processing parameters.",
         ],
@@ -858,6 +881,7 @@ def build_xps_parameter_source_packet(
             "Source packets are staging artifacts and do not apply values to XPS processing parameters.",
             "reference_seeds are registration hints only; they do not inject report citations, download PDFs, apply XPS parameters, prove chemical states, or calculate composition.",
             "This source-packet builder is a deterministic staging step and does not perform unconfirmed live network lookup or parse full text during the command. Values may originate from user-provided data, local libraries, project literature records, or separately confirmed literature/search connectors, and EA may use those sources to prepare candidates. The packet still does not auto-choose or apply components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
+            "Confirmed-literature manifests are source-candidate manifests only; they do not register references, inject report citations, apply XPS parameters, fit backgrounds/components, prove chemical states, or calculate composition.",
         ],
     }
     write_yaml(output_path, packet)
@@ -871,6 +895,7 @@ def build_xps_parameter_source_packet(
             "reference_seed_count": len(reference_seeds),
             "template": template_mode,
             "builtin_library": builtin_library if builtin_mode else None,
+            "source_library_kind": library_kind,
             "filters": packet["filters"],
             "auto_applied": False,
         },
