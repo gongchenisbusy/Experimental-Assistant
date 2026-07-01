@@ -245,6 +245,54 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     assert any(name.startswith("provenance/") for name in names)
 
 
+def test_cli_exports_report_bundle_with_focused_trace_view(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--include-trace",
+                "--zip",
+            ]
+        )
+        == 0
+    )
+    output = _json_output(capsys)
+    manifest = read_yaml(Path(output["manifest_path"]))
+    bundle_dir = Path(manifest["bundle_path"])
+    checksum_manifest = read_yaml(Path(output["checksum_manifest_path"]))
+    checksum_paths = {item["path"] for item in checksum_manifest["files"]}
+
+    assert manifest["trace_export"]["included"] is True
+    assert manifest["trace_export"]["strategy"] == "focused_report_trace_view"
+    trace_artifact = manifest["artifacts"]["traceability"][0]
+    assert trace_artifact["kind"] == "traceability_view"
+    assert trace_artifact["label"] == built["report_id"]
+    assert trace_artifact["focus_ref"].startswith("reports/")
+    assert trace_artifact["canonical_focus_ref"] == trace_artifact["focus_ref"]
+    assert trace_artifact["bundle_ref"].startswith("traceability/")
+    assert trace_artifact["markdown_bundle_ref"].startswith("traceability/")
+    assert "prove scientific conclusions" in " ".join(trace_artifact["boundaries"])
+    assert (bundle_dir / trace_artifact["bundle_ref"]).exists()
+    assert (bundle_dir / trace_artifact["markdown_bundle_ref"]).exists()
+    trace = read_yaml(bundle_dir / trace_artifact["bundle_ref"])
+    assert trace["focus_ref"] == trace_artifact["focus_ref"]
+    assert trace["canonical_focus_ref"] == trace_artifact["focus_ref"]
+    assert trace_artifact["bundle_ref"] in checksum_paths
+    assert trace_artifact["markdown_bundle_ref"] in checksum_paths
+
+    with zipfile.ZipFile(Path(output["archive_path"])) as archive:
+        names = set(archive.namelist())
+
+    assert trace_artifact["bundle_ref"] in names
+    assert trace_artifact["markdown_bundle_ref"] in names
+
+
 def test_cli_verifies_report_bundle_and_archive_checksums(tmp_path: Path, capsys) -> None:
     built = _build_report_project(tmp_path)
     assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
@@ -312,7 +360,7 @@ def test_cli_verify_archive_reports_hash_mismatch(tmp_path: Path, capsys) -> Non
 def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, capsys) -> None:
     built = _build_batch_project(tmp_path)
 
-    assert main(["export", "batch-bundle", str(tmp_path), "--batch-id", built["batch_id"], "--zip"]) == 0
+    assert main(["export", "batch-bundle", str(tmp_path), "--batch-id", built["batch_id"], "--include-trace", "--zip"]) == 0
     output = _json_output(capsys)
     manifest = read_yaml(Path(output["manifest_path"]))
     bundle_dir = Path(manifest["bundle_path"])
@@ -323,6 +371,9 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert manifest["status"] == "complete"
     assert manifest["batch_id"] == built["batch_id"]
     assert manifest["archive_created"] is True
+    assert manifest["trace_export"]["included"] is True
+    assert manifest["trace_export"]["strategy"] == "nested_report_focused_trace_views"
+    assert manifest["trace_export"]["batch_level_trace_included"] is False
     assert archive_path.exists()
     assert Path(output["archive_checksum_path"]).exists()
     assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[0] == _sha256(archive_path)
@@ -342,10 +393,16 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert nested["label"] == built["report_id"]
     nested_manifest = read_yaml(bundle_dir / nested["manifest_ref"])
     assert nested_manifest["report_id"] == built["report_id"]
+    assert nested_manifest["trace_export"]["included"] is True
     assert nested_manifest["artifacts"]["reports"][0]["copied"] is True
     assert nested_manifest["artifacts"]["figures"]
     assert nested_manifest["artifacts"]["source_data"]
     assert nested_manifest["artifacts"]["results"]
+    assert nested_manifest["artifacts"]["traceability"]
+    nested_trace = nested_manifest["artifacts"]["traceability"][0]
+    assert nested_trace["focus_ref"].startswith("reports/")
+    assert nested_trace["bundle_ref"].startswith("traceability/")
+    assert nested["traceability"][0]["bundle_ref"] == nested_trace["bundle_ref"]
     nested_checksum_path = bundle_dir / nested["bundle_ref"] / "bundle_checksums.yml"
     nested_checksum = read_yaml(nested_checksum_path)
     nested_entries = {item["path"]: item for item in nested_checksum["files"]}
@@ -360,6 +417,7 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert any(name.startswith("report-bundles/") and name.endswith("bundle_manifest.yml") for name in names)
     assert any(name.startswith("report-bundles/") and name.endswith("bundle_checksums.yml") for name in names)
     assert any(name.startswith("report-bundles/") and "/figures/" in name for name in names)
+    assert any(name.startswith("report-bundles/") and "/traceability/" in name for name in names)
 
 
 def test_export_report_bundle_returns_nonzero_for_unknown_report(tmp_path: Path, capsys) -> None:

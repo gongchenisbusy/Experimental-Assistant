@@ -194,13 +194,14 @@ For a single report handoff:
 ```bash
 ea export report-bundle /path/to/ea-project \
   --report-id rpt-project-slug-YYYYMMDD-001 \
+  --include-trace \
   --zip
 
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-YYYYMMDD-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-YYYYMMDD-001.zip
 ```
 
-For batch work, use `ea export batch-bundle` and the same verification helpers.
+For batch work, use `ea export batch-bundle --include-trace` and the same verification helpers. Report bundles include a focused report traceability YAML/Markdown pair when `--include-trace` is used; batch bundles pass this into nested report bundles rather than creating a top-level batch graph.
 
 For project-bundle provenance audit, checksum interpretation, and the boundary between bundle checksums and external signatures, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
 

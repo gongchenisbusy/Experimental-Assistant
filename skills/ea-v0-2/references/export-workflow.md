@@ -7,6 +7,7 @@ Report bundle command:
 ```bash
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --output exports/report-bundles/custom-name
+ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --include-trace
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --zip
 ea export report-bundle /path/to/ea-project --report-id rpt-project-20260630-001 --zip-output exports/report-bundles/custom-name.zip
 ```
@@ -24,6 +25,7 @@ exports/report-bundles/{report_id}/
 ├── references/
 ├── references/files/
 ├── provenance/
+├── traceability/        # only when --include-trace is used
 └── provenance-inputs/
 ```
 
@@ -36,11 +38,14 @@ exports/report-bundles/{report_id}.zip.sha256
 
 `--zip` writes a sibling `.zip` archive for the generated bundle. `--zip-output` writes the archive to a user-selected path and also enables archive creation. The manifest records `archive_created`, `archive_path`, `archive_ref`, `archive_checksum_path`, and `archive_checksum_ref` before the archive is written, so the `bundle_manifest.yml` inside the archive matches the returned CLI JSON.
 
+`--include-trace` writes a focused report traceability YAML/Markdown pair under the bundle's `traceability/` directory and records it under `artifacts.traceability` plus `trace_export` in `bundle_manifest.yml`. The trace view is an audit artifact only: it does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
+
 Batch bundle command:
 
 ```bash
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --output exports/batch-bundles/custom-name
+ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --include-trace
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip-output exports/batch-bundles/custom-name.zip
 ```
@@ -71,6 +76,8 @@ exports/batch-bundles/{batch_id}/
 
 `batch_bundle_manifest.yml` records copied batch index/run/summary/source-manifest files, batch provenance refs, item summaries, and nested per-report bundle manifests. `--zip` writes `exports/batch-bundles/{batch_id}.zip` and `exports/batch-bundles/{batch_id}.zip.sha256` by default.
 
+For batch bundles, `--include-trace` passes focused trace view generation into each nested report bundle. The top-level batch manifest records `trace_export.strategy: nested_report_focused_trace_views`; EA v0.2 does not emit a batch-level trace graph until the traceability service models batch nodes.
+
 Checksum files:
 
 - `bundle_checksums.yml` records SHA-256 and byte size for files inside the exported bundle folder after the main manifest is written.
@@ -91,6 +98,7 @@ What the bundle includes:
 - Project-local reference files when `local_path` exists inside the project.
 - Provenance records referenced by the report and result metadata.
 - Project-local provenance input records/files, including raw metadata and raw data when provenance records point to them.
+- Optional focused report traceability YAML/Markdown when `--include-trace` is used.
 - `bundle_checksums.yml` for integrity checks.
 
 Batch bundles additionally include:
@@ -100,6 +108,7 @@ Batch bundles additionally include:
 - The source batch manifest referenced by the batch index.
 - Batch provenance and provenance inputs.
 - Nested report bundles for successful items that have `report_ref`.
+- Optional focused traceability YAML/Markdown inside nested report bundles when `--include-trace` is used.
 - Top-level and nested `bundle_checksums.yml` files.
 
 Boundaries:

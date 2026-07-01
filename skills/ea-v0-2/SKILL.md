@@ -34,8 +34,8 @@ ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea trace view /path/to/ea-project
-ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --zip
-ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
+ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --include-trace --zip
+ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --include-trace --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001.zip
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
@@ -175,7 +175,7 @@ Healthcheck and evaluator reports are the local handoff gate. They audit batch r
 
 Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
 
-Report bundle export is read-only for analysis state. It copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`. Each bundle writes `bundle_checksums.yml`; use `--zip` or `--zip-output` when a portable archive and `.zip.sha256` sidecar should be created from the same bundle. Use `verify-bundle` and `verify-archive` after copying or before handoff.
+Report bundle export is read-only for analysis state. It copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Use `--include-trace` when the handoff should include focused traceability YAML/Markdown for the exported report. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`; `--include-trace` passes focused trace views into nested report bundles. Each bundle writes `bundle_checksums.yml`; use `--zip` or `--zip-output` when a portable archive and `.zip.sha256` sidecar should be created from the same bundle. Use `verify-bundle` and `verify-archive` after copying or before handoff.
 
 ## References
 

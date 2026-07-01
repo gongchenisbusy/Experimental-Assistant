@@ -143,12 +143,14 @@ def build_parser() -> argparse.ArgumentParser:
     report_bundle.add_argument("workspace", type=Path)
     report_bundle.add_argument("--report-id", required=True)
     report_bundle.add_argument("--output", type=Path)
+    report_bundle.add_argument("--include-trace", action="store_true", help="include a focused traceability YAML/Markdown view in the bundle")
     report_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
     report_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
     batch_bundle = export_sub.add_parser("batch-bundle", help="bundle one batch run with nested report bundles")
     batch_bundle.add_argument("workspace", type=Path)
     batch_bundle.add_argument("--batch-id", required=True)
     batch_bundle.add_argument("--output", type=Path)
+    batch_bundle.add_argument("--include-trace", action="store_true", help="include focused traceability views in nested report bundles")
     batch_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
     batch_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
     verify_bundle = export_sub.add_parser("verify-bundle", help="verify a report or batch bundle from bundle_checksums.yml")
@@ -844,6 +846,7 @@ def main(argv: list[str] | None = None) -> int:
                     output_dir=output_dir,
                     create_archive=create_archive,
                     archive_path=archive_path,
+                    include_trace=args.include_trace,
                 )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})
@@ -865,6 +868,7 @@ def main(argv: list[str] | None = None) -> int:
                     output_dir=output_dir,
                     create_archive=create_archive,
                     archive_path=archive_path,
+                    include_trace=args.include_trace,
                 )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})

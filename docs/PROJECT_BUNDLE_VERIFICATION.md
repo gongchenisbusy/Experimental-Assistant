@@ -18,6 +18,7 @@ A report bundle created by `ea export report-bundle` normally contains:
 - `references/files/`
 - `provenance/`
 - `provenance-inputs/`
+- optional `traceability/` YAML/Markdown focused on the exported report when `--include-trace` was used
 
 A batch bundle created by `ea export batch-bundle` normally contains:
 
@@ -27,6 +28,7 @@ A batch bundle created by `ea export batch-bundle` normally contains:
 - `report-bundles/` with nested report bundle manifests and checksum records
 - `provenance/`
 - `provenance-inputs/`
+- optional nested report traceability YAML/Markdown files when `--include-trace` was used
 
 When `--zip` or `--zip-output` is used, EA also writes a portable `.zip` archive and a `.zip.sha256` sidecar.
 
@@ -44,6 +46,7 @@ Create and verify a report bundle:
 ```bash
 ea export report-bundle /path/to/ea-project \
   --report-id rpt-project-slug-YYYYMMDD-001 \
+  --include-trace \
   --zip
 
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-YYYYMMDD-001
@@ -55,6 +58,7 @@ Create and verify a batch bundle:
 ```bash
 ea export batch-bundle /path/to/ea-project \
   --batch-id batch-YYYYMMDD-001 \
+  --include-trace \
   --zip
 
 ea export verify-bundle /path/to/ea-project/exports/batch-bundles/batch-YYYYMMDD-001
@@ -75,6 +79,8 @@ ea export verify-archive /path/to/exported-bundle.zip \
 `ea eval project` summarizes whether the project is ready for handoff, including figure/source-data traces, report citations, batch runs, and persisted evaluation records.
 
 `ea export report-bundle` copies one report and its linked figures, source data, result metadata, references, local reference files, provenance records, and project-local provenance inputs.
+
+With `--include-trace`, report bundles also include a focused traceability YAML/Markdown pair under `traceability/`. Batch bundles pass that option to nested report bundles and record `trace_export.strategy: nested_report_focused_trace_views`; v0.2 does not emit a separate batch-level trace graph.
 
 `ea export batch-bundle` copies one batch run, its batch records and summaries, batch provenance inputs, and nested per-report bundles for successful items with reports.
 

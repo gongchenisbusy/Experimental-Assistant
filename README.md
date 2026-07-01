@@ -18,8 +18,8 @@ ea eval project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea healthcheck examples/public-raman-project
 ea eval project examples/public-raman-project --no-write
-ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --zip
-ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --zip
+ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --include-trace --zip
+ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --include-trace --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
@@ -155,7 +155,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
 `ea trace view` writes `traceability/project_trace.yml` and `.md` by linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, provenance, memory candidates, and committed memory. Use `--focus <report-or-record-ref>` to render one connected subgraph. It is a read-only audit view except for its own trace files; it does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
-`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify local handoff integrity after copying. For provenance audit and checksum/signature boundaries, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
+`ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. Add `--include-trace` to include a focused report traceability YAML/Markdown view inside the bundle. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`; with `--include-trace`, each nested report bundle includes its own focused trace view. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify local handoff integrity after copying. For provenance audit and checksum/signature boundaries, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
 
 ## Developer Setup
 

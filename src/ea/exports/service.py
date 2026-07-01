@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
+from ea.traceability import build_project_trace_view
 
 
 class ReportBundleError(RuntimeError):
@@ -122,6 +123,42 @@ def _result_metadata_index(root: Path) -> dict[str, Path]:
 
 def _record_missing(manifest: dict[str, Any], *, kind: str, ref: str, reason: str) -> None:
     manifest.setdefault("missing_refs", []).append({"kind": kind, "ref": ref, "reason": reason})
+
+
+def _bundle_trace_view(
+    root: Path,
+    bundle_dir: Path,
+    *,
+    label: str,
+    focus_ref: str,
+    created_at: str,
+) -> dict[str, Any]:
+    trace_path = bundle_dir / "traceability" / f"{_safe_name(label)}_trace.yml"
+    markdown_path = trace_path.with_suffix(".md")
+    result = build_project_trace_view(
+        root,
+        focus_ref=focus_ref,
+        output_path=trace_path,
+        markdown_output_path=markdown_path,
+        created_at=created_at,
+    )
+    return {
+        "kind": "traceability_view",
+        "label": label,
+        "source": "ea.traceability.project_trace_view:v0.2",
+        "generated": True,
+        "status": result["status"],
+        "focus_ref": focus_ref,
+        "canonical_focus_ref": result.get("canonical_focus_ref"),
+        "bundle_ref": trace_path.relative_to(bundle_dir).as_posix(),
+        "markdown_bundle_ref": markdown_path.relative_to(bundle_dir).as_posix(),
+        "trace_ref": result["trace_ref"],
+        "markdown_ref": result["markdown_ref"],
+        "node_count": result["node_count"],
+        "edge_count": result["edge_count"],
+        "missing_node_count": result["missing_node_count"],
+        "boundaries": result["boundaries"],
+    }
 
 
 def _default_archive_path(bundle_dir: Path) -> Path:
@@ -379,6 +416,7 @@ def export_report_bundle(
     created_at: str | None = None,
     create_archive: bool = False,
     archive_path: Path | None = None,
+    include_trace: bool = False,
 ) -> dict[str, Any]:
     root = root.resolve()
     reports = _reports_index(root)
@@ -406,6 +444,16 @@ def export_report_bundle(
             "references": [],
             "reference_files": [],
             "provenance": [],
+            "traceability": [],
+        },
+        "trace_export": {
+            "included": include_trace,
+            "focus_ref": None,
+            "strategy": "focused_report_trace_view" if include_trace else "not_requested",
+            "boundaries": [
+                "Trace export writes audit YAML/Markdown into the bundle only.",
+                "It does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.",
+            ],
         },
         "provenance_inputs": [],
         "missing_refs": [],
@@ -420,6 +468,7 @@ def export_report_bundle(
     }
 
     report_ref = str(report_record.get("path") or "")
+    manifest["trace_export"]["focus_ref"] = report_ref or None
     report_copy = _copy_project_file(root, bundle_dir, ref=report_ref, subdir="reports", kind="report", label=report_id)
     manifest["artifacts"]["reports"].append(report_copy)
     report_frontmatter: dict[str, Any] = {}
@@ -529,6 +578,19 @@ def export_report_bundle(
     report_provenance_refs = [str(item) for item in report_frontmatter.get("provenance_refs") or []]
     manifest["artifacts"]["provenance"].extend(_copy_provenance(root, bundle_dir, manifest, report_provenance_refs))
 
+    if include_trace and report_ref:
+        trace_record = _bundle_trace_view(
+            root,
+            bundle_dir,
+            label=report_id,
+            focus_ref=report_ref,
+            created_at=str(manifest["created_at"]),
+        )
+        manifest["artifacts"]["traceability"].append(trace_record)
+        manifest["trace_export"]["trace_bundle_ref"] = trace_record["bundle_ref"]
+        manifest["trace_export"]["markdown_bundle_ref"] = trace_record["markdown_bundle_ref"]
+        manifest["trace_export"]["canonical_focus_ref"] = trace_record.get("canonical_focus_ref")
+
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
     archive_target: Path | None = None
     archive_checksum: Path | None = None
@@ -568,6 +630,7 @@ def export_batch_bundle(
     created_at: str | None = None,
     create_archive: bool = False,
     archive_path: Path | None = None,
+    include_trace: bool = False,
 ) -> dict[str, Any]:
     root = root.resolve()
     batches = _batch_index(root)
@@ -591,6 +654,16 @@ def export_batch_bundle(
             "batch_records": [],
             "report_bundles": [],
             "provenance": [],
+        },
+        "trace_export": {
+            "included": include_trace,
+            "strategy": "nested_report_focused_trace_views" if include_trace else "not_requested",
+            "batch_level_trace_included": False,
+            "batch_level_trace_reason": "project_trace_view_does_not_model_batch_nodes_yet" if include_trace else None,
+            "boundaries": [
+                "Batch trace export currently delegates to nested report bundle focused trace views.",
+                "It does not mutate source reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.",
+            ],
         },
         "provenance_inputs": [],
         "missing_refs": [],
@@ -656,6 +729,7 @@ def export_batch_bundle(
             output_dir=bundle_dir / "report-bundles" / report_id,
             created_at=str(manifest["created_at"]),
             create_archive=False,
+            include_trace=include_trace,
         )
         report_bundle_ref = _project_ref(root, Path(report_bundle["bundle_path"]))
         report_manifest_ref = _project_ref(root, Path(report_bundle["manifest_path"]))
@@ -670,6 +744,7 @@ def export_batch_bundle(
             "bundle_ref": Path(report_bundle["bundle_path"]).relative_to(bundle_dir).as_posix(),
             "manifest_ref": Path(report_bundle["manifest_path"]).relative_to(bundle_dir).as_posix(),
             "missing_ref_count": len(report_bundle.get("missing_refs") or []),
+            "traceability": report_bundle.get("artifacts", {}).get("traceability", []),
         }
         manifest["artifacts"]["report_bundles"].append(nested)
         for missing in report_bundle.get("missing_refs") or []:

@@ -28,6 +28,9 @@ def test_project_bundle_verification_doc_is_public_safe_and_actionable() -> None
     assert "bundle_manifest.yml" in text
     assert "batch_bundle_manifest.yml" in text
     assert "bundle_checksums.yml" in text
+    assert "--include-trace" in text
+    assert "focused traceability YAML/Markdown" in text
+    assert "nested_report_focused_trace_views" in text
     assert "provenance" in text
     assert "does not provide a built-in detached signing command for project export bundles" in text
     assert "repository release packages" in text
