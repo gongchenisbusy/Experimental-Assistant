@@ -1,0 +1,20 @@
+schema_version: '0.2'
+created_at: '2026-06-04T10:19:00'
+updated_at: '2026-06-04T10:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-ftir-colthup-1990
+project_id: prj-public-ftir-assignment-example
+citation: Colthup, N. B.; Daly, L. H.; Wiberley, S. E. Introduction to Infrared and
+  Raman Spectroscopy, 3rd ed.; Academic Press, 1990.
+title: Introduction to Infrared and Raman Spectroscopy
+authors:
+- Norman B. Colthup
+- Lawrence H. Daly
+- Stephen E. Wiberley
+year: 1990
+venue: Academic Press
+source_type: manual
+notes: General IR/Raman spectroscopy reference seed. Register or replace with project-specific
+  references before using suggestions as report evidence.

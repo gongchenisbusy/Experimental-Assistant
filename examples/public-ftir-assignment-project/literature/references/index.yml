@@ -1,0 +1,52 @@
+schema_version: '0.2'
+references:
+  builtin-ftir-coates-2000:
+    reference_id: builtin-ftir-coates-2000
+    path: literature/references/builtin-ftir-coates-2000.yml
+    project_id: prj-public-ftir-assignment-example
+    citation: Coates, J. Interpretation of Infrared Spectra, A Practical Approach.
+      In Encyclopedia of Analytical Chemistry; Wiley, 2000.
+    doi: null
+    url: null
+    local_path: null
+    source_type: manual
+  builtin-ftir-colthup-1990:
+    reference_id: builtin-ftir-colthup-1990
+    path: literature/references/builtin-ftir-colthup-1990.yml
+    project_id: prj-public-ftir-assignment-example
+    citation: Colthup, N. B.; Daly, L. H.; Wiberley, S. E. Introduction to Infrared
+      and Raman Spectroscopy, 3rd ed.; Academic Press, 1990.
+    doi: null
+    url: null
+    local_path: null
+    source_type: manual
+  builtin-ftir-farmer-1974:
+    reference_id: builtin-ftir-farmer-1974
+    path: literature/references/builtin-ftir-farmer-1974.yml
+    project_id: prj-public-ftir-assignment-example
+    citation: Farmer, V. C., Ed. The Infrared Spectra of Minerals; Mineralogical Society,
+      1974.
+    doi: null
+    url: null
+    local_path: null
+    source_type: manual
+  builtin-ftir-nakamoto-2009:
+    reference_id: builtin-ftir-nakamoto-2009
+    path: literature/references/builtin-ftir-nakamoto-2009.yml
+    project_id: prj-public-ftir-assignment-example
+    citation: Nakamoto, K. Infrared and Raman Spectra of Inorganic and Coordination
+      Compounds, Part A, 6th ed.; Wiley, 2009.
+    doi: null
+    url: null
+    local_path: null
+    source_type: manual
+  builtin-ftir-socrates-2001:
+    reference_id: builtin-ftir-socrates-2001
+    path: literature/references/builtin-ftir-socrates-2001.yml
+    project_id: prj-public-ftir-assignment-example
+    citation: 'Socrates, G. Infrared and Raman Characteristic Group Frequencies: Tables
+      and Charts, 3rd ed.; Wiley, 2001.'
+    doi: null
+    url: null
+    local_path: null
+    source_type: manual

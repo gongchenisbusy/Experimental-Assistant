@@ -4,7 +4,7 @@ EA v0.2 is the clean implementation workspace for the local-first Experimental A
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/` and `examples/public-xps-be-project/`; the XPS example now shows the default C 1s/Si 2p binding-energy candidate path plus an optional O 1s/oxide source-backed path. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
+New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
 ## Public Setup
 
@@ -18,6 +18,8 @@ ea eval project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea healthcheck examples/public-raman-project
 ea eval project examples/public-raman-project --no-write
+ea healthcheck examples/public-ftir-assignment-project
+ea eval project examples/public-ftir-assignment-project --no-write
 ea healthcheck examples/public-xps-be-project
 ea eval project examples/public-xps-be-project --no-write
 ea export report-bundle /path/to/ea-project --report-id rpt-project-slug-20260630-001 --include-trace --zip
@@ -182,7 +184,7 @@ python3 scripts/build_distribution_checklist.py
 `scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.
-`scripts/build_packaged_example_project.py` regenerates the public-safe Raman example project under `examples/public-raman-project/`; `scripts/build_public_xps_be_example_project.py` regenerates the public-safe XPS binding-energy candidate example under `examples/public-xps-be-project/`. Both examples are included in default release manifests/packages and should pass `ea healthcheck` and `ea eval project --no-write`.
+`scripts/build_packaged_example_project.py` regenerates the public-safe Raman example project under `examples/public-raman-project/`; `scripts/build_public_ftir_assignment_example_project.py` regenerates the public-safe FTIR source-backed assignment example under `examples/public-ftir-assignment-project/`; `scripts/build_public_xps_be_example_project.py` regenerates the public-safe XPS binding-energy candidate example under `examples/public-xps-be-project/`. These examples are included in default release manifests/packages and should pass `ea healthcheck` and `ea eval project --no-write`.
 `scripts/generate_release_keypair.py`, `scripts/sign_release_package.py`, and `scripts/verify_release_signature.py` implement an optional detached Ed25519 signature workflow for release packages. Private/public key paths must be supplied explicitly by the user; EA does not assume or search developer-machine key locations. The installed console entry points are `ea-release-keygen`, `ea-sign-release-package`, and `ea-verify-release-signature`.
 `scripts/build_distribution_checklist.py` writes `dist/ea-v0.2-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
 

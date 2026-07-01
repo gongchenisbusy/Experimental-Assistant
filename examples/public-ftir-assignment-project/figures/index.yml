@@ -1,0 +1,60 @@
+schema_version: '0.2'
+figures:
+  fig-public-ftir-assignment-example-ftir-20260604-001:
+    figure_id: fig-public-ftir-assignment-example-ftir-20260604-001
+    path: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/fig-public-ftir-assignment-example-ftir-20260604-001.png
+    report_id: rpt-public-ftir-assignment-example-20260604-001
+    result_id: res-public-ftir-assignment-example-ftir-20260604-001
+    raw_data_ids:
+    - char-20260604-001
+    sample_ids:
+    - sample-example-polymer-silica-ftir-001
+    experiment_ids:
+    - exp-20260604-001
+    generation:
+      style_profile: nature_like_clean
+      script: src/ea/ftir/service.py
+      parameters:
+        x_column: wavenumber
+        y_column: absorbance
+        x_unit: cm^-1
+        signal_mode: absorbance
+        processing_parameters:
+          baseline_correction:
+            enabled: false
+            method: rolling_quantile
+            window_points: 101
+            quantile: 0.05
+          smoothing:
+            enabled: false
+            method: savitzky_golay
+            window_length: 9
+            polyorder: 2
+          normalization:
+            enabled: true
+            method: max_abs
+          peak_detection:
+            method: scipy_find_peaks
+            prominence: auto
+            distance: auto
+            max_bands: 12
+          band_assignment:
+            enabled: true
+            source: ea.ftir.builtin_band_windows:v0.2
+          context_record:
+            enabled: false
+            method: reviewed_metadata_record
+            source: ea.ftir.context_record:v0.2
+            instrument_accessory: {}
+            atmosphere: {}
+            sample_preparation: {}
+            background: {}
+            reference: {}
+            correction_notes: []
+    caption: FTIR spectrum with processed signal, detected bands, and broad band-family
+      screening hints.
+    purpose: ftir_analysis_report
+    style_profile: nature_like_clean
+    source_data_refs:
+    - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_processed.csv
+    - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv

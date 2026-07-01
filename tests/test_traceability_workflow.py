@@ -432,6 +432,60 @@ def test_public_xps_example_trace_links_source_backed_references(tmp_path: Path)
     ) in edges
 
 
+def test_public_ftir_example_trace_links_source_backed_assignments(tmp_path: Path) -> None:
+    root = Path("examples/public-ftir-assignment-project")
+
+    result = build_project_trace_view(
+        root,
+        output_path=tmp_path / "public_ftir_trace.yml",
+        markdown_output_path=tmp_path / "public_ftir_trace.md",
+        created_at="2026-07-01T17:30:00",
+    )
+    trace = read_yaml(Path(result["trace_path"]))
+    node_ids = {node["id"] for node in trace["nodes"]}
+    edges = {(edge["from"], edge["relation"], edge["to"]) for edge in trace["edges"]}
+    nodes = {node["id"]: node for node in trace["nodes"]}
+
+    assert result["status"] == "complete"
+    assert "source_library:builtin:generic_materials" in node_ids
+    assert "reference:builtin-ftir-socrates-2001" in node_ids
+    assert "reference:builtin-ftir-colthup-1990" in node_ids
+    assert nodes["reference:builtin-ftir-socrates-2001"]["path"] == "literature/references/builtin-ftir-socrates-2001.yml"
+    assert nodes["reference:builtin-ftir-socrates-2001"]["metadata"]["title"] == (
+        "Infrared and Raman Characteristic Group Frequencies: Tables and Charts"
+    )
+    assert (
+        "suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml",
+        "from_source_library",
+        "source_library:builtin:generic_materials",
+    ) in edges
+    assert (
+        "suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml",
+        "has_reference_seed",
+        "reference:builtin-ftir-socrates-2001",
+    ) in edges
+    assert (
+        "suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml",
+        "candidate_uses_reference",
+        "reference:builtin-ftir-socrates-2001",
+    ) in edges
+    assert (
+        "reports/rpt-public-ftir-assignment-example-20260604-001.md",
+        "cites_reference",
+        "reference:builtin-ftir-socrates-2001",
+    ) in edges
+    assert (
+        "memory/candidates/memcand-20260604-001.md",
+        "has_source",
+        "reference:builtin-ftir-socrates-2001",
+    ) in edges
+    assert (
+        "reviews/review-20260604-004.yml",
+        "reviews_target",
+        "suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml",
+    ) in edges
+
+
 def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
     _write_trace_fixture(tmp_path)
 

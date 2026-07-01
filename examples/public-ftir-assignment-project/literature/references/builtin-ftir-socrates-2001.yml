@@ -1,0 +1,18 @@
+schema_version: '0.2'
+created_at: '2026-06-04T10:19:00'
+updated_at: '2026-06-04T10:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-ftir-socrates-2001
+project_id: prj-public-ftir-assignment-example
+citation: 'Socrates, G. Infrared and Raman Characteristic Group Frequencies: Tables
+  and Charts, 3rd ed.; Wiley, 2001.'
+title: 'Infrared and Raman Characteristic Group Frequencies: Tables and Charts'
+authors:
+- George Socrates
+year: 2001
+venue: Wiley
+source_type: manual
+notes: General characteristic group-frequency reference seed. Register or replace
+  with project-specific references before using suggestions as report evidence.

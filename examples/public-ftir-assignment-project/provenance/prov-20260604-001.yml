@@ -1,0 +1,25 @@
+provenance_id: prov-20260604-001
+workflow: project_initialization
+created_at: '2026-06-04T10:00:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files: []
+outputs:
+  records:
+  - EA_PROJECT.md
+  - PROJECT_RULE_CARD.md
+  - .ea/project_config.yml
+  - open-items/openitem-20260604-001.yml
+  files: []
+parameters:
+  project_name: EA Public FTIR Assignment Example
+  material_system: polymer-silica hybrid film
+  status: draft_until_user_review
+  project_slug: public-ftir-assignment-example
+  public_initialization: developer_machine_defaults_disabled
+review_refs: []
+warnings: []
+source_refs: []
+scripts: []

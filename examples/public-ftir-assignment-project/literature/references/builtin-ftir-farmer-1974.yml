@@ -1,0 +1,18 @@
+schema_version: '0.2'
+created_at: '2026-06-04T10:19:00'
+updated_at: '2026-06-04T10:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-ftir-farmer-1974
+project_id: prj-public-ftir-assignment-example
+citation: Farmer, V. C., Ed. The Infrared Spectra of Minerals; Mineralogical Society,
+  1974.
+title: The Infrared Spectra of Minerals
+authors:
+- Victor C. Farmer
+year: 1974
+venue: Mineralogical Society
+source_type: manual
+notes: Mineral and inorganic-solid FTIR reference seed. Register or replace with project-specific
+  references before using suggestions as report evidence.

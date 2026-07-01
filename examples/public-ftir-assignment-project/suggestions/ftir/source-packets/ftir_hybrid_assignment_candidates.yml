@@ -1,0 +1,216 @@
+schema_version: '0.2'
+source_packet_id: ftir_assignment_source_packet-20260604-001
+project_id: prj-public-ftir-assignment-example
+status: ready_for_suggest_assignments
+created_at: '2026-06-04T10:18:00'
+updated_at: '2026-06-04T10:18:00'
+source: ea.ftir.assignment_source_packet:v0.2
+source_library_kind: built_in
+source_library_ref: builtin:generic_materials
+source_manifest_ref: null
+confirmation_status: null
+reference_seeds:
+  builtin-ftir-socrates-2001:
+    citation: 'Socrates, G. Infrared and Raman Characteristic Group Frequencies: Tables
+      and Charts, 3rd ed.; Wiley, 2001.'
+    title: 'Infrared and Raman Characteristic Group Frequencies: Tables and Charts'
+    author:
+    - George Socrates
+    year: 2001
+    venue: Wiley
+    source_type: manual
+    notes: General characteristic group-frequency reference seed. Register or replace
+      with project-specific references before using suggestions as report evidence.
+  builtin-ftir-colthup-1990:
+    citation: Colthup, N. B.; Daly, L. H.; Wiberley, S. E. Introduction to Infrared
+      and Raman Spectroscopy, 3rd ed.; Academic Press, 1990.
+    title: Introduction to Infrared and Raman Spectroscopy
+    author:
+    - Norman B. Colthup
+    - Lawrence H. Daly
+    - Stephen E. Wiberley
+    year: 1990
+    venue: Academic Press
+    source_type: manual
+    notes: General IR/Raman spectroscopy reference seed. Register or replace with
+      project-specific references before using suggestions as report evidence.
+  builtin-ftir-coates-2000:
+    citation: Coates, J. Interpretation of Infrared Spectra, A Practical Approach.
+      In Encyclopedia of Analytical Chemistry; Wiley, 2000.
+    title: Interpretation of Infrared Spectra, A Practical Approach
+    author:
+    - John Coates
+    year: 2000
+    venue: Encyclopedia of Analytical Chemistry
+    source_type: review
+    notes: Practical FTIR interpretation reference seed for common group-frequency
+      and overlap checks. Register or replace with project-specific references before
+      using suggestions as report evidence.
+  builtin-ftir-farmer-1974:
+    citation: Farmer, V. C., Ed. The Infrared Spectra of Minerals; Mineralogical Society,
+      1974.
+    title: The Infrared Spectra of Minerals
+    author:
+    - Victor C. Farmer
+    year: 1974
+    venue: Mineralogical Society
+    source_type: manual
+    notes: Mineral and inorganic-solid FTIR reference seed. Register or replace with
+      project-specific references before using suggestions as report evidence.
+  builtin-ftir-nakamoto-2009:
+    citation: Nakamoto, K. Infrared and Raman Spectra of Inorganic and Coordination
+      Compounds, Part A, 6th ed.; Wiley, 2009.
+    title: Infrared and Raman Spectra of Inorganic and Coordination Compounds
+    author:
+    - Kazuo Nakamoto
+    year: 2009
+    venue: Wiley
+    source_type: manual
+    notes: Inorganic and coordination-compound vibrational spectroscopy seed. Register
+      or replace with project-specific references before using suggestions as report
+      evidence.
+reference_seed_count: 5
+candidate_count: 4
+candidates:
+- candidate_id: ftir-builtin-oh-nh-stretching-generic
+  assignment_type: functional_group
+  assignment_label: broad O-H or N-H stretching candidate
+  band_label: broad high-wavenumber stretching band
+  material_scope: generic materials; polymers; oxides; hydroxylated surfaces; adsorbed
+    water; amines; amides
+  sample_scope: samples where hydroxyl, amine, amide, moisture, or surface adsorbate
+    context is plausible
+  wavenumber_window_cm1:
+  - 3200
+  - 3600
+  expected_feature: absorbance_maximum
+  source_summary: Standard group-frequency references list broad O-H and N-H stretching
+    absorptions in this high-wavenumber region, with strong overlap from water and
+    hydrogen bonding.
+  applicability_notes:
+  - Use only as a broad screening candidate until atmosphere, drying, sample preparation,
+    and chemistry are reviewed.
+  - Broadness and band shape matter; a single maximum is weaker evidence than a reviewed
+    broad envelope.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  confidence: low
+  caveats:
+  - Moisture, hydrogen bonding, and sample-preparation artifacts commonly affect this
+    region.
+  - This window does not distinguish O-H from N-H without project context and additional
+    evidence.
+- candidate_id: ftir-builtin-aliphatic-ch-stretching-generic
+  assignment_type: functional_group
+  assignment_label: aliphatic C-H stretching candidate
+  band_label: aliphatic C-H stretching band
+  material_scope: generic materials; polymers; organic ligands; binders; surfactants;
+    carbonaceous residues
+  sample_scope: samples where organic chains, binders, surfactants, ligands, or contamination
+    are plausible
+  wavenumber_window_cm1:
+  - 2850
+  - 2970
+  expected_feature: absorbance_maximum
+  source_summary: Standard group-frequency references place aliphatic C-H stretching
+    bands in the 2850-2970 cm^-1 region for many organic materials.
+  applicability_notes:
+  - Compare with project chemistry and sample history before interpreting as a real
+    material component.
+  - Check whether binders, solvents, ligands, or handling residues could explain the
+    feature.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  confidence: low
+  caveats:
+  - Organic contamination and processing residues can produce similar bands.
+  - Band-window match alone is not proof of alkyl groups in the target material.
+- candidate_id: ftir-builtin-carbonyl-co-stretching-generic
+  assignment_type: functional_group
+  assignment_label: carbonyl C=O stretching candidate
+  band_label: carbonyl stretching band
+  material_scope: generic materials; polymers; esters; carboxylates; amides; carbonates;
+    oxidized surfaces
+  sample_scope: samples where oxygen-containing organic groups, oxidized ligands,
+    polymers, esters, acids, amides, or carbonates are plausible
+  wavenumber_window_cm1:
+  - 1650
+  - 1800
+  expected_feature: absorbance_maximum
+  source_summary: Standard group-frequency references place many C=O stretching absorptions
+    in the 1650-1800 cm^-1 region, with position depending strongly on conjugation,
+    hydrogen bonding, and functional group class.
+  applicability_notes:
+  - Treat this as a candidate family, not a specific carbonyl environment.
+  - Use project chemistry, neighboring bands, and references to distinguish ester,
+    acid, amide, carbonate, or other carbonyl-like sources.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  confidence: low
+  caveats:
+  - Water bending, amide bands, C=C modes, and other overlapping bands can affect
+    this region.
+  - The candidate does not identify a specific compound or carbonyl environment by
+    itself.
+- candidate_id: ftir-builtin-sio-stretching-generic
+  assignment_type: functional_group
+  assignment_label: Si-O or inorganic oxide stretching candidate
+  band_label: Si-O/oxide stretching band
+  material_scope: generic materials; silica; silicates; glass; oxide surfaces; hybrid
+    organic-inorganic materials
+  sample_scope: samples where silica, silicate, glass, oxide, or surface oxygen networks
+    are plausible
+  wavenumber_window_cm1:
+  - 900
+  - 1150
+  expected_feature: absorbance_maximum
+  source_summary: Standard group-frequency references and common FTIR practice associate
+    strong Si-O or related oxide network stretching bands with the 900-1150 cm^-1
+    region, but exact positions are system-dependent.
+  applicability_notes:
+  - Use project material identity and reference spectra to distinguish Si-O from organic
+    fingerprint bands.
+  - Check whether the sample, substrate, filler, or support contains silica or other
+    oxides.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  confidence: low
+  caveats:
+  - Organic C-O/C-N fingerprint bands can overlap this region.
+  - This candidate is not a definitive oxide-network assignment.
+filters:
+  include_candidates:
+  - ftir-builtin-aliphatic-ch-stretching-generic
+  - ftir-builtin-carbonyl-co-stretching-generic
+  - ftir-builtin-oh-nh-stretching-generic
+  - ftir-builtin-sio-stretching-generic
+  assignment_types: []
+  material_scopes: []
+reference_ids:
+- builtin-ftir-colthup-1990
+- builtin-ftir-socrates-2001
+warnings: []
+next_steps:
+- If this packet uses built-in reference_seeds or local/confirmed-literature reference_seeds,
+  register or replace those references in the project before treating suggestions
+  as report evidence.
+- Review and edit this packet until every candidate has a wavenumber window, source_summary,
+  applicability_notes, reference_ids, confidence, and caveats.
+- Run `ea ftir suggest-assignments` with processed FTIR metadata to match candidates
+  against detected bands before using them in reports or memory.
+boundaries:
+- FTIR assignment source packets are staging artifacts and do not modify processing
+  outputs or confirmed project memory.
+- This source-packet builder is a deterministic staging step and does not perform
+  unconfirmed live lookup, download articles, or parse full text during the command.
+  Values may originate from built-in generic libraries, user-provided data, local
+  libraries, project literature, or separately confirmed search connectors, and EA
+  may use those sources to prepare assignment candidates.
+- Confirmed-literature manifests are source-candidate manifests only; they do not
+  register references, inject report citations, apply FTIR assignments, prove composition,
+  or prove functional groups.
+provenance_ref: provenance/prov-20260604-005.yml

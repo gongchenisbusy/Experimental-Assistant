@@ -8,11 +8,13 @@ from ea.evaluation import run_project_evaluation
 from ea.healthcheck import run_healthcheck
 from ea.release_manifest import build_release_manifest
 from ea.release_package import write_release_package
-from ea.storage import read_yaml
+from ea.storage import read_markdown_record, read_yaml
 
 
 RAMAN_EXAMPLE_ROOT = Path("examples/public-raman-project")
 RAMAN_EXAMPLE_MANIFEST = RAMAN_EXAMPLE_ROOT / "example_manifest.yml"
+FTIR_EXAMPLE_ROOT = Path("examples/public-ftir-assignment-project")
+FTIR_EXAMPLE_MANIFEST = FTIR_EXAMPLE_ROOT / "example_manifest.yml"
 XPS_EXAMPLE_ROOT = Path("examples/public-xps-be-project")
 XPS_EXAMPLE_MANIFEST = XPS_EXAMPLE_ROOT / "example_manifest.yml"
 FORBIDDEN_PUBLIC_DEFAULTS = [
@@ -140,6 +142,79 @@ def test_packaged_public_xps_be_example_is_public_safe_and_evaluable() -> None:
             assert forbidden not in text, path
 
 
+def test_packaged_public_ftir_assignment_example_is_public_safe_and_evaluable() -> None:
+    manifest = read_yaml(FTIR_EXAMPLE_MANIFEST)
+
+    assert manifest["example_type"] == "packaged_public_project"
+    assert manifest["project_id"] == "prj-public-ftir-assignment-example"
+    assert manifest["public_boundary"]["uses_developer_machine_defaults"] is False
+    assert manifest["public_boundary"]["zotero_enabled"] is False
+    assert manifest["public_boundary"]["browser_assist_enabled"] is False
+    assert manifest["workflow_boundary"]["auto_applies_assignments"] is False
+    assert manifest["workflow_boundary"]["proves_functional_groups_or_composition"] is False
+    assert manifest["workflow_boundary"]["writes_confirmed_memory"] is False
+    assert manifest["workflow_boundary"]["performs_live_lookup_or_pdf_download"] is False
+    assert manifest["suggestion_id"] == "suggestion-20260604-001"
+    assert manifest["validation"]["healthcheck_status"] == "pass"
+    assert manifest["validation"]["evaluation_status"] == "pass"
+    for rel in manifest["key_artifacts"].values():
+        if isinstance(rel, list):
+            for item in rel:
+                assert (FTIR_EXAMPLE_ROOT / item).exists(), item
+        else:
+            assert (FTIR_EXAMPLE_ROOT / rel).exists(), rel
+
+    source_packet = read_yaml(FTIR_EXAMPLE_ROOT / manifest["key_artifacts"]["source_packet"])
+    suggestion = read_yaml(FTIR_EXAMPLE_ROOT / manifest["key_artifacts"]["suggestion_record"])
+    review_package = read_yaml(FTIR_EXAMPLE_ROOT / manifest["key_artifacts"]["review_package"])
+    report = (FTIR_EXAMPLE_ROOT / manifest["key_artifacts"]["report"]).read_text(encoding="utf-8")
+    memory_records = [
+        read_markdown_record(FTIR_EXAMPLE_ROOT / rel)
+        for rel in manifest["key_artifacts"]["memory_candidates"]
+    ]
+
+    assert source_packet["source_library_ref"] == "builtin:generic_materials"
+    assert source_packet["candidate_count"] == 4
+    assert "builtin-ftir-socrates-2001" in source_packet["reference_seeds"]
+    assert suggestion["ready_for_user_review_count"] == 4
+    assert suggestion["needs_reference_registration_count"] == 0
+    assert suggestion["no_feature_match_count"] == 0
+    assert {candidate["status"] for candidate in suggestion["candidates"]} == {"ready_for_user_review"}
+    assert {candidate["auto_applied"] for candidate in suggestion["candidates"]} == {False}
+    assert "builtin-ftir-socrates-2001" in suggestion["reference_ids"]
+    assert "builtin-ftir-colthup-1990" in suggestion["reference_ids"]
+    assert review_package["review_target_type"] == "ftir_assignment_suggestions"
+    assert review_package["selected_status_counts"]["ready_for_user_review"] == 4
+    assert "Source-backed FTIR assignment suggestions" in report
+    assert "ftir-builtin-carbonyl-co-stretching-generic" in report
+    assert "ftir-builtin-sio-stretching-generic" in report
+    assert "[1]" in report and "[2]" in report
+    assert "不能单独证明化学组成" in report
+    assert len(memory_records) == 2
+    memory_bodies = [body for _, body in memory_records]
+    assert any("ftir-builtin-carbonyl-co-stretching-generic" in body for body in memory_bodies)
+    assert any("ftir-builtin-sio-stretching-generic" in body for body in memory_bodies)
+    for frontmatter, body in memory_records:
+        assert frontmatter["status"] == "draft"
+        assert frontmatter["category"] == "interpretation"
+        assert manifest["key_artifacts"]["suggestion_record"] in frontmatter["source_refs"]
+        assert "does not by itself prove chemical composition" in body
+
+    healthcheck = run_healthcheck(FTIR_EXAMPLE_ROOT)
+    assert healthcheck["status"] == "pass"
+    assert healthcheck["findings"] == []
+
+    evaluation = run_project_evaluation(FTIR_EXAMPLE_ROOT, write_report=False, created_at="2026-06-04T10:30:00")
+    assert evaluation["status"] == "pass"
+    assert evaluation["error_count"] == 0
+    assert evaluation["warning_count"] == 0
+
+    for path in _text_files(FTIR_EXAMPLE_ROOT):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
+            assert forbidden not in text, path
+
+
 def test_packaged_example_builders_create_evaluable_projects(tmp_path: Path) -> None:
     builder = _load_builder_module("build_packaged_example_project.py")
     output = tmp_path / "public-raman-project"
@@ -163,6 +238,18 @@ def test_packaged_example_builders_create_evaluable_projects(tmp_path: Path) -> 
     assert (xps_output / "example_manifest.yml").exists()
     assert run_healthcheck(xps_output)["status"] == "pass"
 
+    ftir_builder = _load_builder_module("build_public_ftir_assignment_example_project.py")
+    ftir_output = tmp_path / "public-ftir-assignment-project"
+
+    ftir_summary = ftir_builder.build_example(ftir_output, force=True)
+
+    assert ftir_summary["healthcheck_status"] == "pass"
+    assert ftir_summary["evaluation_status"] == "pass"
+    assert ftir_summary["suggestion_id"] == "suggestion-20260604-001"
+    assert ftir_summary["memory_candidate_count"] == 2
+    assert (ftir_output / "example_manifest.yml").exists()
+    assert run_healthcheck(ftir_output)["status"] == "pass"
+
 
 def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Path) -> None:
     manifest = build_release_manifest(Path.cwd())
@@ -172,6 +259,13 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
     assert "examples/public-raman-project/EA_PROJECT.md" in paths
     assert "examples/public-raman-project/reports/rpt-public-raman-example-20260602-001.md" in paths
     assert "examples/public-raman-project/source-inputs/raw/mos2-raman-public-fixture.txt" in paths
+    assert "examples/public-ftir-assignment-project/example_manifest.yml" in paths
+    assert "examples/public-ftir-assignment-project/EA_PROJECT.md" in paths
+    assert "examples/public-ftir-assignment-project/reports/rpt-public-ftir-assignment-example-20260604-001.md" in paths
+    assert "examples/public-ftir-assignment-project/suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml" in paths
+    assert "examples/public-ftir-assignment-project/suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml" in paths
+    assert "examples/public-ftir-assignment-project/memory/candidates/memcand-20260604-001.md" in paths
+    assert "examples/public-ftir-assignment-project/source-inputs/raw/polymer-silica-ftir-public-fixture.txt" in paths
     assert "examples/public-xps-be-project/example_manifest.yml" in paths
     assert "examples/public-xps-be-project/EA_PROJECT.md" in paths
     assert "examples/public-xps-be-project/reports/rpt-public-xps-be-example-20260603-001.md" in paths
@@ -187,6 +281,18 @@ def test_packaged_example_is_in_default_release_inputs_and_package(tmp_path: Pat
         assert "ea-release-example-test/examples/public-raman-project/example_manifest.yml" in names
         assert "ea-release-example-test/examples/public-raman-project/EA_PROJECT.md" in names
         assert "ea-release-example-test/examples/public-raman-project/README.md" in names
+        assert "ea-release-example-test/examples/public-ftir-assignment-project/example_manifest.yml" in names
+        assert "ea-release-example-test/examples/public-ftir-assignment-project/EA_PROJECT.md" in names
+        assert "ea-release-example-test/examples/public-ftir-assignment-project/README.md" in names
+        assert (
+            "ea-release-example-test/examples/public-ftir-assignment-project/suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml"
+            in names
+        )
+        assert (
+            "ea-release-example-test/examples/public-ftir-assignment-project/suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml"
+            in names
+        )
+        assert "ea-release-example-test/examples/public-ftir-assignment-project/memory/candidates/memcand-20260604-001.md" in names
         assert "ea-release-example-test/examples/public-xps-be-project/example_manifest.yml" in names
         assert "ea-release-example-test/examples/public-xps-be-project/EA_PROJECT.md" in names
         assert "ea-release-example-test/examples/public-xps-be-project/README.md" in names

@@ -1,0 +1,8 @@
+review_id: review-20260604-004
+target_type: ftir_assignment_suggestions
+target_ref: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-04T10:22:00'
+user_original_text: 可以，保存
+reviewed_content_hash: 2f0646c9635e661120f19091879a2dc26bfe445ca005d9733c4d5cf9de28419a

@@ -1,0 +1,192 @@
+schema_version: '0.2'
+review_package_id: suggestion-20260604-001-review-package
+project_id: prj-public-ftir-assignment-example
+method: ftir
+source: ea.ftir.assignment_review_package:v0.2
+status: review_package_prepared
+created_at: '2026-06-04T10:21:00'
+updated_at: '2026-06-04T10:21:00'
+suggestion_id: suggestion-20260604-001
+suggestion_ref: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+table_ref: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.csv
+source_packet_ref: suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+feature_table_ref: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+review_target_type: ftir_assignment_suggestions
+review_target_ref: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+candidate_count: 4
+selected_candidate_count: 4
+requested_candidate_ids: []
+missing_candidate_ids: []
+overall_status_counts:
+  ready_for_user_review: 4
+selected_status_counts:
+  ready_for_user_review: 4
+groups:
+- group: ready_for_user_review
+  candidate_ids:
+  - ftir-builtin-oh-nh-stretching-generic
+  - ftir-builtin-aliphatic-ch-stretching-generic
+  - ftir-builtin-carbonyl-co-stretching-generic
+  - ftir-builtin-sio-stretching-generic
+  recommended_action: Review these candidates with the user; create a ReviewRecord
+    only after explicit confirmation.
+candidate_summaries:
+- candidate_id: ftir-builtin-oh-nh-stretching-generic
+  review_group: ready_for_user_review
+  status: ready_for_user_review
+  assignment_type: functional_group
+  assignment_label: broad O-H or N-H stretching candidate
+  band_label: broad high-wavenumber stretching band
+  confidence: low
+  matched_band_ids:
+  - ftir-band-001
+  matched_wavenumbers_cm-1:
+  - '3400.0'
+  wavenumber_window_cm1:
+  - 3200.0
+  - 3600.0
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  missing_fields: []
+  source_summary: Standard group-frequency references list broad O-H and N-H stretching
+    absorptions in this high-wavenumber region, with strong overlap from water and
+    hydrogen bonding.
+  applicability_notes:
+  - Use only as a broad screening candidate until atmosphere, drying, sample preparation,
+    and chemistry are reviewed.
+  - Broadness and band shape matter; a single maximum is weaker evidence than a reviewed
+    broad envelope.
+  caveats:
+  - Moisture, hydrogen bonding, and sample-preparation artifacts commonly affect this
+    region.
+  - This window does not distinguish O-H from N-H without project context and additional
+    evidence.
+  recommended_action: Ask the user to accept, reject, or edit this source-backed assignment
+    before report/memory reuse.
+- candidate_id: ftir-builtin-aliphatic-ch-stretching-generic
+  review_group: ready_for_user_review
+  status: ready_for_user_review
+  assignment_type: functional_group
+  assignment_label: aliphatic C-H stretching candidate
+  band_label: aliphatic C-H stretching band
+  confidence: low
+  matched_band_ids:
+  - ftir-band-002
+  matched_wavenumbers_cm-1:
+  - '2920.0'
+  wavenumber_window_cm1:
+  - 2850.0
+  - 2970.0
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  missing_fields: []
+  source_summary: Standard group-frequency references place aliphatic C-H stretching
+    bands in the 2850-2970 cm^-1 region for many organic materials.
+  applicability_notes:
+  - Compare with project chemistry and sample history before interpreting as a real
+    material component.
+  - Check whether binders, solvents, ligands, or handling residues could explain the
+    feature.
+  caveats:
+  - Organic contamination and processing residues can produce similar bands.
+  - Band-window match alone is not proof of alkyl groups in the target material.
+  recommended_action: Ask the user to accept, reject, or edit this source-backed assignment
+    before report/memory reuse.
+- candidate_id: ftir-builtin-carbonyl-co-stretching-generic
+  review_group: ready_for_user_review
+  status: ready_for_user_review
+  assignment_type: functional_group
+  assignment_label: carbonyl C=O stretching candidate
+  band_label: carbonyl stretching band
+  confidence: low
+  matched_band_ids:
+  - ftir-band-003
+  matched_wavenumbers_cm-1:
+  - '1720.0'
+  wavenumber_window_cm1:
+  - 1650.0
+  - 1800.0
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  missing_fields: []
+  source_summary: Standard group-frequency references place many C=O stretching absorptions
+    in the 1650-1800 cm^-1 region, with position depending strongly on conjugation,
+    hydrogen bonding, and functional group class.
+  applicability_notes:
+  - Treat this as a candidate family, not a specific carbonyl environment.
+  - Use project chemistry, neighboring bands, and references to distinguish ester,
+    acid, amide, carbonate, or other carbonyl-like sources.
+  caveats:
+  - Water bending, amide bands, C=C modes, and other overlapping bands can affect
+    this region.
+  - The candidate does not identify a specific compound or carbonyl environment by
+    itself.
+  recommended_action: Ask the user to accept, reject, or edit this source-backed assignment
+    before report/memory reuse.
+- candidate_id: ftir-builtin-sio-stretching-generic
+  review_group: ready_for_user_review
+  status: ready_for_user_review
+  assignment_type: functional_group
+  assignment_label: Si-O or inorganic oxide stretching candidate
+  band_label: Si-O/oxide stretching band
+  confidence: low
+  matched_band_ids:
+  - ftir-band-004
+  matched_wavenumbers_cm-1:
+  - '1100.0'
+  wavenumber_window_cm1:
+  - 900.0
+  - 1150.0
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  missing_fields: []
+  source_summary: Standard group-frequency references and common FTIR practice associate
+    strong Si-O or related oxide network stretching bands with the 900-1150 cm^-1
+    region, but exact positions are system-dependent.
+  applicability_notes:
+  - Use project material identity and reference spectra to distinguish Si-O from organic
+    fingerprint bands.
+  - Check whether the sample, substrate, filler, or support contains silica or other
+    oxides.
+  caveats:
+  - Organic C-O/C-N fingerprint bands can overlap this region.
+  - This candidate is not a definitive oxide-network assignment.
+  recommended_action: Ask the user to accept, reject, or edit this source-backed assignment
+    before report/memory reuse.
+reference_ids:
+- builtin-ftir-colthup-1990
+- builtin-ftir-socrates-2001
+unresolved_reference_ids: []
+recommended_commands:
+  create_review_record: ea review add /path/to/ea-project --target-type ftir_assignment_suggestions
+    --target-ref suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+    --user-response "可以，保存" --reviewed-content "User reviewed the listed FTIR assignment
+    candidates; record accepted/rejected/edited candidate IDs."
+  report_with_suggestion: ea ftir report /path/to/ea-project --metadata <ftir_metadata.yml>
+    --assignment-suggestion suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+  propose_memory_after_review: ea ftir propose-memory /path/to/ea-project --suggestion
+    suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml --review-ref
+    <review-id>
+next_steps:
+- Ask the user to review ready candidates and state which candidate IDs are accepted,
+  rejected, edited, or deferred.
+- Resolve unresolved references before using candidates as report evidence unless
+  the report explicitly discusses them as unresolved.
+- After a confirmed ReviewRecord targets this suggestion record, use report or memory
+  commands only for the user-approved candidate set.
+boundaries:
+- This package prepares review context only; it does not create a ReviewRecord.
+- It does not apply FTIR assignments, change processing outputs, inject report citations,
+  write confirmed memory, or prove composition/functional groups.
+- Unresolved or invalid candidates remain visible so the user can decide whether to
+  fix, exclude, or discuss them with caveats.
+warnings: []
+provenance_ref: provenance/prov-20260604-007.yml

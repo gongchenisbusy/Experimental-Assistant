@@ -1,0 +1,8 @@
+review_id: review-20260604-003
+target_type: ftir_parameters
+target_ref: raw/ftir/char-20260604-001/metadata.yml
+review_status: user_confirmed
+decision: confirmed_by_user
+reviewed_at: '2026-06-04T10:13:00'
+user_original_text: 可以，保存
+reviewed_content_hash: 23f2b33de82f456e8ff09058d3b73f4e140c05d90d302d0dee11f5f4a8cbb0dd

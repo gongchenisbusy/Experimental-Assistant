@@ -1,0 +1,21 @@
+provenance_id: prov-20260604-003
+workflow: raw_file_import
+created_at: '2026-06-04T10:10:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records: []
+  files:
+  - source-inputs/raw/polymer-silica-ftir-public-fixture.txt
+outputs:
+  records:
+  - raw/ftir/char-20260604-001/metadata.yml
+  files:
+  - raw/ftir/char-20260604-001/polymer-silica-ftir-public-fixture.txt
+parameters:
+  import_status: imported
+  sha256: 7246c5819fde025a8f206c150f30c50f68d73d888e16fc46ff56fd49d0b48d7f
+review_refs: []
+warnings: []
+source_refs: []
+scripts: []

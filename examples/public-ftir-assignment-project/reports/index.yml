@@ -1,0 +1,17 @@
+schema_version: '0.2'
+reports:
+  rpt-public-ftir-assignment-example-20260604-001:
+    report_id: rpt-public-ftir-assignment-example-20260604-001
+    path: reports/rpt-public-ftir-assignment-example-20260604-001.md
+    project_id: prj-public-ftir-assignment-example
+    result_ids:
+    - res-public-ftir-assignment-example-ftir-20260604-001
+    figure_ids:
+    - fig-public-ftir-assignment-example-ftir-20260604-001
+    sample_ids:
+    - sample-example-polymer-silica-ftir-001
+    experiment_ids:
+    - exp-20260604-001
+    reference_ids:
+    - builtin-ftir-colthup-1990
+    - builtin-ftir-socrates-2001

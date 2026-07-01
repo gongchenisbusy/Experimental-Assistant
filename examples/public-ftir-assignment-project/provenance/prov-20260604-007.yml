@@ -1,0 +1,25 @@
+provenance_id: prov-20260604-007
+workflow: ftir_assignment_review_package
+created_at: '2026-06-04T10:21:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+  files: []
+outputs:
+  records:
+  - suggestions/ftir/suggestion-20260604-001/review_package.yml
+  - suggestions/ftir/suggestion-20260604-001/review_package.md
+  files: []
+parameters:
+  suggestion_id: suggestion-20260604-001
+  requested_candidate_ids: []
+  selected_candidate_count: 4
+  auto_applied: false
+review_refs: []
+warnings: []
+source_refs:
+- builtin-ftir-colthup-1990
+- builtin-ftir-socrates-2001
+scripts: []

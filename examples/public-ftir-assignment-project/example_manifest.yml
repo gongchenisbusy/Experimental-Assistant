@@ -1,0 +1,48 @@
+schema_version: '0.2'
+example_id: public-ftir-assignment-project
+example_type: packaged_public_project
+project_id: prj-public-ftir-assignment-example
+report_id: rpt-public-ftir-assignment-example-20260604-001
+result_id: res-public-ftir-assignment-example-ftir-20260604-001
+figure_id: fig-public-ftir-assignment-example-ftir-20260604-001
+suggestion_id: suggestion-20260604-001
+public_boundary:
+  uses_developer_machine_defaults: false
+  zotero_enabled: false
+  browser_assist_enabled: false
+  institution_access: null
+  private_cache_required: false
+workflow_boundary:
+  auto_applies_assignments: false
+  proves_functional_groups_or_composition: false
+  writes_confirmed_memory: false
+  performs_live_lookup_or_pdf_download: false
+key_artifacts:
+  project: EA_PROJECT.md
+  rule_card: PROJECT_RULE_CARD.md
+  source_input: source-inputs/raw/polymer-silica-ftir-public-fixture.txt
+  raw_metadata: raw/ftir/char-20260604-001/metadata.yml
+  raw_file: raw/ftir/char-20260604-001/polymer-silica-ftir-public-fixture.txt
+  sample: samples/sample-example-polymer-silica-ftir-001.md
+  experiment: experiments/exp-20260604-001.md
+  ftir_metadata: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+  processed_csv: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_processed.csv
+  band_table: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+  figure: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/fig-public-ftir-assignment-example-ftir-20260604-001.png
+  source_packet: suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+  suggestion_record: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+  suggestion_table: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.csv
+  review_package: suggestions/ftir/suggestion-20260604-001/review_package.yml
+  review_package_markdown: suggestions/ftir/suggestion-20260604-001/review_package.md
+  suggestion_review: reviews/review-20260604-004.yml
+  report: reports/rpt-public-ftir-assignment-example-20260604-001.md
+  memory_candidates:
+  - memory/candidates/memcand-20260604-001.md
+  - memory/candidates/memcand-20260604-002.md
+  reference_index: literature/references/index.yml
+validation:
+  healthcheck_status: pass
+  healthcheck_errors: 0
+  evaluation_status: pass
+  evaluation_errors: 0
+regenerate: python3 scripts/build_public_ftir_assignment_example_project.py --force

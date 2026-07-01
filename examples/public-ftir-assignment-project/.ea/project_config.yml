@@ -1,0 +1,22 @@
+schema_version: '0.2'
+project_slug: public-ftir-assignment-example
+report_language: zh
+public_initialization:
+  uses_developer_machine_defaults: false
+  required_user_supplied_fields: []
+literature:
+  enabled: false
+  cache_root: null
+  deployment_status: literature/deployment_status.yml
+zotero:
+  enabled: false
+  local_api_url: null
+  collection: null
+browser_assist:
+  enabled: false
+  browser: null
+  profile: null
+institution_access:
+  enabled: false
+  note: null
+  stores_credentials: false

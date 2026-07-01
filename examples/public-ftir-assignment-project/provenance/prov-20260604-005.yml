@@ -1,0 +1,33 @@
+provenance_id: prov-20260604-005
+workflow: ftir_assignment_source_packet
+created_at: '2026-06-04T10:18:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - builtin:generic_materials
+  files: []
+outputs:
+  records:
+  - suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+  files: []
+parameters:
+  candidate_count: 4
+  template: false
+  builtin_library: generic_materials
+  source_library_kind: built_in
+  filters:
+    include_candidates:
+    - ftir-builtin-aliphatic-ch-stretching-generic
+    - ftir-builtin-carbonyl-co-stretching-generic
+    - ftir-builtin-oh-nh-stretching-generic
+    - ftir-builtin-sio-stretching-generic
+    assignment_types: []
+    material_scopes: []
+  auto_applied: false
+review_refs: []
+warnings: []
+source_refs:
+- builtin-ftir-colthup-1990
+- builtin-ftir-socrates-2001
+scripts: []

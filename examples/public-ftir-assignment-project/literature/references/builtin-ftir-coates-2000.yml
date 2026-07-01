@@ -1,0 +1,19 @@
+schema_version: '0.2'
+created_at: '2026-06-04T10:19:00'
+updated_at: '2026-06-04T10:19:00'
+source_refs: []
+provenance_refs: []
+review_refs: []
+reference_id: builtin-ftir-coates-2000
+project_id: prj-public-ftir-assignment-example
+citation: Coates, J. Interpretation of Infrared Spectra, A Practical Approach. In
+  Encyclopedia of Analytical Chemistry; Wiley, 2000.
+title: Interpretation of Infrared Spectra, A Practical Approach
+authors:
+- John Coates
+year: 2000
+venue: Encyclopedia of Analytical Chemistry
+source_type: manual
+notes: Practical FTIR interpretation reference seed for common group-frequency and
+  overlap checks. Register or replace with project-specific references before using
+  suggestions as report evidence.

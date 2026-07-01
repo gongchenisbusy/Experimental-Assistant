@@ -1,0 +1,65 @@
+provenance_id: prov-20260604-004
+workflow: ftir_processing
+created_at: '2026-06-04T10:16:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - raw/ftir/char-20260604-001/metadata.yml
+  files:
+  - raw/ftir/char-20260604-001/polymer-silica-ftir-public-fixture.txt
+outputs:
+  records:
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+  files:
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_processed.csv
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/fig-public-ftir-assignment-example-ftir-20260604-001.png
+parameters:
+  x_column: wavenumber
+  y_column: absorbance
+  x_unit: cm^-1
+  signal_mode: absorbance
+  processing_parameters:
+    baseline_correction:
+      enabled: false
+      method: rolling_quantile
+      window_points: 101
+      quantile: 0.05
+    smoothing:
+      enabled: false
+      method: savitzky_golay
+      window_length: 9
+      polyorder: 2
+    normalization:
+      enabled: true
+      method: max_abs
+    peak_detection:
+      method: scipy_find_peaks
+      prominence: auto
+      distance: auto
+      max_bands: 12
+    band_assignment:
+      enabled: true
+      source: ea.ftir.builtin_band_windows:v0.2
+    context_record:
+      enabled: false
+      method: reviewed_metadata_record
+      source: ea.ftir.context_record:v0.2
+      instrument_accessory: {}
+      atmosphere: {}
+      sample_preparation: {}
+      background: {}
+      reference: {}
+      correction_notes: []
+review_refs:
+- review-20260604-002
+- review-20260604-003
+warnings:
+- code: ftir_normalization_applied
+  message: FTIR signal normalized by processing parameters.
+  severity: low
+source_refs: []
+scripts:
+- path: src/ea/ftir/service.py
+  version: 0.2.0

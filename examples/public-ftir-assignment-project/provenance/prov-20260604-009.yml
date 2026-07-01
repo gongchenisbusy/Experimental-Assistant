@@ -1,0 +1,37 @@
+provenance_id: prov-20260604-009
+workflow: memory_candidate_proposal
+created_at: '2026-06-04T10:25:00'
+skill_name: ea-core
+skill_version: 0.2.0
+inputs:
+  records:
+  - suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+  - suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.csv
+  - suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+  - processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  files: []
+outputs:
+  records:
+  - memory/candidates/memcand-20260604-001.md
+  - memory/candidates/index.yml
+  files: []
+parameters:
+  category: interpretation
+  confidence: low
+  status: draft
+  provenance_refs:
+  - provenance/prov-20260604-006.yml
+review_refs: []
+warnings: []
+source_refs:
+- suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.yml
+- suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.csv
+- suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+- processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+- processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+- builtin-ftir-socrates-2001
+- builtin-ftir-colthup-1990
+scripts: []

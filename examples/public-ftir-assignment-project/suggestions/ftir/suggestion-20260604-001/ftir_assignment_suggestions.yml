@@ -1,0 +1,208 @@
+schema_version: '0.2'
+suggestion_id: suggestion-20260604-001
+project_id: prj-public-ftir-assignment-example
+status: ready_for_user_review
+created_at: '2026-06-04T10:20:00'
+updated_at: '2026-06-04T10:20:00'
+source: ea.ftir.assignment_suggestions:v0.2
+source_packet_ref: suggestions/ftir/source-packets/ftir_hybrid_assignment_candidates.yml
+ftir_metadata_ref: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+feature_table_ref: processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_bands.csv
+table_ref: suggestions/ftir/suggestion-20260604-001/ftir_assignment_suggestions.csv
+candidate_count: 4
+ready_for_user_review_count: 4
+needs_reference_registration_count: 0
+no_feature_match_count: 0
+invalid_count: 0
+candidates:
+- candidate_id: ftir-builtin-oh-nh-stretching-generic
+  assignment_type: functional_group
+  assignment_label: broad O-H or N-H stretching candidate
+  band_label: broad high-wavenumber stretching band
+  status: ready_for_user_review
+  requires_user_review: true
+  auto_applied: false
+  wavenumber_window_cm1:
+  - 3200.0
+  - 3600.0
+  expected_feature: absorbance_maximum
+  matched_bands:
+  - band_id: ftir-band-001
+    wavenumber_cm-1: 3400.0
+    prominence: 0.7665854648176682
+    band_type: absorbance_maximum
+    possible_band_family: O-H / N-H stretching region
+  matched_band_ids:
+  - ftir-band-001
+  matched_wavenumbers_cm-1:
+  - 3400.0
+  source_summary: Standard group-frequency references list broad O-H and N-H stretching
+    absorptions in this high-wavenumber region, with strong overlap from water and
+    hydrogen bonding.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use only as a broad screening candidate until atmosphere, drying, sample preparation,
+    and chemistry are reviewed.
+  - Broadness and band shape matter; a single maximum is weaker evidence than a reviewed
+    broad envelope.
+  material_scope: generic materials; polymers; oxides; hydroxylated surfaces; adsorbed
+    water; amines; amides
+  sample_scope: samples where hydroxyl, amine, amide, moisture, or surface adsorbate
+    context is plausible
+  confidence: low
+  missing_fields: []
+  caveats:
+  - Moisture, hydrogen bonding, and sample-preparation artifacts commonly affect this
+    region.
+  - This window does not distinguish O-H from N-H without project context and additional
+    evidence.
+- candidate_id: ftir-builtin-aliphatic-ch-stretching-generic
+  assignment_type: functional_group
+  assignment_label: aliphatic C-H stretching candidate
+  band_label: aliphatic C-H stretching band
+  status: ready_for_user_review
+  requires_user_review: true
+  auto_applied: false
+  wavenumber_window_cm1:
+  - 2850.0
+  - 2970.0
+  expected_feature: absorbance_maximum
+  matched_bands:
+  - band_id: ftir-band-002
+    wavenumber_cm-1: 2920.0
+    prominence: 0.5113484078068824
+    band_type: absorbance_maximum
+    possible_band_family: aliphatic C-H stretching region
+  matched_band_ids:
+  - ftir-band-002
+  matched_wavenumbers_cm-1:
+  - 2920.0
+  source_summary: Standard group-frequency references place aliphatic C-H stretching
+    bands in the 2850-2970 cm^-1 region for many organic materials.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Compare with project chemistry and sample history before interpreting as a real
+    material component.
+  - Check whether binders, solvents, ligands, or handling residues could explain the
+    feature.
+  material_scope: generic materials; polymers; organic ligands; binders; surfactants;
+    carbonaceous residues
+  sample_scope: samples where organic chains, binders, surfactants, ligands, or contamination
+    are plausible
+  confidence: low
+  missing_fields: []
+  caveats:
+  - Organic contamination and processing residues can produce similar bands.
+  - Band-window match alone is not proof of alkyl groups in the target material.
+- candidate_id: ftir-builtin-carbonyl-co-stretching-generic
+  assignment_type: functional_group
+  assignment_label: carbonyl C=O stretching candidate
+  band_label: carbonyl stretching band
+  status: ready_for_user_review
+  requires_user_review: true
+  auto_applied: false
+  wavenumber_window_cm1:
+  - 1650.0
+  - 1800.0
+  expected_feature: absorbance_maximum
+  matched_bands:
+  - band_id: ftir-band-003
+    wavenumber_cm-1: 1720.0
+    prominence: 0.6913305341551105
+    band_type: absorbance_maximum
+    possible_band_family: C=O, C=C, amide, or water-bending-adjacent region
+  matched_band_ids:
+  - ftir-band-003
+  matched_wavenumbers_cm-1:
+  - 1720.0
+  source_summary: Standard group-frequency references place many C=O stretching absorptions
+    in the 1650-1800 cm^-1 region, with position depending strongly on conjugation,
+    hydrogen bonding, and functional group class.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Treat this as a candidate family, not a specific carbonyl environment.
+  - Use project chemistry, neighboring bands, and references to distinguish ester,
+    acid, amide, carbonate, or other carbonyl-like sources.
+  material_scope: generic materials; polymers; esters; carboxylates; amides; carbonates;
+    oxidized surfaces
+  sample_scope: samples where oxygen-containing organic groups, oxidized ligands,
+    polymers, esters, acids, amides, or carbonates are plausible
+  confidence: low
+  missing_fields: []
+  caveats:
+  - Water bending, amide bands, C=C modes, and other overlapping bands can affect
+    this region.
+  - The candidate does not identify a specific compound or carbonyl environment by
+    itself.
+- candidate_id: ftir-builtin-sio-stretching-generic
+  assignment_type: functional_group
+  assignment_label: Si-O or inorganic oxide stretching candidate
+  band_label: Si-O/oxide stretching band
+  status: ready_for_user_review
+  requires_user_review: true
+  auto_applied: false
+  wavenumber_window_cm1:
+  - 900.0
+  - 1150.0
+  expected_feature: absorbance_maximum
+  matched_bands:
+  - band_id: ftir-band-004
+    wavenumber_cm-1: 1100.0
+    prominence: 0.8957136877247047
+    band_type: absorbance_maximum
+    possible_band_family: C-O, C-O-C, Si-O, or fingerprint region
+  matched_band_ids:
+  - ftir-band-004
+  matched_wavenumbers_cm-1:
+  - 1100.0
+  source_summary: Standard group-frequency references and common FTIR practice associate
+    strong Si-O or related oxide network stretching bands with the 900-1150 cm^-1
+    region, but exact positions are system-dependent.
+  reference_ids:
+  - builtin-ftir-socrates-2001
+  - builtin-ftir-colthup-1990
+  unresolved_reference_ids: []
+  applicability_notes:
+  - Use project material identity and reference spectra to distinguish Si-O from organic
+    fingerprint bands.
+  - Check whether the sample, substrate, filler, or support contains silica or other
+    oxides.
+  material_scope: generic materials; silica; silicates; glass; oxide surfaces; hybrid
+    organic-inorganic materials
+  sample_scope: samples where silica, silicate, glass, oxide, or surface oxygen networks
+    are plausible
+  confidence: low
+  missing_fields: []
+  caveats:
+  - Organic C-O/C-N fingerprint bands can overlap this region.
+  - This candidate is not a definitive oxide-network assignment.
+related_records:
+- processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/ftir_metadata.yml
+reference_ids:
+- builtin-ftir-colthup-1990
+- builtin-ftir-socrates-2001
+warnings: []
+next_steps:
+- Register or correct unresolved reference_ids before using source-backed assignment
+  suggestions.
+- Ask the user to review ready FTIR candidates before citing them as report interpretations
+  or memory candidates.
+- Use matched band IDs and source/applicability notes when discussing possible functional
+  groups; do not treat a band match alone as composition proof.
+boundaries:
+- FTIR assignment suggestions are advisory and auto_applied is always false.
+- This suggestion-record step does not perform unconfirmed live lookup during the
+  command. EA may prepare source packets from built-in libraries, project literature,
+  user-provided sources, or user-confirmed search workflows before this step; this
+  step does not alter processing outputs, prove functional groups/composition, or
+  write confirmed memory.
+provenance_ref: provenance/prov-20260604-006.yml
