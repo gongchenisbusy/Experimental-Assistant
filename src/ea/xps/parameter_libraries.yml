@@ -1,0 +1,188 @@
+library_version: "0.2"
+libraries:
+  generic_xps_parameters:
+    description: Public-safe XPS parameter candidates for early source-packet seeding across materials projects.
+    source: ea.xps.builtin_parameter_library:generic_xps_parameters:v0.2
+    guidance_notes:
+      - Built-in XPS candidates are screening starting points. Register or replace their reference_seeds before treating suggestions as report evidence.
+      - Charge neutralization and binding-energy referencing should be documented as reviewed calibration metadata; do not silently apply adventitious-carbon or shared charge corrections from this library.
+      - Prefer project-specific reference spectra, instrument guidance, and reviewed fitting protocols when they are available.
+    guidance_reference_ids:
+      - builtin-xps-charge-reference-guide-2020
+    reference_seeds:
+      builtin-xps-nist-srd20:
+        citation: "National Institute of Standards and Technology. NIST X-ray Photoelectron Spectroscopy Database, Standard Reference Database 20."
+        title: "NIST X-ray Photoelectron Spectroscopy Database"
+        author:
+          - "National Institute of Standards and Technology"
+        venue: "NIST Standard Reference Database 20"
+        doi: "10.18434/T4T88K"
+        url: "https://srdata.nist.gov/xps/"
+        source_type: manual
+        notes: "General XPS binding-energy, line-position, chemical-shift, and doublet-separation database seed. Register or replace with project-specific records before report citation."
+      builtin-xps-handbook-1995:
+        citation: "Moulder, J. F.; Stickle, W. F.; Sobol, P. E.; Bomben, K. D. Handbook of X-ray Photoelectron Spectroscopy; Physical Electronics, 1995."
+        title: "Handbook of X-ray Photoelectron Spectroscopy"
+        author:
+          - "John F. Moulder"
+          - "William F. Stickle"
+          - "Peter E. Sobol"
+          - "Kenneth D. Bomben"
+        year: 1995
+        venue: "Physical Electronics"
+        source_type: manual
+        notes: "General XPS handbook seed for line identification and spin-orbit ratio conventions."
+      builtin-xps-step-guide-2022:
+        citation: "Stevie, F. A.; Donley, C. L. A step-by-step guide to perform x-ray photoelectron spectroscopy. Journal of Applied Physics 132, 011101 (2022)."
+        title: "A step-by-step guide to perform x-ray photoelectron spectroscopy"
+        author:
+          - "Fred A. Stevie"
+          - "Carrie L. Donley"
+        year: 2022
+        venue: "Journal of Applied Physics"
+        doi: "10.1063/5.0086359"
+        url: "https://pubs.aip.org/aip/jap/article/132/1/011101/2837063/A-step-by-step-guide-to-perform-x-ray"
+        source_type: manual
+        notes: "General XPS workflow and spin-orbit caution seed; register before using as report evidence."
+      builtin-xps-thermo-fe:
+        citation: "Thermo Fisher Scientific. Iron XPS periodic table reference page."
+        title: "Iron XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/transition-metal/iron.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Fe 2p screening context; replace with project-specific references when possible."
+      builtin-xps-thermo-si:
+        citation: "Thermo Fisher Scientific. Silicon XPS periodic table reference page."
+        title: "Silicon XPS periodic table reference page"
+        author:
+          - "Thermo Fisher Scientific"
+        url: "https://www.thermofisher.com/us/en/home/materials-science/learning-center/periodic-table/metalloid/silicon.html"
+        source_type: web
+        notes: "Vendor educational reference seed for Si 2p screening context; replace with project-specific references when possible."
+      builtin-xps-background-guide-2021:
+        citation: "Tougaard, S. Practical guide to the use of backgrounds in quantitative XPS. Journal of Vacuum Science & Technology A 39, 011201 (2021)."
+        title: "Practical guide to the use of backgrounds in quantitative XPS"
+        author:
+          - "Sven Tougaard"
+        year: 2021
+        venue: "Journal of Vacuum Science & Technology A"
+        doi: "10.1116/6.0000661"
+        url: "https://doi.org/10.1116/6.0000661"
+        source_type: manual
+        notes: "Background-model guidance seed; register before using as report evidence."
+      builtin-xps-intro-background-guide-2020:
+        citation: "Engelhard, M. H.; Baer, D. R.; Herrera-Gomez, A.; Sherwood, P. M. A. Introductory guide to backgrounds in XPS spectra and their impact on determining peak intensities. Journal of Vacuum Science & Technology A 38, 063203 (2020)."
+        title: "Introductory guide to backgrounds in XPS spectra and their impact on determining peak intensities"
+        author:
+          - "Mark H. Engelhard"
+          - "Donald R. Baer"
+          - "Alberto Herrera-Gomez"
+          - "Peter M. A. Sherwood"
+        year: 2020
+        venue: "Journal of Vacuum Science & Technology A"
+        doi: "10.1116/6.0000359"
+        url: "https://doi.org/10.1116/6.0000359"
+        source_type: manual
+        notes: "Introductory background-subtraction seed; register before using as report evidence."
+      builtin-xps-charge-reference-guide-2020:
+        citation: "Baer, D. R.; Artyushkova, K.; Cohen, H.; Easton, C. D.; Engelhard, M.; Gengenbach, T. R.; Greczynski, G.; Mack, P.; Morgan, D. J.; Roberts, A. XPS guide: Charge neutralization and binding energy referencing for insulating samples. Journal of Vacuum Science & Technology A 38, 031204 (2020)."
+        title: "XPS guide: Charge neutralization and binding energy referencing for insulating samples"
+        author:
+          - "Donald R. Baer"
+          - "Kateryna Artyushkova"
+          - "Hagai Cohen"
+          - "Christopher D. Easton"
+          - "Mark Engelhard"
+          - "Thomas R. Gengenbach"
+          - "Grzegorz Greczynski"
+          - "Paul Mack"
+          - "David J. Morgan"
+          - "Adam Roberts"
+        year: 2020
+        venue: "Journal of Vacuum Science & Technology A"
+        doi: "10.1116/6.0000057"
+        url: "https://doi.org/10.1116/6.0000057"
+        source_type: manual
+        notes: "Charge neutralization and binding-energy referencing guidance seed; this library does not apply charge correction."
+    candidates:
+      - candidate_id: xps-builtin-fe2p-spin-orbit-metal-screening
+        suggestion_type: spin_orbit_constraint
+        element: Fe
+        core_level: 2p
+        constraint_id: xps-spin-fe2p-metal-screening
+        center_delta_eV: 13.1
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Fe 2p metal screening example. The vendor reference reports an Fe 2p metal spin-orbit separation near 13.1 eV, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio of about 1:2.
+        applicability_notes:
+          - Use only when the user confirms Fe 2p anchor/dependent component identities, reviewed bounds, background model, and whether a metal-like reference is appropriate.
+          - Treat oxides, hydroxides, multiplet structures, shake-up satellites, and mixed states as separate interpretation problems.
+        reference_ids:
+          - builtin-xps-thermo-fe
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Screening constraint only; not chemical-state proof.
+          - Do not apply to Fe oxides or mixed Fe states without project-specific references and review.
+      - candidate_id: xps-builtin-si2p-spin-orbit-elemental-screening
+        suggestion_type: spin_orbit_constraint
+        element: Si
+        core_level: 2p
+        constraint_id: xps-spin-si2p-elemental-screening
+        center_delta_eV: 0.63
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Si 2p elemental screening example. The vendor reference reports closely spaced Si 2p spin-orbit components near 0.63 eV, while general XPS spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio of about 1:2.
+        applicability_notes:
+          - Use only when spectral resolution, pass energy, and material context make Si 2p splitting meaningful for the current project.
+          - For silicon compounds, broad oxide envelopes may make explicit doublet splitting inappropriate unless a reviewed protocol supports it.
+        reference_ids:
+          - builtin-xps-thermo-si
+          - builtin-xps-handbook-1995
+          - builtin-xps-step-guide-2022
+        confidence: low
+        caveats:
+          - Low splitting can be near instrumental resolution.
+          - Not a standalone Si chemical-state assignment.
+      - candidate_id: xps-builtin-cu2p-spin-orbit-large-splitting-screening
+        suggestion_type: spin_orbit_constraint
+        element: Cu
+        core_level: 2p
+        constraint_id: xps-spin-cu2p-large-splitting-screening
+        center_delta_eV: 19.8
+        area_ratio: 0.5
+        fwhm_ratio: 1.0
+        parameter_origin: source_suggested
+        source_summary: Cu 2p large-splitting screening example. The step-by-step XPS guide discusses Cu 2p components separated by about 19.8 eV; general spin-orbit conventions support a 2p1/2-to-2p3/2 area ratio of about 1:2.
+        applicability_notes:
+          - Use only after the user confirms whether both Cu 2p components should be fit together or whether analysis should focus on the 2p3/2 envelope.
+          - Review satellite structure, Auger information, and project-specific Cu references before any oxidation-state interpretation.
+        reference_ids:
+          - builtin-xps-step-guide-2022
+          - builtin-xps-handbook-1995
+          - builtin-xps-nist-srd20
+        confidence: low
+        caveats:
+          - Cu 2p satellites and Auger parameters often matter for chemical-state interpretation.
+          - This is not a Cu(0)/Cu(I)/Cu(II) assignment.
+      - candidate_id: xps-builtin-tougaard-u2-typical-background-screening
+        suggestion_type: tougaard_parameter
+        tougaard_B: 2866.0
+        tougaard_C_eV2: 1643.0
+        integration_direction: toward_higher_binding_energy
+        parameter_origin: source_suggested
+        source_summary: Tougaard U2-style background screening example. Background guides discuss typical two-parameter Tougaard values around B = 2866 eV2 and C = 1643 eV2, but background choice and scaling are sample- and protocol-dependent.
+        applicability_notes:
+          - Use only after the user confirms the core-level region, endpoints/window, intensity column, and whether Tougaard treatment is appropriate for the material and analysis goal.
+          - Treat B/C as a reviewed starting point, not as a fitted or universally valid background.
+        reference_ids:
+          - builtin-xps-background-guide-2021
+          - builtin-xps-intro-background-guide-2020
+        confidence: low
+        caveats:
+          - Does not run QUASES or depth-profile modeling.
+          - Does not subtract a background until copied into reviewed processing parameters with a confirmed review record.

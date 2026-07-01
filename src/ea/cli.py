@@ -82,6 +82,7 @@ from ea.uv_vis import UVVisProcessingRequest, default_uv_vis_processing_paramete
 from ea.xps import (
     XPSProcessingRequest,
     build_xps_parameter_source_packet,
+    builtin_xps_parameter_libraries,
     default_xps_processing_parameters,
     inspect_xps_file,
     process_xps_result,
@@ -364,6 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     xps_source_packet = xps_sub.add_parser("build-source-packet", help="build a standard XPS parameter source packet")
     xps_source_packet.add_argument("workspace", type=Path)
     xps_source_packet.add_argument("--library-file", type=Path)
+    xps_source_packet.add_argument("--builtin-library", choices=builtin_xps_parameter_libraries(), help="use a bundled XPS parameter library; defaults to generic_xps_parameters when no library file or template is supplied")
     xps_source_packet.add_argument("--output", type=Path)
     xps_source_packet.add_argument("--project-id")
     xps_source_packet.add_argument("--include-candidate", action="append", default=[])
@@ -1162,6 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.workspace,
                     project_id=project_id,
                     library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    builtin_library=args.builtin_library,
                     output_path=args.output,
                     include_candidates=args.include_candidate,
                     suggestion_types=args.suggestion_type,

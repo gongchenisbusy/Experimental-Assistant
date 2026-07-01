@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import matplotlib
+import yaml
 
 matplotlib.use("Agg")
 
@@ -67,6 +70,29 @@ class XPSProcessingRequest:
 
 XPS_PARAMETER_SUGGESTION_TYPES = {"spin_orbit_constraint", "tougaard_parameter"}
 XPS_PARAMETER_ORIGINS = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
+BUILTIN_XPS_PARAMETER_LIBRARY_DEFAULT = "generic_xps_parameters"
+
+
+@lru_cache(maxsize=1)
+def _builtin_xps_parameter_libraries() -> dict[str, Any]:
+    text = resources.files("ea.xps").joinpath("parameter_libraries.yml").read_text(encoding="utf-8")
+    loaded = yaml.safe_load(text) or {}
+    libraries = loaded.get("libraries")
+    if not isinstance(libraries, dict):
+        return {}
+    return libraries
+
+
+def builtin_xps_parameter_libraries() -> list[str]:
+    return sorted(_builtin_xps_parameter_libraries())
+
+
+def _builtin_xps_parameter_library(name: str) -> dict[str, Any]:
+    libraries = _builtin_xps_parameter_libraries()
+    if name not in libraries:
+        available = ", ".join(sorted(libraries)) or "none"
+        raise XPSProcessingError(f"Unknown built-in XPS parameter library: {name}. Available libraries: {available}")
+    return deepcopy(libraries[name])
 
 
 def default_xps_processing_parameters() -> dict[str, Any]:
@@ -692,6 +718,7 @@ def build_xps_parameter_source_packet(
     *,
     project_id: str,
     library_path: Path | None = None,
+    builtin_library: str | None = None,
     output_path: Path | None = None,
     include_candidates: list[str] | None = None,
     suggestion_types: list[str] | None = None,
@@ -700,10 +727,15 @@ def build_xps_parameter_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    if not library_path and not template:
-        raise XPSProcessingError("Provide --library-file or --write-template for XPS source-packet generation")
+    if library_path and builtin_library:
+        raise XPSProcessingError("Use either --library-file or --builtin-library for XPS source-packet generation, not both")
+    if template and builtin_library:
+        raise XPSProcessingError("Use either --write-template or --builtin-library for XPS source-packet generation, not both")
 
     template_mode = template and library_path is None
+    builtin_mode = not template_mode and library_path is None
+    if builtin_mode and not builtin_library:
+        builtin_library = BUILTIN_XPS_PARAMETER_LIBRARY_DEFAULT
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
     source_packet_id = next_id(root, "xps_source_packet", day)
@@ -718,9 +750,15 @@ def build_xps_parameter_source_packet(
 
     warnings: list[dict[str, Any]] = []
     library_ref: str | None = None
+    library_kind = "template" if template_mode else "local_file"
     source_library: Any = {}
     if template_mode:
         raw_candidates = _xps_parameter_source_template_candidates()
+    elif builtin_mode:
+        source_library = _builtin_xps_parameter_library(str(builtin_library))
+        raw_candidates = _xps_parameter_source_candidates(source_library)
+        library_ref = f"builtin:{builtin_library}"
+        library_kind = "built_in"
     else:
         source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
         if source_path is None or not source_path.exists():
@@ -774,7 +812,11 @@ def build_xps_parameter_source_packet(
             )
         )
 
-    reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
+    guidance_reference_ids = (
+        _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+    )
+    reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
     reference_seeds = _xps_parameter_source_reference_seeds(
         source_library,
         referenced_ids=set(reference_ids),
@@ -790,9 +832,12 @@ def build_xps_parameter_source_packet(
         "created_at": timestamp,
         "updated_at": timestamp,
         "source": "ea.xps.parameter_source_packet:v0.2",
+        "source_library_kind": library_kind,
         "source_library_ref": library_ref,
         "reference_seed_count": len(reference_seeds),
         "reference_seeds": reference_seeds,
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_reference_ids": guidance_reference_ids,
         "candidate_count": len(selected),
         "candidates": selected,
         "filters": {
@@ -804,7 +849,7 @@ def build_xps_parameter_source_packet(
         "reference_ids": reference_ids,
         "warnings": warnings,
         "next_steps": [
-            "If this packet includes reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
+            "If this packet includes built-in or local reference_seeds, run `ea references register-seeds` or replace those seed IDs with registered project references before treating suggestions as report evidence.",
             "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, and required numeric fields.",
             "Run `ea xps suggest-parameters` on this packet to create traceable suggestion records before copying values into processing parameters.",
         ],
@@ -824,6 +869,7 @@ def build_xps_parameter_source_packet(
             "candidate_count": len(selected),
             "reference_seed_count": len(reference_seeds),
             "template": template_mode,
+            "builtin_library": builtin_library if builtin_mode else None,
             "filters": packet["filters"],
             "auto_applied": False,
         },
@@ -837,6 +883,8 @@ def build_xps_parameter_source_packet(
         "source_packet": str(output_path),
         "source_packet_id": source_packet_id,
         "status": status,
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
         "candidate_count": len(selected),
         "reference_seed_count": len(reference_seeds),
         "reference_ids": reference_ids,

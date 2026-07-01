@@ -1662,6 +1662,109 @@ candidates:
     assert template_packet["candidates"][0]["center_delta_eV"] is None
 
 
+def test_cli_builds_builtin_xps_parameter_source_packet(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "cli-xps-builtin-source-packet-project"
+    assert main(
+        [
+            "init-project",
+            str(workspace),
+            "--name",
+            "CLI XPS Builtin Source Packet",
+            "--slug",
+            "cli-xps-builtin-source-packet",
+            "--direction",
+            "XPS built-in parameter source packet workflow",
+            "--material",
+            "oxide thin film",
+            "--experiment-type",
+            "materials XPS characterization",
+        ]
+    ) == 0
+    project = _json_output(capsys)
+    project_frontmatter, _ = read_markdown_record(Path(project["project"]))
+    project_id = project_frontmatter["project_id"]
+
+    assert main(["xps", "build-source-packet", str(workspace), "--project-id", project_id]) == 0
+    packet_output = _json_output(capsys)
+    packet = read_yaml(Path(packet_output["source_packet"]))
+    assert packet_output["status"] == "ready_for_suggest_parameters"
+    assert packet_output["source_library_kind"] == "built_in"
+    assert packet_output["source_library_ref"] == "builtin:generic_xps_parameters"
+    assert packet_output["candidate_count"] >= 4
+    assert packet_output["reference_seed_count"] >= 7
+    assert packet["source_library_kind"] == "built_in"
+    assert packet["source_library_ref"] == "builtin:generic_xps_parameters"
+    assert "builtin-xps-charge-reference-guide-2020" in packet["guidance_reference_ids"]
+    assert "builtin-xps-charge-reference-guide-2020" in packet["reference_seeds"]
+    assert "silently apply adventitious-carbon" in " ".join(packet["guidance_notes"])
+    assert any(candidate["candidate_id"] == "xps-builtin-fe2p-spin-orbit-metal-screening" for candidate in packet["candidates"])
+    assert any(candidate["candidate_id"] == "xps-builtin-tougaard-u2-typical-background-screening" for candidate in packet["candidates"])
+    assert "built-in or local reference_seeds" in " ".join(packet["next_steps"])
+    assert "registration hints only" in " ".join(packet["boundaries"])
+    assert "does not perform unconfirmed live network lookup" in " ".join(packet["boundaries"])
+    assert (workspace / packet["provenance_ref"]).exists()
+
+    packet_ref = Path(packet_output["source_packet"]).relative_to(workspace).as_posix()
+    assert main(["xps", "suggest-parameters", str(workspace), "--source-file", packet_ref, "--project-id", project_id]) == 0
+    unresolved_output = _json_output(capsys)
+    assert unresolved_output["status"] == "needs_reference_registration"
+    assert unresolved_output["needs_reference_registration_count"] == packet_output["candidate_count"]
+
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                packet_ref,
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    seed_output = _json_output(capsys)
+    assert seed_output["imported_count"] == packet_output["reference_seed_count"]
+    assert {item["reference_id"] for item in seed_output["imported"]} >= {
+        "builtin-xps-charge-reference-guide-2020",
+        "builtin-xps-background-guide-2021",
+        "builtin-xps-thermo-fe",
+    }
+
+    assert main(["xps", "suggest-parameters", str(workspace), "--source-file", packet_ref, "--project-id", project_id]) == 0
+    suggestion_output = _json_output(capsys)
+    assert suggestion_output["status"] == "ready_for_user_review"
+    assert suggestion_output["ready_for_user_review_count"] == packet_output["candidate_count"]
+
+    assert (
+        main(
+            [
+                "xps",
+                "build-source-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--builtin-library",
+                "generic_xps_parameters",
+                "--include-candidate",
+                "xps-builtin-si2p-spin-orbit-elemental-screening",
+                "--element",
+                "Si",
+                "--core-level",
+                "2p",
+            ]
+        )
+        == 0
+    )
+    filtered_output = _json_output(capsys)
+    filtered_packet = read_yaml(Path(filtered_output["source_packet"]))
+    assert filtered_output["candidate_count"] == 1
+    assert filtered_packet["candidates"][0]["candidate_id"] == "xps-builtin-si2p-spin-orbit-elemental-screening"
+    assert filtered_packet["filters"]["elements"] == ["si"]
+    assert filtered_packet["filters"]["core_levels"] == ["2p"]
+
+
 def test_cli_runs_reviewed_multi_region_records(tmp_path: Path, capsys) -> None:
     fixture = _write_xps_fixture(tmp_path / "synthetic-xps-region-records.txt")
     parameters = _region_records_parameters()
@@ -1821,6 +1924,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "ea xps process" in skill
     assert "ea xps build-source-packet" in skill
     assert "ea xps suggest-parameters" in skill
+    assert "--builtin-library" in skill
+    assert "generic_xps_parameters" in skill
     assert "--parameter-suggestion" in skill
     assert "register-seeds" in skill
     assert "references/xps-workflow.md" in skill
@@ -1833,6 +1938,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "build-source-packet" in xps_reference_text
     assert "xps_parameter_source_packet" in xps_reference_text
     assert "reference_seeds" in xps_reference_text
+    assert "guidance_reference_ids" in xps_reference_text
+    assert "generic_xps_parameters" in xps_reference_text
     assert "register-seeds" in xps_reference_text
     assert "suggest-parameters" in xps_reference_text
     assert "xps_parameter_suggestions" in xps_reference_text
@@ -1851,6 +1958,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "component_fit" in xps_record["notes"]
     assert "parameter_source_packets" in xps_record["notes"]
     assert "reference_seeds" in xps_record["notes"]
+    assert "guidance_reference_ids" in xps_record["notes"]
+    assert "generic_xps_parameters" in xps_record["notes"]
     assert "register-seeds" in xps_record["notes"]
     assert "parameter_suggestions" in xps_record["notes"]
     assert "--parameter-suggestion" in xps_record["notes"]
