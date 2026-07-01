@@ -1393,7 +1393,8 @@ candidates:
     assert record["candidates"][2]["status"] == "needs_reference_registration"
     assert "ref-missing-001" in record["candidates"][2]["unresolved_reference_ids"]
     assert "Ask the user to review ready candidates" in " ".join(record["next_steps"])
-    assert "does not run live network lookup itself" in " ".join(record["boundaries"])
+    assert "does not perform unconfirmed live network lookup" in " ".join(record["boundaries"])
+    assert "EA may prepare source packets" in " ".join(record["boundaries"])
     assert (workspace / record["provenance_ref"]).exists()
     assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration"}
     assert set(table["auto_applied"]) == {False}
@@ -1515,7 +1516,8 @@ candidates:
     assert packet["candidate_count"] == 2
     assert packet["candidates"][0]["parameter_origin"] == "source_suggested"
     assert packet["filters"]["include_candidates"] == ["xps-param-fe2p-spin-001", "xps-param-tougaard-u2-001"]
-    assert "does not run live network lookup" in " ".join(packet["boundaries"])
+    assert "does not perform unconfirmed live network lookup" in " ".join(packet["boundaries"])
+    assert "EA may use those sources to prepare candidates" in " ".join(packet["boundaries"])
     assert (workspace / packet["provenance_ref"]).exists()
 
     assert main(
@@ -1716,6 +1718,8 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "reviewed_shirley_background_subtraction" in xps_reference_text
     assert "reviewed_tougaard_u2_background_subtraction" in xps_reference_text
     assert "screening-only" in xps_reference_text
+    assert "no unconfirmed live lookup" in xps_reference_text
+    assert "not a ban on EA preparing source-backed candidates" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "component_fit" in xps_record["notes"]

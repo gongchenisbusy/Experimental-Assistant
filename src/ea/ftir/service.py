@@ -529,7 +529,7 @@ def build_ftir_assignment_source_packet(
         ],
         "boundaries": [
             "FTIR assignment source packets are staging artifacts and do not modify processing outputs or confirmed project memory.",
-            "This source-packet builder does not run live lookup or parse full text itself; values may originate from built-in generic libraries, user-provided data, local libraries, project literature, or separately confirmed search connectors.",
+            "This source-packet builder is a deterministic staging step and does not perform unconfirmed live lookup or parse full text during the command. Values may originate from built-in generic libraries, user-provided data, local libraries, project literature, or separately confirmed search connectors, and EA may use those sources to prepare assignment candidates.",
         ],
     }
     write_yaml(output_path, packet)
@@ -868,7 +868,7 @@ def suggest_ftir_assignments(
         ],
         "boundaries": [
             "FTIR assignment suggestions are advisory and auto_applied is always false.",
-            "This suggestion-record step does not run live lookup, alter processing outputs, prove functional groups/composition, or write confirmed memory.",
+            "This suggestion-record step does not perform unconfirmed live lookup during the command. EA may prepare source packets from built-in libraries, project literature, user-provided sources, or user-confirmed search workflows before this step; this step does not alter processing outputs, prove functional groups/composition, or write confirmed memory.",
         ],
     }
     output_dir.mkdir(parents=True, exist_ok=True)

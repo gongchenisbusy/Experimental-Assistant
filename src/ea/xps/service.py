@@ -752,7 +752,7 @@ def build_xps_parameter_source_packet(
         ],
         "boundaries": [
             "Source packets are staging artifacts and do not apply values to XPS processing parameters.",
-            "This source-packet builder does not run live network lookup or parse full text itself; values may originate from user-provided data, local libraries, or separately confirmed literature/search connectors, but this packet does not choose components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
+            "This source-packet builder is a deterministic staging step and does not perform unconfirmed live network lookup or parse full text during the command. Values may originate from user-provided data, local libraries, project literature records, or separately confirmed literature/search connectors, and EA may use those sources to prepare candidates. The packet still does not auto-choose or apply components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
         ],
     }
     write_yaml(output_path, packet)
@@ -1002,7 +1002,7 @@ def suggest_xps_parameters(
         ],
         "boundaries": [
             "Suggestion records are advisory and auto_applied is always false.",
-            "This suggestion-record step does not run live network lookup itself; it validates supplied source packets/reference IDs and does not select components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
+            "This suggestion-record step is a validation/review-record step and does not perform unconfirmed live network lookup itself. EA may prepare source packets from reviewed local libraries, project literature, user-provided sources, or user-confirmed literature/search workflows before this step; this step validates supplied source packets/reference IDs and does not auto-select or apply components/backgrounds/bounds/peak shapes, apply fitting, prove chemical states, or calculate composition.",
         ],
     }
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -563,7 +563,8 @@ candidates:
     assert packet["source"] == "ea.ftir.assignment_source_packet:v0.2"
     assert packet["source_library_ref"] == library.relative_to(workspace).as_posix()
     assert "suggest-assignments" in " ".join(packet["next_steps"])
-    assert "does not run live lookup" in " ".join(packet["boundaries"])
+    assert "does not perform unconfirmed live lookup" in " ".join(packet["boundaries"])
+    assert "EA may use those sources to prepare assignment candidates" in " ".join(packet["boundaries"])
 
     packet_ref = Path(packet_output["source_packet"]).relative_to(workspace).as_posix()
     assert main(
@@ -597,7 +598,8 @@ candidates:
     assert "ref-missing-ftir-001" in record["candidates"][1]["unresolved_reference_ids"]
     assert record["candidates"][2]["status"] == "no_feature_match"
     assert "composition proof" in " ".join(record["next_steps"])
-    assert "does not run live lookup" in " ".join(record["boundaries"])
+    assert "does not perform unconfirmed live lookup" in " ".join(record["boundaries"])
+    assert "EA may prepare source packets" in " ".join(record["boundaries"])
     assert (workspace / record["provenance_ref"]).exists()
     assert set(table["status"]) == {"ready_for_user_review", "needs_reference_registration", "no_feature_match"}
 
@@ -731,7 +733,8 @@ def test_cli_builds_builtin_ftir_assignment_source_packet(tmp_path: Path, capsys
     assert "builtin-ftir-socrates-2001" in packet["reference_ids"]
     assert any(candidate["candidate_id"] == "ftir-builtin-carbonyl-co-stretching-generic" for candidate in packet["candidates"])
     assert "built-in reference_seeds" in " ".join(packet["next_steps"])
-    assert "does not run live lookup" in " ".join(packet["boundaries"])
+    assert "does not perform unconfirmed live lookup" in " ".join(packet["boundaries"])
+    assert "EA may use those sources to prepare assignment candidates" in " ".join(packet["boundaries"])
     assert (workspace / packet["provenance_ref"]).exists()
 
     assert (
@@ -785,6 +788,8 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
     assert "--assignment-suggestion" in reference_text
     assert "generic_materials" in reference_text
     assert "register-seeds" in reference_text
+    assert "does not perform unconfirmed live lookup" in reference_text
+    assert "EA may still prepare source-backed candidates" in reference_text
     ftir_record = next(item for item in registry["skills"] if item["id"] == "ea.ftir-analysis")
     assert "Minimal FTIR workflow implemented" in ftir_record["notes"]
     assert "context_records" in ftir_record["notes"]

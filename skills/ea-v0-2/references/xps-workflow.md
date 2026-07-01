@@ -80,7 +80,7 @@ ea xps build-source-packet /path/to/ea-project --library-file project_xps_parame
 ea xps build-source-packet /path/to/ea-project --write-template
 ```
 
-Source-packet building is a staging step. It filters and copies candidate metadata into the standard packet schema, records provenance, and does not validate references or apply values; `ea xps suggest-parameters` remains the review-record step.
+Source-packet building is a staging step. It filters and copies candidate metadata into the standard packet schema, records provenance, and does not validate references or apply values; `ea xps suggest-parameters` remains the review-record step. This command boundary means no unconfirmed live lookup or silent parameter application inside the command, not a ban on EA preparing source-backed candidates from reviewed project literature, local libraries, user-provided sources, or user-confirmed search workflows.
 
 Optional source-backed parameter suggestion source packet:
 
