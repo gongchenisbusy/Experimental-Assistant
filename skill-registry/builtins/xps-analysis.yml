@@ -11,6 +11,7 @@ ea_skill:
   output_artifacts:
     - processed_result
     - background_model_record
+    - background_subtraction_record
     - figure_record
     - report_section
     - provenance_record
@@ -63,6 +64,7 @@ ea_skill:
       - provenance_record
       - component_quantification_screening
       - background_model_records
+      - background_subtraction_linear_preprocessing
     background_model_records:
       source: ea.xps.background_model:v0.2
       default_enabled: false
@@ -77,8 +79,18 @@ ea_skill:
       output_artifacts:
         - xps_background.yml
       boundary: reviewed_model_provenance_only_no_automatic_shirley_tougaard_subtraction_spin_orbit_fitting_composition_or_chemical_state_proof
+    background_subtraction:
+      source: ea.xps.background_subtraction:v0.2
+      default_enabled: false
+      supported_methods:
+        - reviewed_linear_background_subtraction
+      output_artifacts:
+        - xps_background_subtraction.yml
+        - xps_linear_background_column
+        - xps_background_subtracted_intensity_column
+      boundary: reviewed_numeric_linear_preprocessing_only_no_endpoint_autoselection_no_shirley_tougaard_no_spin_orbit_fitting_no_composition_or_chemical_state_proof
     limitations:
       - automatic peaks are screening evidence, not chemical-state assignments
       - first-pass workflow records calibration metadata but does not prove charge correction validity
       - component_quantification_screening uses reviewed windows and optional RSF values only; definitive composition and chemical-state assignment remain future work
-      - numeric Shirley/Tougaard background subtraction, spin-orbit constrained fitting, and formal multi-region quantification remain future work
+      - reviewed linear background_subtraction writes preprocessing columns only; numeric Shirley/Tougaard background subtraction, spin-orbit constrained fitting, and formal multi-region quantification remain future work

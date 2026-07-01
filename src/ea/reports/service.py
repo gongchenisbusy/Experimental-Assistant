@@ -1350,6 +1350,61 @@ def _xps_background_model_table(metadata: dict) -> str:
     return "\n".join(rows)
 
 
+def _xps_background_subtraction_text(metadata: dict) -> str:
+    subtraction = (metadata.get("peak_analysis") or {}).get("background_subtraction") or {}
+    if not subtraction:
+        return "当前没有启用或记录 XPS background subtraction。"
+    status = subtraction.get("status", "unknown")
+    corrected_count = subtraction.get("corrected_region_count", 0)
+    region_count = subtraction.get("region_count", 0)
+    confidence = subtraction.get("confidence", "insufficient")
+    source = subtraction.get("assignment_source", "ea.xps.background_subtraction:v0.2")
+    record_ref = subtraction.get("record_ref", "未生成")
+    background_column = subtraction.get("background_column", "xps_linear_background")
+    corrected_column = subtraction.get("corrected_intensity_column", "xps_background_subtracted_intensity")
+    references = subtraction.get("reference_ids") or []
+    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    return (
+        f"Reviewed XPS linear background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
+        f"record: `{record_ref}`；background column: `{background_column}`；corrected column: `{corrected_column}`；"
+        f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
+        "该记录只表示用户审核过的线性数值扣背景预处理；EA 不自动选择端点/窗口，不执行 Shirley/Tougaard 扣背景，"
+        "也不据此证明化学态、组成或 spin-orbit constrained fitting。"
+    )
+
+
+def _xps_background_subtraction_table(metadata: dict) -> str:
+    subtraction = (metadata.get("peak_analysis") or {}).get("background_subtraction") or {}
+    regions = subtraction.get("regions") or []
+    if not regions:
+        return "当前没有可展示的 XPS background subtraction region。"
+    rows = [
+        "| region_id | window (eV) | left anchor (eV) | right anchor (eV) | points | status | confidence |",
+        "|---|---:|---:|---:|---:|---|---|",
+    ]
+    for region in regions[:12]:
+        if not isinstance(region, dict):
+            continue
+        low = region.get("binding_energy_min_eV")
+        high = region.get("binding_energy_max_eV")
+        left = region.get("left_anchor") or {}
+        right = region.get("right_anchor") or {}
+        left_x = left.get("binding_energy_eV") if isinstance(left, dict) else None
+        right_x = right.get("binding_energy_eV") if isinstance(right, dict) else None
+        rows.append(
+            "| {region_id} | {window} | {left} | {right} | {points} | {status} | {confidence} |".format(
+                region_id=region.get("region_id", "n/a"),
+                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                left=f"{float(left_x):.2f}" if left_x is not None else "n/a",
+                right=f"{float(right_x):.2f}" if right_x is not None else "n/a",
+                points=region.get("point_count", 0),
+                status=region.get("status", "unknown"),
+                confidence=region.get("confidence", "insufficient"),
+            )
+        )
+    return "\n".join(rows)
+
+
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
     shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
@@ -1416,6 +1471,8 @@ def generate_xps_report(
     component_table = _xps_component_table(root, outputs.get("component_table"))
     background_summary = _xps_background_model_text(metadata)
     background_table = _xps_background_model_table(metadata)
+    background_subtraction_summary = _xps_background_subtraction_text(metadata)
+    background_subtraction_table = _xps_background_subtraction_table(metadata)
     calibration_text = _xps_calibration_text(metadata)
     warnings = metadata.get("warnings") or []
     warning_text = "；".join(
@@ -1450,6 +1507,12 @@ def generate_xps_report(
 {background_summary}
 
 {background_table}
+
+## XPS reviewed linear background subtraction
+
+{background_subtraction_summary}
+
+{background_subtraction_table}
 
 ## 图谱
 
@@ -1489,6 +1552,7 @@ def generate_xps_report(
 - peak table: `{outputs['peak_table']}`
 - component table: `{outputs.get('component_table', '未生成')}`
 {f"- background model: `{outputs['background_model']}`" if outputs.get('background_model') else "- background model: `未生成`"}
+{f"- background subtraction: `{outputs['background_subtraction']}`" if outputs.get('background_subtraction') else "- background subtraction: `未生成`"}
 - plot: `{outputs['figure']}`
 - metadata: `{outputs['metadata']}`
 

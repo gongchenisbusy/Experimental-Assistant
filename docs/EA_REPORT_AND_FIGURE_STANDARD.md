@@ -118,7 +118,7 @@ XPS：
 
 - x 轴为 binding energy，单位 `eV`，按 XPS 习惯可从高到低显示。
 - 必须记录 binding-energy calibration 或 charge correction 的用户确认信息，例如参考峰、能量位移和确认来源。
-- y 轴说明 counts、normalized intensity 或 background-subtracted intensity。
+- y 轴说明 counts、normalized intensity 或 reviewed linear background-subtracted intensity；若显示扣背景曲线，必须能追溯到用户确认的 `background_subtraction` 区域和锚点/窗口。
 - 标注主要 peak/region；化学态、价态、组分比例、spin-orbit 约束和灵敏度因子不能由简单自动检峰直接推出。
 - 若有 peak fitting，报告中必须写明背景模型、峰形、约束、参考依据和可信度。
 

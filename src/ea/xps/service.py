@@ -105,6 +105,20 @@ def default_xps_processing_parameters() -> dict[str, Any]:
             "reviewer_notes": [],
             "caveats": [],
         },
+        "background_subtraction": {
+            "enabled": False,
+            "method": "reviewed_linear_background_subtraction",
+            "source": "ea.xps.background_subtraction:v0.2",
+            "input_intensity_column": "processed_intensity",
+            "background_column": "xps_linear_background",
+            "corrected_intensity_column": "xps_background_subtracted_intensity",
+            "region_id_column": "xps_background_subtraction_region_id",
+            "min_points": 5,
+            "regions": [],
+            "reference_ids": [],
+            "reviewer_notes": [],
+            "caveats": [],
+        },
     }
 
 
@@ -607,6 +621,358 @@ def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any]
     return record, warnings
 
 
+def _column_name(value: Any, default: str) -> str:
+    name = str(value or default).strip()
+    return name or default
+
+
+def _anchor_window(region: dict[str, Any], side: str) -> tuple[float, float] | None:
+    value = region.get(f"{side}_anchor_window_eV") or region.get(f"{side}_endpoint_window_eV")
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        low = float(value[0])
+        high = float(value[1])
+    except (TypeError, ValueError):
+        return None
+    return min(low, high), max(low, high)
+
+
+def _anchor_point(region: dict[str, Any], side: str) -> float | None:
+    for key in (f"{side}_anchor_eV", f"{side}_endpoint_eV"):
+        if key not in region or region.get(key) is None:
+            continue
+        try:
+            return float(region.get(key))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _background_anchor(
+    processed: pd.DataFrame,
+    *,
+    input_column: str,
+    region: dict[str, Any],
+    side: str,
+    region_id: str,
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    x = processed["binding_energy_eV"].to_numpy(dtype=float)
+    y = pd.to_numeric(processed[input_column], errors="coerce").to_numpy(dtype=float)
+    window = _anchor_window(region, side)
+    if window is not None:
+        low, high = window
+        mask = (x >= low) & (x <= high) & np.isfinite(y)
+        if int(mask.sum()) == 0:
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_anchor_empty",
+                    "A reviewed XPS background-subtraction anchor window contained no usable points.",
+                    severity="medium",
+                    region_id=region_id,
+                    side=side,
+                    anchor_window_eV=[low, high],
+                )
+            )
+            return None
+        return {
+            "mode": "window_mean",
+            "window_eV": [low, high],
+            "binding_energy_eV": float(np.nanmean(x[mask])),
+            "intensity": float(np.nanmean(y[mask])),
+            "point_count": int(mask.sum()),
+        }
+
+    point = _anchor_point(region, side)
+    if point is not None:
+        finite = np.isfinite(x) & np.isfinite(y)
+        if not finite.any():
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_anchor_missing_data",
+                    "A reviewed XPS background-subtraction anchor point could not be evaluated because the input column has no finite values.",
+                    severity="medium",
+                    region_id=region_id,
+                    side=side,
+                )
+            )
+            return None
+        finite_indices = np.flatnonzero(finite)
+        nearest = finite_indices[int(np.nanargmin(np.abs(x[finite] - point)))]
+        return {
+            "mode": "nearest_point",
+            "requested_binding_energy_eV": point,
+            "binding_energy_eV": float(x[nearest]),
+            "intensity": float(y[nearest]),
+            "point_count": 1,
+        }
+
+    warnings.append(
+        _warning(
+            "xps_background_subtraction_anchor_missing",
+            "A reviewed XPS background-subtraction region is missing a required left/right anchor point or anchor window.",
+            severity="medium",
+            region_id=region_id,
+            side=side,
+        )
+    )
+    return None
+
+
+def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    params = parameters.get("background_subtraction", {})
+    if not isinstance(params, dict) or not params.get("enabled", False):
+        return None, []
+
+    warnings: list[dict[str, Any]] = []
+    method = str(params.get("method") or "reviewed_linear_background_subtraction")
+    source = str(params.get("source") or "ea.xps.background_subtraction:v0.2")
+    input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
+    background_column = _column_name(params.get("background_column"), "xps_linear_background")
+    corrected_column = _column_name(params.get("corrected_intensity_column"), "xps_background_subtracted_intensity")
+    region_id_column = _column_name(params.get("region_id_column"), "xps_background_subtraction_region_id")
+    min_points, adjusted_min_points = _coerce_int(params.get("min_points"), 5, minimum=2)
+    record: dict[str, Any] = {
+        "enabled": True,
+        "method": method,
+        "assignment_source": source,
+        "input_intensity_column": input_column,
+        "background_column": background_column,
+        "corrected_intensity_column": corrected_column,
+        "region_id_column": region_id_column,
+        "min_points": min_points,
+        "status": "not_applied",
+        "confidence": "insufficient",
+        "region_count": 0,
+        "corrected_region_count": 0,
+        "regions": [],
+        "reference_ids": _coerce_string_list(params.get("reference_ids")),
+        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "caveats": _coerce_string_list(params.get("caveats")),
+        "boundary": (
+            "XPS background_subtraction applies only user-reviewed linear numeric preprocessing inside explicit binding-energy regions. "
+            "EA v0.2 does not automatically choose endpoints/windows, perform Shirley/Tougaard subtraction, assign chemical states, "
+            "prove composition, or perform spin-orbit constrained fitting from this record."
+        ),
+    }
+    if method != "reviewed_linear_background_subtraction":
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_method_unsupported",
+                "XPS background_subtraction method is not supported by EA v0.2.",
+                severity="medium",
+                method=method,
+            )
+        )
+        record.update({"status": "skipped_unsupported_method", "warnings": warnings})
+        return record, warnings
+    if adjusted_min_points:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_min_points_adjusted",
+                "Invalid XPS background_subtraction min_points was adjusted before processing.",
+                severity="medium",
+                min_points=min_points,
+            )
+        )
+    if input_column not in processed.columns:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_input_missing",
+                "XPS background_subtraction input intensity column was not present in the processed table.",
+                severity="medium",
+                input_intensity_column=input_column,
+            )
+        )
+        record.update({"status": "skipped_missing_input_column", "warnings": warnings})
+        return record, warnings
+    if len({input_column, background_column, corrected_column, region_id_column}) != 4:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_column_collision",
+                "XPS background_subtraction column names must be distinct and must not overwrite the input intensity column.",
+                severity="medium",
+                input_intensity_column=input_column,
+                background_column=background_column,
+                corrected_intensity_column=corrected_column,
+                region_id_column=region_id_column,
+            )
+        )
+        record.update({"status": "skipped_column_collision", "warnings": warnings})
+        return record, warnings
+    existing_output_columns = [column for column in [background_column, corrected_column, region_id_column] if column in processed.columns]
+    if existing_output_columns:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_output_column_exists",
+                "XPS background_subtraction output columns must not overwrite existing processed table columns.",
+                severity="medium",
+                existing_output_columns=existing_output_columns,
+            )
+        )
+        record.update({"status": "skipped_existing_output_column", "warnings": warnings})
+        return record, warnings
+
+    raw_regions = params.get("regions", [])
+    if not isinstance(raw_regions, list):
+        raw_regions = []
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_regions_ignored",
+                "XPS background_subtraction regions were ignored because they were not supplied as a list.",
+                severity="medium",
+            )
+        )
+    if not raw_regions:
+        warnings.append(
+            _warning(
+                "xps_background_subtraction_regions_missing",
+                "background_subtraction was enabled, but no reviewed subtraction regions were supplied.",
+                severity="medium",
+            )
+        )
+        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        return record, warnings
+
+    processed[background_column] = np.nan
+    processed[corrected_column] = np.nan
+    processed[region_id_column] = pd.Series(pd.NA, index=processed.index, dtype="object")
+    x = processed["binding_energy_eV"].to_numpy(dtype=float)
+    y = pd.to_numeric(processed[input_column], errors="coerce").to_numpy(dtype=float)
+    regions: list[dict[str, Any]] = []
+    corrected_count = 0
+    all_reference_ids = set(record["reference_ids"])
+
+    for number, region in enumerate(raw_regions, start=1):
+        if not isinstance(region, dict):
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_region_ignored",
+                    "A reviewed XPS background_subtraction region was ignored because it was not a mapping.",
+                    severity="medium",
+                    region_number=number,
+                )
+            )
+            continue
+        region_id = str(region.get("region_id") or region.get("id") or f"xps-background-subtraction-region-{number:03d}")
+        low, high = _background_window(region)
+        region_record: dict[str, Any] = {
+            "region_id": region_id,
+            "label": str(region.get("label") or region_id),
+            "binding_energy_min_eV": low,
+            "binding_energy_max_eV": high,
+            "left_anchor": None,
+            "right_anchor": None,
+            "point_count": 0,
+            "status": "invalid_region_window",
+            "reference_ids": _coerce_string_list(region.get("reference_ids")),
+            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "caveats": _coerce_string_list(region.get("caveats")),
+            "confidence": str(region.get("confidence") or "low").strip().lower(),
+            "assignment_source": source,
+        }
+        all_reference_ids.update(region_record["reference_ids"])
+        if low is None or high is None:
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_invalid_window",
+                    "A reviewed XPS background_subtraction region has an invalid binding-energy window.",
+                    severity="medium",
+                    region_id=region_id,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        mask = (x >= low) & (x <= high) & np.isfinite(y)
+        point_count = int(mask.sum())
+        region_record["point_count"] = point_count
+        if point_count < min_points:
+            region_record["status"] = "insufficient_region_points"
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_insufficient_points",
+                    "A reviewed XPS background_subtraction region had too few points for linear subtraction.",
+                    severity="medium",
+                    region_id=region_id,
+                    point_count=point_count,
+                    min_points=min_points,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        left_anchor = _background_anchor(processed, input_column=input_column, region=region, side="left", region_id=region_id, warnings=warnings)
+        right_anchor = _background_anchor(processed, input_column=input_column, region=region, side="right", region_id=region_id, warnings=warnings)
+        region_record["left_anchor"] = left_anchor
+        region_record["right_anchor"] = right_anchor
+        if left_anchor is None or right_anchor is None:
+            region_record["status"] = "missing_reviewed_anchor"
+            regions.append(region_record)
+            continue
+
+        x_left = float(left_anchor["binding_energy_eV"])
+        x_right = float(right_anchor["binding_energy_eV"])
+        y_left = float(left_anchor["intensity"])
+        y_right = float(right_anchor["intensity"])
+        if x_left == x_right:
+            region_record["status"] = "invalid_anchor_geometry"
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_anchor_geometry_invalid",
+                    "A reviewed XPS background_subtraction region has identical left/right anchor positions.",
+                    severity="medium",
+                    region_id=region_id,
+                    anchor_eV=x_left,
+                )
+            )
+            regions.append(region_record)
+            continue
+
+        if processed.loc[mask, background_column].notna().any():
+            warnings.append(
+                _warning(
+                    "xps_background_subtraction_region_overlap",
+                    "A reviewed XPS background_subtraction region overlaps a previously corrected region; later region values were written for the overlap.",
+                    severity="low",
+                    region_id=region_id,
+                )
+            )
+        slope = (y_right - y_left) / (x_right - x_left)
+        background = y_left + slope * (x[mask] - x_left)
+        corrected = y[mask] - background
+        processed.loc[mask, background_column] = background
+        processed.loc[mask, corrected_column] = corrected
+        processed.loc[mask, region_id_column] = region_id
+        region_record.update(
+            {
+                "status": "linear_background_subtracted",
+                "slope_intensity_per_eV": float(slope),
+                "background_min": float(np.nanmin(background)),
+                "background_max": float(np.nanmax(background)),
+                "corrected_min": float(np.nanmin(corrected)),
+                "corrected_max": float(np.nanmax(corrected)),
+                "output_columns": [background_column, corrected_column, region_id_column],
+            }
+        )
+        corrected_count += 1
+        regions.append(region_record)
+
+    record.update(
+        {
+            "status": "reviewed_linear_background_subtracted" if corrected_count else "no_regions_corrected",
+            "confidence": "low" if corrected_count else "insufficient",
+            "region_count": len(regions),
+            "corrected_region_count": corrected_count,
+            "regions": regions,
+            "reference_ids": sorted(all_reference_ids),
+            "warnings": warnings,
+        }
+    )
+    return record, warnings
+
+
 def _apply_component_quantification(
     processed: pd.DataFrame, parameters: dict[str, Any]
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
@@ -820,6 +1186,7 @@ def _analyze_peaks(
     request: XPSProcessingRequest,
     component_summary: dict[str, Any] | None = None,
     background_record: dict[str, Any] | None = None,
+    background_subtraction_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "peak_count": int(len(peaks)),
@@ -891,6 +1258,17 @@ def _analyze_peaks(
                     "assignment_source": background_record.get("assignment_source", "ea.xps.background_model:v0.2"),
                 }
             )
+    if background_subtraction_record:
+        analysis["background_subtraction"] = background_subtraction_record
+        if background_subtraction_record.get("status") == "reviewed_linear_background_subtracted":
+            analysis["possible_interpretations"].append(
+                {
+                    "text": "Reviewed linear XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as Shirley/Tougaard modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
+                    "confidence": background_subtraction_record.get("confidence", "low"),
+                    "evidence": ["background_subtraction"],
+                    "assignment_source": background_subtraction_record.get("assignment_source", "ea.xps.background_subtraction:v0.2"),
+                }
+            )
     return analysis
 
 
@@ -902,9 +1280,41 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_xps(processed: pd.DataFrame, peaks: pd.DataFrame, components: pd.DataFrame, output: Path, *, footer: str | None = None) -> None:
+def _plot_xps(
+    processed: pd.DataFrame,
+    peaks: pd.DataFrame,
+    components: pd.DataFrame,
+    output: Path,
+    *,
+    background_subtraction: dict[str, Any] | None = None,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(processed["binding_energy_eV"], processed["processed_intensity"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed intensity")
+    if background_subtraction and background_subtraction.get("status") == "reviewed_linear_background_subtracted":
+        background_column = str(background_subtraction.get("background_column") or "xps_linear_background")
+        corrected_column = str(background_subtraction.get("corrected_intensity_column") or "xps_background_subtracted_intensity")
+        if background_column in processed.columns:
+            background_mask = pd.to_numeric(processed[background_column], errors="coerce").notna()
+            if bool(background_mask.any()):
+                ax.plot(
+                    processed.loc[background_mask, "binding_energy_eV"],
+                    processed.loc[background_mask, background_column],
+                    color=NATURE_LIKE_COLORS["gray"],
+                    linewidth=1.0,
+                    linestyle="--",
+                    label="Reviewed linear background",
+                )
+        if corrected_column in processed.columns:
+            corrected_mask = pd.to_numeric(processed[corrected_column], errors="coerce").notna()
+            if bool(corrected_mask.any()):
+                ax.plot(
+                    processed.loc[corrected_mask, "binding_energy_eV"],
+                    processed.loc[corrected_mask, corrected_column],
+                    color=NATURE_LIKE_COLORS["orange"],
+                    linewidth=1.0,
+                    label="Background-subtracted intensity",
+                )
     if not components.empty:
         for _, component in components[components["status"].astype(str) == "integrated"].head(8).iterrows():
             low = float(component["binding_energy_min_eV"])
@@ -957,10 +1367,11 @@ def process_xps_result(
 
     parameters = _merge_parameters(request.processing_parameters)
     processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    background_subtraction_record, background_subtraction_warnings = _apply_background_subtraction(processed, parameters)
     peaks = _detect_peaks(processed, parameters, request.x_unit)
     components, component_summary, component_warnings = _apply_component_quantification(processed, parameters)
     background_record, background_warnings = _record_background_model(parameters)
-    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record)
+    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record, background_subtraction_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
@@ -975,10 +1386,11 @@ def process_xps_result(
     peaks_csv = output_dir / "xps_peaks.csv"
     components_csv = output_dir / "xps_components.csv"
     background_yml = output_dir / "xps_background.yml"
+    background_subtraction_yml = output_dir / "xps_background_subtraction.yml"
     figure_name = f"{figure_id}.png" if figure_id else "xps_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "xps_metadata.yml"
-    for output in [processed_csv, peaks_csv, components_csv, background_yml, figure, result_metadata]:
+    for output in [processed_csv, peaks_csv, components_csv, background_yml, background_subtraction_yml, figure, result_metadata]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -996,7 +1408,25 @@ def process_xps_result(
             evidence = item.get("evidence")
             if isinstance(evidence, list):
                 item["evidence"] = [background_ref if value == "background_model" else value for value in evidence]
-    _plot_xps(processed, peaks, components, figure, footer=figure_footer(figure_id, None) if figure_id else None)
+    background_subtraction_ref: str | None = None
+    if background_subtraction_record is not None:
+        background_subtraction_ref = str(background_subtraction_yml.relative_to(root))
+        background_subtraction_record["record_ref"] = background_subtraction_ref
+        write_yaml(background_subtraction_yml, background_subtraction_record)
+        if peak_analysis.get("background_subtraction"):
+            peak_analysis["background_subtraction"]["record_ref"] = background_subtraction_ref
+        for item in peak_analysis.get("possible_interpretations", []):
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                item["evidence"] = [background_subtraction_ref if value == "background_subtraction" else value for value in evidence]
+    _plot_xps(
+        processed,
+        peaks,
+        components,
+        figure,
+        background_subtraction=background_subtraction_record,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
@@ -1004,6 +1434,7 @@ def process_xps_result(
     if not request.calibration_reference:
         warnings.append(_warning("xps_calibration_reference_missing", "No XPS calibration reference text was recorded.", severity="medium"))
     warnings.extend(processing_warnings)
+    warnings.extend(background_subtraction_warnings)
     warnings.extend(component_warnings)
     warnings.extend(background_warnings)
     outputs = {
@@ -1015,6 +1446,8 @@ def process_xps_result(
     }
     if background_ref:
         outputs["background_model"] = background_ref
+    if background_subtraction_ref:
+        outputs["background_subtraction"] = background_subtraction_ref
     result = XPSProcessingResult(
         xps_result_id=result_id,
         result_id=result_id,
@@ -1053,6 +1486,7 @@ def process_xps_result(
                     str(peaks_csv.relative_to(root)),
                     str(components_csv.relative_to(root)),
                     background_ref,
+                    background_subtraction_ref,
                     str(figure.relative_to(root)),
                 ]
                 if value
@@ -1096,7 +1530,7 @@ def process_xps_result(
                     "processing_parameters": parameters,
                 },
             },
-            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records when supplied, and traceable calibration/processing parameters.",
+            caption="XPS spectrum with processed intensity, detected screening peaks, reviewed component/background records, optional reviewed linear background-subtraction overlays, and traceable calibration/processing parameters.",
             purpose="xps_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
@@ -1106,6 +1540,7 @@ def process_xps_result(
                     str(peaks_csv.relative_to(root)),
                     str(components_csv.relative_to(root)),
                     background_ref,
+                    background_subtraction_ref,
                 ]
                 if value
             ],

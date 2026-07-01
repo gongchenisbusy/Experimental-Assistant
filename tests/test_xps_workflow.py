@@ -108,6 +108,30 @@ def _component_quantification_parameters() -> dict:
             },
         ],
     }
+    parameters["background_subtraction"] = {
+        "enabled": True,
+        "method": "reviewed_linear_background_subtraction",
+        "source": "ea.xps.background_subtraction:v0.2",
+        "input_intensity_column": "processed_intensity",
+        "background_column": "xps_linear_background",
+        "corrected_intensity_column": "xps_background_subtracted_intensity",
+        "region_id_column": "xps_background_subtraction_region_id",
+        "min_points": 5,
+        "reference_ids": ["ref-xps-background-001"],
+        "regions": [
+            {
+                "region_id": "xps-bgsub-c1s-001",
+                "label": "C 1s reviewed linear background",
+                "binding_energy_window_eV": [280.0, 292.0],
+                "left_anchor_window_eV": [280.0, 281.0],
+                "right_anchor_window_eV": [291.0, 292.0],
+                "reference_ids": ["ref-xps-background-001"],
+                "reviewer_notes": ["User confirmed endpoint windows for a linear background preprocessing record."],
+                "caveats": ["Linear subtraction only; not a Shirley/Tougaard model."],
+                "confidence": "low",
+            }
+        ],
+    }
     return parameters
 
 
@@ -283,10 +307,30 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert {region["background_type"] for region in saved_background["regions"]} == {"shirley", "tougaard"}
     assert saved_background["regions"][0]["applied_to_processed_data"] is False
     assert saved_background["reference_ids"] == ["ref-xps-background-001"]
+    subtraction_record = xps["peak_analysis"]["background_subtraction"]
+    assert subtraction_record["status"] == "reviewed_linear_background_subtracted"
+    assert subtraction_record["corrected_region_count"] == 1
+    assert subtraction_record["record_ref"] == xps["outputs"]["background_subtraction"]
+    assert subtraction_record["corrected_intensity_column"] == "xps_background_subtracted_intensity"
+    assert "does not automatically choose endpoints" in subtraction_record["boundary"]
+    assert xps["outputs"]["background_subtraction"].endswith("xps_background_subtraction.yml")
+    saved_subtraction = read_yaml(workspace / xps["outputs"]["background_subtraction"])
+    assert saved_subtraction["record_ref"] == xps["outputs"]["background_subtraction"]
+    assert saved_subtraction["regions"][0]["status"] == "linear_background_subtracted"
+    assert saved_subtraction["regions"][0]["left_anchor"]["mode"] == "window_mean"
+    assert saved_subtraction["reference_ids"] == ["ref-xps-background-001"]
+    interpretations = xps["peak_analysis"]["possible_interpretations"]
+    assert any(xps["outputs"]["background_subtraction"] in item.get("evidence", []) for item in interpretations)
     assert xps["peak_analysis"]["possible_interpretations"]
     assert (workspace / xps["outputs"]["peak_table"]).exists()
     assert (workspace / xps["outputs"]["component_table"]).exists()
     assert (workspace / xps["outputs"]["background_model"]).exists()
+    assert (workspace / xps["outputs"]["background_subtraction"]).exists()
+    processed = pd.read_csv(workspace / xps["outputs"]["processed_csv"])
+    assert "xps_linear_background" in processed.columns
+    assert "xps_background_subtracted_intensity" in processed.columns
+    corrected = processed.loc[processed["xps_background_subtraction_region_id"] == "xps-bgsub-c1s-001", "xps_background_subtracted_intensity"]
+    assert corrected.notna().any()
     components = pd.read_csv(workspace / xps["outputs"]["component_table"])
     assert set(components["component_id"]) == {"xps-c1s-001", "xps-o1s-001", "xps-fe2p-001"}
     assert components["relative_atomic_percent_screening"].notna().all()
@@ -300,6 +344,7 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert xps["outputs"]["peak_table"] in figure_record["source_data_refs"]
     assert xps["outputs"]["component_table"] in figure_record["source_data_refs"]
     assert xps["outputs"]["background_model"] in figure_record["source_data_refs"]
+    assert xps["outputs"]["background_subtraction"] in figure_record["source_data_refs"]
 
     assert main(
         [
@@ -320,7 +365,10 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "xps_analysis"
     assert "## XPS background model record" in report_body
+    assert "## XPS reviewed linear background subtraction" in report_body
     assert "xps-bg-c1s-001" in report_body
+    assert "xps-bgsub-c1s-001" in report_body
+    assert "xps_background_subtracted_intensity" in report_body
     assert "shirley" in report_body
     assert "tougaard" in report_body
     assert "## XPS peak 参数" in report_body
@@ -357,7 +405,9 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     assert "calibration_review_ref" in xps_reference_text
     assert "component_quantification" in xps_reference_text
     assert "background_model" in xps_reference_text
+    assert "background_subtraction" in xps_reference_text
     assert "screening-only" in xps_reference_text
     xps_record = next(item for item in registry["skills"] if item["id"] == "ea.xps-analysis")
     assert "component_quantification_screening" in xps_record["notes"]
     assert "background_model_records" in xps_record["notes"]
+    assert "background_subtraction" in xps_record["notes"]
