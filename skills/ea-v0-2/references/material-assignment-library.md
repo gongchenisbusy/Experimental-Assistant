@@ -2,7 +2,7 @@
 
 Use this reference when an EA workflow needs to inspect or extend built-in material assignment records for characterization data.
 
-Current v0.2 scope:
+Current EA v0.9 RC compatibility scope:
 
 - Built-in records live in `src/ea/materials/assignments.yml`.
 - Built-in profiles include `mos2` and `ws2` with Raman, PL, and XRD screening records, plus `hbn` with Raman and XRD screening records.

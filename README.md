@@ -2,6 +2,8 @@
 
 EA v0.9 RC is the public-release-candidate state of the local-first Experimental Assistant built from the EA v0.2 implementation line. Package version: `0.9.0rc1`.
 
+Naming note: the Python package name, release archive prefix, and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects, tests, and skill installs. Treat `ea-v0-2` as the stable compatibility identifier; the user-facing release state is EA v0.9 RC / `v0.9-rc1`.
+
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
 New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PUBLIC_ACCEPTANCE_MATRIX.md` and `docs/V0_9_MANUAL_TEST_CHECKLIST.md` for release-candidate acceptance, `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.

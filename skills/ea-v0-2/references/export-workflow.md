@@ -96,7 +96,7 @@ exports/batch-bundles/{batch_id}/
 
 `batch_bundle_manifest.yml` records copied batch index/run/summary/source-manifest files, batch provenance refs, item summaries, and nested per-report bundle manifests. `--zip` writes `exports/batch-bundles/{batch_id}.zip` and `exports/batch-bundles/{batch_id}.zip.sha256` by default.
 
-For batch bundles, `--include-trace` passes focused trace view generation into each nested report bundle. The top-level batch manifest records `trace_export.strategy: nested_report_focused_trace_views`; EA v0.2 does not emit a batch-level trace graph until the traceability service models batch nodes.
+For batch bundles, `--include-trace` passes focused trace view generation into each nested report bundle. The top-level batch manifest records `trace_export.strategy: nested_report_focused_trace_views`; EA v0.9 RC does not emit a batch-level trace graph until the traceability service models batch nodes.
 
 Checksum files:
 

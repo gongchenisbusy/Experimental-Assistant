@@ -3,6 +3,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+from ea.cli import build_parser
 from ea.release_manifest import build_release_manifest
 from ea.release_package import write_release_package
 
@@ -20,6 +21,38 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
     "zotero.sqlite",
     "Chrome Profile",
     "institution password",
+]
+PUBLIC_VERSION_SURFACES = [
+    Path("README.md"),
+    Path("docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md"),
+    Path("docs/PUBLIC_ONBOARDING.md"),
+    Path("docs/RELEASE_VERIFICATION.md"),
+    Path("docs/PROJECT_BUNDLE_VERIFICATION.md"),
+    Path("skills/ea-v0-2/SKILL.md"),
+    Path("skills/ea-v0-2/references/evaluator-workflow.md"),
+    Path("skills/ea-v0-2/references/project-workflow.md"),
+    Path("skills/ea-v0-2/references/release-workflow.md"),
+    Path("skills/ea-v0-2/references/raman-workflow.md"),
+    Path("skills/ea-v0-2/references/pl-workflow.md"),
+    Path("skills/ea-v0-2/references/xrd-workflow.md"),
+    Path("skills/ea-v0-2/references/ftir-workflow.md"),
+    Path("skills/ea-v0-2/references/uv-vis-workflow.md"),
+    Path("skills/ea-v0-2/references/xps-workflow.md"),
+    Path("skills/ea-v0-2/references/electrochemistry-workflow.md"),
+    Path("skills/ea-v0-2/references/thermal-workflow.md"),
+]
+CONFUSING_CURRENT_VERSION_PHRASES = [
+    "v0.2 project",
+    "v0.2 work",
+    "EA v0.2 skill",
+    "EA v0.2 repository",
+    "EA v0.2 public",
+    "v0.2 currently",
+    "v0.2 behavior",
+    "v0.2 workflow",
+    "EA-v0.2",
+    "not supported by EA v0.2",
+    "in EA v0.2",
 ]
 
 
@@ -40,6 +73,17 @@ def test_v0_9_release_candidate_docs_are_public_safe_and_actionable() -> None:
     assert "ea-public-release-smoke" in combined
     for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
         assert forbidden not in combined
+
+
+def test_v0_9_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
+    parser_help = build_parser().format_help()
+    assert "init-project        initialize a public-user EA v0.9 RC project workspace" in parser_help
+
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_VERSION_SURFACES)
+    assert "Naming note" in combined
+    assert "compatibility identifier" in combined
+    for phrase in CONFUSING_CURRENT_VERSION_PHRASES:
+        assert phrase not in combined
 
 
 def test_v0_9_release_candidate_docs_are_packaged(tmp_path: Path) -> None:

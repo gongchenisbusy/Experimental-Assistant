@@ -628,7 +628,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use EA v0.2 literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Use EA v0.9 RC literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -3878,7 +3878,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "EA-v0.2 public-metadata-search/0.2 (local-first research assistant)",
+            "User-Agent": "EA-v0.9-rc public-metadata-search/0.9rc1 (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )

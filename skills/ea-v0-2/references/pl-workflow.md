@@ -1,6 +1,6 @@
 # PL Workflow
 
-Use this reference when processing photoluminescence spectra in EA v0.2.
+Use this reference when processing photoluminescence spectra in the EA v0.9 RC compatibility skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret emission features with project context and literature references. Use confidence labels rather than definitive mechanism claims.
 9. Write memory candidates only after user confirmation.
 
-Current v0.2 PL support:
+Current EA v0.9 RC PL compatibility support:
 
 - Raw import uses `ea raw import --characterization-type pl`.
 - Inspection reuses the spectrum reader and identifies common PL files by filename, `AxisUnit[1]=eV`, or an eV-like x range.

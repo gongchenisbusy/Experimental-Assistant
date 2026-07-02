@@ -2,6 +2,8 @@
 
 This guide is for a new public user or a fresh agent starting from an EA v0.9 release-candidate package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
+Version naming note: EA is currently a v0.9 release candidate. The package and Codex skill folder still use `ea-v0-2` for compatibility with existing installs and project records; the user-facing release state is EA v0.9 RC.
+
 ## 1. Install
 
 Requirements:
@@ -64,7 +66,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. EA v0.2 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. EA v0.9 RC currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
 
 Minimal Raman path:
 

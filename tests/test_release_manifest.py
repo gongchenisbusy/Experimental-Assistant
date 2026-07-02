@@ -51,15 +51,15 @@ ea-release-checklist = "ea.release_distribution:main"
     (root / "skills" / "ea-v0-2" / "SKILL.md").write_text("---\nname: ea-v0-2\ndescription: test\n---\n", encoding="utf-8")
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
-    (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# EA v0.2 Public Onboarding\n", encoding="utf-8")
-    (root / "docs" / "RELEASE_VERIFICATION.md").write_text("# EA v0.2 Release Verification\n", encoding="utf-8")
+    (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# EA v0.9 Public Onboarding\n", encoding="utf-8")
+    (root / "docs" / "RELEASE_VERIFICATION.md").write_text("# EA v0.9 Release Verification\n", encoding="utf-8")
     (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text("# EA v0.9 Public Acceptance Matrix\n", encoding="utf-8")
     (root / "docs" / "V0_9_RELEASE_NOTES.md").write_text("# EA v0.9 Release Notes\n", encoding="utf-8")
     (root / "docs" / "V0_9_KNOWN_LIMITATIONS.md").write_text("# EA v0.9 Known Limitations\n", encoding="utf-8")
     (root / "docs" / "V0_9_MANUAL_TEST_CHECKLIST.md").write_text("# EA v0.9 Manual Test Checklist\n", encoding="utf-8")
     (root / "docs" / "V0_9_AGENT_HANDOFF.md").write_text("# EA v0.9 Agent Handoff\n", encoding="utf-8")
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
-        "# EA v0.2 Project Bundle Verification\n", encoding="utf-8"
+        "# EA v0.9 RC Project Bundle Verification\n", encoding="utf-8"
     )
     (root / "examples" / "example_manifest.yml").write_text("example_id: minimal\n", encoding="utf-8")
     (root / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")

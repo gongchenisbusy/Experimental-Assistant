@@ -1,4 +1,4 @@
-# EA v0.2 Project Bundle Verification
+# EA v0.9 RC Project Bundle Verification
 
 This guide is for users, collaborators, and future agents who receive an EA project export bundle for one report or one batch run. It explains how to verify local file integrity, audit provenance coverage, and record signature evidence when a lab requires it.
 
@@ -80,7 +80,7 @@ ea export verify-archive /path/to/exported-bundle.zip \
 
 `ea export report-bundle` copies one report and its linked figures, source data, result metadata, references, local reference files, provenance records, and project-local provenance inputs.
 
-With `--include-trace`, report bundles also include a focused traceability YAML/Markdown pair under `traceability/`. Batch bundles pass that option to nested report bundles and record `trace_export.strategy: nested_report_focused_trace_views`; v0.2 does not emit a separate batch-level trace graph.
+With `--include-trace`, report bundles also include a focused traceability YAML/Markdown pair under `traceability/`. Batch bundles pass that option to nested report bundles and record `trace_export.strategy: nested_report_focused_trace_views`; EA v0.9 RC does not emit a separate batch-level trace graph.
 
 `ea export batch-bundle` copies one batch run, its batch records and summaries, batch provenance inputs, and nested per-report bundles for successful items with reports.
 
@@ -102,7 +102,7 @@ Do not edit raw data inside an exported bundle to make verification pass. If a s
 
 ## 5. Signature Boundary
 
-EA v0.2 does not provide a built-in detached signing command for project export bundles. The built-in signing workflow is limited to repository release packages.
+EA v0.9 RC does not provide a built-in detached signing command for project export bundles. The built-in signing workflow is limited to repository release packages.
 
 If a lab or collaborator requires signed project bundles, use an external or user-managed signing workflow after `ea export verify-bundle` and `ea export verify-archive` pass. Record the signature evidence alongside the bundle, not inside private EA defaults.
 

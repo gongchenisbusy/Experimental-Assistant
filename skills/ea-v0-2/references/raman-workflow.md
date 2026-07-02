@@ -1,6 +1,6 @@
 # Raman Workflow
 
-Use this reference when processing Raman spectra in EA v0.2.
+Use this reference when processing Raman spectra in the EA v0.9 RC compatibility skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret peaks with project context and literature references. Use confidence labels rather than empty caution.
 9. Write memory candidates only after user confirmation.
 
-Current v0.2 preprocessing support:
+Current EA v0.9 RC preprocessing compatibility support:
 
 - Baseline correction is optional and uses AsLS when `baseline_correction.enabled` is true.
 - Smoothing is optional and uses Savitzky-Golay when `smoothing.enabled` is true.

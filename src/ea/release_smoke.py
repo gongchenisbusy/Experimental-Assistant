@@ -381,7 +381,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run EA v0.2 public-release smoke checks.")
+    parser = argparse.ArgumentParser(description="Run EA v0.9 RC public-release smoke checks.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--quick-validate", type=Path)

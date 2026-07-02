@@ -143,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--material", required=True)
     init.add_argument("--experiment-type", required=True)
 
-    init_project = sub.add_parser("init-project", help="initialize a public-user EA v0.2 project workspace")
+    init_project = sub.add_parser("init-project", help="initialize a public-user EA v0.9 RC project workspace")
     init_project.add_argument("workspace", type=Path)
     init_project.add_argument("--name", required=True)
     init_project.add_argument("--slug", required=True)

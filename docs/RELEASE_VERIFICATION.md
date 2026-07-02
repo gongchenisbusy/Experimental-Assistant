@@ -13,8 +13,10 @@ A normal EA v0.9 release-candidate handoff may include:
 - `ea-v0-2-0.9.0rc1-COMMIT-release.zip.sha256`
 - optional `ea-v0-2-0.9.0rc1-COMMIT-release.zip.sig.yml`
 - optional public key file supplied by the release author
-- optional `ea-v0.2-distribution-checklist.json`
-- optional `ea-v0.2-distribution-checklist.md`
+- optional `ea-v0.9-rc-distribution-checklist.json`
+- optional `ea-v0.9-rc-distribution-checklist.md`
+
+The `ea-v0-2` archive prefix is a compatibility package identifier, not the public release version. Use the package version `0.9.0rc1`, release label `v0.9-rc1`, and embedded manifest when identifying this release.
 
 The manifest and checksum prove local file integrity. The optional detached signature can add authorship or release-intent evidence only when the verifier trusts the supplied public key through an external channel.
 

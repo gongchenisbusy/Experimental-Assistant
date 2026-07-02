@@ -2,6 +2,8 @@
 
 This guide is the shortest public path from a fresh checkout or release package to a working EA CLI and Codex skill. It separates ordinary use, development checks, and local integration tests so public defaults must not inherit a developer machine.
 
+Version naming note: EA is currently distributed as EA v0.9 RC (`0.9.0rc1`, release label `v0.9-rc1`). The Python package/archive prefix and Codex skill folder still use `ea-v0-2` as a compatibility identifier, so users should not read that folder name as the public release version.
+
 ## 1. Requirements
 
 - Python 3.11 or newer.

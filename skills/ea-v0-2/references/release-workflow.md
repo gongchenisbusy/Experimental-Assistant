@@ -85,7 +85,7 @@ Optional release package signing:
 
 Distribution checklist:
 
-- Writes `dist/ea-v0.2-distribution-checklist.json` and `dist/ea-v0.2-distribution-checklist.md` by default.
+- Writes `dist/ea-v0.9-rc-distribution-checklist.json` and `dist/ea-v0.9-rc-distribution-checklist.md` by default.
 - Summarizes current package metadata, git state, tags at `HEAD`, required release commands, public boundary notes, required artifact presence, package verification state, and optional signature state.
 - Reads existing `dist/` artifacts; it does not build packages, generate keys, sign archives, upload releases, or use network access.
 - Treats detached signatures as optional. If a signature is present and the user supplies `--public-key`, the checklist verifies it; otherwise it records that the signature is absent or unverified.

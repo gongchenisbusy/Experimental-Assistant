@@ -2,7 +2,7 @@
 
 Use this reference when creating or auditing EA report figures.
 
-Current v0.2 support:
+Current EA v0.9 RC compatibility support:
 
 - Backend is Python/matplotlib for all built-in EA figure generation.
 - Shared helpers live in `ea.figures`:
