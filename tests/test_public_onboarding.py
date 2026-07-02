@@ -66,7 +66,9 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     text = INSTALL_SKILL_SETUP_PATH.read_text(encoding="utf-8")
 
     assert "# EA Public Install And Codex Skill Setup" in text
-    assert "git clone https://github.com/OWNER/REPOSITORY.git ea" in text
+    assert "git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea" in text
+    assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1" in text
+    assert "OWNER/REPOSITORY" not in text
     assert "python3 -m pip install -e ." in text
     assert 'python3 -m pip install -e ".[dev]"' in text
     assert "ea --help" in text

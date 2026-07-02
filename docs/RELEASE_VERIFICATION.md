@@ -4,6 +4,11 @@ This guide is for a release recipient, maintainer, or future agent who needs to 
 
 For first-time installation and Codex skill setup after verification, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
 
+Public repository and release page:
+
+- Repository: `https://github.com/gongchenisbusy/Experimental-Assistant`
+- Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`
+
 ## 1. Expected Artifacts
 
 A normal EA v0.9 release-candidate handoff may include:

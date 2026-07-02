@@ -42,6 +42,12 @@ PUBLIC_BOUNDARY_NOTES = [
     "Public-user configuration must be supplied during project initialization or left disabled.",
     "Local test fixtures are separated from product defaults.",
 ]
+PUBLIC_REPOSITORY = {
+    "project_name": "Experimental Assistant (EA)",
+    "repository_full_name": "gongchenisbusy/Experimental-Assistant",
+    "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
+    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1",
+}
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
     "ea-public-release-smoke",
@@ -173,6 +179,7 @@ def build_release_manifest(
         "schema_version": "0.9",
         "manifest_type": "ea_v0_9_release_candidate",
         "repository_root_name": root.name,
+        "public_repository": PUBLIC_REPOSITORY,
         "package": metadata,
         "release_candidate": {
             "label": "v0.9-rc1",

@@ -16,16 +16,18 @@ Do not configure developer-machine Zotero databases, browser profiles, instituti
 
 ## 2. Ordinary User Install
 
-From GitHub:
+From the public GitHub repository:
 
 ```bash
-git clone https://github.com/OWNER/REPOSITORY.git ea
+git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea
 cd ea
 python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install -e .
 ea --help
 ```
+
+Release packages are published at `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`. Download the `ea-v0-2-0.9.0rc1-COMMIT-release.zip` archive and matching `.sha256` sidecar from that page when you want a fixed packaged handoff instead of a git clone.
 
 From an extracted release package:
 

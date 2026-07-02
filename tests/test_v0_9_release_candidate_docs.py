@@ -94,6 +94,9 @@ def test_v0_9_release_candidate_docs_are_packaged(tmp_path: Path) -> None:
 
     assert manifest["release_candidate"]["label"] == "v0.9-rc1"
     assert manifest["release_candidate"]["acceptance_matrix_ref"] == "docs/PUBLIC_ACCEPTANCE_MATRIX.md"
+    assert manifest["public_repository"]["project_name"] == "Experimental Assistant (EA)"
+    assert manifest["public_repository"]["repository_full_name"] == "gongchenisbusy/Experimental-Assistant"
+    assert manifest["public_repository"]["release_url"].endswith("/releases/tag/v0.9-rc1")
 
     package = write_release_package(Path.cwd(), output=tmp_path / "release.zip", archive_root="ea-release-doc-test")
     with zipfile.ZipFile(package["archive_path"]) as archive:
