@@ -1,6 +1,26 @@
 # Export Workflow
 
-Use this reference when a user needs a local handoff package for one EA report or one EA batch run. For a recipient-facing verification and provenance-audit guide, read `docs/PROJECT_BUNDLE_VERIFICATION.md` from the repository root.
+Use this reference when a user needs a readable report export, a local handoff package for one EA report, or one EA batch run. For a recipient-facing verification and provenance-audit guide, read `docs/PROJECT_BUNDLE_VERIFICATION.md` from the repository root.
+
+User-readable report command:
+
+```bash
+ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001
+ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --output exports/user-reports/custom-report.html
+ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --no-embed-images
+ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --no-audit
+```
+
+HTML export default output:
+
+```text
+exports/user-reports/{report_id}.html
+exports/user-reports/{report_id}.html.yml
+```
+
+The HTML report is a friendly rendering of the canonical Markdown report from `reports/index.yml`. It embeds linked figures as data URIs by default, adds a Figures section from `figures/index.yml` so images remain visible even when the Markdown only lists file paths, preserves figure IDs, captions, original project-local paths, report IDs, reference records, citation-number checks, provenance summaries, and an audit appendix. The sidecar YAML records `canonical_report_ref`, figure/reference/provenance metadata, missing refs if any, and the same boundaries. Use this for a user-readable report first; use `report-bundle` when the recipient also needs copied source data, result metadata, references, checksums, and optional focused traceability records.
+
+`--no-embed-images` keeps project-local image refs rather than data URIs. `--no-audit` omits detailed provenance YAML from the HTML appendix while keeping summary and sidecar metadata.
 
 Report bundle command:
 
@@ -114,7 +134,8 @@ Batch bundles additionally include:
 Boundaries:
 
 - Export is read-only for analysis state.
-- Export and optional archive creation do not rerun processing, rerun batches, regenerate reports or figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
+- HTML export, bundle export, and optional archive creation do not rerun processing, rerun batches, regenerate reports or figures, validate scientific claims, download PDFs, resolve DOIs, or read browser/Zotero state.
+- HTML export does not mutate canonical Markdown/YAML reports; it records traceability back to the canonical report in the sidecar YAML.
 - Export skips files outside the project root and records the skip in `bundle_manifest.yml` or `batch_bundle_manifest.yml`.
 - Checksum manifests are integrity records, not signatures. EA's built-in detached signing currently applies to repository release packages, not project export bundles; signed project bundles require an external or user-managed signing workflow.
 - Verification commands are read-only and local-only; they do not repair files, fetch missing artifacts, or trust absolute paths from another machine.

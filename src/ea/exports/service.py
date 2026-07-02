@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import html
+import mimetypes
 import re
 import shutil
 import zipfile
 from pathlib import Path
 from typing import Any, Iterable
+
+import yaml
 
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
@@ -179,6 +184,586 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+_MARKDOWN_IMAGE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
+
+
+def _dedupe_text(values: Iterable[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value)
+        if text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _html_inline(text: str) -> str:
+    escaped = html.escape(text, quote=False)
+    escaped = re.sub(r"`([^`]+)`", lambda match: f"<code>{match.group(1)}</code>", escaped)
+    escaped = re.sub(
+        r"\[([^\]]+)\]\(([^)]+)\)",
+        lambda match: f'<a href="{html.escape(match.group(2), quote=True)}">{match.group(1)}</a>',
+        escaped,
+    )
+    return escaped
+
+
+def _data_uri_for_file(path: Path) -> str:
+    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    payload = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{payload}"
+
+
+def _resolve_report_image(root: Path, report_path: Path, image_ref: str) -> Path | None:
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", image_ref):
+        return None
+    clean_ref = image_ref.split(" ", 1)[0].strip()
+    candidate = Path(clean_ref)
+    if not candidate.is_absolute():
+        candidate = report_path.parent / candidate
+    candidate = candidate.resolve()
+    return candidate if _is_inside(root, candidate) else None
+
+
+def _render_markdown_image(
+    root: Path,
+    report_path: Path,
+    image_ref: str,
+    alt_text: str,
+    *,
+    embed_images: bool,
+) -> str:
+    image_path = _resolve_report_image(root, report_path, image_ref)
+    original = html.escape(image_ref, quote=True)
+    caption = _html_inline(alt_text or image_ref)
+    if image_path and image_path.exists():
+        src = _data_uri_for_file(image_path) if embed_images else _project_ref(root, image_path)
+        return (
+            '<figure class="report-figure inline-figure">'
+            f'<img src="{html.escape(src, quote=True)}" alt="{html.escape(alt_text, quote=True)}">'
+            f"<figcaption>{caption}<br><span>Original path: <code>{html.escape(_project_ref(root, image_path))}</code></span></figcaption>"
+            "</figure>"
+        )
+    return (
+        '<figure class="report-figure missing-figure">'
+        f'<p>{caption}</p><p>Image link preserved but not embedded: <code>{original}</code></p>'
+        "</figure>"
+    )
+
+
+def _split_table_row(line: str) -> list[str]:
+    row = line.strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|"):
+        row = row[:-1]
+    return [cell.strip() for cell in row.split("|")]
+
+
+def _is_table_separator(line: str) -> bool:
+    cells = _split_table_row(line)
+    return bool(cells) and all(cell and set(cell) <= {"-", ":", " "} for cell in cells)
+
+
+def _markdown_table_to_html(lines: list[str], start: int) -> tuple[str, int]:
+    headers = _split_table_row(lines[start])
+    rows: list[list[str]] = []
+    index = start + 2
+    while index < len(lines):
+        line = lines[index]
+        if "|" not in line or not line.strip():
+            break
+        rows.append(_split_table_row(line))
+        index += 1
+    header_html = "".join(f"<th>{_html_inline(header)}</th>" for header in headers)
+    row_html = []
+    for row in rows:
+        row_html.append("<tr>" + "".join(f"<td>{_html_inline(cell)}</td>" for cell in row) + "</tr>")
+    table = "<table><thead><tr>" + header_html + "</tr></thead><tbody>" + "".join(row_html) + "</tbody></table>"
+    return table, index
+
+
+def _markdown_body_to_html(root: Path, report_path: Path, body: str, *, embed_images: bool) -> str:
+    lines = body.splitlines()
+    parts: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip()
+        stripped = line.strip()
+        if not stripped:
+            index += 1
+            continue
+
+        image = _MARKDOWN_IMAGE_RE.match(stripped)
+        if image:
+            parts.append(
+                _render_markdown_image(
+                    root,
+                    report_path,
+                    image.group(2),
+                    image.group(1),
+                    embed_images=embed_images,
+                )
+            )
+            index += 1
+            continue
+
+        heading = re.match(r"^(#{1,6})\s+(.+)$", stripped)
+        if heading:
+            level = min(len(heading.group(1)) + 1, 6)
+            parts.append(f"<h{level}>{_html_inline(heading.group(2))}</h{level}>")
+            index += 1
+            continue
+
+        if index + 1 < len(lines) and "|" in stripped and _is_table_separator(lines[index + 1]):
+            table, index = _markdown_table_to_html(lines, index)
+            parts.append(table)
+            continue
+
+        if stripped.startswith("- "):
+            items = []
+            while index < len(lines) and lines[index].strip().startswith("- "):
+                item_text = lines[index].strip()[2:]
+                items.append(f"<li>{_html_inline(item_text)}</li>")
+                index += 1
+            parts.append("<ul>" + "".join(items) + "</ul>")
+            continue
+
+        paragraph = [stripped]
+        index += 1
+        while index < len(lines):
+            next_line = lines[index].strip()
+            if (
+                not next_line
+                or next_line.startswith("#")
+                or next_line.startswith("- ")
+                or _MARKDOWN_IMAGE_RE.match(next_line)
+                or (index + 1 < len(lines) and "|" in next_line and _is_table_separator(lines[index + 1]))
+            ):
+                break
+            paragraph.append(next_line)
+            index += 1
+        parts.append(f"<p>{_html_inline(' '.join(paragraph))}</p>")
+    return "\n".join(parts)
+
+
+def _citation_check(body: str, numbered_references: list[dict[str, Any]]) -> dict[str, Any]:
+    body_without_code = re.sub(r"`[^`]*`", "", body)
+    body_numbers = sorted({int(number) for number in re.findall(r"(?<![A-Za-z0-9])\[(\d+)\]", body_without_code)})
+    reference_numbers = sorted(
+        {
+            int(record["number"])
+            for record in numbered_references
+            if isinstance(record, dict) and str(record.get("number") or "").isdigit()
+        }
+    )
+    missing_numbers = [number for number in body_numbers if number not in reference_numbers]
+    status = "pass" if not missing_numbers else "warning"
+    if body_numbers and not reference_numbers:
+        status = "warning"
+        missing_numbers = body_numbers
+    return {
+        "status": status,
+        "body_numbers": body_numbers,
+        "reference_numbers": reference_numbers,
+        "missing_reference_numbers": missing_numbers,
+    }
+
+
+def _provenance_summary(provenance_id: str, record: dict[str, Any], provenance_ref: str) -> dict[str, Any]:
+    inputs = record.get("inputs") or {}
+    outputs = record.get("outputs") or {}
+    return {
+        "provenance_id": provenance_id,
+        "provenance_ref": provenance_ref,
+        "workflow": record.get("workflow"),
+        "created_at": record.get("created_at"),
+        "input_record_count": len(inputs.get("records") or []),
+        "input_file_count": len(inputs.get("files") or []),
+        "output_record_count": len(outputs.get("records") or []),
+        "output_file_count": len(outputs.get("files") or []),
+        "review_refs": record.get("review_refs") or [],
+        "source_refs": record.get("source_refs") or [],
+        "warning_count": len(record.get("warnings") or []),
+    }
+
+
+def _yaml_pre(data: dict[str, Any]) -> str:
+    text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    return html.escape(text, quote=False)
+
+
+def _record_provenance_refs(root: Path, record_ref: str) -> list[str]:
+    path = _project_path(root, record_ref)
+    if not path.exists() or not _is_inside(root, path):
+        return []
+    try:
+        if path.suffix.lower() in {".md", ".markdown"}:
+            frontmatter, _ = read_markdown_record(path)
+            return [str(ref) for ref in frontmatter.get("provenance_refs") or []]
+        data = read_yaml(path)
+        return [str(ref) for ref in data.get("provenance_refs") or []]
+    except Exception:
+        return []
+
+
+def _expand_provenance_refs(root: Path, provenance_refs: Iterable[str]) -> list[str]:
+    ordered = _dedupe_text(provenance_refs)
+    seen = set(ordered)
+    queue = list(ordered)
+    while queue and len(ordered) < 100:
+        provenance_ref = queue.pop(0)
+        provenance_path = _provenance_path(root, provenance_ref)
+        if not provenance_path.exists() or not _is_inside(root, provenance_path):
+            continue
+        provenance = read_yaml(provenance_path)
+        inputs = provenance.get("inputs") or {}
+        outputs = provenance.get("outputs") or {}
+        for record_ref in [*(inputs.get("records") or []), *(outputs.get("records") or [])]:
+            for linked_ref in _record_provenance_refs(root, str(record_ref)):
+                if linked_ref in seen:
+                    continue
+                seen.add(linked_ref)
+                ordered.append(linked_ref)
+                queue.append(linked_ref)
+    return ordered
+
+
+def _language_labels(language: str | None) -> dict[str, str]:
+    if language == "zh":
+        return {
+            "title": "EA 友好报告导出",
+            "canonical": "规范 Markdown 报告 / Canonical Markdown report",
+            "report_meta": "报告元数据 / Report Metadata",
+            "figures": "图件 / Figures",
+            "references": "参考文献记录 / Reference Records",
+            "provenance": "溯源摘要 / Provenance Summary",
+            "audit": "审计附录 / Audit Appendix",
+            "no_references": "本报告未登记外部参考文献。",
+        }
+    return {
+        "title": "EA Friendly Report Export",
+        "canonical": "Canonical Markdown report",
+        "report_meta": "Report Metadata",
+        "figures": "Figures",
+        "references": "Reference Records",
+        "provenance": "Provenance Summary",
+        "audit": "Audit Appendix",
+        "no_references": "No registered external references are linked to this report.",
+    }
+
+
+def _render_report_html_document(
+    *,
+    root: Path,
+    report_path: Path,
+    frontmatter: dict[str, Any],
+    body: str,
+    manifest: dict[str, Any],
+    figures: list[dict[str, Any]],
+    references: list[dict[str, Any]],
+    provenance_records: list[dict[str, Any]],
+    embed_images: bool,
+) -> str:
+    labels = _language_labels(str(frontmatter.get("language") or ""))
+    report_id = str(frontmatter.get("report_id") or manifest["report_id"])
+    canonical_ref = manifest["canonical_report_ref"]
+    body_html = _markdown_body_to_html(root, report_path, body, embed_images=embed_images)
+
+    figure_parts = []
+    for figure in figures:
+        caption = figure.get("caption") or figure["figure_id"]
+        image_src = figure.get("html_src")
+        if image_src:
+            image_html = f'<img src="{html.escape(image_src, quote=True)}" alt="{html.escape(str(caption), quote=True)}">'
+        else:
+            image_html = '<p class="missing">Figure file was not found during export.</p>'
+        figure_parts.append(
+            '<figure class="report-figure">'
+            + image_html
+            + "<figcaption>"
+            + f"<strong>{html.escape(str(figure['figure_id']))}</strong>: {_html_inline(str(caption))}"
+            + f"<br><span>Original path: <code>{html.escape(str(figure.get('original_path') or ''))}</code></span>"
+            + f"<br><span>Report ID: <code>{html.escape(str(figure.get('report_id') or report_id))}</code></span>"
+            + "</figcaption></figure>"
+        )
+
+    if references:
+        reference_items = []
+        for reference in references:
+            label = f"[{reference['number']}]" if reference.get("number") else reference["reference_id"]
+            detail = str(reference.get("citation") or reference.get("entry") or "")
+            extras = []
+            if reference.get("doi"):
+                extras.append(f"DOI: {reference['doi']}")
+            if reference.get("url"):
+                extras.append(f"URL: {reference['url']}")
+            reference_items.append(
+                "<li>"
+                + f"<strong>{html.escape(str(label))}</strong> "
+                + _html_inline(detail)
+                + (f"<br><span>{_html_inline(' | '.join(extras))}</span>" if extras else "")
+                + f"<br><span>Reference ID: <code>{html.escape(str(reference['reference_id']))}</code></span>"
+                + "</li>"
+            )
+        references_html = "<ol>" + "".join(reference_items) + "</ol>"
+    else:
+        references_html = f"<p>{html.escape(labels['no_references'])}</p>"
+
+    provenance_rows = []
+    provenance_details = []
+    for record in provenance_records:
+        summary = record["summary"]
+        provenance_rows.append(
+            "<tr>"
+            + f"<td><code>{html.escape(str(summary['provenance_id']))}</code></td>"
+            + f"<td>{html.escape(str(summary.get('workflow') or ''))}</td>"
+            + f"<td>{html.escape(str(summary.get('created_at') or ''))}</td>"
+            + f"<td>{summary['input_record_count']} records / {summary['input_file_count']} files</td>"
+            + f"<td>{summary['output_record_count']} records / {summary['output_file_count']} files</td>"
+            + f"<td>{len(summary['review_refs'])}</td>"
+            + "</tr>"
+        )
+        provenance_details.append(
+            "<details>"
+            + f"<summary><code>{html.escape(str(summary['provenance_id']))}</code> {html.escape(str(summary.get('workflow') or ''))}</summary>"
+            + f"<pre>{_yaml_pre(record['record'])}</pre>"
+            + "</details>"
+        )
+    provenance_html = (
+        "<table><thead><tr><th>Provenance</th><th>Workflow</th><th>Created</th><th>Inputs</th><th>Outputs</th><th>Review refs</th></tr></thead>"
+        + "<tbody>"
+        + "".join(provenance_rows)
+        + "</tbody></table>"
+        if provenance_rows
+        else "<p>No provenance records were linked in the report frontmatter or result metadata.</p>"
+    )
+
+    audit_intro = (
+        "Detailed provenance, raw hashes, processing parameters, review refs, source refs, warnings, and scripts are preserved here for audit. "
+        "This section is copied from local EA records and does not add new scientific interpretation."
+    )
+    metadata_items = [
+        ("Report ID", report_id),
+        ("Project ID", frontmatter.get("project_id")),
+        ("Report type", frontmatter.get("report_type")),
+        ("Status", frontmatter.get("status")),
+        ("Created", frontmatter.get("created_at")),
+        ("HTML export sidecar", manifest["metadata_ref"]),
+    ]
+    metadata_html = "<dl>" + "".join(
+        f"<dt>{html.escape(label)}</dt><dd><code>{html.escape(str(value or ''))}</code></dd>" for label, value in metadata_items
+    ) + "</dl>"
+
+    css = """
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: #202124; background: #f7f7f4; }
+header, main, section { max-width: 980px; margin: 0 auto; padding: 24px; background: #fff; }
+header { margin-top: 24px; border-bottom: 1px solid #d8d8d2; }
+main, section { border-top: 1px solid #ecece6; }
+h1, h2, h3, h4 { line-height: 1.25; }
+code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+pre { overflow-x: auto; padding: 12px; background: #f3f3ee; border: 1px solid #deded6; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.94rem; }
+th, td { border: 1px solid #d9d9d2; padding: 7px 8px; vertical-align: top; }
+th { background: #f0f0ea; text-align: left; }
+.report-figure { margin: 18px 0; }
+.report-figure img { max-width: 100%; height: auto; border: 1px solid #d8d8d2; background: #fff; }
+figcaption, span, .note { color: #5f6368; font-size: 0.92rem; }
+.missing { color: #a33; }
+dl { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; }
+dt { font-weight: 700; color: #3c4043; }
+details { margin: 12px 0; }
+"""
+    return (
+        "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n"
+        "<meta charset=\"utf-8\">\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+        f"<meta name=\"ea-report-id\" content=\"{html.escape(report_id, quote=True)}\">\n"
+        f"<meta name=\"ea-canonical-report\" content=\"{html.escape(str(canonical_ref), quote=True)}\">\n"
+        f"<title>{html.escape(report_id)} - {html.escape(labels['title'])}</title>\n"
+        f"<style>{css}</style>\n</head>\n<body>\n"
+        f"<header><h1>{html.escape(report_id)}</h1><p class=\"note\">{html.escape(labels['canonical'])}: <code>{html.escape(str(canonical_ref))}</code></p></header>\n"
+        f"<section><h2>{html.escape(labels['report_meta'])}</h2>{metadata_html}</section>\n"
+        f"<main>{body_html}</main>\n"
+        f"<section><h2>{html.escape(labels['figures'])}</h2>{''.join(figure_parts)}</section>\n"
+        f"<section><h2>{html.escape(labels['references'])}</h2>{references_html}<p class=\"note\">Citation check: <code>{html.escape(manifest['citation_check']['status'])}</code></p></section>\n"
+        f"<section><h2>{html.escape(labels['provenance'])}</h2>{provenance_html}</section>\n"
+        f"<section><h2>{html.escape(labels['audit'])}</h2><p>{html.escape(audit_intro)}</p>{''.join(provenance_details)}</section>\n"
+        "</body>\n</html>\n"
+    )
+
+
+def export_report_html(
+    root: Path,
+    *,
+    report_id: str,
+    output_path: Path | None = None,
+    created_at: str | None = None,
+    embed_images: bool = True,
+    include_audit: bool = True,
+) -> dict[str, Any]:
+    root = root.resolve()
+    reports = _reports_index(root)
+    report_record = reports.get(report_id)
+    if not report_record:
+        raise ReportBundleError(f"Unknown report_id: {report_id}")
+
+    report_ref = str(report_record.get("path") or "")
+    report_path = _project_path(root, report_ref)
+    if not report_ref or not report_path.exists():
+        raise ReportBundleError(f"Report file is missing for report_id {report_id}: {report_ref}")
+    if not _is_inside(root, report_path):
+        raise ReportBundleError(f"Report file is outside project root: {report_ref}")
+
+    output_path = output_path or root / "exports" / "user-reports" / f"{report_id}.html"
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path = output_path.with_suffix(f"{output_path.suffix}.yml")
+
+    frontmatter, body = read_markdown_record(report_path)
+    created = created_at or EARecord.now_iso()
+    missing_refs: list[dict[str, Any]] = []
+
+    figures_index = _figures_index(root)
+    figure_ids = _dedupe_text([*(report_record.get("figure_ids") or []), *(frontmatter.get("figure_ids") or [])])
+    figures: list[dict[str, Any]] = []
+    for figure_id in figure_ids:
+        figure = figures_index.get(figure_id)
+        if not figure:
+            missing_refs.append({"kind": "figure_record", "ref": figure_id, "reason": "unknown_figure_id"})
+            figures.append({"figure_id": figure_id, "embedded": False, "html_src": None, "missing": True})
+            continue
+        figure_ref = str(figure.get("path") or "")
+        figure_path = _project_path(root, figure_ref)
+        html_src = None
+        embedded = False
+        if figure_ref and figure_path.exists() and _is_inside(root, figure_path):
+            html_src = _data_uri_for_file(figure_path) if embed_images else _project_ref(root, figure_path)
+            embedded = embed_images
+        else:
+            missing_refs.append({"kind": "figure_file", "ref": figure_ref or figure_id, "reason": "missing_or_outside_project_root"})
+        figures.append(
+            {
+                "figure_id": figure_id,
+                "path": str(figure_path),
+                "original_path": figure_ref,
+                "report_id": figure.get("report_id"),
+                "result_id": figure.get("result_id"),
+                "caption": figure.get("caption"),
+                "source_data_refs": figure.get("source_data_refs") or [],
+                "generation": figure.get("generation") or {},
+                "embedded": embedded,
+                "html_src": html_src,
+                "missing": html_src is None,
+            }
+        )
+
+    numbered_references = [item for item in frontmatter.get("numbered_references") or [] if isinstance(item, dict)]
+    reference_numbers = {str(item.get("reference_id")): item.get("number") for item in numbered_references}
+    reference_entries = {str(item.get("reference_id")): item.get("entry") for item in numbered_references}
+    references_index = _reference_index(root)
+    reference_ids = _dedupe_text([*(report_record.get("reference_ids") or []), *(frontmatter.get("reference_ids") or [])])
+    references: list[dict[str, Any]] = []
+    for reference_id in reference_ids:
+        reference_record = references_index.get(reference_id)
+        if not reference_record:
+            missing_refs.append({"kind": "reference_record", "ref": reference_id, "reason": "unknown_reference_id"})
+            references.append({"reference_id": reference_id, "number": reference_numbers.get(reference_id), "missing": True})
+            continue
+        record_ref = str(reference_record.get("path") or f"literature/references/{reference_id}.yml")
+        record_path = _project_path(root, record_ref)
+        reference_data = read_yaml(record_path) if record_path.exists() and _is_inside(root, record_path) else {}
+        if not reference_data:
+            missing_refs.append({"kind": "reference_record", "ref": record_ref, "reason": "missing_or_outside_project_root"})
+        references.append(
+            {
+                "reference_id": reference_id,
+                "number": reference_numbers.get(reference_id),
+                "entry": reference_entries.get(reference_id),
+                "path": record_ref,
+                "citation": reference_data.get("citation") or reference_record.get("citation"),
+                "doi": reference_data.get("doi") or reference_record.get("doi"),
+                "url": reference_data.get("url") or reference_record.get("url"),
+                "local_path": reference_data.get("local_path") or reference_record.get("local_path"),
+                "missing": not bool(reference_data),
+            }
+        )
+
+    result_index = _result_metadata_index(root)
+    result_provenance_refs: list[str] = []
+    for result_id in report_record.get("result_ids") or frontmatter.get("related_results") or []:
+        result_path = result_index.get(str(result_id))
+        if not result_path:
+            missing_refs.append({"kind": "result_metadata", "ref": str(result_id), "reason": "unknown_result_id"})
+            continue
+        result_data = read_yaml(result_path)
+        result_provenance_refs.extend(str(ref) for ref in result_data.get("provenance_refs") or [])
+
+    provenance_refs = _expand_provenance_refs(root, [*(frontmatter.get("provenance_refs") or []), *result_provenance_refs])
+    provenance_records: list[dict[str, Any]] = []
+    for provenance_ref in provenance_refs:
+        provenance_path = _provenance_path(root, provenance_ref)
+        if not provenance_path.exists() or not _is_inside(root, provenance_path):
+            missing_refs.append({"kind": "provenance_record", "ref": provenance_ref, "reason": "missing_or_outside_project_root"})
+            continue
+        provenance = read_yaml(provenance_path)
+        provenance_id = str(provenance.get("provenance_id") or provenance_ref)
+        provenance_records.append(
+            {
+                "provenance_id": provenance_id,
+                "provenance_ref": _project_ref(root, provenance_path),
+                "summary": _provenance_summary(provenance_id, provenance, _project_ref(root, provenance_path)),
+                "record": provenance if include_audit else {},
+            }
+        )
+
+    manifest: dict[str, Any] = {
+        "schema_version": "0.2",
+        "export_type": "friendly_report_html",
+        "export_id": f"html-{report_id}",
+        "created_at": created,
+        "status": "complete" if not missing_refs else "warning",
+        "workspace": str(root),
+        "report_id": report_id,
+        "canonical_report_ref": _project_ref(root, report_path),
+        "canonical_report_path": str(report_path),
+        "html_path": str(output_path),
+        "html_ref": _project_ref(root, output_path),
+        "metadata_path": str(metadata_path),
+        "metadata_ref": _project_ref(root, metadata_path),
+        "embed_images": embed_images,
+        "include_audit": include_audit,
+        "figures": [{key: value for key, value in figure.items() if key != "html_src"} for figure in figures],
+        "references": references,
+        "provenance": [record["summary"] for record in provenance_records],
+        "citation_check": _citation_check(body, numbered_references),
+        "missing_refs": missing_refs,
+        "boundaries": [
+            "HTML export is a user-readable rendering of an indexed canonical Markdown report.",
+            "It does not mutate the canonical Markdown report, regenerate analysis, create ReviewRecords, commit memory, register references, download literature, or prove scientific conclusions.",
+            "Detailed provenance, raw hashes, processing parameters, and review refs stay in the audit appendix and sidecar metadata.",
+        ],
+    }
+
+    html_text = _render_report_html_document(
+        root=root,
+        report_path=report_path,
+        frontmatter=frontmatter,
+        body=body,
+        manifest=manifest,
+        figures=figures,
+        references=references,
+        provenance_records=provenance_records,
+        embed_images=embed_images,
+    )
+    output_path.write_text(html_text, encoding="utf-8")
+    write_yaml(metadata_path, manifest)
+    return manifest
 
 
 def _write_zip_archive(bundle_dir: Path, archive_path: Path, *, exclude_paths: Iterable[Path | None] = ()) -> Path:

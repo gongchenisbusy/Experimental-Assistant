@@ -283,6 +283,9 @@ ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
 For a single report handoff:
 
 ```bash
+ea export report-html /path/to/ea-project \
+  --report-id rpt-project-slug-YYYYMMDD-001
+
 ea export report-bundle /path/to/ea-project \
   --report-id rpt-project-slug-YYYYMMDD-001 \
   --include-trace \
@@ -291,6 +294,8 @@ ea export report-bundle /path/to/ea-project \
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-YYYYMMDD-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-YYYYMMDD-001.zip
 ```
+
+Use `ea export report-html` when the recipient needs a readable report first: it writes `exports/user-reports/{report_id}.html` plus a sidecar YAML that points back to the canonical Markdown report, embeds linked figures by default, carries captions and original figure paths, checks citation numbers against registered References, and keeps raw hashes/parameters/review refs in the provenance audit appendix. Use `report-bundle` when the recipient also needs the complete project-local handoff package, checksums, source data, references, and optional focused trace view.
 
 For batch work, use `ea export batch-bundle --include-trace` and the same verification helpers. Report bundles include a focused report traceability YAML/Markdown pair when `--include-trace` is used; batch bundles pass this into nested report bundles rather than creating a top-level batch graph.
 

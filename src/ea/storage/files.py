@@ -14,6 +14,7 @@ EA_PROJECT_DIRS = [
     "exports",
     "exports/batch-bundles",
     "exports/report-bundles",
+    "exports/user-reports",
     "samples",
     "raw",
     "templates",

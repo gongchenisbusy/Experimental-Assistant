@@ -1,6 +1,7 @@
 from ea.exports.service import (
     ReportBundleError,
     export_batch_bundle,
+    export_report_html,
     export_report_bundle,
     verify_archive_checksum,
     verify_bundle_checksums,
@@ -9,6 +10,7 @@ from ea.exports.service import (
 __all__ = [
     "ReportBundleError",
     "export_batch_bundle",
+    "export_report_html",
     "export_report_bundle",
     "verify_archive_checksum",
     "verify_bundle_checksums",

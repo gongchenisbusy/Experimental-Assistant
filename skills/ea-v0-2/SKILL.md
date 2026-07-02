@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue an EA project, structure experiment logs, import raw characterization data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, or thermal analysis, generate editable processing-parameter or batch-manifest templates, run batch characterization manifests, export or verify checksummed report/batch bundles with linked figures/source data/references/provenance, inspect built-in material assignment records, create traceable reports/figures/references, build report-memory traceability views, look up trace records by ID, manage local literature-library state, validate EA child-skill manifests, run public-release smoke checks, generate, verify, optionally sign repository release manifests/packages, produce distribution checklists with user-managed keys when supplied, or preserve project memory/provenance without assuming developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, or preserve memory/provenance without developer-machine paths or accounts.
 ---
 
 # EA v0.2
@@ -36,6 +36,7 @@ ea eval project /path/to/ea-project
 ea brief project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
+ea export report-html /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001
 ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --include-trace --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --include-trace --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001
@@ -215,7 +216,7 @@ Healthcheck and evaluator reports are the local handoff gate. They audit batch r
 
 Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
 
-Report bundle export is read-only for analysis state. It copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Use `--include-trace` when the handoff should include focused traceability YAML/Markdown for the exported report. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`; `--include-trace` passes focused trace views into nested report bundles. Each bundle writes `bundle_checksums.yml`; use `--zip` or `--zip-output` when a portable archive and `.zip.sha256` sidecar should be created from the same bundle. Use `verify-bundle` and `verify-archive` after copying or before handoff.
+Friendly HTML report export is read-only for analysis state. `ea export report-html` renders one indexed canonical Markdown report under `exports/user-reports/`, embeds linked figure files by default, preserves figure IDs/captions/original paths, checks citation numbers against registered References, summarizes provenance, and writes a sidecar YAML pointing back to the canonical report. Report bundle export copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Use `--include-trace` when the handoff should include focused traceability YAML/Markdown for the exported report. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`; `--include-trace` passes focused trace views into nested report bundles. Each bundle writes `bundle_checksums.yml`; use `--zip` or `--zip-output` when a portable archive and `.zip.sha256` sidecar should be created from the same bundle. Use `verify-bundle` and `verify-archive` after copying or before handoff.
 
 ## References
 

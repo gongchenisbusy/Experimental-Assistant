@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -209,6 +210,63 @@ def test_cli_exports_report_bundle_with_traceable_artifacts(tmp_path: Path, caps
         for artifact in manifest["artifacts"][group]:
             if artifact["copied"]:
                 assert (bundle_dir / artifact["bundle_ref"]).exists(), artifact
+
+
+def test_cli_exports_user_readable_report_html_with_embedded_figure(tmp_path: Path, capsys) -> None:
+    built = _build_report_project(tmp_path)
+
+    assert main(["export", "report-html", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    output = _json_output(capsys)
+    html_path = Path(output["html_path"])
+    metadata_path = Path(output["metadata_path"])
+    html = html_path.read_text(encoding="utf-8")
+    metadata = read_yaml(metadata_path)
+
+    assert output["status"] == "complete"
+    assert output["export_type"] == "friendly_report_html"
+    assert html_path.exists()
+    assert metadata_path.exists()
+    assert '<img src="data:image/png;base64,' in html
+    assert "Canonical Markdown report" in html
+    assert built["report_id"] in html
+    assert built["figure_id"] in html
+    assert "Raman spectrum with processed intensity and detected peaks" in html
+    assert "Provenance Summary" in html
+    assert output["canonical_report_ref"].startswith("reports/")
+    assert metadata["canonical_report_ref"] == output["canonical_report_ref"]
+    assert metadata["figures"][0]["figure_id"] == built["figure_id"]
+    assert metadata["figures"][0]["embedded"] is True
+    assert metadata["citation_check"]["status"] == "pass"
+
+
+def test_cli_exports_source_backed_report_html_with_references_and_provenance(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "public-ftir"
+    shutil.copytree(Path("examples/public-ftir-assignment-project"), project)
+    report_id = "rpt-public-ftir-assignment-example-20260604-001"
+
+    assert main(["export", "report-html", str(project), "--report-id", report_id]) == 0
+    output = _json_output(capsys)
+    html = Path(output["html_path"]).read_text(encoding="utf-8")
+    metadata = read_yaml(Path(output["metadata_path"]))
+
+    assert output["status"] == "complete"
+    assert '<img src="data:image/png;base64,' in html
+    assert "fig-public-ftir-assignment-example-ftir-20260604-001" in html
+    assert "FTIR spectrum with processed signal" in html
+    assert "[1]" in html and "Colthup" in html
+    assert "[2]" in html and "Socrates" in html
+    assert "Provenance Summary" in html
+    assert "sha256:" in html
+    assert output["citation_check"] == {
+        "status": "pass",
+        "body_numbers": [1, 2],
+        "reference_numbers": [1, 2],
+        "missing_reference_numbers": [],
+    }
+    assert [reference["number"] for reference in metadata["references"]] == [1, 2]
+    assert metadata["provenance"]
+    assert metadata["provenance"][0]["workflow"] == "report_generation"
+    assert metadata["figures"][0]["source_data_refs"]
 
 
 def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:

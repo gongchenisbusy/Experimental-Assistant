@@ -18,6 +18,7 @@ from ea.evaluation import run_project_evaluation
 from ea.exports import (
     ReportBundleError,
     export_batch_bundle,
+    export_report_html,
     export_report_bundle,
     verify_archive_checksum,
     verify_bundle_checksums,
@@ -187,6 +188,12 @@ def build_parser() -> argparse.ArgumentParser:
     report_bundle.add_argument("--include-trace", action="store_true", help="include a focused traceability YAML/Markdown view in the bundle")
     report_bundle.add_argument("--zip", action="store_true", help="also create a deterministic zip archive next to the bundle")
     report_bundle.add_argument("--zip-output", type=Path, help="write the optional zip archive to this path")
+    report_html = export_sub.add_parser("report-html", help="render one indexed report as user-readable HTML with embedded figures")
+    report_html.add_argument("workspace", type=Path)
+    report_html.add_argument("--report-id", required=True)
+    report_html.add_argument("--output", type=Path)
+    report_html.add_argument("--no-embed-images", action="store_true", help="preserve project-local image refs instead of embedding figure data")
+    report_html.add_argument("--no-audit", action="store_true", help="omit detailed provenance YAML from the HTML audit appendix")
     batch_bundle = export_sub.add_parser("batch-bundle", help="bundle one batch run with nested report bundles")
     batch_bundle.add_argument("workspace", type=Path)
     batch_bundle.add_argument("--batch-id", required=True)
@@ -1085,6 +1092,23 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     create_archive=create_archive,
                     archive_path=archive_path,
                     include_trace=args.include_trace,
+                )
+            except ReportBundleError as exc:
+                _print_json({"status": "fail", "error": str(exc)})
+                return 2
+            _print_json(result)
+            return 0 if result["status"] == "complete" else 1
+        if args.export_command == "report-html":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            try:
+                result = export_report_html(
+                    args.workspace,
+                    report_id=args.report_id,
+                    output_path=output_path,
+                    embed_images=not args.no_embed_images,
+                    include_audit=not args.no_audit,
                 )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})

@@ -44,6 +44,8 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea xps list-parameter-libraries" in text
     assert "open-items/" in text
     assert "--enable-literature" in text
+    assert "ea export report-html" in text
+    assert "exports/user-reports" in text
     assert "ea export report-bundle" in text
     assert "--include-trace" in text
     assert "focused report traceability YAML/Markdown" in text
