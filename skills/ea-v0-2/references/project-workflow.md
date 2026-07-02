@@ -43,6 +43,7 @@ Workflow:
 8. Keep open questions in `open-items/` when they matter but do not block the current step.
 9. Run `ea healthcheck` after creating or modifying raw imports, processed outputs, reports, figures, provenance, references, or memory.
 10. Run `ea eval project` before handoff, public-demo readiness checks, or long context transitions.
+11. Run `ea brief project` before a user-facing update or context handoff; use its Markdown as the concise summary and keep detailed refs/hashes/provenance/review records in audit files unless requested.
 
 CLI path for the first Raman workflow:
 
@@ -155,6 +156,8 @@ Project readiness evaluation:
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea eval project /path/to/ea-project --no-write
+ea brief project /path/to/ea-project
+ea brief project /path/to/ea-project --no-write --print-markdown
 ```
 
 Repository public-release smoke check:

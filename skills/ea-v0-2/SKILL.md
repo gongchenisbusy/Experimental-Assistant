@@ -20,7 +20,7 @@ Scientific caution means evidence layering, not silence. If project context and 
 3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under `processed/`, `figures/`, `reports/`, `literature/`, or other non-raw directories.
 4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
 5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
-6. Run `ea healthcheck` and `ea eval project` before handoff or public-demo readiness checks; these now include batch records and material-assignment traceability in addition to raw/report/figure/reference/provenance checks.
+6. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff, user updates, or public-demo readiness checks. Use the brief as the user-facing summary; keep detailed JSON, refs, hashes, provenance, review records, and trace graphs in local files unless the user asks for audit detail.
 7. For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate and verify release artifacts with `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, or their script equivalents.
 8. Put questions that affect future work or scientific judgement at the end of the response.
 
@@ -33,6 +33,7 @@ ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd 
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea brief project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
 ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --include-trace --zip

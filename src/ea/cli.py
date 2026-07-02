@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
+from ea.brief import build_project_brief
 from ea.config import doctor_project_config
 from ea.electrochemistry import (
     ElectrochemistryProcessingRequest,
@@ -160,6 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="summarize an EA project workspace")
     status.add_argument("workspace", type=Path)
+
+    brief_parser = sub.add_parser("brief", help="write agent-friendly project briefs")
+    brief_sub = brief_parser.add_subparsers(dest="brief_command", required=True)
+    brief_project = brief_sub.add_parser("project", help="summarize project state, confirmations, outputs, and next actions")
+    brief_project.add_argument("workspace", type=Path)
+    brief_project.add_argument("--no-write", action="store_true")
+    brief_project.add_argument("--output", type=Path)
+    brief_project.add_argument("--print-markdown", action="store_true")
 
     eval_parser = sub.add_parser("eval", help="run EA evaluation suites")
     eval_sub = eval_parser.add_subparsers(dest="eval_command", required=True)
@@ -1012,6 +1021,43 @@ def _main_impl(argv: list[str] | None = None) -> int:
             }
         )
         return 0
+    if args.command == "brief":
+        if args.brief_command == "project":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            result = build_project_brief(
+                args.workspace,
+                write_report=not args.no_write,
+                output_path=output_path,
+            )
+            if args.print_markdown:
+                print(result["markdown"])
+                return 0 if result["evaluation"]["status"] != "fail" else 2
+            _print_json(
+                {
+                    key: value
+                    for key, value in result.items()
+                    if key
+                    in {
+                        "schema_version",
+                        "brief_type",
+                        "created_at",
+                        "workspace",
+                        "brief_id",
+                        "yaml_path",
+                        "markdown_path",
+                        "project",
+                        "evaluation",
+                        "key_outputs",
+                        "literature",
+                        "needs_user_confirmation",
+                        "next_actions",
+                        "scope",
+                    }
+                }
+            )
+            return 0 if result["evaluation"]["status"] != "fail" else 2
     if args.command == "eval":
         if args.eval_command == "project":
             result = run_project_evaluation(

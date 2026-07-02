@@ -17,6 +17,7 @@ ea init-project /path/to/ea-project --name "Project name" --slug project-slug --
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea brief project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea trace lookup /path/to/ea-project rpt-project-slug-20260630-001
 ea healthcheck examples/public-raman-project
@@ -200,6 +201,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
+`ea brief project` writes `briefs/brief-YYYYMMDD-001.yml` and `.md` as the agent-native user summary: current status, key outputs, user confirmations, and recommended next actions. It keeps detailed refs, hashes, provenance, ReviewRecords, and trace graphs in local audit files unless the user asks for them.
 `ea trace view` writes `traceability/project_trace.yml` and `.md` by linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `--focus <report-or-record-ref>` to render one connected subgraph. Use `ea trace lookup <workspace> <id-or-ref>` when the user provides one report, figure, result, source-packet, suggestion, reference, review, provenance, or memory ID and needs the canonical local path plus immediate incoming/outgoing evidence neighbors. Trace view/lookup are read-only audit helpers except for their own trace files; they do not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
 `ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. Add `--include-trace` to include a focused report traceability YAML/Markdown view inside the bundle. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`; with `--include-trace`, each nested report bundle includes its own focused trace view. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify local handoff integrity after copying. For provenance audit and checksum/signature boundaries, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
 

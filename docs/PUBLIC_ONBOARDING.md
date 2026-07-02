@@ -40,6 +40,7 @@ ea init-project /path/to/ea-project \
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea brief project /path/to/ea-project
 ```
 
 The initialization step writes `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, and the project directory structure. It also writes an `open-items/` literature-library decision record when `--enable-literature` is not supplied, so the next agent asks whether to deploy a local literature library instead of silently skipping it. It does not assume a Zotero database, browser profile, institution login, literature cache, or test fixture path.
@@ -270,9 +271,12 @@ Before handing a project to another user or agent, run:
 ```bash
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
+ea brief project /path/to/ea-project
 ea trace view /path/to/ea-project
 ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
 ```
+
+`ea brief project` writes a user-facing Markdown summary under `briefs/` with current status, key reports/figures, user confirmations, and recommended next actions. Use it before user updates or context handoff so the agent can answer naturally without exposing low-level JSON, ReviewRecords, source-packet refs, hashes, or provenance unless the user asks for audit detail.
 
 `ea trace view` writes `traceability/project_trace.yml` and `.md`, linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `--focus reports/<report-id>.md` or another project record ref when the handoff should show one connected chain. Use `ea trace lookup <workspace> <id-or-ref>` when the user provides a report, figure, result, source-packet, suggestion, reference, review, provenance, or memory ID and needs the canonical local path plus immediate evidence neighbors. Trace view/lookup are read-only audit helpers except for their own trace files; they do not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
 
