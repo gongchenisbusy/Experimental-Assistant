@@ -22,6 +22,8 @@ literature/
 ├── zotero_codex_batch_status.json
 ├── acquisition_manifest.yml
 ├── acquisition_status_update.yml
+├── zotero_codex_readiness.yml
+├── zotero_codex_readiness.md
 ├── origin_thread_sync.yml
 ├── selected_items.yml
 ├── draft_<method>_source_candidates.yml
@@ -69,6 +71,7 @@ ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
 ea literature acquisition-request /path/to/ea-project
 ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
 ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
+ea literature zotero-readiness /path/to/ea-project
 ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
 ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
 ea literature reconcile-acquisition /path/to/ea-project
@@ -95,6 +98,8 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 `institution-access-guide` writes `institution_access_guidance.yml` and `institution_access_guidance.md` for user-managed authenticated acquisition. It records user-supplied institution name, access method, access URL or manual instructions, browser name/profile, Zotero-Codex config, cache root, authorization status, required inputs, safe manual steps, and next EA commands. It does not open browsers, operate Zotero, run Zotero-Codex scripts, store credentials, probe URLs, resolve DOI pages, download PDFs, parse full text, or assume developer-machine settings.
 
 `zotero-bridge` reads `acquisition_request.yml` and writes `zotero_codex_bridge.yml`, `zotero_codex_bridge.md`, and `zotero_codex_settings_request.yml`. It records user-supplied or user-confirmed Zotero-Codex config, cache root, project collection, browser assist, browser profile, and institution access settings, then emits safe commands for `literature_doctor.py`, `batch_acquire.py`, status rendering, sidecar writing/verification, and EA sync/import. It does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, store credentials, or assume developer-machine accounts.
+
+`zotero-readiness` reads local EA literature artifacts and writes `zotero_codex_readiness.yml` plus `zotero_codex_readiness.md`. Use it before handing work to the `zotero-codex-literature` companion skill and after importing status. It reports statuses such as `ready_for_zotero_codex_handoff`, `needs_zotero_codex_settings`, `acquisition_attention_required`, `needs_acquisition_reconciliation`, or `zotero_codex_results_integrated`; records the target manifest, batch status path, doctor/batch/render/sidecar/import commands; lists missing user settings; summarizes login/blocker/cache counts; and always includes no-Zotero degraded-mode commands for user-supplied metadata/BibTeX/manifest workflows. It is a local readiness summary only: it does not run Zotero-Codex scripts, operate Zotero, open browsers, inspect credentials or sessions, resolve DOI pages, download PDFs, parse full text, import references, or repair records.
 
 `import-zotero-status` reads `zotero_codex_batch_status.json` plus optional sidecar verification and rendered status refs, writes `zotero_codex_status_import.yml` and `acquisition_status_update.yml`, then syncs `deployment_status.yml` and `origin_thread_sync.yml`. It normalizes cached/downloaded counts, login needs, and blocked items. It imports status artifacts only; it does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
 

@@ -2006,6 +2006,276 @@ def prepare_literature_acceptance_checklist(
     }
 
 
+def _zotero_readiness_markdown(readiness: dict[str, Any]) -> str:
+    lines = [
+        "# Zotero-Codex Literature Readiness",
+        "",
+        f"- readiness_id: `{readiness['readiness_id']}`",
+        f"- project_id: `{readiness['project_id']}`",
+        f"- status: `{readiness['status']}`",
+        f"- checked_at: `{readiness['checked_at']}`",
+        f"- companion_skill: `{readiness['companion_skill']}`",
+        "",
+        "## Summary",
+        "",
+    ]
+    for key, value in readiness.get("summary", {}).items():
+        lines.append(f"- {key}: `{_markdown_value(value)}`")
+    lines.extend(["", "## Evidence", ""])
+    lines.extend(_markdown_bullets(readiness.get("evidence_refs") or [], code=True))
+    lines.extend(["", "## Contract", ""])
+    contract = readiness.get("zotero_codex_contract") or {}
+    for key, value in contract.items():
+        lines.append(f"- {key}: `{_markdown_value(value)}`")
+    lines.extend(["", "## Required User Inputs", ""])
+    required_inputs = readiness.get("required_user_inputs") or []
+    if required_inputs:
+        for item in required_inputs:
+            lines.append(f"- `{item.get('field')}`: {item.get('reason')}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Next Actions", ""])
+    lines.extend(_markdown_bullets(readiness.get("next_actions") or []))
+    degraded = readiness.get("no_zotero_degraded_mode") or {}
+    lines.extend(
+        [
+            "",
+            "## No-Zotero Degraded Mode",
+            "",
+            f"- status: `{_markdown_value(degraded.get('status'))}`",
+            f"- summary: {_markdown_value(degraded.get('summary'))}",
+            "- commands:",
+            *_markdown_bullets(degraded.get("commands") or [], code=True),
+            "",
+            "## Boundaries",
+            "",
+            *_markdown_bullets(readiness.get("boundaries") or []),
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _zotero_readiness_status(
+    *,
+    deployment_status: dict[str, Any],
+    request: dict[str, Any],
+    bridge: dict[str, Any],
+    status_import: dict[str, Any],
+    acquisition_manifest: dict[str, Any],
+    reconciliation: dict[str, Any],
+) -> str:
+    if not deployment_status:
+        return "needs_literature_status"
+    if not request:
+        return "needs_acquisition_request"
+    if _safe_int(request.get("target_count"), 0) <= 0:
+        return "needs_acquisition_targets"
+    bridge_status = str(bridge.get("status") or "")
+    if not bridge:
+        return "needs_zotero_bridge"
+    if bridge_status == "needs_user_settings":
+        return "needs_zotero_codex_settings"
+    if bridge_status == "awaiting_targets":
+        return "needs_acquisition_targets"
+    if status_import:
+        if _safe_int(status_import.get("blocked_count"), 0) or _safe_int(status_import.get("needs_user_login_count"), 0):
+            return "acquisition_attention_required"
+        if str(status_import.get("status") or "") == "acquisition_complete":
+            if reconciliation.get("status") in {"pass", "warnings"}:
+                return "zotero_codex_results_integrated"
+            return "needs_acquisition_reconciliation"
+        return "zotero_codex_status_imported"
+    if acquisition_manifest:
+        if reconciliation.get("status") in {"pass", "warnings"}:
+            return "acquisition_manifest_integrated"
+        return "needs_acquisition_reconciliation"
+    if bridge_status == "ready_for_zotero_codex_batch":
+        return "ready_for_zotero_codex_handoff"
+    return "needs_zotero_codex_settings"
+
+
+def summarize_zotero_codex_readiness(
+    root: Path,
+    *,
+    output_path: Path | None = None,
+    markdown_path: Path | None = None,
+    checked_at: str | None = None,
+    write_report: bool = True,
+) -> dict[str, Any]:
+    literature_root = root / "literature"
+    checked_at = checked_at or EARecord.now_iso()
+    project = _project_context(root)
+    project_id = str(project.get("project_id", "unknown-project"))
+    paths = _standard_literature_refs(root)
+    output_path = output_path or (literature_root / "zotero_codex_readiness.yml")
+    markdown_path = markdown_path or (literature_root / "zotero_codex_readiness.md")
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    if not markdown_path.is_absolute():
+        markdown_path = root / markdown_path
+
+    deployment_status = _local_yaml_or_json(paths["deployment_status"])
+    request = _local_yaml_or_json(paths["acquisition_request"])
+    bridge = _local_yaml_or_json(paths["zotero_codex_bridge"])
+    status_import = _local_yaml_or_json(paths["zotero_codex_status_import"])
+    acquisition_manifest = _local_yaml_or_json(paths["acquisition_manifest"])
+    reconciliation = _local_yaml_or_json(paths["acquisition_reconciliation"])
+    bridge_settings = bridge.get("settings") if isinstance(bridge.get("settings"), dict) else {}
+    request_contract = request.get("zotero_codex_contract") if isinstance(request.get("zotero_codex_contract"), dict) else {}
+    bridge_commands = bridge.get("commands") if isinstance(bridge.get("commands"), dict) else {}
+
+    readiness_status = _zotero_readiness_status(
+        deployment_status=deployment_status,
+        request=request,
+        bridge=bridge,
+        status_import=status_import,
+        acquisition_manifest=acquisition_manifest,
+        reconciliation=reconciliation,
+    )
+    target_count = _safe_int(request.get("target_count") or bridge.get("target_count"), 0)
+    next_actions_by_status = {
+        "needs_literature_status": [
+            "Run `ea literature status /path/to/ea-project` or initialize the project with `--enable-literature`.",
+        ],
+        "needs_acquisition_request": [
+            "Run `ea literature acquisition-request /path/to/ea-project` after candidate ranking and selection confirmation.",
+        ],
+        "needs_acquisition_targets": [
+            "Populate `literature/selected_items.yml` or `literature/ranking.csv`, then rerun `ea literature acquisition-request`.",
+        ],
+        "needs_zotero_bridge": [
+            "Run `ea literature zotero-bridge /path/to/ea-project` with user-confirmed Zotero-Codex settings.",
+        ],
+        "needs_zotero_codex_settings": [
+            "Ask the user for the required Zotero-Codex settings listed in this readiness report.",
+            "Rerun `ea literature zotero-bridge` after settings are confirmed.",
+        ],
+        "ready_for_zotero_codex_handoff": [
+            "Use the `zotero-codex-literature` skill in a dedicated workflow.",
+            bridge_commands.get("doctor") or request_contract.get("doctor_command") or "python3 scripts/literature_doctor.py --json",
+            bridge_commands.get("batch_acquire") or request_contract.get("batch_acquire_command"),
+            bridge_commands.get("render_status") or request_contract.get("render_status_command"),
+            "After status is produced, run `ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json`.",
+        ],
+        "acquisition_attention_required": [
+            "Review `needs_user_login` and `blocked_items` from `literature/zotero_codex_status_import.yml`.",
+            "Resume the dedicated Zotero-Codex workflow after user-managed login or manual repair, then import status again.",
+        ],
+        "needs_acquisition_reconciliation": [
+            "Run `ea literature reconcile-acquisition /path/to/ea-project` after status or manifest import.",
+        ],
+        "zotero_codex_results_integrated": [
+            "Run `ea literature acceptance-checklist /path/to/ea-project` before using imported literature in reports or source packets.",
+        ],
+        "acquisition_manifest_integrated": [
+            "Run `ea literature acceptance-checklist /path/to/ea-project` and register/use references only after user review.",
+        ],
+        "zotero_codex_status_imported": [
+            "If acquisition is complete, import the acquisition manifest or run reconciliation; otherwise continue the dedicated workflow.",
+        ],
+    }
+    next_actions = [item for item in next_actions_by_status.get(readiness_status, []) if item]
+    evidence_refs = _existing_refs(
+        root,
+        [
+            paths["deployment_status"],
+            paths["acquisition_request"],
+            paths["zotero_codex_bridge"],
+            literature_root / "zotero_codex_settings_request.yml",
+            paths["zotero_codex_status_import"],
+            paths["acquisition_manifest"],
+            paths["library_manifest"],
+            paths["cache_index"],
+            paths["acquisition_reconciliation"],
+            paths["acquisition_reconciliation_markdown"],
+        ],
+    )
+    no_zotero_degraded = {
+        "status": "available",
+        "summary": (
+            "EA can still use local/manual literature metadata without operating Zotero: rank supplied candidates, "
+            "import a user-provided BibTeX or acquisition manifest, register references, and reconcile local artifacts."
+        ),
+        "commands": [
+            "ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_input.yml",
+            "ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib",
+            "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
+            "ea literature reconcile-acquisition /path/to/ea-project",
+        ],
+    }
+    readiness = {
+        "schema_version": "0.2",
+        "readiness_id": f"lit-zotero-readiness-{_timestamp_key(checked_at)}",
+        "project_id": str(deployment_status.get("project_id") or request.get("project_id") or bridge.get("project_id") or project_id),
+        "checked_at": checked_at,
+        "status": readiness_status,
+        "companion_skill": "zotero-codex-literature",
+        "summary": {
+            "target_count": target_count,
+            "bridge_status": bridge.get("status"),
+            "acquisition_request_status": request.get("status"),
+            "status_import_status": status_import.get("status"),
+            "success_count": status_import.get("success_count", 0),
+            "needs_user_login_count": status_import.get("needs_user_login_count", 0),
+            "blocked_count": status_import.get("blocked_count", 0),
+            "downloaded_fulltext": status_import.get("downloaded_fulltext", deployment_status.get("downloaded_fulltext", 0)),
+            "cached_fulltext": status_import.get("cached_fulltext", deployment_status.get("cached_fulltext", 0)),
+            "reconciliation_status": reconciliation.get("status"),
+        },
+        "evidence_refs": evidence_refs,
+        "required_user_inputs": bridge.get("required_user_inputs") or [],
+        "zotero_codex_contract": _compact_dict(
+            {
+                "target_manifest_ref": request.get("target_manifest_ref") or bridge.get("target_manifest_ref"),
+                "batch_status_ref": request.get("batch_status_ref") or bridge.get("expected_outputs", {}).get("batch_status"),
+                "doctor_command": bridge_commands.get("doctor") or request_contract.get("doctor_command"),
+                "batch_acquire_command": bridge_commands.get("batch_acquire") or request_contract.get("batch_acquire_command"),
+                "render_status_command": bridge_commands.get("render_status") or request_contract.get("render_status_command"),
+                "write_project_sidecars_command": bridge_commands.get("write_project_sidecars")
+                or request_contract.get("sidecar_command"),
+                "verify_project_sidecars_command": bridge_commands.get("verify_project_sidecars"),
+                "import_zotero_status_command": (
+                    "ea literature import-zotero-status /path/to/ea-project "
+                    "--batch-status literature/zotero_codex_batch_status.json "
+                    "--sidecar-verification literature/zotero_codex_sidecars_verify.json"
+                ),
+                "import_acquisition_manifest_command": bridge_commands.get("import_acquisition_manifest")
+                or request_contract.get("import_back_command"),
+                "settings": bridge_settings,
+            }
+        ),
+        "next_actions": next_actions,
+        "no_zotero_degraded_mode": no_zotero_degraded,
+        "output_refs": {
+            "yaml": _project_relative(root, output_path),
+            "markdown": _project_relative(root, markdown_path),
+        }
+        if write_report
+        else {},
+        "boundaries": [
+            "This readiness report reads local EA literature artifacts only.",
+            "It does not run Zotero-Codex scripts, operate Zotero, open browsers, inspect credentials or sessions, resolve DOI pages, download PDFs, parse full text, import references, or repair records.",
+            "Use Zotero-Codex only in a dedicated or user-confirmed workflow with user-managed accounts and lawful access.",
+            "No-Zotero degraded mode can use user-supplied metadata and manifests, but it is not proof of exhaustive literature coverage.",
+        ],
+    }
+    if write_report:
+        write_yaml(output_path, readiness)
+        markdown_path.write_text(_zotero_readiness_markdown(readiness), encoding="utf-8")
+        status_path = paths["deployment_status"]
+        if status_path.exists():
+            deployment_status.update(
+                {
+                    "zotero_codex_readiness_ref": _project_relative(root, output_path),
+                    "zotero_codex_readiness_markdown_ref": _project_relative(root, markdown_path),
+                    "zotero_codex_readiness_status": readiness_status,
+                    "last_zotero_codex_readiness_check_at": checked_at,
+                }
+            )
+            write_yaml(status_path, deployment_status)
+    return {"readiness": readiness, "readiness_path": str(output_path) if write_report else None, "markdown_path": str(markdown_path) if write_report else None}
+
+
 def _literature_identifier_keys(item: dict[str, Any]) -> set[str]:
     keys = set()
     doi = _as_text(item.get("doi")).strip().lower()

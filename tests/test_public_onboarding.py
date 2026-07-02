@@ -29,7 +29,9 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea literature plan" in text
     assert "ea literature prepare-source-candidates" in text
     assert "ea literature preflight-source-candidates" in text
+    assert "ea literature zotero-readiness" in text
     assert "ea literature acceptance-checklist" in text
+    assert "no-Zotero degraded-mode" in text
     assert "ea materials audit-assignment-library" in text
     assert "ea raman list-assignment-libraries" in text
     assert "ea pl list-assignment-libraries" in text

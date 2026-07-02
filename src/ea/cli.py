@@ -55,6 +55,7 @@ from ea.literature import (
     reconcile_literature_acquisition,
     render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
+    summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
 from ea.materials import (
@@ -736,6 +737,11 @@ def build_parser() -> argparse.ArgumentParser:
     lit_bridge.add_argument("--browser-name")
     lit_bridge.add_argument("--browser-profile", type=Path)
     lit_bridge.add_argument("--institution-access")
+    lit_readiness = literature_sub.add_parser("zotero-readiness", help="summarize EA readiness for Zotero-Codex literature handoff/import")
+    lit_readiness.add_argument("workspace", type=Path)
+    lit_readiness.add_argument("--no-write", action="store_true")
+    lit_readiness.add_argument("--output", type=Path)
+    lit_readiness.add_argument("--markdown-output", type=Path)
     lit_import = literature_sub.add_parser("import-acquisition", help="import acquisition manifest output from a dedicated literature workflow")
     lit_import.add_argument("workspace", type=Path)
     lit_import.add_argument("--manifest", required=True, type=Path)
@@ -1956,6 +1962,22 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     browser_name=args.browser_name,
                     browser_profile=args.browser_profile,
                     institution_access=args.institution_access,
+                )
+            )
+            return 0
+        if args.literature_command == "zotero-readiness":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_path = args.markdown_output
+            if markdown_path and not markdown_path.is_absolute():
+                markdown_path = args.workspace / markdown_path
+            _print_json(
+                summarize_zotero_codex_readiness(
+                    args.workspace,
+                    output_path=output_path,
+                    markdown_path=markdown_path,
+                    write_report=not args.no_write,
                 )
             )
             return 0

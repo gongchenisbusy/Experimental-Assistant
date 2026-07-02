@@ -23,6 +23,7 @@ from ea.literature import (
     reconcile_literature_acquisition,
     render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
+    summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
 from ea.projects import initialize_project
@@ -495,6 +496,172 @@ def test_cli_literature_zotero_bridge_wires_arguments(tmp_path: Path, capsys, mo
     )
     result = json.loads(capsys.readouterr().out)
     assert result["bridge"]["status"] == "ready_for_zotero_codex_batch"
+
+
+def test_literature_zotero_readiness_reports_ready_handoff_contract(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Readiness",
+        project_slug="mos2-zotero-readiness",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "items": [
+                {
+                    "candidate_id": "cand-001",
+                    "rank": 1,
+                    "title": "MoS2 Raman acquisition target",
+                    "doi": "10.1000/readiness-ready",
+                }
+            ],
+        },
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-02T03:00:00")
+    prepare_zotero_codex_acquisition_bridge(
+        tmp_path,
+        zotero_config=Path("config/zotero-codex.json"),
+        project_collection="MoS2 Zotero Readiness",
+        created_at="2026-07-02T03:01:00",
+    )
+
+    result = summarize_zotero_codex_readiness(tmp_path, checked_at="2026-07-02T03:02:00")
+    readiness = result["readiness"]
+    markdown = (tmp_path / "literature" / "zotero_codex_readiness.md").read_text(encoding="utf-8")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+
+    assert readiness["status"] == "ready_for_zotero_codex_handoff"
+    assert readiness["companion_skill"] == "zotero-codex-literature"
+    assert readiness["summary"]["target_count"] == 1
+    assert readiness["zotero_codex_contract"]["target_manifest_ref"] == "literature/zotero_codex_targets.jsonl"
+    assert "batch_acquire.py" in readiness["zotero_codex_contract"]["batch_acquire_command"]
+    assert "ea literature import-zotero-status" in readiness["zotero_codex_contract"]["import_zotero_status_command"]
+    assert readiness["no_zotero_degraded_mode"]["status"] == "available"
+    assert "ea references import-bibtex" in " ".join(readiness["no_zotero_degraded_mode"]["commands"])
+    assert "does not run Zotero-Codex scripts" in " ".join(readiness["boundaries"])
+    assert "No-Zotero Degraded Mode" in markdown
+    assert status["zotero_codex_readiness_status"] == "ready_for_zotero_codex_handoff"
+
+
+def test_literature_zotero_readiness_reports_missing_settings_and_degraded_mode(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Missing Settings",
+        project_slug="mos2-zotero-missing-settings",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=1, user_response="确认 top 1。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "items": [{"candidate_id": "cand-001", "rank": 1, "title": "MoS2 target"}],
+        },
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-02T03:05:00")
+    prepare_zotero_codex_acquisition_bridge(tmp_path, created_at="2026-07-02T03:06:00")
+
+    result = summarize_zotero_codex_readiness(tmp_path, checked_at="2026-07-02T03:07:00")
+    readiness = result["readiness"]
+    fields = {item["field"] for item in readiness["required_user_inputs"]}
+
+    assert readiness["status"] == "needs_zotero_codex_settings"
+    assert {"zotero_codex_config", "project_collection"}.issubset(fields)
+    assert any("Rerun `ea literature zotero-bridge`" in action for action in readiness["next_actions"])
+    assert readiness["no_zotero_degraded_mode"]["status"] == "available"
+    assert "without operating Zotero" in readiness["no_zotero_degraded_mode"]["summary"]
+
+
+def test_literature_zotero_readiness_summarizes_imported_blockers(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 Zotero Readiness Blockers",
+        project_slug="mos2-zotero-readiness-blockers",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "schema_version": "0.2",
+            "items": [
+                {"candidate_id": "cand-001", "rank": 1, "title": "Gated paper", "doi": "10.1000/login"},
+                {"candidate_id": "cand-002", "rank": 2, "title": "Failed paper", "doi": "10.1000/failed"},
+            ],
+        },
+    )
+    prepare_literature_acquisition_request(tmp_path, created_at="2026-07-02T03:10:00")
+    prepare_zotero_codex_acquisition_bridge(
+        tmp_path,
+        zotero_config=Path("config/zotero-codex.json"),
+        project_collection="MoS2 Zotero Readiness Blockers",
+        created_at="2026-07-02T03:11:00",
+    )
+    (tmp_path / "literature" / "zotero_codex_batch_status.json").write_text(
+        json.dumps(
+            {
+                "target_count": 2,
+                "items": [
+                    {"target_id": "target-001", "title": "Gated paper", "doi": "10.1000/login", "status": "needs-login"},
+                    {"target_id": "target-002", "title": "Failed paper", "doi": "10.1000/failed", "status": "failed-nonpdf"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    import_zotero_codex_batch_status(tmp_path, imported_at="2026-07-02T03:12:00")
+
+    readiness = summarize_zotero_codex_readiness(tmp_path, checked_at="2026-07-02T03:13:00")["readiness"]
+
+    assert readiness["status"] == "acquisition_attention_required"
+    assert readiness["summary"]["needs_user_login_count"] == 1
+    assert readiness["summary"]["blocked_count"] == 1
+    assert any("Review `needs_user_login`" in action for action in readiness["next_actions"])
+    assert "literature/zotero_codex_status_import.yml" in readiness["evidence_refs"]
+
+
+def test_cli_literature_zotero_readiness_wires_outputs(tmp_path: Path, capsys, monkeypatch) -> None:
+    def fake_summarize_zotero_codex_readiness(workspace: Path, **kwargs):
+        assert workspace == tmp_path
+        assert kwargs["output_path"] == tmp_path / "literature" / "custom_readiness.yml"
+        assert kwargs["markdown_path"] == tmp_path / "literature" / "custom_readiness.md"
+        assert kwargs["write_report"] is False
+        return {"readiness": {"status": "ready_for_zotero_codex_handoff"}}
+
+    monkeypatch.setattr("ea.cli.summarize_zotero_codex_readiness", fake_summarize_zotero_codex_readiness)
+
+    assert (
+        main(
+            [
+                "literature",
+                "zotero-readiness",
+                str(tmp_path),
+                "--output",
+                "literature/custom_readiness.yml",
+                "--markdown-output",
+                "literature/custom_readiness.md",
+                "--no-write",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["readiness"]["status"] == "ready_for_zotero_codex_handoff"
 
 
 def test_literature_import_zotero_status_writes_update_and_syncs(tmp_path: Path) -> None:
