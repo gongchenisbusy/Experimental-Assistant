@@ -22,7 +22,8 @@ from ea.figures import (
     style_axis,
     styled_subplots,
 )
-from ea.materials import infer_material_from_project, match_xrd_peaks
+from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.materials import infer_material_from_project, match_xrd_peaks, resolve_material_id, summarize_xrd_assignment_libraries
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -60,6 +61,13 @@ class XRDProcessingRequest:
     processing_parameters: dict[str, Any]
     column_review_ref: str
     parameter_review_ref: str
+
+
+BUILTIN_XRD_ASSIGNMENT_LIBRARY_DEFAULT = "builtin_material_assignments"
+
+
+def builtin_xrd_assignment_libraries() -> list[str]:
+    return [BUILTIN_XRD_ASSIGNMENT_LIBRARY_DEFAULT]
 
 
 def default_xrd_processing_parameters() -> dict[str, Any]:
@@ -355,6 +363,541 @@ def _analyze_xrd_peaks(peaks: pd.DataFrame, root: Path, project_id: str) -> dict
 
 def _created_day(created_at: str | None) -> str | None:
     return created_at[:10] if created_at else None
+
+
+def _relative_to_root(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _normalize_key(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _xrd_assignment_source_candidates(source_packet: Any) -> list[Any]:
+    if isinstance(source_packet, list):
+        return source_packet
+    if isinstance(source_packet, dict):
+        raw_candidates = (
+            source_packet.get("candidates")
+            or source_packet.get("assignments")
+            or source_packet.get("source_candidates")
+            or source_packet.get("suggestions")
+            or []
+        )
+        return raw_candidates if isinstance(raw_candidates, list) else []
+    return []
+
+
+def _xrd_candidate_identity(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or "").strip()
+
+
+def _xrd_coerce_window(candidate: dict[str, Any], *names: str) -> list[float] | None:
+    for name in names:
+        raw = candidate.get(name)
+        if raw is None:
+            continue
+        if isinstance(raw, dict):
+            raw = [
+                raw.get("min", raw.get("lower", raw.get("start", raw.get("low")))),
+                raw.get("max", raw.get("upper", raw.get("end", raw.get("high")))),
+            ]
+        if not isinstance(raw, list | tuple) or len(raw) != 2:
+            continue
+        try:
+            lower = float(raw[0])
+            upper = float(raw[1])
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(lower) and np.isfinite(upper):
+            return [min(lower, upper), max(lower, upper)]
+    return None
+
+
+def _xrd_window_overlaps(window: list[float] | None, lower: float | None, upper: float | None) -> bool:
+    if lower is None and upper is None:
+        return True
+    if window is None:
+        return False
+    if lower is not None and window[1] < lower:
+        return False
+    if upper is not None and window[0] > upper:
+        return False
+    return True
+
+
+def _xrd_candidate_material_keys(candidate: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for field in ["material_id", "material", "material_display_name", "formula", "material_scope"]:
+        value = candidate.get(field)
+        if value is None:
+            continue
+        keys.add(_normalize_key(value))
+        resolved = resolve_material_id(str(value))
+        if resolved:
+            keys.add(_normalize_key(resolved))
+    return keys
+
+
+def _xrd_candidate_matches_filters(
+    candidate: dict[str, Any],
+    *,
+    include_candidates: set[str],
+    material_filters: set[str],
+    feature_filters: set[str],
+    two_theta_min_deg: float | None,
+    two_theta_max_deg: float | None,
+    d_spacing_min_angstrom: float | None,
+    d_spacing_max_angstrom: float | None,
+) -> bool:
+    if include_candidates and _xrd_candidate_identity(candidate) not in include_candidates:
+        return False
+    if material_filters and not (_xrd_candidate_material_keys(candidate) & material_filters):
+        return False
+    if feature_filters:
+        searchable = " ".join(
+            str(candidate.get(field) or "")
+            for field in [
+                "candidate_id",
+                "feature",
+                "feature_id",
+                "label",
+                "assignment_label",
+                "candidate_type",
+                "assignment_type",
+            ]
+        )
+        searchable_key = _normalize_key(searchable)
+        if not any(feature and feature in searchable_key for feature in feature_filters):
+            return False
+    two_theta_window = _xrd_coerce_window(
+        candidate,
+        "two_theta_window_deg",
+        "two_theta_deg_range",
+        "two_theta_range_deg",
+        "two_theta_window",
+        "two_theta_range",
+    )
+    if not _xrd_window_overlaps(two_theta_window, two_theta_min_deg, two_theta_max_deg):
+        return False
+    d_spacing_window = _xrd_coerce_window(
+        candidate,
+        "d_spacing_window_angstrom",
+        "d_spacing_angstrom_range",
+        "d_spacing_range_angstrom",
+        "d_spacing_window",
+        "d_spacing_range",
+    )
+    if not _xrd_window_overlaps(d_spacing_window, d_spacing_min_angstrom, d_spacing_max_angstrom):
+        return False
+    return True
+
+
+def _xrd_assignment_template_candidates() -> list[dict[str, Any]]:
+    return [
+        {
+            "candidate_id": "xrd-assignment-template-001",
+            "candidate_type": "diffraction_feature_assignment",
+            "assignment_type": "diffraction_feature_assignment",
+            "material_id": "TODO-material-id",
+            "feature": "TODO-feature-id",
+            "label": "TODO: e.g. layered (002) reflection",
+            "two_theta_window_deg": [None, None],
+            "d_spacing_window_angstrom": [None, None],
+            "source_summary": "TODO: summarize the reference pattern, PDF card, or literature table supporting this window.",
+            "applicability_notes": [
+                "TODO: describe radiation wavelength, phase/material assumptions, sample context, and known overlapping peaks."
+            ],
+            "reference_ids": ["TODO-registered-reference-id"],
+            "confidence": "low",
+            "caveats": [
+                "Template candidate only; fill source metadata and reviewed windows before using it for XRD interpretation.",
+                "This candidate does not prove phase identity, material identity, crystallinity, texture, strain, or sample quality by itself.",
+            ],
+            "auto_applied": False,
+            "requires_user_review": True,
+        }
+    ]
+
+
+def _xrd_source_reference_seeds(
+    source_packet: Any,
+    *,
+    referenced_ids: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(source_packet, dict):
+        return {}
+    raw_seeds = source_packet.get("reference_seeds") or {}
+    if not raw_seeds:
+        return {}
+    if not isinstance(raw_seeds, dict):
+        warnings.append(
+            _warning(
+                "xrd_assignment_source_reference_seeds_invalid",
+                "XRD assignment source reference_seeds were ignored because they were not a mapping.",
+                severity="medium",
+            )
+        )
+        return {}
+    seeds: dict[str, Any] = {}
+    for raw_seed_id, raw_seed in raw_seeds.items():
+        seed_id = str(raw_seed_id).strip()
+        if not seed_id or seed_id not in referenced_ids:
+            continue
+        if not isinstance(raw_seed, dict):
+            warnings.append(
+                _warning(
+                    "xrd_assignment_source_reference_seed_ignored",
+                    "An XRD assignment source reference_seed was skipped because its metadata was not a mapping.",
+                    severity="medium",
+                    seed_id=seed_id,
+                )
+            )
+            continue
+        seeds[seed_id] = deepcopy(raw_seed)
+    return seeds
+
+
+def _xrd_builtin_assignment_source_library(
+    *,
+    materials: list[str],
+    features: list[str],
+    two_theta_min_deg: float | None,
+    two_theta_max_deg: float | None,
+    d_spacing_min_angstrom: float | None,
+    d_spacing_max_angstrom: float | None,
+) -> dict[str, Any]:
+    summary = summarize_xrd_assignment_libraries(
+        materials=materials,
+        features=features,
+        two_theta_min_deg=two_theta_min_deg,
+        two_theta_max_deg=two_theta_max_deg,
+        d_spacing_min_angstrom=d_spacing_min_angstrom,
+        d_spacing_max_angstrom=d_spacing_max_angstrom,
+    )
+    library = summary["libraries"][0]
+    reference_seeds: dict[str, Any] = {}
+    candidates: list[dict[str, Any]] = []
+    for profile in library.get("material_profiles", []):
+        hints_by_key = {
+            str(hint.get("key")): hint
+            for hint in profile.get("reference_hints", [])
+            if isinstance(hint, dict) and hint.get("key")
+        }
+        for raw_candidate in profile.get("candidates", []):
+            if not isinstance(raw_candidate, dict):
+                continue
+            reference_ids: list[str] = []
+            for hint_key in raw_candidate.get("reference_hint_keys", []):
+                hint = hints_by_key.get(str(hint_key))
+                if not hint:
+                    continue
+                seed_id = f"builtin-xrd-{hint_key}"
+                reference_ids.append(seed_id)
+                seed: dict[str, Any] = {
+                    "source_type": "manual",
+                    "title": hint.get("label") or hint_key,
+                    "citation": hint.get("label") or hint_key,
+                    "notes": "Built-in XRD reference hint; register or replace this seed before treating packet candidates as report evidence.",
+                }
+                if hint.get("doi"):
+                    seed["doi"] = str(hint["doi"])
+                    seed["url"] = f"https://doi.org/{hint['doi']}"
+                if hint.get("url") and not seed.get("url"):
+                    seed["url"] = hint["url"]
+                reference_seeds[seed_id] = seed
+            notes = _coerce_string_list(raw_candidate.get("notes"))
+            caveats = list(profile.get("caveats", [])) + notes
+            caveats.append(
+                "Built-in XRD candidates are source-backed screening metadata; use registered references and user review before interpretation."
+            )
+            candidate = deepcopy(raw_candidate)
+            candidate.update(
+                {
+                    "candidate_type": "diffraction_feature_assignment",
+                    "assignment_type": "diffraction_feature_assignment",
+                    "material_id": profile.get("material_id"),
+                    "material_display_name": profile.get("display_name"),
+                    "formula": profile.get("formula"),
+                    "reference_ids": reference_ids,
+                    "source_summary": (
+                        f"Built-in source-backed XRD screening candidate for {profile.get('display_name') or profile.get('material_id')} "
+                        f"{raw_candidate.get('label') or raw_candidate.get('feature')}; use the cited reference seed(s) to verify the expected "
+                        "diffraction feature in the project context."
+                    ),
+                    "applicability_notes": [
+                        "Compare against processed XRD peak positions only after the raw-data columns and processing parameters have been reviewed.",
+                        "Check radiation wavelength, sample preparation, preferred orientation, substrate/background peaks, and possible overlapping phases.",
+                    ],
+                    "confidence": "low",
+                    "caveats": caveats,
+                    "auto_applied": False,
+                    "requires_user_review": True,
+                }
+            )
+            candidates.append(candidate)
+    return {
+        "schema_version": "0.2",
+        "source": "ea.materials.xrd_assignment_builtin_source_library:v0.2",
+        "library_id": BUILTIN_XRD_ASSIGNMENT_LIBRARY_DEFAULT,
+        "library_ref": library.get("library_ref"),
+        "reference_seeds": reference_seeds,
+        "guidance_notes": [
+            "Built-in XRD candidates are starter source-packet seeds. Register or replace reference seeds before using candidates as report evidence."
+        ],
+        "guidance_reference_ids": [],
+        "candidates": candidates,
+    }
+
+
+def build_xrd_assignment_source_packet(
+    root: Path,
+    *,
+    project_id: str,
+    library_path: Path | None = None,
+    builtin_library: str | None = None,
+    literature_manifest_path: Path | None = None,
+    output_path: Path | None = None,
+    include_candidates: list[str] | None = None,
+    materials: list[str] | None = None,
+    features: list[str] | None = None,
+    two_theta_min_deg: float | None = None,
+    two_theta_max_deg: float | None = None,
+    d_spacing_min_angstrom: float | None = None,
+    d_spacing_max_angstrom: float | None = None,
+    template: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    if selected_source_count > 1:
+        raise XRDProcessingError(
+            "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for XRD assignment source-packet generation"
+        )
+    if not library_path and not literature_manifest_path and not template:
+        builtin_library = builtin_library or BUILTIN_XRD_ASSIGNMENT_LIBRARY_DEFAULT
+    if builtin_library and builtin_library not in builtin_xrd_assignment_libraries():
+        available = ", ".join(builtin_xrd_assignment_libraries())
+        raise XRDProcessingError(f"Unknown built-in XRD assignment library: {builtin_library}. Available libraries: {available}")
+
+    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
+    builtin_mode = builtin_library is not None
+    literature_mode = literature_manifest_path is not None
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    source_packet_id = next_id(root, "xrd_assignment_source_packet", day)
+    if output_path is None:
+        if template_mode:
+            output_path = root / "templates" / "xrd_assignment_source_packet.yml"
+        else:
+            output_path = root / "suggestions" / "xrd" / "source-packets" / f"{source_packet_id}.yml"
+    elif not output_path.is_absolute():
+        output_path = root / output_path
+    assert_not_raw_output_path(root, output_path)
+
+    material_filters_raw = [str(item).strip() for item in materials or [] if str(item).strip()]
+    feature_filters_raw = [str(item).strip() for item in features or [] if str(item).strip()]
+    warnings: list[dict[str, Any]] = []
+    library_ref: str | None = None
+    library_kind = "template" if template_mode else "local_file"
+    source_library: Any = {}
+    if template_mode:
+        raw_candidates = _xrd_assignment_template_candidates()
+    elif builtin_mode:
+        try:
+            source_library = _xrd_builtin_assignment_source_library(
+                materials=material_filters_raw,
+                features=feature_filters_raw,
+                two_theta_min_deg=two_theta_min_deg,
+                two_theta_max_deg=two_theta_max_deg,
+                d_spacing_min_angstrom=d_spacing_min_angstrom,
+                d_spacing_max_angstrom=d_spacing_max_angstrom,
+            )
+        except KeyError as exc:
+            raise XRDProcessingError(str(exc)) from exc
+        raw_candidates = _xrd_assignment_source_candidates(source_library)
+        library_ref = f"builtin:{builtin_library}"
+        library_kind = "built_in"
+    elif literature_mode:
+        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        if source_path is None:
+            raise XRDProcessingError("XRD literature manifest path was not supplied")
+        try:
+            source_library, manifest_warnings = confirmed_source_packet_library(
+                root,
+                manifest_path=source_path,
+                method="xrd",
+                method_aliases={"xrd", "diffraction", "x_ray_diffraction", "xrd_assignment", "xrd_assignment_source_packet"},
+            )
+        except SourcePacketManifestError as exc:
+            raise XRDProcessingError(str(exc)) from exc
+        warnings.extend(manifest_warnings)
+        raw_candidates = _xrd_assignment_source_candidates(source_library)
+        library_ref = _relative_to_root(root, source_path)
+        library_kind = "confirmed_literature_manifest"
+    else:
+        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        if source_path is None or not source_path.exists():
+            raise XRDProcessingError(f"XRD assignment library file not found: {library_path}")
+        library_ref = _relative_to_root(root, source_path)
+        source_library = read_yaml(source_path)
+        raw_candidates = _xrd_assignment_source_candidates(source_library)
+
+    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    material_filter_keys: set[str] = set()
+    for material in material_filters_raw:
+        material_filter_keys.add(_normalize_key(material))
+        resolved = resolve_material_id(material)
+        if resolved:
+            material_filter_keys.add(_normalize_key(resolved))
+    feature_filter_keys = {_normalize_key(feature) for feature in feature_filters_raw}
+
+    selected: list[dict[str, Any]] = []
+    for index, raw_candidate in enumerate(raw_candidates, start=1):
+        if not isinstance(raw_candidate, dict):
+            warnings.append(
+                _warning(
+                    "xrd_assignment_source_candidate_ignored",
+                    "An XRD assignment source candidate was not a mapping and was skipped while building the source packet.",
+                    severity="medium",
+                    candidate_index=index,
+                )
+            )
+            continue
+        if not _xrd_candidate_matches_filters(
+            raw_candidate,
+            include_candidates=include_set,
+            material_filters=material_filter_keys,
+            feature_filters=feature_filter_keys,
+            two_theta_min_deg=two_theta_min_deg,
+            two_theta_max_deg=two_theta_max_deg,
+            d_spacing_min_angstrom=d_spacing_min_angstrom,
+            d_spacing_max_angstrom=d_spacing_max_angstrom,
+        ):
+            continue
+        candidate = deepcopy(raw_candidate)
+        candidate.setdefault("auto_applied", False)
+        candidate.setdefault("requires_user_review", True)
+        selected.append(candidate)
+
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "xrd_assignment_source_library_empty",
+                "No XRD assignment candidates were found in the source library.",
+                severity="medium",
+            )
+        )
+    if raw_candidates and not selected:
+        warnings.append(
+            _warning(
+                "xrd_assignment_source_no_matches",
+                "No XRD assignment candidates matched the requested filters.",
+                severity="medium",
+            )
+        )
+
+    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
+    guidance_reference_ids = (
+        _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+    )
+    reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
+    reference_seeds = _xrd_source_reference_seeds(
+        source_library,
+        referenced_ids=set(reference_ids),
+        warnings=warnings,
+    )
+    packet_ref = _relative_to_root(root, output_path)
+    status = "template_requires_user_edit" if template_mode else ("ready_for_review" if selected else "no_matching_candidates")
+    filters = {
+        "include_candidates": sorted(include_set),
+        "materials": material_filters_raw,
+        "resolved_materials": sorted(material_filter_keys),
+        "features": feature_filters_raw,
+        "two_theta_min_deg": two_theta_min_deg,
+        "two_theta_max_deg": two_theta_max_deg,
+        "d_spacing_min_angstrom": d_spacing_min_angstrom,
+        "d_spacing_max_angstrom": d_spacing_max_angstrom,
+    }
+    packet = {
+        "schema_version": "0.2",
+        "source_packet_id": source_packet_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.xrd.assignment_source_packet:v0.2",
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
+        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
+        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
+        "reference_seed_count": len(reference_seeds),
+        "reference_seeds": reference_seeds,
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_reference_ids": guidance_reference_ids,
+        "candidate_count": len(selected),
+        "candidates": selected,
+        "filters": filters,
+        "reference_ids": reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or replace reference_seeds with project references before treating any XRD assignment candidate as report evidence.",
+            "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, confidence, caveats, and reviewed 2theta/d-spacing windows where relevant.",
+            "Use this packet as a staging input for future XRD suggestion/review/report workflows; this builder does not match peaks or apply assignments.",
+        ],
+        "boundaries": [
+            "XRD assignment source packets are staging artifacts and do not modify raw data, processing outputs, reports, or project memory.",
+            "This builder is deterministic and does not perform live lookup, article download, full-text parsing, raw-data processing, peak matching, report citation injection, ReviewRecord creation, memory writes, or automatic assignment application.",
+            "Values may originate from built-in source-backed metadata, local project libraries, user-provided records, project literature records, or separately confirmed literature/search connectors; EA may prepare those candidates, but they remain reviewable suggestions.",
+            "Confirmed-literature manifests and built-in reference seeds do not prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality.",
+        ],
+    }
+    write_yaml(output_path, packet)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="xrd_assignment_source_packet",
+        inputs={"records": [library_ref] if library_ref else [], "files": []},
+        outputs={"records": [packet_ref], "files": []},
+        parameters={
+            "candidate_count": len(selected),
+            "reference_seed_count": len(reference_seeds),
+            "template": template_mode,
+            "builtin_library": builtin_library if builtin_mode else None,
+            "source_library_kind": library_kind,
+            "filters": filters,
+            "auto_applied": False,
+        },
+        warnings=warnings,
+        source_refs=reference_ids,
+        created_at=created_at,
+    )
+    packet["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(output_path, packet)
+    return {
+        "source_packet": str(output_path),
+        "source_packet_id": source_packet_id,
+        "status": status,
+        "candidate_count": len(selected),
+        "reference_ids": reference_ids,
+        "reference_seed_count": len(reference_seeds),
+        "source_library_kind": library_kind,
+        "source_library_ref": library_ref,
+        "warnings": warnings,
+        "provenance": str(provenance_path),
+    }
 
 
 def _uses_v0_2_project_ids(project_id: str) -> bool:

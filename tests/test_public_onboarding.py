@@ -31,6 +31,7 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea raman list-assignment-libraries" in text
     assert "ea pl list-assignment-libraries" in text
     assert "ea xrd list-assignment-libraries" in text
+    assert "ea xrd build-assignment-packet" in text
     assert "ea ftir list-assignment-libraries" in text
     assert "ea uv-vis list-source-libraries" in text
     assert "ea xps list-parameter-libraries" in text

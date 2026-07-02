@@ -430,7 +430,13 @@ def test_xrd_assignment_library_summary_filters_source_backed_candidates() -> No
     assert candidate["auto_applied"] is False
     assert candidate["requires_user_review"] is True
     assert "ea materials assignments hbn --method xrd" in summary["next_commands"]["inspect_material_profile"]
+    build_packet_command = summary["next_commands"]["build_assignment_packet"][0]
+    assert "ea xrd build-assignment-packet" in build_packet_command
+    assert "--builtin-library builtin_material_assignments" in build_packet_command
+    assert "--material hbn" in build_packet_command
+    assert "--feature 002" in build_packet_command
     assert any("does not run live literature search" in boundary for boundary in summary["boundaries"])
+    assert any("project-local reviewable staging packet" in boundary for boundary in summary["boundaries"])
     assert any("do not prove phase identity" in boundary for boundary in summary["boundaries"])
 
     mos2_summary = summarize_xrd_assignment_libraries(
@@ -488,3 +494,4 @@ def test_cli_lists_xrd_assignment_libraries_and_reports_no_matches(capsys) -> No
     assert no_match["matching_candidate_count"] == 0
     assert no_match["libraries"][0]["material_profiles"] == []
     assert no_match["next_commands"]["inspect_material_profile"] == []
+    assert no_match["next_commands"]["build_assignment_packet"] == []

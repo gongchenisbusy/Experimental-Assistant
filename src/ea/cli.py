@@ -117,7 +117,14 @@ from ea.xps import (
     suggest_xps_parameters,
     summarize_xps_parameter_libraries,
 )
-from ea.xrd import XRDProcessingRequest, default_xrd_processing_parameters, inspect_xrd_file, process_xrd_result
+from ea.xrd import (
+    XRDProcessingRequest,
+    build_xrd_assignment_source_packet,
+    builtin_xrd_assignment_libraries,
+    default_xrd_processing_parameters,
+    inspect_xrd_file,
+    process_xrd_result,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -280,6 +287,25 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_list_libraries.add_argument("--two-theta-max-deg", type=float)
     xrd_list_libraries.add_argument("--d-spacing-min-angstrom", type=float)
     xrd_list_libraries.add_argument("--d-spacing-max-angstrom", type=float)
+    xrd_source_packet = xrd_sub.add_parser("build-assignment-packet", help="build a standard XRD assignment source packet")
+    xrd_source_packet.add_argument("workspace", type=Path)
+    xrd_source_packet.add_argument("--library-file", type=Path)
+    xrd_source_packet.add_argument(
+        "--builtin-library",
+        choices=builtin_xrd_assignment_libraries(),
+        help="use a bundled XRD assignment library; defaults to builtin_material_assignments when no library file or template is supplied",
+    )
+    xrd_source_packet.add_argument("--literature-manifest", type=Path, help="build from a user-confirmed literature/source-candidate manifest")
+    xrd_source_packet.add_argument("--output", type=Path)
+    xrd_source_packet.add_argument("--project-id")
+    xrd_source_packet.add_argument("--include-candidate", action="append", default=[])
+    xrd_source_packet.add_argument("--material", action="append", default=[])
+    xrd_source_packet.add_argument("--feature", action="append", default=[])
+    xrd_source_packet.add_argument("--two-theta-min-deg", type=float)
+    xrd_source_packet.add_argument("--two-theta-max-deg", type=float)
+    xrd_source_packet.add_argument("--d-spacing-min-angstrom", type=float)
+    xrd_source_packet.add_argument("--d-spacing-max-angstrom", type=float)
+    xrd_source_packet.add_argument("--write-template", action="store_true")
     xrd_inspect = xrd_sub.add_parser("inspect", help="inspect a diffraction file and suggest XRD columns/unit")
     xrd_inspect.add_argument("workspace", type=Path)
     xrd_inspect.add_argument("pattern", type=Path)
@@ -1176,7 +1202,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xrd":
         project_id = getattr(args, "project_id", None)
-        if args.xrd_command in {"process", "report"} and not project_id:
+        if args.xrd_command in {"process", "report", "build-assignment-packet"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xrd_command == "list-assignment-libraries":
             _print_json(
@@ -1187,6 +1213,26 @@ def main(argv: list[str] | None = None) -> int:
                     two_theta_max_deg=args.two_theta_max_deg,
                     d_spacing_min_angstrom=args.d_spacing_min_angstrom,
                     d_spacing_max_angstrom=args.d_spacing_max_angstrom,
+                )
+            )
+            return 0
+        if args.xrd_command == "build-assignment-packet":
+            _print_json(
+                build_xrd_assignment_source_packet(
+                    args.workspace,
+                    project_id=project_id,
+                    library_path=_project_path(args.workspace, args.library_file) if args.library_file else None,
+                    builtin_library=args.builtin_library,
+                    literature_manifest_path=_project_path(args.workspace, args.literature_manifest) if args.literature_manifest else None,
+                    output_path=args.output,
+                    include_candidates=args.include_candidate,
+                    materials=args.material,
+                    features=args.feature,
+                    two_theta_min_deg=args.two_theta_min_deg,
+                    two_theta_max_deg=args.two_theta_max_deg,
+                    d_spacing_min_angstrom=args.d_spacing_min_angstrom,
+                    d_spacing_max_angstrom=args.d_spacing_max_angstrom,
+                    template=args.write_template,
                 )
             )
             return 0

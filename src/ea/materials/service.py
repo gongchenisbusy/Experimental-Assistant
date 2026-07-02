@@ -869,16 +869,40 @@ def summarize_xrd_assignment_libraries(
             max(window[1] for window in available_d_spacing_windows),
         ]
 
+    build_assignment_packet_commands: list[str] = []
+    for profile in matching_profiles:
+        parts = [
+            "ea xrd build-assignment-packet /path/to/ea-project --project-id <project-id>",
+            "--builtin-library builtin_material_assignments",
+            "--material",
+            profile["material_id"],
+        ]
+        if feature_filters:
+            for feature in feature_filters:
+                parts.extend(["--feature", feature])
+        if two_theta_min_deg is not None:
+            parts.extend(["--two-theta-min-deg", str(two_theta_min_deg)])
+        if two_theta_max_deg is not None:
+            parts.extend(["--two-theta-max-deg", str(two_theta_max_deg)])
+        if d_spacing_min_angstrom is not None:
+            parts.extend(["--d-spacing-min-angstrom", str(d_spacing_min_angstrom)])
+        if d_spacing_max_angstrom is not None:
+            parts.extend(["--d-spacing-max-angstrom", str(d_spacing_max_angstrom)])
+        build_assignment_packet_commands.append(" ".join(parts))
+
     next_commands: dict[str, Any] = {
         "inspect_material_profile": [
             f"ea materials assignments {profile['material_id']} --method xrd" for profile in matching_profiles
         ],
+        "build_assignment_packet": build_assignment_packet_commands,
+        "register_reference_seeds": "ea references register-seeds /path/to/ea-project --source-packet suggestions/xrd/source-packets/<source_packet_id>.yml --project-id <project-id>",
         "process_xrd": "ea xrd process /path/to/ea-project --metadata raw/xrd/<characterization_id>/metadata.yml --x-column <x> --y-column <y> --x-unit 2theta_deg --column-review-ref <review-id> --parameter-review-ref <review-id>",
         "generate_report": "ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/<result_id>/xrd_metadata.yml --reference-id <registered-reference-id>",
         "register_references": "ea references add /path/to/ea-project --citation <citation> --doi <doi> --source-type manual",
     }
     if matching_count == 0:
         next_commands["inspect_material_profile"] = []
+        next_commands["build_assignment_packet"] = []
 
     return {
         "schema_version": "0.2",
@@ -918,6 +942,7 @@ def summarize_xrd_assignment_libraries(
         "boundaries": [
             "This discovery command reads bundled XRD material-assignment metadata only and does not create project files.",
             "It does not run live literature search, operate Zotero or browsers, download or parse articles, register references, inject report citations, create ReviewRecords, write memory, process diffraction patterns, match peaks, or apply assignments.",
+            "Use build_assignment_packet only when the user wants a project-local reviewable staging packet; packet creation still does not register references or apply XRD assignments.",
             "XRD discovery candidates and any source-backed hints remain screening aids; they do not prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality without project context, registered references, and user review.",
         ],
     }
