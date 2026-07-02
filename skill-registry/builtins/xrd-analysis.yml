@@ -13,6 +13,7 @@ ea_skill:
     - assignment_source_packet
     - assignment_suggestions
     - assignment_review_package
+    - reviewed_assignment_report_section
     - processed_result
     - figure_record
     - report_section
@@ -44,6 +45,8 @@ ea_skill:
   report_requirements:
     inline_numeric_citations: true
     phase_assignment_confidence_required: true
+    assignment_suggestions_require_confirmed_review: true
+    assignment_suggestion_references_must_be_registered: true
     confidence_labels:
       - high
       - medium

@@ -467,6 +467,8 @@ def generate_xrd_report(
     related_experiments: list[str] | None = None,
     related_samples: list[str] | None = None,
     reference_ids: list[str] | None = None,
+    assignment_suggestion_paths: list[Path] | None = None,
+    assignment_review_refs: list[str] | None = None,
     created_at: str | None = None,
 ) -> Path:
     metadata = read_yaml(xrd_metadata_path)
@@ -500,10 +502,25 @@ def generate_xrd_report(
         warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
         for warning in warnings
     ) or "未记录高风险 warning。"
-    reference_block = build_report_reference_block(root, reference_ids)
+    assignment_suggestion_records = _load_xrd_assignment_suggestion_records(
+        root,
+        assignment_suggestion_paths,
+        assignment_review_refs,
+        xrd_metadata_path=xrd_metadata_path,
+        project_id=project_id,
+    )
+    registered_references = _registered_reference_ids(root)
+    suggestion_reference_ids = [
+        str(reference_id)
+        for record in assignment_suggestion_records
+        for reference_id in record.get("reference_ids", [])
+        if str(reference_id) in registered_references
+    ]
+    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
     citation_text = reference_block["inline_citation"]
     literature_note = f"相关解释应与已登记文献或相数据库条目对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或相数据库引用。"
     interpretation_text = _xrd_interpretation_text(metadata, citation_text)
+    assignment_suggestion_text = _xrd_assignment_suggestion_text(assignment_suggestion_records, reference_block)
     wavelength = metadata.get("wavelength_angstrom")
     wavelength_text = f"{float(wavelength):.4f} A" if wavelength is not None else "未记录/不可计算"
     body = f"""# XRD 分析报告
@@ -534,6 +551,10 @@ def generate_xrd_report(
 ## 可能结论与可信度
 
 {interpretation_text}
+
+## Reviewed source-backed XRD assignment suggestions
+
+{assignment_suggestion_text}
 
 ## 谨慎解释
 
@@ -569,12 +590,21 @@ def generate_xrd_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(xrd_metadata_path.relative_to(root))],
+            "records": [
+                str(xrd_metadata_path.relative_to(root)),
+                *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
+                *[f"reviews/{review_ref}.yml" for review_ref in assignment_review_refs or []],
+            ],
             "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
         },
         outputs={"records": [str(report_path.relative_to(root))], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
-        review_refs=[],
+        parameters={
+            "include_next_step_suggestions": False,
+            "language": "zh",
+            "assignment_suggestion_refs": [_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
+            "assignment_review_refs": assignment_review_refs or [],
+        },
+        review_refs=assignment_review_refs or [],
         warnings=warnings,
         created_at=created_at,
     )
@@ -807,6 +837,51 @@ def _load_uv_vis_interpretation_suggestion_records(
     return records
 
 
+def _load_xrd_assignment_suggestion_records(
+    root: Path,
+    refs: list[Path] | None,
+    review_refs: list[str] | None,
+    *,
+    xrd_metadata_path: Path,
+    project_id: str,
+) -> list[dict]:
+    refs = refs or []
+    review_refs = review_refs or []
+    if not refs:
+        return []
+    if len(refs) != len(review_refs):
+        raise ValueError("Each --assignment-suggestion requires one matching --assignment-review-ref.")
+
+    metadata_ref = _relative_to_root(root, xrd_metadata_path)
+    records: list[dict] = []
+    for ref, review_ref in zip(refs, review_refs, strict=True):
+        path = ref if ref.is_absolute() else root / ref
+        record = read_yaml(path)
+        if record.get("source") != "ea.xrd.assignment_suggestions:v0.2":
+            raise ValueError(f"Not an XRD assignment suggestion record: {ref}")
+        record_ref = _relative_to_root(root, path)
+        record_project_id = str(record.get("project_id") or "")
+        if record_project_id and project_id and record_project_id != project_id:
+            raise ValueError(f"XRD suggestion project_id {record_project_id} does not match report project_id {project_id}.")
+        suggestion_metadata_ref = str(record.get("xrd_metadata_ref") or "")
+        if suggestion_metadata_ref and suggestion_metadata_ref != metadata_ref:
+            raise ValueError(f"XRD suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}.")
+
+        review = require_confirmed_review(root, review_ref)
+        review_target_type = str(review.get("target_type") or "")
+        review_target_ref = _normalize_report_target_ref(root, review.get("target_ref"))
+        if review_target_type != "xrd_assignment_suggestions" or review_target_ref != record_ref:
+            raise ValueError(
+                f"ReviewRecord {review_ref} targets {review_target_type}:{review.get('target_ref')}, "
+                f"not XRD assignment suggestion {record_ref}."
+            )
+        record["record_ref"] = record_ref
+        record["review_ref"] = review_ref
+        record["reviewed_content"] = review.get("reviewed_content") or review.get("user_original_text")
+        records.append(record)
+    return records
+
+
 def _reference_citation(reference_ids: list[str], reference_block: dict) -> str:
     number_by_id = {
         str(item["reference_id"]): int(item["number"])
@@ -829,6 +904,128 @@ def _format_report_list(values: object, *, limit: int = 3) -> str:
         suffix = f"；另有 {len(items) - limit} 项" if len(items) > limit else ""
         return "；".join(shown) + suffix
     return str(values)
+
+
+def _xrd_assignment_values_text(candidate: dict) -> str:
+    fields = [
+        ("material_id", candidate.get("material_id")),
+        ("feature", candidate.get("feature")),
+        ("assignment_type", candidate.get("assignment_type")),
+        ("two_theta_window_deg", candidate.get("two_theta_window_deg")),
+        ("d_spacing_window_angstrom", candidate.get("d_spacing_window_angstrom")),
+    ]
+    parts = [f"{key}={_format_report_list(value)}" for key, value in fields if value not in (None, "", [], {})]
+    return "；".join(parts) if parts else "未记录可展示的 XRD assignment values"
+
+
+def _xrd_assignment_report_use_status(candidate: dict, unresolved_reference_ids: list[str]) -> str:
+    status = str(candidate.get("status") or "unknown")
+    if status == "ready_for_user_review" and not unresolved_reference_ids and not candidate.get("missing_fields"):
+        return "reviewed_assignment_context"
+    if unresolved_reference_ids:
+        return "warning_unresolved_references"
+    if status == "no_feature_match":
+        return "context_no_feature_match"
+    if status.startswith("invalid") or candidate.get("missing_fields"):
+        return "excluded_invalid_or_incomplete"
+    return "context_not_used_as_evidence"
+
+
+def _xrd_assignment_suggestion_text(records: list[dict], reference_block: dict) -> str:
+    if not records:
+        return (
+            "当前报告未附加 reviewed XRD assignment suggestion record。若需要讨论 source-backed XRD 物相/晶面/"
+            "衍射特征候选，请先运行 `ea xrd suggest-assignments`、`ea xrd prepare-review` 和 `ea review add`，"
+            "再在报告生成时传入对应 suggestion 与 ReviewRecord。"
+        )
+    lines: list[str] = []
+    status_rank = {
+        "ready_for_user_review": 0,
+        "needs_reference_registration": 1,
+        "no_feature_match": 2,
+        "invalid_missing_required_metadata": 3,
+    }
+    reference_ids_in_report = {
+        str(item["reference_id"])
+        for item in reference_block.get("numbered_references", [])
+    }
+    for record in records:
+        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_status = str(record.get("status") or "unknown")
+        suggestion_id = str(record.get("suggestion_id") or "unknown")
+        review_ref = str(record.get("review_ref") or "未记录")
+        reviewed_content = str(record.get("reviewed_content") or "未记录 reviewed_content")
+        lines.append(
+            f"- suggestion_record: `{record_ref}`；suggestion_id: `{suggestion_id}`；review_ref: `{review_ref}`；"
+            f"status: `{record_status}`；candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
+        )
+        lines.append(f"  - review summary: {reviewed_content}")
+        candidates = record.get("candidates") or []
+        if not candidates:
+            lines.append("  - 该 suggestion record 未包含 candidate。")
+            continue
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda item: (
+                status_rank.get(str(item.get("status") or ""), 9),
+                str(item.get("candidate_id") or ""),
+            ),
+        )
+        for candidate in sorted_candidates[:8]:
+            reference_ids = [str(item) for item in candidate.get("reference_ids", []) if str(item).strip()]
+            unresolved_ids = [
+                str(item)
+                for item in [
+                    *(candidate.get("unresolved_reference_ids") or []),
+                    *[ref for ref in reference_ids if ref not in reference_ids_in_report],
+                ]
+                if str(item).strip()
+            ]
+            unresolved_ids = _ordered_unique(unresolved_ids)
+            citation = _reference_citation(reference_ids, reference_block)
+            status = str(candidate.get("status") or "unknown")
+            report_use = _xrd_assignment_report_use_status(candidate, unresolved_ids)
+            matched_peaks = _format_report_list(candidate.get("matched_peak_ids"))
+            matched_two_theta = _format_report_list(candidate.get("matched_two_theta_deg"))
+            matched_d_spacing = _format_report_list(candidate.get("matched_d_spacing_angstrom"))
+            applicability = _format_report_list(candidate.get("applicability_notes"))
+            caveats = _format_report_list(candidate.get("caveats"))
+            missing_fields = _format_report_list(candidate.get("missing_fields"))
+            source_summary = str(candidate.get("source_summary") or "未记录")
+            label = str(candidate.get("label") or "未记录 label")
+            lines.append(
+                "  - `{candidate_id}`: {label}{citation}\n"
+                "    - report_use: `{report_use}`；review_state: `{status}`；confidence: `{confidence}`\n"
+                "    - values: {values}\n"
+                "    - matched_peak_ids: `{matched_peaks}`；matched_two_theta_deg: `{matched_two_theta}`；matched_d_spacing_angstrom: `{matched_d_spacing}`\n"
+                "    - source_summary: {source_summary}\n"
+                "    - applicability: {applicability}\n"
+                "    - caveats: {caveats}\n"
+                "    - missing_fields: `{missing_fields}`；unresolved_reference_ids: `{unresolved}`".format(
+                    candidate_id=str(candidate.get("candidate_id") or "unknown"),
+                    label=label,
+                    citation=citation,
+                    report_use=report_use,
+                    status=status,
+                    confidence=str(candidate.get("confidence") or "insufficient"),
+                    values=_xrd_assignment_values_text(candidate),
+                    matched_peaks=matched_peaks,
+                    matched_two_theta=matched_two_theta,
+                    matched_d_spacing=matched_d_spacing,
+                    source_summary=source_summary,
+                    applicability=applicability,
+                    caveats=caveats,
+                    missing_fields=missing_fields,
+                    unresolved=", ".join(unresolved_ids) if unresolved_ids else "无",
+                )
+            )
+        if len(sorted_candidates) > 8:
+            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+    lines.append(
+        "- 上述 XRD assignment suggestions 是 reviewed source-backed advisory records；它们可以帮助组织物相、晶面或衍射特征讨论，"
+        "但不会自动应用 assignment，不能单独证明相组成、材料身份、结晶度、择优取向、应变、晶格参数、仪器校准或样品质量，也不会写入 confirmed memory。"
+    )
+    return "\n".join(lines)
 
 
 def _uv_vis_candidate_values_text(candidate: dict) -> str:

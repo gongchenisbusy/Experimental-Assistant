@@ -4,6 +4,8 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml, write_yaml
 from ea.xrd import default_xrd_processing_parameters, inspect_xrd_file
@@ -282,6 +284,43 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert "MoS2 (002)/(00l)-type layered reflection candidate" in review_package_markdown
     assert "does not apply XRD assignments" in review_package_markdown
 
+    suggestion_ref = Path(suggestion_output["record"]).relative_to(workspace).as_posix()
+    with pytest.raises(ValueError, match="Each --assignment-suggestion requires one matching --assignment-review-ref"):
+        main(
+            [
+                "xrd",
+                "report",
+                str(workspace),
+                "--metadata",
+                xrd_metadata.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+                "--assignment-suggestion",
+                suggestion_ref,
+            ]
+        )
+
+    assert (
+        main(
+            [
+                "review",
+                "add",
+                str(workspace),
+                "--target-type",
+                "xrd_assignment_suggestions",
+                "--target-ref",
+                suggestion_ref,
+                "--user-response",
+                "可以，保存",
+                "--reviewed-content",
+                "User reviewed XRD assignment suggestion xrd-builtin-mos2-mos2_002_layered_reflection as report discussion context.",
+            ]
+        )
+        == 0
+    )
+    assignment_review = _json_output(capsys)
+    assert assignment_review["review_status"] == "user_confirmed"
+
     assert main(
         [
             "xrd",
@@ -295,12 +334,24 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
             "sample-xrd-001",
             "--experiment-ref",
             "exp-xrd-001",
+            "--assignment-suggestion",
+            suggestion_ref,
+            "--assignment-review-ref",
+            assignment_review["review_id"],
         ]
     ) == 0
     report_output = _json_output(capsys)
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "xrd_analysis"
+    assert "builtin-xrd-jagminas-2019-mos2-xrd" in report_frontmatter["reference_ids"]
+    assert assignment_review["review_id"] in read_yaml(workspace / "provenance" / f"{report_frontmatter['provenance_refs'][0]}.yml")["review_refs"]
     assert "## XRD 峰参数" in report_body
+    assert "## Reviewed source-backed XRD assignment suggestions" in report_body
+    assert f"review_ref: `{assignment_review['review_id']}`" in report_body
+    assert "MoS2 (002)/(00l)-type layered reflection candidate[1]" in report_body
+    assert "report_use: `reviewed_assignment_context`" in report_body
+    assert "matched_peak_ids" in report_body
+    assert "不能单独证明相组成" in report_body
     assert "processed CSV" in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0

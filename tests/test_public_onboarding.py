@@ -34,6 +34,8 @@ def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     assert "ea xrd build-assignment-packet" in text
     assert "ea xrd suggest-assignments" in text
     assert "ea xrd prepare-review" in text
+    assert "ea xrd report --assignment-suggestion" in text
+    assert "--assignment-review-ref" in text
     assert "ea ftir list-assignment-libraries" in text
     assert "ea uv-vis list-source-libraries" in text
     assert "ea xps list-parameter-libraries" in text

@@ -16,7 +16,8 @@ Required gates:
 10. Register or replace packet `reference_seeds` before using source-backed XRD candidates as report evidence.
 11. Run `ea xrd suggest-assignments` when a processed peak table should be matched to a reviewed source packet; keep the output as advisory until the user reviews candidates.
 12. Run `ea xrd prepare-review` to create grouped YAML/Markdown review context before asking the user which candidate IDs to accept, reject, edit, or defer.
-13. Write memory candidates only after user confirmation.
+13. Create a confirmed `xrd_assignment_suggestions` ReviewRecord before passing assignment suggestions into `ea xrd report --assignment-suggestion ... --assignment-review-ref ...`.
+14. Write memory candidates only after user confirmation.
 
 Current v0.2 XRD support:
 
@@ -32,6 +33,7 @@ Current v0.2 XRD support:
 - `ea xrd build-assignment-packet` writes a reviewable XRD assignment source packet from the built-in material assignment library, a project-local YAML library, an editable template, or an explicitly confirmed XRD literature/source-candidate manifest. It preserves filtered `reference_seeds`, `guidance_notes`, source summaries, applicability notes, confidence, caveats, provenance, and next steps, but does not register references, process data, match peaks, create ReviewRecords, inject report citations, apply assignments, write memory, or prove structural claims.
 - `ea xrd suggest-assignments` reads processed XRD metadata plus an XRD assignment source packet, matches candidate 2theta/d-spacing windows against the processed peak table, and writes advisory YAML/CSV `assignment_suggestions` under `suggestions/xrd/`. Candidate statuses distinguish ready-for-user-review, missing reference registration, no feature match, and invalid metadata. It does not run live lookup, process raw data, detect new peaks, mutate source packets, register references, create ReviewRecords, inject report citations, auto-apply assignments, write memory, or prove structural claims.
 - `ea xrd prepare-review` writes grouped `review_package.yml` and `review_package.md` artifacts next to an XRD assignment suggestion record. The package summarizes ready, unresolved-reference, no-match, and invalid/incomplete candidates with matched peak IDs, 2theta/d-spacing values, source summaries, applicability notes, caveats, reference issues, and suggested review commands. It does not create a ReviewRecord, modify reports/source packets/processed outputs, register references, inject citations, apply assignments, write memory, or prove structural claims.
+- `ea xrd report --assignment-suggestion ... --assignment-review-ref ...` reads only existing XRD assignment suggestion records plus matching confirmed ReviewRecords. It displays reviewed source-backed assignment context, matched peak IDs, 2theta/d-spacing values, source summaries, applicability notes, caveats, confidence/status labels, registered citation markers, and unresolved/no-match/invalid warnings. It merges registered suggestion references into report References, but does not create ReviewRecords, mutate suggestions/source packets/processed outputs, register references, auto-apply assignments, write memory, or prove structural claims.
 - Reports include XRD peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:
@@ -47,7 +49,8 @@ ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/
 ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
 ea xrd suggest-assignments /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --source-file suggestions/xrd/source-packets/xrd_assignment_source_packet-20260630-001.yml
 ea xrd prepare-review /path/to/ea-project --suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml
-ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
+ea review add /path/to/ea-project --target-type xrd_assignment_suggestions --target-ref suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed XRD assignment suggestion candidates"
+ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --assignment-review-ref review-20260630-003
 ```
 
-Future XRD work should add assignment-suggestion report integration, background subtraction, K-alpha doublet handling, crystallite-size estimates with instrument broadening review, richer phase-reference libraries, batch/replicate comparisons, texture metrics, and user-confirmed memory-candidate generation from report interpretations.
+Future XRD work should add background subtraction, K-alpha doublet handling, crystallite-size estimates with instrument broadening review, richer phase-reference libraries, batch/replicate comparisons, texture metrics, and user-confirmed memory-candidate generation from report interpretations.

@@ -341,6 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_report.add_argument("--experiment-ref", action="append", default=[])
     xrd_report.add_argument("--sample-ref", action="append", default=[])
     xrd_report.add_argument("--reference-id", action="append", default=[])
+    xrd_report.add_argument("--assignment-suggestion", action="append", default=[], type=Path)
+    xrd_report.add_argument("--assignment-review-ref", action="append", default=[])
 
     ftir = sub.add_parser("ftir", help="FTIR inspection, processing, and report helpers")
     ftir_sub = ftir.add_subparsers(dest="ftir_command", required=True)
@@ -1301,6 +1303,8 @@ def main(argv: list[str] | None = None) -> int:
                 related_experiments=args.experiment_ref,
                 related_samples=args.sample_ref,
                 reference_ids=args.reference_id,
+                assignment_suggestion_paths=[_project_path(args.workspace, path) for path in args.assignment_suggestion],
+                assignment_review_refs=args.assignment_review_ref,
             )
             _print_json({"report": str(path)})
             return 0
