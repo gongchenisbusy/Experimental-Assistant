@@ -13,7 +13,9 @@ Required gates:
 7. Interpret structural features with project context, phase references, and literature references. Use confidence labels rather than definitive phase or mechanism claims.
 8. If source-backed XRD assignment candidates are useful, run `ea xrd list-assignment-libraries` to inspect built-in material-profile coverage, 2theta/d-spacing windows, DOI reference hints, filters, next commands, and no-auto-application boundaries before interpreting reflections.
 9. When the user wants project-local staging, run `ea xrd build-assignment-packet` to copy built-in, local YAML, editable-template, or explicitly confirmed literature/source-candidate records into `suggestions/xrd/source-packets/` with reference seeds, guidance, provenance, caveats, and next steps.
-10. Write memory candidates only after user confirmation.
+10. Register or replace packet `reference_seeds` before using source-backed XRD candidates as report evidence.
+11. Run `ea xrd suggest-assignments` when a processed peak table should be matched to a reviewed source packet; keep the output as advisory until the user reviews candidates.
+12. Write memory candidates only after user confirmation.
 
 Current v0.2 XRD support:
 
@@ -27,6 +29,7 @@ Current v0.2 XRD support:
 - Current built-in XRD profiles include MoS2, WS2, and h-BN. Assignment metadata records `assignment_source`; inspect a rule with commands such as `ea materials assignments hbn --method xrd`.
 - `ea xrd list-assignment-libraries` prints a local JSON discovery summary for built-in XRD material-assignment profiles, with candidate counts, feature IDs, 2theta windows, d-spacing windows, DOI reference hints, filters, recommended next commands, and no-auto-application boundaries. It does not create project files, run live lookup, register references, process diffraction patterns, match peaks, create ReviewRecords, inject report citations, write memory, or prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality.
 - `ea xrd build-assignment-packet` writes a reviewable XRD assignment source packet from the built-in material assignment library, a project-local YAML library, an editable template, or an explicitly confirmed XRD literature/source-candidate manifest. It preserves filtered `reference_seeds`, `guidance_notes`, source summaries, applicability notes, confidence, caveats, provenance, and next steps, but does not register references, process data, match peaks, create ReviewRecords, inject report citations, apply assignments, write memory, or prove structural claims.
+- `ea xrd suggest-assignments` reads processed XRD metadata plus an XRD assignment source packet, matches candidate 2theta/d-spacing windows against the processed peak table, and writes advisory YAML/CSV `assignment_suggestions` under `suggestions/xrd/`. Candidate statuses distinguish ready-for-user-review, missing reference registration, no feature match, and invalid metadata. It does not run live lookup, process raw data, detect new peaks, mutate source packets, register references, create ReviewRecords, inject report citations, auto-apply assignments, write memory, or prove structural claims.
 - Reports include XRD peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:
@@ -40,6 +43,7 @@ ea references register-seeds /path/to/ea-project --source-packet suggestions/xrd
 ea review add /path/to/ea-project --target-type xrd_columns --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=two_theta, y=intensity, unit=2theta_deg"
 ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XRD parameters confirmed"
 ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
+ea xrd suggest-assignments /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --source-file suggestions/xrd/source-packets/xrd_assignment_source_packet-20260630-001.yml
 ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 

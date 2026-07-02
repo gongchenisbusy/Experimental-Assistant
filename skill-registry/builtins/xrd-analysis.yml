@@ -11,6 +11,7 @@ ea_skill:
   output_artifacts:
     - assignment_library_discovery_summary
     - assignment_source_packet
+    - assignment_suggestions
     - processed_result
     - figure_record
     - report_section
@@ -20,6 +21,7 @@ ea_skill:
     - ea xrd inspect
     - ea xrd list-assignment-libraries
     - ea xrd build-assignment-packet
+    - ea xrd suggest-assignments
     - ea xrd process
     - ea xrd report
   review_gates:
@@ -29,6 +31,7 @@ ea_skill:
     - confirm_interpretation_before_memory_write
   optional_review_gates:
     - confirm_assignment_source_packet_candidates
+    - confirm_assignment_suggestions_before_report_or_memory
     - confirm_phase_reference_database_for_phase_assignment
   required_indices:
     - raw/index.yml

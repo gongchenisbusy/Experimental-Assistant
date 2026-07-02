@@ -856,7 +856,7 @@ def build_xrd_assignment_source_packet(
         "next_steps": [
             "Register or replace reference_seeds with project references before treating any XRD assignment candidate as report evidence.",
             "Review and edit this packet until every candidate has source_summary, applicability_notes, reference_ids, confidence, caveats, and reviewed 2theta/d-spacing windows where relevant.",
-            "Use this packet as a staging input for future XRD suggestion/review/report workflows; this builder does not match peaks or apply assignments.",
+            "Run ea xrd suggest-assignments with processed XRD metadata to create advisory matched-peak suggestion records; this builder does not match peaks or apply assignments.",
         ],
         "boundaries": [
             "XRD assignment source packets are staging artifacts and do not modify raw data, processing outputs, reports, or project memory.",
@@ -897,6 +897,383 @@ def build_xrd_assignment_source_packet(
         "source_library_ref": library_ref,
         "warnings": warnings,
         "provenance": str(provenance_path),
+    }
+
+
+def _registered_reference_ids(root: Path) -> set[str]:
+    index_path = root / "literature" / "references" / "index.yml"
+    if not index_path.exists():
+        return set()
+    index = read_yaml(index_path)
+    references = index.get("references")
+    if not isinstance(references, dict):
+        return set()
+    return {str(reference_id) for reference_id in references}
+
+
+def _xrd_assignment_columns() -> list[str]:
+    return [
+        "candidate_id",
+        "assignment_type",
+        "material_id",
+        "feature",
+        "label",
+        "status",
+        "requires_user_review",
+        "auto_applied",
+        "two_theta_window_deg",
+        "d_spacing_window_angstrom",
+        "matched_peak_ids",
+        "matched_two_theta_deg",
+        "matched_d_spacing_angstrom",
+        "source_summary",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "confidence",
+        "missing_fields",
+        "caveats",
+    ]
+
+
+def _xrd_peak_float(row: Any, *names: str) -> float | None:
+    for name in names:
+        try:
+            value = row.get(name)
+        except AttributeError:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(number):
+            return number
+    return None
+
+
+def _xrd_peak_matches_candidate(
+    row: Any,
+    *,
+    two_theta_window: list[float] | None,
+    d_spacing_window: list[float] | None,
+) -> dict[str, Any] | None:
+    two_theta = _xrd_peak_float(row, "two_theta_deg", "two_theta", "position_2theta_deg", "position")
+    d_spacing = _xrd_peak_float(row, "d_spacing_angstrom", "d_spacing", "d_spacing_A")
+    checks: list[bool] = []
+    if two_theta_window is not None and two_theta is not None:
+        checks.append(two_theta_window[0] <= two_theta <= two_theta_window[1])
+    if d_spacing_window is not None and d_spacing is not None:
+        checks.append(d_spacing_window[0] <= d_spacing <= d_spacing_window[1])
+    if not checks or not all(checks):
+        return None
+    return {
+        "peak_id": str(row.get("peak_id") or ""),
+        "two_theta_deg": two_theta,
+        "d_spacing_angstrom": d_spacing,
+        "height": _xrd_peak_float(row, "height"),
+        "prominence": _xrd_peak_float(row, "prominence"),
+        "possible_phase": str(row.get("possible_phase") or ""),
+        "assignment_feature": str(row.get("assignment_feature") or ""),
+        "assignment_confidence": str(row.get("assignment_confidence") or ""),
+    }
+
+
+def _match_xrd_assignment_peaks(
+    peaks: pd.DataFrame,
+    *,
+    two_theta_window: list[float] | None,
+    d_spacing_window: list[float] | None,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    if peaks.empty:
+        return matches
+    for _, row in peaks.iterrows():
+        match = _xrd_peak_matches_candidate(row, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window)
+        if match is not None:
+            matches.append(match)
+    return matches
+
+
+def _normalize_xrd_assignment_candidate(
+    raw_candidate: Any,
+    *,
+    suggestion_id: str,
+    number: int,
+    peaks: pd.DataFrame,
+    registered_references: set[str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(raw_candidate, dict):
+        candidate_id = f"{suggestion_id}-cand-{number:03d}"
+        warnings.append(
+            _warning(
+                "xrd_assignment_suggestion_ignored",
+                "An XRD assignment suggestion candidate was not a mapping and was recorded as invalid.",
+                severity="medium",
+                candidate_id=candidate_id,
+            )
+        )
+        return {
+            "candidate_id": candidate_id,
+            "assignment_type": "unknown",
+            "status": "invalid_candidate_mapping",
+            "requires_user_review": True,
+            "auto_applied": False,
+            "missing_fields": ["candidate_mapping"],
+        }
+
+    candidate_id = _xrd_candidate_identity(raw_candidate) or f"{suggestion_id}-cand-{number:03d}"
+    assignment_type = str(raw_candidate.get("assignment_type") or raw_candidate.get("candidate_type") or "diffraction_feature_assignment").strip()
+    material_id = str(raw_candidate.get("material_id") or raw_candidate.get("material") or "").strip()
+    feature = str(raw_candidate.get("feature") or raw_candidate.get("feature_id") or "").strip()
+    label = str(raw_candidate.get("label") or raw_candidate.get("assignment_label") or feature).strip()
+    two_theta_window = _xrd_coerce_window(
+        raw_candidate,
+        "two_theta_window_deg",
+        "two_theta_deg_range",
+        "two_theta_range_deg",
+        "two_theta_window",
+        "two_theta_range",
+    )
+    d_spacing_window = _xrd_coerce_window(
+        raw_candidate,
+        "d_spacing_window_angstrom",
+        "d_spacing_angstrom_range",
+        "d_spacing_range_angstrom",
+        "d_spacing_window",
+        "d_spacing_range",
+    )
+    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
+    applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
+    caveats = _coerce_string_list(raw_candidate.get("caveats"))
+    confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
+    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    missing_fields: list[str] = []
+    if not label:
+        missing_fields.append("label")
+    if two_theta_window is None and d_spacing_window is None:
+        missing_fields.append("two_theta_or_d_spacing_window")
+    if not source_summary:
+        missing_fields.append("source_summary")
+    if not reference_ids:
+        missing_fields.append("reference_ids")
+    if not applicability_notes:
+        missing_fields.append("applicability_notes")
+
+    matches = (
+        _match_xrd_assignment_peaks(peaks, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window)
+        if two_theta_window is not None or d_spacing_window is not None
+        else []
+    )
+    if missing_fields:
+        status = "invalid_missing_required_metadata"
+    elif unresolved_reference_ids:
+        status = "needs_reference_registration"
+    elif not matches:
+        status = "no_feature_match"
+    else:
+        status = "ready_for_user_review"
+
+    candidate = {
+        "candidate_id": candidate_id,
+        "assignment_type": assignment_type,
+        "material_id": material_id or None,
+        "feature": feature or None,
+        "label": label,
+        "status": status,
+        "requires_user_review": True,
+        "auto_applied": False,
+        "two_theta_window_deg": two_theta_window or [],
+        "d_spacing_window_angstrom": d_spacing_window or [],
+        "matched_peaks": matches,
+        "matched_peak_ids": [match["peak_id"] for match in matches if match.get("peak_id")],
+        "matched_two_theta_deg": [match["two_theta_deg"] for match in matches if match.get("two_theta_deg") is not None],
+        "matched_d_spacing_angstrom": [match["d_spacing_angstrom"] for match in matches if match.get("d_spacing_angstrom") is not None],
+        "source_summary": source_summary,
+        "reference_ids": reference_ids,
+        "unresolved_reference_ids": unresolved_reference_ids,
+        "applicability_notes": applicability_notes,
+        "confidence": confidence,
+        "missing_fields": missing_fields,
+        "caveats": caveats,
+    }
+    if unresolved_reference_ids:
+        warnings.append(
+            _warning(
+                "xrd_assignment_suggestion_reference_unresolved",
+                "An XRD assignment suggestion cites reference_ids that are not registered in the project reference index.",
+                severity="medium",
+                candidate_id=candidate_id,
+                unresolved_reference_ids=unresolved_reference_ids,
+            )
+        )
+    if missing_fields:
+        warnings.append(
+            _warning(
+                "xrd_assignment_suggestion_missing_metadata",
+                "An XRD assignment suggestion is missing required source, diffraction-window, or applicability metadata.",
+                severity="medium",
+                candidate_id=candidate_id,
+                missing_fields=missing_fields,
+            )
+        )
+    if status == "no_feature_match":
+        warnings.append(
+            _warning(
+                "xrd_assignment_suggestion_no_feature_match",
+                "An XRD assignment candidate did not match any detected XRD peak in the processed peak table.",
+                severity="low",
+                candidate_id=candidate_id,
+                two_theta_window_deg=candidate["two_theta_window_deg"],
+                d_spacing_window_angstrom=candidate["d_spacing_window_angstrom"],
+            )
+        )
+    return candidate
+
+
+def suggest_xrd_assignments(
+    root: Path,
+    *,
+    project_id: str,
+    xrd_metadata_path: Path,
+    source_path: Path,
+    related_records: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_packet = read_yaml(source_path)
+    raw_candidates = _xrd_assignment_source_candidates(source_packet)
+    xrd_metadata = read_yaml(xrd_metadata_path)
+    peak_table_ref = xrd_metadata.get("outputs", {}).get("peak_table")
+    if not peak_table_ref:
+        raise XRDProcessingError("XRD metadata does not include outputs.peak_table for assignment matching")
+    peak_table_path = root / str(peak_table_ref)
+    if not peak_table_path.exists():
+        raise XRDProcessingError(f"XRD peak table not found: {peak_table_ref}")
+    peaks = pd.read_csv(peak_table_path)
+
+    day = _created_day(created_at)
+    timestamp = created_at or EARecord.now_iso()
+    suggestion_id = next_id(root, "suggestion", day)
+    output_dir = root / "suggestions" / "xrd" / suggestion_id
+    record_path = output_dir / "xrd_assignment_suggestions.yml"
+    table_path = output_dir / "xrd_assignment_suggestions.csv"
+    for path in [record_path, table_path]:
+        assert_not_raw_output_path(root, path)
+
+    warnings: list[dict[str, Any]] = []
+    if not raw_candidates:
+        warnings.append(
+            _warning(
+                "xrd_assignment_suggestion_empty_source",
+                "No XRD assignment candidates were found in the source packet.",
+                severity="medium",
+            )
+        )
+    registered_references = _registered_reference_ids(root)
+    candidates = [
+        _normalize_xrd_assignment_candidate(
+            candidate,
+            suggestion_id=suggestion_id,
+            number=index,
+            peaks=peaks,
+            registered_references=registered_references,
+            warnings=warnings,
+        )
+        for index, candidate in enumerate(raw_candidates, start=1)
+    ]
+    table = pd.DataFrame(candidates, columns=_xrd_assignment_columns())
+    for column in [
+        "two_theta_window_deg",
+        "d_spacing_window_angstrom",
+        "matched_peak_ids",
+        "matched_two_theta_deg",
+        "matched_d_spacing_angstrom",
+        "reference_ids",
+        "unresolved_reference_ids",
+        "applicability_notes",
+        "missing_fields",
+        "caveats",
+    ]:
+        if column in table.columns:
+            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+
+    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
+    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
+    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_feature_match")
+    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    if ready_count:
+        status = "ready_for_user_review"
+    elif unresolved_count:
+        status = "needs_reference_registration"
+    elif no_match_count:
+        status = "no_feature_match"
+    else:
+        status = "needs_source_metadata"
+
+    source_ref = _relative_to_root(root, source_path)
+    metadata_ref = _relative_to_root(root, xrd_metadata_path)
+    record_ref = _relative_to_root(root, record_path)
+    table_ref = _relative_to_root(root, table_path)
+    related_records = related_records or []
+    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    record = {
+        "schema_version": "0.2",
+        "suggestion_id": suggestion_id,
+        "project_id": project_id,
+        "status": status,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "source": "ea.xrd.assignment_suggestions:v0.2",
+        "source_packet_ref": source_ref,
+        "xrd_metadata_ref": metadata_ref,
+        "peak_table_ref": str(peak_table_ref),
+        "table_ref": table_ref,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_feature_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "candidates": candidates,
+        "related_records": related_records,
+        "reference_ids": all_reference_ids,
+        "warnings": warnings,
+        "next_steps": [
+            "Register or correct unresolved reference_ids before using source-backed XRD assignment suggestions as report evidence.",
+            "Ask the user to review ready XRD candidates before citing them as interpretations or memory candidates.",
+            "Use matched peak IDs, source summaries, applicability notes, and caveats when discussing possible diffraction features; do not treat a peak-window match alone as phase or material proof.",
+        ],
+        "boundaries": [
+            "XRD assignment suggestions are advisory and auto_applied is always false.",
+            "This suggestion-record step does not perform live lookup, process raw data, detect new peaks, mutate source packets, register references, inject report citations, create ReviewRecords, apply assignments, prove structural claims, or write confirmed memory.",
+        ],
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(table_path, index=False)
+    write_yaml(record_path, record)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="xrd_assignment_suggestion",
+        inputs={"records": [source_ref, metadata_ref, *related_records], "files": [str(peak_table_ref)]},
+        outputs={"records": [record_ref, table_ref], "files": []},
+        parameters={"candidate_count": len(candidates), "auto_applied": False},
+        warnings=warnings,
+        source_refs=all_reference_ids,
+        created_at=created_at,
+    )
+    record["provenance_ref"] = _relative_to_root(root, provenance_path)
+    write_yaml(record_path, record)
+    return {
+        "suggestion_id": suggestion_id,
+        "record": str(record_path),
+        "table": str(table_path),
+        "status": status,
+        "candidate_count": len(candidates),
+        "ready_for_user_review_count": ready_count,
+        "needs_reference_registration_count": unresolved_count,
+        "no_feature_match_count": no_match_count,
+        "invalid_count": invalid_count,
+        "warnings": warnings,
     }
 
 

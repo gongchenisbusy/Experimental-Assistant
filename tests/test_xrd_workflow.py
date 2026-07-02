@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from ea.cli import main
-from ea.storage import read_markdown_record, read_yaml
+from ea.storage import read_markdown_record, read_yaml, write_yaml
 from ea.xrd import default_xrd_processing_parameters, inspect_xrd_file
 
 
@@ -178,6 +178,75 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert any(13.5 <= float(row["two_theta_deg"]) <= 15.5 for row in rows)
     assert any("MoS2" in row["possible_phase"] for row in rows)
     assert all("d_spacing_angstrom" in row for row in rows)
+
+    assert (
+        main(
+            [
+                "xrd",
+                "build-assignment-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--material",
+                "MoS2",
+                "--feature",
+                "002",
+            ]
+        )
+        == 0
+    )
+    packet_output = _json_output(capsys)
+    packet_path = Path(packet_output["source_packet"])
+
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                packet_path.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    seed_output = _json_output(capsys)
+    assert seed_output["imported_count"] == 1
+
+    assert (
+        main(
+            [
+                "xrd",
+                "suggest-assignments",
+                str(workspace),
+                "--metadata",
+                xrd_metadata.relative_to(workspace).as_posix(),
+                "--source-file",
+                packet_path.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+                "--related-record",
+                raw_metadata_ref,
+            ]
+        )
+        == 0
+    )
+    suggestion_output = _json_output(capsys)
+    suggestion_record = read_yaml(Path(suggestion_output["record"]))
+    assert suggestion_output["status"] == "ready_for_user_review"
+    assert suggestion_output["ready_for_user_review_count"] == 1
+    assert suggestion_record["source"] == "ea.xrd.assignment_suggestions:v0.2"
+    assert suggestion_record["source_packet_ref"] == packet_path.relative_to(workspace).as_posix()
+    assert suggestion_record["xrd_metadata_ref"] == xrd_metadata.relative_to(workspace).as_posix()
+    assert suggestion_record["candidates"][0]["candidate_id"] == "xrd-builtin-mos2-mos2_002_layered_reflection"
+    assert suggestion_record["candidates"][0]["status"] == "ready_for_user_review"
+    assert suggestion_record["candidates"][0]["matched_peak_ids"]
+    assert suggestion_record["candidates"][0]["unresolved_reference_ids"] == []
+    assert suggestion_record["candidates"][0]["auto_applied"] is False
+    assert (workspace / suggestion_record["table_ref"]).exists()
+    assert suggestion_record["provenance_ref"]
 
     assert main(
         [
@@ -422,3 +491,108 @@ source_candidates:
     assert packet["candidates"][0]["candidate_id"] == "lit-xrd-mos2-002"
     assert packet["reference_ids"] == ["lit-xrd-ref-001"]
     assert sorted(packet["reference_seeds"]) == ["lit-xrd-ref-001"]
+
+
+def test_cli_records_xrd_assignment_suggestion_no_match(tmp_path: Path, capsys) -> None:
+    workspace, project_id = _init_xrd_project(tmp_path, capsys, slug="xrd-suggestion-no-match")
+    peak_table = workspace / "processed" / "sample-001" / "xrd" / "res-xrd-synthetic" / "xrd_peaks.csv"
+    metadata = peak_table.parent / "xrd_metadata.yml"
+    peak_table.parent.mkdir(parents=True, exist_ok=True)
+    peak_table.write_text(
+        "peak_id,two_theta_deg,d_spacing_angstrom,height,prominence,possible_phase,assignment_feature,assignment_confidence\n"
+        "xrd-peak-001,14.4,6.14,1.0,0.8,,,\n",
+        encoding="utf-8",
+    )
+    write_yaml(
+        metadata,
+        {
+            "schema_version": "0.2",
+            "result_id": "res-xrd-synthetic",
+            "project_id": project_id,
+            "outputs": {"peak_table": peak_table.relative_to(workspace).as_posix()},
+        },
+    )
+    library = workspace / "xrd_no_match_library.yml"
+    library.write_text(
+        """
+reference_seeds:
+  local-xrd-ref-001:
+    citation: "Local XRD reference."
+    title: "Local XRD reference"
+    year: 2026
+candidates:
+  - candidate_id: local-xrd-no-match
+    assignment_type: diffraction_feature_assignment
+    material_id: mos2
+    feature: remote_peak
+    label: Remote XRD feature
+    two_theta_window_deg: [30.0, 31.0]
+    d_spacing_window_angstrom: [2.8, 3.0]
+    source_summary: Local no-match candidate.
+    applicability_notes:
+      - Review this only when a matching peak exists.
+    reference_ids:
+      - local-xrd-ref-001
+    confidence: low
+    caveats:
+      - Synthetic no-match candidate.
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "xrd",
+                "build-assignment-packet",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--library-file",
+                library.relative_to(workspace).as_posix(),
+            ]
+        )
+        == 0
+    )
+    packet_output = _json_output(capsys)
+    packet_path = Path(packet_output["source_packet"])
+
+    assert (
+        main(
+            [
+                "references",
+                "register-seeds",
+                str(workspace),
+                "--source-packet",
+                packet_path.relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    _json_output(capsys)
+
+    assert (
+        main(
+            [
+                "xrd",
+                "suggest-assignments",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--metadata",
+                metadata.relative_to(workspace).as_posix(),
+                "--source-file",
+                packet_path.relative_to(workspace).as_posix(),
+            ]
+        )
+        == 0
+    )
+    output = _json_output(capsys)
+    record = read_yaml(Path(output["record"]))
+    assert output["status"] == "no_feature_match"
+    assert output["no_feature_match_count"] == 1
+    assert record["candidates"][0]["status"] == "no_feature_match"
+    assert record["candidates"][0]["matched_peak_ids"] == []
+    assert record["warnings"][0]["code"] == "xrd_assignment_suggestion_no_feature_match"

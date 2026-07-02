@@ -7,6 +7,7 @@ from ea.xrd.service import (
     default_xrd_processing_parameters,
     inspect_xrd_file,
     process_xrd_result,
+    suggest_xrd_assignments,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "default_xrd_processing_parameters",
     "inspect_xrd_file",
     "process_xrd_result",
+    "suggest_xrd_assignments",
 ]

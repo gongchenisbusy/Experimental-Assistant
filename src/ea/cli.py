@@ -124,6 +124,7 @@ from ea.xrd import (
     default_xrd_processing_parameters,
     inspect_xrd_file,
     process_xrd_result,
+    suggest_xrd_assignments,
 )
 
 
@@ -306,6 +307,12 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_source_packet.add_argument("--d-spacing-min-angstrom", type=float)
     xrd_source_packet.add_argument("--d-spacing-max-angstrom", type=float)
     xrd_source_packet.add_argument("--write-template", action="store_true")
+    xrd_suggest = xrd_sub.add_parser("suggest-assignments", help="record source-backed XRD assignment suggestions without applying them")
+    xrd_suggest.add_argument("workspace", type=Path)
+    xrd_suggest.add_argument("--metadata", required=True, type=Path)
+    xrd_suggest.add_argument("--source-file", required=True, type=Path)
+    xrd_suggest.add_argument("--project-id")
+    xrd_suggest.add_argument("--related-record", action="append", default=[])
     xrd_inspect = xrd_sub.add_parser("inspect", help="inspect a diffraction file and suggest XRD columns/unit")
     xrd_inspect.add_argument("workspace", type=Path)
     xrd_inspect.add_argument("pattern", type=Path)
@@ -1202,7 +1209,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xrd":
         project_id = getattr(args, "project_id", None)
-        if args.xrd_command in {"process", "report", "build-assignment-packet"} and not project_id:
+        if args.xrd_command in {"process", "report", "build-assignment-packet", "suggest-assignments"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xrd_command == "list-assignment-libraries":
             _print_json(
@@ -1233,6 +1240,17 @@ def main(argv: list[str] | None = None) -> int:
                     d_spacing_min_angstrom=args.d_spacing_min_angstrom,
                     d_spacing_max_angstrom=args.d_spacing_max_angstrom,
                     template=args.write_template,
+                )
+            )
+            return 0
+        if args.xrd_command == "suggest-assignments":
+            _print_json(
+                suggest_xrd_assignments(
+                    args.workspace,
+                    project_id=project_id,
+                    xrd_metadata_path=_project_path(args.workspace, args.metadata),
+                    source_path=_project_path(args.workspace, args.source_file),
+                    related_records=args.related_record,
                 )
             )
             return 0
