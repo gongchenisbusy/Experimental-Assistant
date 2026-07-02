@@ -1,6 +1,6 @@
 # EA v0.9 Release Notes
 
-EA v0.9 is a release candidate built from the EA v0.2 implementation line. It focuses on stability, public installability, agent-native handoff, report delivery, Zotero-Codex readiness, public examples, and release packaging rather than adding a new characterization method.
+EA v0.9 is a release candidate from the `ea-v0-2` compatibility line. It focuses on stability, public installability, agent-native handoff, report delivery, Zotero-Codex readiness, public examples, and release packaging rather than adding a new characterization method.
 
 ## Version
 
@@ -41,6 +41,6 @@ v0.9 is not the final public v1.0. It is the candidate that should be handed to 
 
 ## Migration Notes
 
-- Existing EA v0.2 project folders can continue to be inspected with healthcheck/eval.
+- Existing legacy EA project folders can continue to be inspected with healthcheck/eval.
 - For public handoff, regenerate any report bundles or release packages with the v0.9 RC code so manifests, checksums, and HTML exports use current metadata.
 - Keep `skills/ea-v0-2` as the installed skill folder until a future version intentionally renames the skill.

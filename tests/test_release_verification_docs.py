@@ -27,6 +27,7 @@ def test_release_verification_doc_is_public_safe_and_actionable() -> None:
     assert "ea-verify-release-package" in text
     assert "ea-verify-release-signature" in text
     assert "ea-release-checklist" in text
+    assert "ea install-check" in text
     assert "https://github.com/gongchenisbusy/Experimental-Assistant" in text
     assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1" in text
     assert "What Each Check Proves" in text

@@ -1,6 +1,6 @@
 # EA v0.9 Release Candidate Build
 
-EA v0.9 RC is the public-release-candidate state of the local-first Experimental Assistant built from the EA v0.2 implementation line. Package version: `0.9.0rc1`.
+Experimental Assistant (EA v0.9 RC, package compatibility name: `ea-v0-2`) is the public-release-candidate state of the local-first Experimental Assistant. Package version: `0.9.0rc1`.
 
 Naming note: the Python package name, release archive prefix, and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects, tests, and skill installs. Treat `ea-v0-2` as the stable compatibility identifier; the user-facing release state is EA v0.9 RC / `v0.9-rc1`.
 
@@ -10,6 +10,18 @@ Public GitHub repository: `https://github.com/gongchenisbusy/Experimental-Assist
 
 New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PUBLIC_ACCEPTANCE_MATRIX.md` and `docs/V0_9_MANUAL_TEST_CHECKLIST.md` for release-candidate acceptance, `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
+## Quick Install
+
+Recommended public install:
+
+```bash
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+ea codex install-skill
+ea install-check
+```
+
+In a new Codex thread, invoke EA as `$ea-v0-2`. That is the compatibility skill name for Experimental Assistant EA v0.9 RC.
+
 ## Public Setup
 
 EA must initialize projects for unknown users without assuming developer-machine Zotero, browser, institution login, cache, or test paths. Use:
@@ -17,6 +29,9 @@ EA must initialize projects for unknown users without assuming developer-machine
 For a fresh public install and Codex skill setup, follow `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first. It separates ordinary user install (`python3 -m pip install -e .`), developer/test install (`python3 -m pip install -e ".[dev]"`), Codex skill copying into `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2`, and local-integration-test-only workflows.
 
 ```bash
+ea version
+ea codex install-skill
+ea install-check
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
@@ -219,6 +234,7 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 python3 -m pip install -e ".[dev]"
 python3 -m pytest
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
+python3 scripts/check_install_env.py
 python3 scripts/public_release_smoke.py --dry-run
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py

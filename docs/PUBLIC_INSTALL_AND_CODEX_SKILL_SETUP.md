@@ -1,102 +1,159 @@
 # EA Public Install And Codex Skill Setup
 
-This guide is the shortest public path from a fresh checkout or release package to a working EA CLI and Codex skill. It separates ordinary use, development checks, and local integration tests so public defaults must not inherit a developer machine.
+This guide is the shortest public path from GitHub to a working Experimental Assistant CLI and Codex skill.
 
-Version naming note: EA is currently distributed as EA v0.9 RC (`0.9.0rc1`, release label `v0.9-rc1`). The Python package/archive prefix and Codex skill folder still use `ea-v0-2` as a compatibility identifier, so users should not read that folder name as the public release version.
+Product identity: `Experimental Assistant (EA v0.9 RC, package compatibility name: ea-v0-2)`. The Python package name and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects and skill installs. That name is not the public release version.
 
-## 1. Requirements
+Public repository: `https://github.com/gongchenisbusy/Experimental-Assistant`
 
-- Python 3.11 or newer.
-- Git, when installing from a GitHub repository checkout.
-- Codex, when the user wants the EA skill available in future Codex threads.
-- A local folder where the user is allowed to create EA project workspaces.
-- Optional Zotero, browser assistance, institution access, or signing keys only after the user explicitly chooses those workflows.
+Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`
 
-Do not configure developer-machine Zotero databases, browser profiles, institution routes, private caches, credentials, cookies, or test fixture paths as public defaults.
+## Quick Start For Users
 
-## 2. Ordinary User Install
-
-From the public GitHub repository:
+Recommended public install from the fixed release tag:
 
 ```bash
-git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea
-cd ea
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -e .
-ea --help
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+ea codex install-skill
+ea install-check
 ```
 
-Release packages are published at `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`. Download the `ea-v0-2-0.9.0rc1-COMMIT-release.zip` archive and matching `.sha256` sidecar from that page when you want a fixed packaged handoff instead of a git clone.
+Expected result:
 
-From an extracted release package:
+```text
+Installed Experimental Assistant (EA v0.9 RC).
+Package compatibility name: ea-v0-2 0.9.0rc1.
+Codex invocation: $ea-v0-2
+Restart Codex before using this skill in a new thread.
+```
+
+After restarting Codex, open a new thread and invoke EA as `$ea-v0-2`. This is the compatibility skill name for Experimental Assistant EA v0.9 RC.
+
+## Requirements
+
+- Python 3.11 or newer. Python 3.12 is recommended.
+- `uv` for the shortest public install path, or Git plus Python 3.11+ for an editable checkout.
+- Codex, when you want the EA skill available in future Codex threads.
+- A local folder where you are allowed to create EA project workspaces.
+
+If your system `python3` is older than 3.11, do not continue with `python3 -m pip install`. Use:
 
 ```bash
-cd /path/to/extracted/ea-release
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -e .
-ea --help
+uv python install 3.12
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
 ```
 
-The command `ea --help` is the first sanity check. It should print the available EA commands without requiring Zotero, a browser, institution login, live web access, private caches, or signing keys.
-
-## 3. Developer Install
-
-Use the developer extra only when the user intends to run tests or release checks:
+From a repository checkout, you can run the standalone preflight before installing dependencies:
 
 ```bash
-python3 -m pip install -e ".[dev]"
-python3 -m pytest -q
-python3 scripts/public_release_smoke.py --dry-run
+python3 scripts/check_install_env.py
 ```
 
-Before publishing or redistributing a repository package, run:
+## What Gets Installed
+
+EA installation has two layers:
+
+- Layer 1: EA CLI. This provides the `ea` command and release helper commands.
+- Layer 2: Codex skill. This copies `skills/ea-v0-2` into `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2` so new Codex threads can load the EA workflow.
+
+Installing the Codex skill alone does not install the `ea` CLI. Installing the CLI alone does not make the skill available to new Codex threads. `ea install-check` verifies both layers.
+
+## Codex Skill Setup
+
+Use the built-in installer:
 
 ```bash
-python3 scripts/public_release_smoke.py
-python3 scripts/build_release_manifest.py
-python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
-python3 scripts/build_distribution_checklist.py
+ea codex install-skill
 ```
 
-Optional signing must use explicit user-managed key paths. EA must not search for private keys or assume a developer key location.
+The installer:
 
-## 4. Codex Skill Setup
+- locates the local checkout skill or fetches the `v0.9-rc1` skill from GitHub;
+- installs it to `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2`;
+- backs up an existing `ea-v0-2` folder by default;
+- does not delete `ea-v0-1`;
+- runs Codex skill validation when `quick_validate.py` is available;
+- prints the product name, public version, compatibility package name, skill path, invocation name, and restart guidance.
 
-The repository contains the EA skill package at `skills/ea-v0-2/`. Install it into Codex's skill directory by copying the whole folder:
+If you are running from a checkout and want to force a local source:
+
+```bash
+ea codex install-skill --source skills/ea-v0-2
+```
+
+Advanced manual copy is still possible, but it is no longer the default public path:
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-rm -rf "${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2"
 cp -R skills/ea-v0-2 "${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2"
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
   "${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2"
 ```
 
-If Codex is running from this repository directly, an agent can also use the repository skill path `skills/ea-v0-2/` without copying it. Copying is the public install path because it makes the skill available to new Codex threads outside this checkout.
+## Verify The Install
 
-When opening a new Codex thread, ask the agent to use `$ea-v0-2` to initialize or continue a local EA project. The agent should first read `docs/PUBLIC_ONBOARDING.md` for the user workflow, then load only method-specific references as needed.
-
-## 5. First Public Example
-
-Run packaged examples before touching a real project:
+Run:
 
 ```bash
-ea healthcheck examples/public-raman-project
-ea eval project examples/public-raman-project --no-write
-ea healthcheck examples/public-ftir-assignment-project
-ea eval project examples/public-ftir-assignment-project --no-write
-ea healthcheck examples/public-uv-vis-project
-ea eval project examples/public-uv-vis-project --no-write
-ea healthcheck examples/public-xps-be-project
-ea eval project examples/public-xps-be-project --no-write
+ea version
+ea install-check
 ```
 
-These examples are public-safe orientation artifacts. Copy an example folder before experimenting; do not treat it as the user's real project memory.
+For a repository checkout, also run the public example check:
 
-## 6. First Real Project
+```bash
+ea install-check --run-example-check
+```
+
+The install check reports:
+
+- Python version and repair commands when Python is too old;
+- EA package compatibility name and package version;
+- `ea` executable path;
+- Codex skill path;
+- Codex skill validation result;
+- optional public Raman example healthcheck;
+- the Codex invocation string `$ea-v0-2`;
+- whether a Codex restart is required.
+
+## Editable Checkout Install
+
+Use this path for development validation, local contribution, or when you want the examples and tests in a checkout:
+
+```bash
+git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea
+cd ea
+git checkout v0.9-rc1
+python3 scripts/check_install_env.py
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -e .
+ea codex install-skill --source skills/ea-v0-2
+ea install-check --run-example-check
+```
+
+The `python3` used here must be Python 3.11 or newer.
+
+## Release Package Install
+
+Use the GitHub Release zip when you need a fixed handoff package rather than a git checkout. Download `ea-v0-2-0.9.0rc1-COMMIT-release.zip` and its `.sha256` sidecar from the release page, verify them, then install from the extracted folder:
+
+```bash
+shasum -a 256 -c ea-v0-2-0.9.0rc1-COMMIT-release.zip.sha256
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -e .
+ea codex install-skill --source skills/ea-v0-2
+ea install-check --run-example-check
+```
+
+## Existing EA Skills
+
+EA v0.9 RC uses the `ea-v0-2` compatibility skill folder. Older `ea-v0-1` skills may remain installed for old workflows. The v0.9 installer does not remove `ea-v0-1` and does not modify existing project folders.
+
+Use `$ea-v0-2` for new EA v0.9 RC work. Existing project folders from the EA compatibility line can be inspected with `ea healthcheck` and `ea eval project`.
+
+## First Real Project
 
 Create a project with explicit local metadata:
 
@@ -113,8 +170,20 @@ ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ```
 
-Only enable Zotero, browser assistance, institution login, literature caches, full-text acquisition, or release signing after the user explicitly confirms the boundary and supplies their own local paths or settings.
+Only enable Zotero, browser assistance, institution login, literature caches, full-text acquisition, or release signing after you explicitly confirm the boundary and supply your own local paths or settings.
 
-## 7. Local Integration Tests
+## Developer And Release Maintenance
 
-Local integration tests may use real Zotero, browser sessions, institution login, or private caches only when they are explicitly marked local-test-only and kept out of release-facing defaults. Public documentation, release manifests, examples, and skill package defaults must remain runnable without those resources.
+Use the developer extra only when you intend to run tests or release checks:
+
+```bash
+python3 -m pip install -e ".[dev]"
+python3 -m pytest -q
+python3 scripts/public_release_smoke.py
+python3 scripts/build_release_manifest.py
+python3 scripts/build_release_package.py
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+python3 scripts/build_distribution_checklist.py
+```
+
+Optional signing must use explicit user-managed key paths. EA must not search for private keys or assume a developer key location.

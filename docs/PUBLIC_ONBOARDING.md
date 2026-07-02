@@ -12,18 +12,17 @@ Requirements:
 - A local folder where the user can create EA project workspaces.
 - Optional: Zotero, a browser, institution access, and release-signing keys only when the user explicitly chooses those workflows.
 
-From a repository checkout or an extracted release package:
+Recommended public install:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -e ".[dev]"
-ea --help
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+ea codex install-skill
+ea install-check
 ```
 
-For normal use without test tools, install the package in the user's preferred Python environment with `python3 -m pip install -e .` and run `ea --help` to confirm the console entry point is available. Use `python3 -m pip install -e ".[dev]"` only for developers or maintainers who need pytest, release smoke checks, and package verification.
+For repository checkouts or extracted release packages, run `python3 scripts/check_install_env.py` before creating a venv. The `python3` used for `python3 -m pip install -e .` must be Python 3.11 or newer. Use `python3 -m pip install -e ".[dev]"` only for developers or maintainers who need pytest, release smoke checks, and package verification.
 
-To make the EA skill available to new Codex threads, copy `skills/ea-v0-2/` into `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2` and validate it with `quick_validate.py`; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for exact commands. Repository checkouts can be used in place by an agent that already has this folder in context, but copying is the public install path.
+To make the EA skill available to new Codex threads, run `ea codex install-skill`. The installed Codex skill is invoked as `$ea-v0-2`, the compatibility skill name for Experimental Assistant EA v0.9 RC. Restart Codex after installing or replacing the skill. `ea install-check` verifies the CLI, package identity, Codex skill path, skill validation, and optional example healthcheck; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for exact commands and troubleshooting.
 
 The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; `examples/public-uv-vis-project/`, a public-safe UV-Vis reviewed optical-screening artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
 

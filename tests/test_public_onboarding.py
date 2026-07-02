@@ -66,22 +66,27 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     text = INSTALL_SKILL_SETUP_PATH.read_text(encoding="utf-8")
 
     assert "# EA Public Install And Codex Skill Setup" in text
+    assert "Experimental Assistant (EA v0.9 RC, package compatibility name: ea-v0-2)" in text
+    assert "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1" in text
+    assert "ea codex install-skill" in text
+    assert "ea install-check" in text
+    assert "ea version" in text
+    assert "python3 scripts/check_install_env.py" in text
     assert "git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea" in text
     assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1" in text
     assert "OWNER/REPOSITORY" not in text
+    assert "rm -rf" not in text
     assert "python3 -m pip install -e ." in text
     assert 'python3 -m pip install -e ".[dev]"' in text
-    assert "ea --help" in text
     assert "CODEX_HOME" in text
     assert "cp -R skills/ea-v0-2" in text
     assert "quick_validate.py" in text
-    assert "ea healthcheck examples/public-raman-project" in text
-    assert "ea eval project examples/public-xps-be-project --no-write" in text
-    assert "ordinary user install" in text.lower()
-    assert "developer install" in text.lower()
-    assert "local integration tests" in text.lower()
+    assert "Quick Start For Users" in text
+    assert "Layer 1: EA CLI" in text
+    assert "Layer 2: Codex skill" in text
+    assert "does not delete `ea-v0-1`" in text
+    assert "Developer And Release Maintenance" in text
     assert "must not search for private keys" in text
-    assert "must not inherit a developer machine" in text
     for forbidden in FORBIDDEN_PUBLIC_DEFAULTS:
         assert forbidden not in text
 

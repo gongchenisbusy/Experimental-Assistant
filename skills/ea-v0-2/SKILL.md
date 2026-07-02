@@ -1,15 +1,15 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.9 RC for materials-research projects. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, or preserve memory/provenance without developer-machine paths or accounts.
+description: Experimental Assistant (EA v0.9 RC) local-first materials-research skill. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, install/check the EA CLI or Codex skill, or preserve memory/provenance without developer-machine paths or accounts.
 ---
 
-# EA v0.9 RC
+# Experimental Assistant (EA v0.9 RC)
 
 ## Overview
 
 EA is a local-first research workspace for experimental scientists. It keeps project records, raw data, processed results, figures, reports, literature state, memory, review records, and provenance linked so later agents can reconstruct what happened.
 
-Naming note: the skill folder and package name remain `ea-v0-2` for compatibility with existing Codex installs and project records. Do not present `ea-v0-2` as the current public release version; describe the user-facing product as EA v0.9 RC (`0.9.0rc1`, `v0.9-rc1`).
+Naming note: the skill folder and package name remain `ea-v0-2` for compatibility with existing Codex installs and project records. Do not present `ea-v0-2` as the current public release version; describe the user-facing product as Experimental Assistant / EA v0.9 RC (`0.9.0rc1`, `v0.9-rc1`). In new Codex threads, invoke this compatibility skill as `$ea-v0-2`.
 
 Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Public-user initialization must ask for or explicitly disable environment-specific settings.
 
@@ -25,6 +25,18 @@ Scientific caution means evidence layering, not silence. If project context and 
 6. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff, user updates, or public-demo readiness checks. Use the brief as the user-facing summary; keep detailed JSON, refs, hashes, provenance, review records, and trace graphs in local files unless the user asks for audit detail.
 7. For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate and verify release artifacts with `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, or their script equivalents.
 8. Put questions that affect future work or scientific judgement at the end of the response.
+
+## Install Check
+
+If the user is setting up EA from GitHub, use:
+
+```bash
+ea version
+ea codex install-skill
+ea install-check
+```
+
+`ea codex install-skill` installs the `ea-v0-2` compatibility skill into Codex, backs up an existing `ea-v0-2` folder by default, does not delete `ea-v0-1`, validates the skill when `quick_validate.py` is available, and prints the `$ea-v0-2` invocation plus restart guidance. `ea install-check` verifies Python version, EA CLI/package identity, Codex skill path, skill validation, and optional public example healthcheck via `--run-example-check`.
 
 ## CLI Quick Start
 

@@ -41,6 +41,7 @@ ea-release-keygen = "ea.release_signature:keygen_main"
 ea-sign-release-package = "ea.release_signature:sign_main"
 ea-verify-release-signature = "ea.release_signature:verify_main"
 ea-release-checklist = "ea.release_distribution:main"
+ea-install-check = "ea.install_experience:install_check_main"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -83,6 +84,7 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert manifest["package"]["console_scripts"]["ea-sign-release-package"] == "ea.release_signature:sign_main"
     assert manifest["package"]["console_scripts"]["ea-verify-release-signature"] == "ea.release_signature:verify_main"
     assert manifest["package"]["console_scripts"]["ea-release-checklist"] == "ea.release_distribution:main"
+    assert manifest["package"]["console_scripts"]["ea-install-check"] == "ea.install_experience:install_check_main"
     assert "pyproject.toml" in paths
     assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "docs/RELEASE_VERIFICATION.md" in paths
@@ -99,6 +101,11 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert ".venv/ignored.txt" not in paths
     assert manifest["release_inputs"]["aggregate_sha256"]
     assert "release_manifest_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "cli_global_version" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "cli_version_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "cli_install_check_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "cli_codex_install_skill_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "install_check_console_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "public_example_raman_healthcheck" in manifest["validation_contract"]["required_smoke_steps"]
     assert "public_example_ftir_source_eval" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_package_help" in manifest["validation_contract"]["required_smoke_steps"]

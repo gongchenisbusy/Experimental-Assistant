@@ -137,8 +137,13 @@ def build_command_steps(
         steps.extend(
             [
                 SmokeStep("cli_help", [python, "-c", _cli_snippet(["--help"])]),
+                SmokeStep("cli_global_version", [python, "-c", _cli_snippet(["--version"])]),
+                SmokeStep("cli_version_help", [python, "-c", _cli_snippet(["version", "--help"])]),
+                SmokeStep("cli_install_check_help", [python, "-c", _cli_snippet(["install-check", "--help"])]),
+                SmokeStep("cli_codex_install_skill_help", [python, "-c", _cli_snippet(["codex", "install-skill", "--help"])]),
                 SmokeStep("cli_export_help", [python, "-c", _cli_snippet(["export", "--help"])]),
                 SmokeStep("cli_eval_help", [python, "-c", _cli_snippet(["eval", "--help"])]),
+                SmokeStep("install_check_console_help", [python, "-m", "ea.install_experience", "--help"]),
                 SmokeStep("release_manifest_help", [python, "-m", "ea.release_manifest", "--help"]),
                 SmokeStep("release_package_help", [python, "-m", "ea.release_package", "--help"]),
                 SmokeStep("release_package_verify_help", [python, "-c", "from ea.release_package import verify_main; verify_main(['--help'])"]),

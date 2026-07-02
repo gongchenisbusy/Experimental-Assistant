@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from ea import __version__
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.brief import build_project_brief
 from ea.config import doctor_project_config
@@ -38,6 +39,17 @@ from ea.ftir import (
 )
 from ea.healthcheck import run_healthcheck
 from ea.image_data import create_image_analysis_record, generate_image_analysis_report
+from ea.install_experience import (
+    PACKAGE_NAME,
+    PUBLIC_VERSION,
+    RELEASE_LABEL,
+    SKILL_INVOCATION,
+    identity_record,
+    install_check,
+    install_codex_skill,
+    render_install_skill_summary,
+    render_install_summary,
+)
 from ea.literature import (
     confirm_literature_selection,
     ensure_literature_status,
@@ -134,7 +146,38 @@ from ea.xrd import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ea")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=(
+            f"Experimental Assistant ({PUBLIC_VERSION}) package {PACKAGE_NAME} {__version__} "
+            f"({RELEASE_LABEL}); invoke Codex skill as {SKILL_INVOCATION}"
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    version = sub.add_parser("version", help="show Experimental Assistant product, package, release, and skill identity")
+    version.add_argument("--json", action="store_true")
+
+    install_check_parser = sub.add_parser("install-check", help="verify EA CLI and Codex skill installation readiness")
+    install_check_parser.add_argument("--codex-home", type=Path)
+    install_check_parser.add_argument("--skill-path", type=Path)
+    install_check_parser.add_argument("--quick-validate", type=Path)
+    install_check_parser.add_argument("--run-example-check", action="store_true")
+    install_check_parser.add_argument("--example-workspace", type=Path)
+    install_check_parser.add_argument("--skip-codex-skill", action="store_true")
+    install_check_parser.add_argument("--json", action="store_true")
+
+    codex = sub.add_parser("codex", help="Codex integration helpers for Experimental Assistant")
+    codex_sub = codex.add_subparsers(dest="codex_command", required=True)
+    codex_install = codex_sub.add_parser("install-skill", help="install the EA v0.9 RC compatibility skill into Codex")
+    codex_install.add_argument("--source", type=Path, help="path to a skills/ea-v0-2 folder; defaults to local checkout or GitHub release fetch")
+    codex_install.add_argument("--codex-home", type=Path)
+    codex_install.add_argument("--quick-validate", type=Path)
+    codex_install.add_argument("--no-backup", action="store_true", help="replace existing ea-v0-2 without making a timestamped backup")
+    codex_install.add_argument("--no-github-fetch", action="store_true", help="do not fetch the public release from GitHub if no local skill source is found")
+    codex_install.add_argument("--release-ref", default="v0.9-rc1")
+    codex_install.add_argument("--json", action="store_true")
 
     init = sub.add_parser("init", help="initialize a local EA project workspace (v0.1-compatible alias)")
     init.add_argument("workspace", type=Path)
@@ -994,6 +1037,47 @@ def _thermal_processing_parameters(args: argparse.Namespace, workspace: Path) ->
 
 def _main_impl(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "version":
+        identity = identity_record()
+        if args.json:
+            _print_json(identity)
+        else:
+            print(
+                f"{identity['product']} ({identity['public_version']})\n"
+                f"Package compatibility name: {identity['package_compatibility_name']} {identity['package_version']}\n"
+                f"Release label: {identity['release_label']}\n"
+                f"Codex skill invocation: {identity['skill_invocation']}"
+            )
+        return 0
+    if args.command == "install-check":
+        result = install_check(
+            codex_home_path=args.codex_home,
+            skill_path=args.skill_path,
+            validator=args.quick_validate,
+            run_example=args.run_example_check,
+            example_workspace=args.example_workspace,
+            skip_codex_skill=args.skip_codex_skill,
+        )
+        if args.json:
+            _print_json(result)
+        else:
+            print(render_install_summary(result))
+        return 0 if result["status"] != "fail" else 2
+    if args.command == "codex":
+        if args.codex_command == "install-skill":
+            result = install_codex_skill(
+                source=args.source,
+                codex_home_path=args.codex_home,
+                validator=args.quick_validate,
+                backup_existing=not args.no_backup,
+                allow_github_fetch=not args.no_github_fetch,
+                release_ref=args.release_ref,
+            )
+            if args.json:
+                _print_json(result)
+            else:
+                print(render_install_skill_summary(result))
+            return 0 if result["status"] != "fail" else 2
     if args.command == "init":
         initialize_project(
             args.workspace,

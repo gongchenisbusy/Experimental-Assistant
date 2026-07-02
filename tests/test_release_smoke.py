@@ -20,6 +20,10 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
     assert commands["pytest"] == ["python", "-m", "pytest"]
     assert commands["skill_validation"] == ["python", "/tools/quick_validate.py", "skills/ea-v0-2"]
     assert "raise SystemExit(main(['--help']))" in commands["cli_help"][2]
+    assert "raise SystemExit(main(['--version']))" in commands["cli_global_version"][2]
+    assert "raise SystemExit(main(['version', '--help']))" in commands["cli_version_help"][2]
+    assert "raise SystemExit(main(['install-check', '--help']))" in commands["cli_install_check_help"][2]
+    assert "raise SystemExit(main(['codex', 'install-skill', '--help']))" in commands["cli_codex_install_skill_help"][2]
     assert "raise SystemExit(main(['export', '--help']))" in commands["cli_export_help"][2]
     assert "raise SystemExit(main(['eval', '--help']))" in commands["cli_eval_help"][2]
     assert commands["public_example_raman_healthcheck"][2] == (
@@ -46,6 +50,7 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
     assert commands["public_example_xps_be_eval"][2] == (
         "from ea.cli import main; raise SystemExit(main(['eval', 'project', 'examples/public-xps-be-project', '--no-write']))"
     )
+    assert commands["install_check_console_help"] == ["python", "-m", "ea.install_experience", "--help"]
     assert commands["release_manifest_help"] == ["python", "-m", "ea.release_manifest", "--help"]
     assert commands["release_package_help"] == ["python", "-m", "ea.release_package", "--help"]
     assert commands["release_package_verify_help"] == [
