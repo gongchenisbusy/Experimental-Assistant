@@ -970,7 +970,7 @@ def _thermal_processing_parameters(args: argparse.Namespace, workspace: Path) ->
     return parameters
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main_impl(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "init":
         initialize_project(
@@ -2069,7 +2069,29 @@ def main(argv: list[str] | None = None) -> int:
                 user_response=args.user_response,
                 reviewed_content=args.reviewed_content,
             )
-            _print_json({"candidate": str(path)})
+            frontmatter, _ = read_markdown_record(path)
+            review_id = (frontmatter.get("review_refs") or [None])[-1]
+            review = read_yaml(args.workspace / "reviews" / f"{review_id}.yml") if review_id else {}
+            candidate_status = frontmatter.get("status")
+            if candidate_status == "user_confirmed":
+                next_action = "Run `ea memory commit` with this candidate and review_id when the user wants durable project memory."
+            elif candidate_status == "needs_revision":
+                next_action = "Edit or repropose the candidate, then review it again before commit."
+            elif candidate_status == "rejected":
+                next_action = "No commit is allowed; keep the rejected candidate as audit history or propose a replacement."
+            else:
+                next_action = "Keep the candidate deferred; ask the user for a clearer confirmation before commit."
+            _print_json(
+                {
+                    "candidate": str(path),
+                    "memory_candidate_id": frontmatter.get("memory_candidate_id"),
+                    "candidate_status": candidate_status,
+                    "review_id": review_id,
+                    "review_status": review.get("review_status"),
+                    "decision": review.get("decision"),
+                    "next_action": next_action,
+                }
+            )
             return 0
         if args.memory_command == "commit":
             path = commit_memory_candidate(
@@ -2145,3 +2167,17 @@ def main(argv: list[str] | None = None) -> int:
         _print_json(lookup_figure(args.workspace, args.figure_id))
         return 0
     raise AssertionError(f"Unhandled command: {args.command}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main_impl(argv)
+    except (RuntimeError, ValueError, FileNotFoundError, KeyError, OSError) as exc:
+        _print_json(
+            {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            }
+        )
+        return 2

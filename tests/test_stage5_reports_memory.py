@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -309,8 +310,12 @@ def test_memory_candidate_cli_roundtrip(tmp_path: Path, capsys) -> None:
             "可以，保存",
         ]
     ) == 0
-    review_output = capsys.readouterr().out
-    assert "memcand-" in review_output
+    review_output = json.loads(capsys.readouterr().out)
+    assert review_output["memory_candidate_id"].startswith("memcand-")
+    assert review_output["review_status"] == "user_confirmed"
+    assert review_output["candidate_status"] == "user_confirmed"
+    assert review_output["review_id"].startswith("review-")
+    assert "commit" in review_output["next_action"]
     frontmatter, _ = read_markdown_record(candidate)
 
     assert main(

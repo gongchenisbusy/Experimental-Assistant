@@ -17,6 +17,26 @@ from ea.standards import format_standard_id, standard_project_id
 from ea.storage import read_markdown_record, read_yaml
 
 
+def test_initialize_project_defaults_to_current_runtime_date(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("ea.projects.service.EARecord.now_iso", staticmethod(lambda: "2026-07-02T12:00:00"))
+
+    outputs = initialize_project(
+        tmp_path,
+        project_name="Current Date Default",
+        project_slug="current-date-default",
+        research_direction="date regression",
+        material_system="MoS2",
+        experiment_type="Raman",
+    )
+
+    project_frontmatter, _ = read_markdown_record(outputs["project"])
+    literature_decision = outputs["literature_decision_open_item"]
+
+    assert project_frontmatter["created_at"] == "2026-07-02T12:00:00"
+    assert literature_decision.name.startswith("openitem-20260702-")
+    assert (tmp_path / "provenance" / "prov-20260702-001.yml").exists()
+
+
 def test_v0_2_public_project_init_writes_portable_config(tmp_path: Path) -> None:
     outputs = initialize_project(
         tmp_path,

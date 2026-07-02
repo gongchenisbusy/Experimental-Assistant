@@ -709,7 +709,7 @@ def _analyze_peak_assignments(peaks: pd.DataFrame, root: Path, project_id: str) 
     if peaks.empty:
         analysis["possible_interpretations"].append(
             {
-                "text": "No stable Raman peaks were detected by the current automatic settings.",
+                "text": "当前自动设置未检测到稳定 Raman 峰；需要复核信噪比、基线和检峰参数。",
                 "confidence": "insufficient",
                 "evidence": [],
             }
@@ -720,7 +720,7 @@ def _analyze_peak_assignments(peaks: pd.DataFrame, root: Path, project_id: str) 
     if not material_id:
         analysis["possible_interpretations"].append(
             {
-                "text": "Automatic peaks were fitted, but no material-specific assignment rule was applied for this project_id.",
+                "text": "已完成自动检峰和局部拟合，但当前 project_id 未匹配到材料特异性 Raman 归属规则。",
                 "confidence": "low",
                 "evidence": [str(peaks.iloc[0]["peak_id"])],
             }
@@ -755,20 +755,21 @@ def _plot_raman(
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    ax.plot(
-        processed["raman_shift"],
-        processed["raw_intensity"],
-        color=NATURE_LIKE_COLORS["blue"],
-        linewidth=1.0,
-        alpha=0.55,
-        label="Raw intensity",
-    )
-    ax.plot(
+    processed_line = ax.plot(
         processed["raman_shift"],
         processed["processed_intensity"],
         color=NATURE_LIKE_COLORS["orange"],
         linewidth=1.2,
-        label="Processed intensity",
+        label="Processed intensity (normalized)",
+    )
+    raw_ax = ax.twinx()
+    raw_line = raw_ax.plot(
+        processed["raman_shift"],
+        processed["raw_intensity"],
+        color=NATURE_LIKE_COLORS["gray"],
+        linewidth=1.0,
+        alpha=0.38,
+        label="Raw intensity (original scale)",
     )
     if not peaks.empty:
         ax.scatter(
@@ -796,8 +797,16 @@ def _plot_raman(
         ax,
         title="Raman spectrum",
         xlabel=f"Raman shift ({unit_label})",
-        ylabel="Intensity (a.u.)",
+        ylabel="Processed intensity (normalized a.u.)",
+        legend=False,
     )
+    raw_ax.set_ylabel("Raw intensity (original scale)")
+    raw_ax.grid(False)
+    raw_ax.spines["top"].set_visible(False)
+    raw_ax.spines["right"].set_visible(True)
+    handles, labels = ax.get_legend_handles_labels()
+    raw_handles, raw_labels = raw_ax.get_legend_handles_labels()
+    ax.legend(handles + raw_handles, labels + raw_labels, frameon=False)
     save_styled_figure(fig, output, footer=footer)
 
 
@@ -852,8 +861,38 @@ def process_raman_result(
     )
 
     warnings: list[Any] = []
-    if request.x_unit == "unknown":
+    inspection_warning_set = set(inspection.warnings)
+    if "instrument_metadata_missing" in inspection_warning_set:
+        warnings.append(
+            _warning(
+                "instrument_metadata_missing",
+                "仪器元数据未在原始 Raman 文件中找到；报告解释需要保留该限制。",
+                severity="medium",
+            )
+        )
+    if "x_unit_unknown" in inspection_warning_set and request.x_unit == "unknown":
         warnings.append(_warning("x_unit_unknown", "Raman x unit remains unknown after confirmation.", severity="medium"))
+    elif request.x_unit == "unknown":
+        warnings.append(_warning("x_unit_unknown", "Raman x unit remains unknown after confirmation.", severity="medium"))
+    raw_sample_refs = list(metadata.get("sample_refs") or [])
+    if not sample_refs:
+        warnings.append(
+            _warning(
+                "sample_mapping_missing",
+                "未为本次 Raman 处理提供样品映射；报告解释需要保留样品到文件关系不确定性。",
+                severity="medium",
+            )
+        )
+    elif raw_sample_refs and set(raw_sample_refs) != set(sample_refs):
+        warnings.append(
+            _warning(
+                "sample_mapping_differs_from_raw_metadata",
+                "本次处理样品映射与 raw metadata 中记录的 sample_refs 不完全一致。",
+                severity="medium",
+                raw_sample_refs=raw_sample_refs,
+                processing_sample_refs=sample_refs,
+            )
+        )
     warnings.extend(preprocessing_warnings)
     if not parameters.get("baseline_correction", {}).get("enabled", False):
         warnings.append(_warning("baseline_not_corrected", "No baseline correction was applied."))
@@ -929,6 +968,7 @@ def process_raman_result(
                     "x_column": request.x_column,
                     "y_column": request.y_column,
                     "x_unit": request.x_unit,
+                    "plot_layout": "processed_main_raw_secondary_axis",
                     "processing_parameters": parameters,
                 },
             },

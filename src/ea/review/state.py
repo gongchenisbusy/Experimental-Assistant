@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,21 +27,40 @@ CONFIRM_PATTERNS = [
     "确认",
     "就按这个保存",
     "这版是对的",
+    "confirmed",
+    "confirmandsave",
+    "yes",
+    "yessave",
+    "yessaveit",
+    "approved",
+    "approve",
+    "looksgood",
+    "looksgoodpleasesave",
+    "pleasesave",
+    "saveit",
 ]
-REJECT_PATTERNS = ["拒绝", "不要保存", "不保存", "取消"]
-DEFER_PATTERNS = ["再看看", "先放着", "之后再说", "稍后", "可能吧", "大概是"]
-EDIT_PATTERNS = ["改成", "修改", "不对", "更正", "应该是"]
+REJECT_PATTERNS = ["拒绝", "不要保存", "不保存", "取消", "donotsave", "dontsave", "reject", "rejected"]
+DEFER_PATTERNS = ["再看看", "先放着", "之后再说", "稍后", "可能吧", "大概是", "maybelater", "later", "notreadyyet", "defer"]
+EDIT_PATTERNS = ["改成", "修改", "不对", "更正", "应该是", "editto", "change", "revise", "correct"]
+
+
+def _normalize_response(text: str) -> str:
+    return re.sub(r"[\s\.,;:!\?，。；：！？'’\"“”]+", "", text.strip().lower())
+
+
+def _matches_any(normalized_text: str, patterns: list[str]) -> bool:
+    return any(_normalize_response(pattern) in normalized_text for pattern in patterns)
 
 
 def classify_user_response(text: str) -> ReviewClassification:
-    normalized = text.strip().lower().replace(" ", "")
-    if any(pattern in normalized for pattern in REJECT_PATTERNS):
+    normalized = _normalize_response(text)
+    if _matches_any(normalized, REJECT_PATTERNS):
         return ReviewClassification("user_rejected", "rejected_by_user", False)
-    if any(pattern in normalized for pattern in EDIT_PATTERNS):
+    if _matches_any(normalized, EDIT_PATTERNS):
         return ReviewClassification("user_edited", "accepted_with_user_edits", False)
-    if any(pattern in normalized for pattern in DEFER_PATTERNS):
+    if _matches_any(normalized, DEFER_PATTERNS):
         return ReviewClassification("deferred", "needs_later_review", False)
-    if any(pattern in normalized for pattern in CONFIRM_PATTERNS):
+    if _matches_any(normalized, CONFIRM_PATTERNS):
         return ReviewClassification("user_confirmed", "confirmed_by_user", True)
     return ReviewClassification("deferred", "needs_clear_confirmation", False)
 

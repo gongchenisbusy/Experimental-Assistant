@@ -162,8 +162,15 @@ def _check_raw_files(root: Path, findings: list[HealthFinding]) -> None:
             )
 
 
+def _review_path(root: Path, review_ref: str) -> Path:
+    path = Path(review_ref)
+    if path.suffix:
+        return root / path
+    return root / "reviews" / f"{review_ref}.yml"
+
+
 def _check_review_ref(root: Path, review_ref: str, findings: list[HealthFinding], owner: Path) -> None:
-    review_path = root / "reviews" / f"{review_ref}.yml"
+    review_path = _review_path(root, review_ref)
     if not review_path.exists():
         findings.append(
             HealthFinding(
@@ -186,6 +193,22 @@ def _check_review_ref(root: Path, review_ref: str, findings: list[HealthFinding]
                 ref=review_ref,
             )
         )
+
+
+def _check_review_ref_exists(root: Path, review_ref: str, findings: list[HealthFinding], owner: Path) -> None:
+    review_path = _review_path(root, review_ref)
+    if not review_path.exists():
+        findings.append(
+            HealthFinding(
+                "error",
+                "review_ref_missing",
+                "Referenced review record is missing.",
+                path=str(owner),
+                ref=review_ref,
+            )
+        )
+        return
+    _safe_read_yaml(review_path, findings)
 
 
 def _check_record_refs(
@@ -568,8 +591,12 @@ def _check_candidate_record(
                 ref=candidate_id,
             )
         )
+    candidate_status = str(frontmatter.get("status") or "")
     for review_ref in frontmatter.get("review_refs") or []:
-        _check_review_ref(root, str(review_ref), findings, candidate_path)
+        if candidate_status in {"user_confirmed", "committed"}:
+            _check_review_ref(root, str(review_ref), findings, candidate_path)
+        else:
+            _check_review_ref_exists(root, str(review_ref), findings, candidate_path)
     for source_ref in frontmatter.get("source_refs") or []:
         if not _project_path(root, str(source_ref)).exists() and not _is_non_file_record_ref(root, str(source_ref)):
             findings.append(

@@ -18,6 +18,21 @@ from ea.storage.ids import next_id, next_standard_id
 FORBIDDEN_STRONG_CLAIMS = ["证明了", "毫无疑问", "机制已经确定", "完全说明"]
 
 
+RAMAN_INTERPRETATION_TRANSLATIONS = {
+    "No stable Raman peaks were detected by the current automatic settings.": (
+        "当前自动设置未检测到稳定 Raman 峰；需要复核信噪比、基线和检峰参数。"
+    ),
+    "Automatic peaks were fitted, but no material-specific assignment rule was applied for this project_id.": (
+        "已完成自动检峰和局部拟合，但当前 project_id 未匹配到材料特异性 Raman 归属规则。"
+    ),
+    "No interpretation text recorded.": "未记录可复用的 Raman 自动解释文本。",
+}
+
+
+def _localize_raman_interpretation_text(text: str) -> str:
+    return RAMAN_INTERPRETATION_TRANSLATIONS.get(text, text)
+
+
 def _peak_summary(root: Path, peak_table_ref: str) -> str:
     peak_table = root / peak_table_ref
     peaks = pd.read_csv(peak_table)
@@ -63,7 +78,7 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localize_raman_interpretation_text(str(item.get("text", "No interpretation text recorded.")))
         confidence = str(item.get("confidence", "insufficient"))
         evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
         separation = item.get("mode_separation_cm-1")

@@ -4,8 +4,6 @@ import csv
 import json
 from pathlib import Path
 
-import pytest
-
 from ea.cli import main
 from ea.storage import read_markdown_record, read_yaml, write_yaml
 from ea.xrd import default_xrd_processing_parameters, inspect_xrd_file
@@ -285,7 +283,7 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert "does not apply XRD assignments" in review_package_markdown
 
     suggestion_ref = Path(suggestion_output["record"]).relative_to(workspace).as_posix()
-    with pytest.raises(ValueError, match="Each --assignment-suggestion requires one matching --assignment-review-ref"):
+    assert (
         main(
             [
                 "xrd",
@@ -299,6 +297,12 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
                 suggestion_ref,
             ]
         )
+        == 2
+    )
+    boundary_error = _json_output(capsys)
+    assert boundary_error["status"] == "error"
+    assert boundary_error["error_type"] == "ValueError"
+    assert "Each --assignment-suggestion requires one matching --assignment-review-ref" in boundary_error["message"]
 
     assert (
         main(

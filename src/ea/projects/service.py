@@ -6,6 +6,7 @@ from ea.config import build_project_config, write_project_config
 from ea.literature import ensure_literature_status
 from ea.memory import write_open_item
 from ea.schema import Project, ProjectRuleCard
+from ea.schema.models import EARecord
 from ea.standards import slugify, standard_project_id
 from ea.storage.files import ensure_project_dirs, read_yaml, write_markdown_record, write_yaml
 from ea.provenance import write_provenance_entry
@@ -72,8 +73,9 @@ def initialize_project(
     browser_name: str | None = None,
     browser_profile: str | None = None,
     institution_access: str | None = None,
-    created_at: str = "2026-06-02T00:00:00",
+    created_at: str | None = None,
 ) -> dict[str, Path]:
+    created_at = created_at or EARecord.now_iso()
     ensure_project_dirs(root)
     day = created_at[:10].replace("-", "")
     normalized_slug = _slug(project_slug or project_name)

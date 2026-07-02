@@ -367,6 +367,51 @@ def test_healthcheck_passes_memory_and_reference_indices(tmp_path: Path) -> None
     assert result["error_count"] == 0
 
 
+def test_healthcheck_allows_deferred_memory_candidate_reviews(tmp_path: Path) -> None:
+    outputs = initialize_project(
+        tmp_path,
+        project_name="Deferred Memory Candidate",
+        project_slug="deferred-memory-candidate",
+        research_direction="memory boundary",
+        material_system="MoS2",
+        experiment_type="Raman reporting",
+        created_at="2026-07-02T12:00:00",
+    )
+    project_frontmatter, _ = read_markdown_record(outputs["project"])
+    source = tmp_path / "reports" / "source-report.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("source report", encoding="utf-8")
+    provenance_path = write_provenance_entry(
+        tmp_path,
+        workflow="deferred_memory_source",
+        inputs={"records": [], "files": []},
+        outputs={"records": ["reports/source-report.md"], "files": []},
+        created_at="2026-07-02T12:05:00",
+    )
+    candidate = propose_memory_candidate(
+        tmp_path,
+        project_id=project_frontmatter["project_id"],
+        candidate_text="Candidate should remain deferred without failing healthcheck.",
+        source_refs=["reports/source-report.md"],
+        provenance_refs=[provenance_path.stem],
+        category="interpretation",
+        confidence="low",
+        created_at="2026-07-02T12:10:00",
+    )
+    review_memory_candidate(
+        tmp_path,
+        candidate_path=candidate,
+        user_response="Maybe later; do not save this yet.",
+        reviewed_at="2026-07-02T12:15:00",
+    )
+
+    result = run_healthcheck(tmp_path)
+    codes = {finding["code"] for finding in result["findings"]}
+
+    assert result["status"] == "pass"
+    assert "review_ref_not_confirmed" not in codes
+
+
 def test_healthcheck_allows_registered_reference_ids_and_builtin_record_refs(tmp_path: Path) -> None:
     outputs = initialize_project(
         tmp_path,
