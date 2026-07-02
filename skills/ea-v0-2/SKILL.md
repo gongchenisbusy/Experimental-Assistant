@@ -1,9 +1,9 @@
 ---
 name: ea-v0-2
-description: Local-first Experimental Assistant v0.2 for materials-research projects. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, or preserve memory/provenance without developer-machine paths or accounts.
+description: Local-first Experimental Assistant v0.9 RC for materials-research projects. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, or preserve memory/provenance without developer-machine paths or accounts.
 ---
 
-# EA v0.2
+# EA v0.9 RC
 
 ## Overview
 
@@ -202,10 +202,10 @@ ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea-release-checklist
 ```
 

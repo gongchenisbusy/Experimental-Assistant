@@ -1,6 +1,6 @@
-# EA v0.2 Public Onboarding
+# EA v0.9 Public Onboarding
 
-This guide is for a new public user or a fresh agent starting from an EA v0.2 release package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
+This guide is for a new public user or a fresh agent starting from an EA v0.9 release-candidate package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
 ## 1. Install
 
@@ -304,13 +304,13 @@ For project-bundle provenance audit, checksum interpretation, and the boundary b
 
 ## 7. Repository Release Checks
 
-Before sharing an EA v0.2 repository package:
+Before sharing an EA v0.9 release-candidate repository package:
 
 ```bash
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.2.0-COMMIT-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -325,11 +325,11 @@ ea-release-keygen \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-sign-release-package dist/ea-v0-2-0.2.0-COMMIT-release.zip \
+ea-sign-release-package dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-verify-release-signature dist/ea-v0-2-0.2.0-COMMIT-release.zip \
+ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
   --public-key /path/to/user-release-public.pem
 ```
 

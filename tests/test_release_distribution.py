@@ -37,6 +37,20 @@ def test_distribution_checklist_passes_for_manifest_and_package(tmp_path: Path) 
     assert Path(package["archive_path"]).exists()
 
 
+def test_distribution_checklist_prefers_current_version_archives(tmp_path: Path) -> None:
+    root = _minimal_release_root(tmp_path)
+    write_release_manifest(root)
+    package = write_release_package(root)
+    old_archive = root / "dist" / "ea-v0-2-0.2.0-old-release.zip"
+    old_archive.write_bytes(b"not a current release package")
+
+    checklist = build_distribution_checklist(root)
+
+    assert checklist["status"] == "pass"
+    archives = checklist["release_artifacts"]["archives"]
+    assert [archive["path"] for archive in archives] == [Path(package["archive_path"]).relative_to(root).as_posix()]
+
+
 def test_distribution_checklist_verifies_optional_signature_when_public_key_is_supplied(tmp_path: Path) -> None:
     root = _minimal_release_root(tmp_path / "repo")
     write_release_manifest(root)
@@ -66,7 +80,7 @@ def test_distribution_checklist_cli_writes_json_and_markdown(tmp_path: Path, cap
     assert summary["status"] == "pass"
     assert Path(summary["json_path"]).exists()
     assert Path(summary["markdown_path"]).exists()
-    assert "EA v0.2 Distribution Checklist" in Path(summary["markdown_path"]).read_text(encoding="utf-8")
+    assert "EA v0.9 Release Candidate Distribution Checklist" in Path(summary["markdown_path"]).read_text(encoding="utf-8")
 
 
 def test_distribution_checklist_markdown_includes_required_checks(tmp_path: Path) -> None:

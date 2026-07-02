@@ -167,7 +167,7 @@ ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip
 ```
 
 The smoke gate includes tests, skill validation, CLI help checks, public-user portability scanning, and sensitive-value scanning for accidental credential-like assignments or token literals in release-facing files.

@@ -1,10 +1,10 @@
-# EA v0.2 Build
+# EA v0.9 Release Candidate Build
 
-EA v0.2 is the clean implementation workspace for the local-first Experimental Assistant.
+EA v0.9 RC is the public-release-candidate state of the local-first Experimental Assistant built from the EA v0.2 implementation line. Package version: `0.9.0rc1`.
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
+New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PUBLIC_ACCEPTANCE_MATRIX.md` and `docs/V0_9_MANUAL_TEST_CHECKLIST.md` for release-candidate acceptance, `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
 ## Public Setup
 
@@ -34,8 +34,8 @@ ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --inclu
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea-release-checklist
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
@@ -219,21 +219,21 @@ python3 scripts/public_release_smoke.py --dry-run
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip
 python3 scripts/build_packaged_example_project.py --force
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/sign_release_package.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/verify_release_signature.py dist/ea-v0-2-0.2.0-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 python3 scripts/build_distribution_checklist.py
 ```
 
-`scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA v0.2 skill validation, CLI help sanity checks, a portability scan for accidental developer-machine defaults, and a sensitive-value scan for credential-like assignments or token literals in release-facing files. The installed console entry point is `ea-public-release-smoke`.
-`scripts/build_release_manifest.py` writes `dist/ea-v0.2-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
+`scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA skill validation, CLI help sanity checks, public example healthcheck/eval checks, a portability scan for accidental developer-machine defaults, and a sensitive-value scan for credential-like assignments or token literals in release-facing files. The installed console entry point is `ea-public-release-smoke`.
+`scripts/build_release_manifest.py` writes `dist/ea-v0.9-rc-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, v0.9 RC docs, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.
 `scripts/build_packaged_example_project.py` regenerates the public-safe Raman example project under `examples/public-raman-project/`; `scripts/build_public_ftir_assignment_example_project.py` regenerates the public-safe FTIR source-backed assignment example under `examples/public-ftir-assignment-project/`; `scripts/build_public_uv_vis_example_project.py` regenerates the public-safe UV-Vis reviewed optical-screening example under `examples/public-uv-vis-project/`; `scripts/build_public_xps_be_example_project.py` regenerates the public-safe XPS binding-energy candidate example under `examples/public-xps-be-project/`. These examples are included in default release manifests/packages and should pass `ea healthcheck` and `ea eval project --no-write`.
 `scripts/generate_release_keypair.py`, `scripts/sign_release_package.py`, and `scripts/verify_release_signature.py` implement an optional detached Ed25519 signature workflow for release packages. Private/public key paths must be supplied explicitly by the user; EA does not assume or search developer-machine key locations. The installed console entry points are `ea-release-keygen`, `ea-sign-release-package`, and `ea-verify-release-signature`.
-`scripts/build_distribution_checklist.py` writes `dist/ea-v0.2-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
+`scripts/build_distribution_checklist.py` writes `dist/ea-v0.9-rc-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
 
 ## Local Test Fixtures
 

@@ -19,7 +19,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     text = ONBOARDING_PATH.read_text(encoding="utf-8")
 
-    assert "# EA v0.2 Public Onboarding" in text
+    assert "# EA v0.9 Public Onboarding" in text
     assert "docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md" in text
     assert "ea init-project" in text
     assert "ea healthcheck" in text

@@ -11,8 +11,8 @@ from ea.release_package import _checksum_sidecar_path, verify_release_package
 from ea.release_signature import _signature_sidecar_path, verify_release_signature
 
 
-DEFAULT_JSON_OUTPUT = Path("dist") / "ea-v0.2-distribution-checklist.json"
-DEFAULT_MARKDOWN_OUTPUT = Path("dist") / "ea-v0.2-distribution-checklist.md"
+DEFAULT_JSON_OUTPUT = Path("dist") / "ea-v0.9-rc-distribution-checklist.json"
+DEFAULT_MARKDOWN_OUTPUT = Path("dist") / "ea-v0.9-rc-distribution-checklist.md"
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -39,12 +39,29 @@ def _check(code: str, description: str, status: str, *, evidence: dict[str, Any]
     }
 
 
-def _discover_archives(root: Path, dist_dir: Path, archive_paths: Iterable[Path] | None) -> list[Path]:
+def _discover_archives(
+    root: Path,
+    dist_dir: Path,
+    archive_paths: Iterable[Path] | None,
+    *,
+    package_name: str | None = None,
+    package_version: str | None = None,
+) -> list[Path]:
     if archive_paths:
         return sorted((_resolve_under_root(root, path).resolve() for path in archive_paths), key=lambda item: item.as_posix())
     if not dist_dir.exists():
         return []
-    return sorted(path.resolve() for path in dist_dir.glob("*.zip") if path.is_file())
+    archives = sorted(path.resolve() for path in dist_dir.glob("*.zip") if path.is_file())
+    if package_name and package_version:
+        current_prefix = f"{package_name}-{package_version}-"
+        current_archives = [
+            path
+            for path in archives
+            if path.name.startswith(current_prefix) and path.name.endswith("-release.zip")
+        ]
+        if current_archives:
+            return current_archives
+    return archives
 
 
 def build_distribution_checklist(
@@ -59,7 +76,13 @@ def build_distribution_checklist(
     public_key = _resolve_under_root(root, public_key_path).resolve() if public_key_path else None
     manifest = build_release_manifest(root)
     manifest_path = (root / DEFAULT_OUTPUT).resolve()
-    archives = _discover_archives(root, dist_dir, archive_paths)
+    archives = _discover_archives(
+        root,
+        dist_dir,
+        archive_paths,
+        package_name=str(manifest["package"].get("name") or ""),
+        package_version=str(manifest["package"].get("version") or ""),
+    )
 
     checks: list[dict[str, Any]] = [
         _check(
@@ -144,8 +167,8 @@ def build_distribution_checklist(
         recommendations.append("A signature sidecar is present but was not verified because no public key was supplied.")
 
     return {
-        "schema_version": "0.2",
-        "check_type": "ea_v0_2_distribution_checklist",
+        "schema_version": "0.9",
+        "check_type": "ea_v0_9_release_candidate_distribution_checklist",
         "status": "fail" if failures else "pass",
         "root": str(root),
         "package": {
@@ -184,7 +207,7 @@ def build_distribution_checklist(
 
 def render_distribution_markdown(checklist: dict[str, Any]) -> str:
     lines = [
-        "# EA v0.2 Distribution Checklist",
+        "# EA v0.9 Release Candidate Distribution Checklist",
         "",
         f"- Status: `{checklist['status']}`",
         f"- Package: `{checklist['package']['name']} {checklist['package']['version']}`",
@@ -249,7 +272,7 @@ def write_distribution_checklist(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an EA v0.2 package distribution checklist.")
+    parser = argparse.ArgumentParser(description="Generate an EA v0.9 release-candidate package distribution checklist.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--archive", type=Path, action="append", default=[])

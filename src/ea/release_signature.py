@@ -18,7 +18,7 @@ from ea.release_package import _checksum_sidecar_path, _sha256_file, verify_rele
 
 
 SIGNATURE_SIDECAR_SUFFIX = ".sig.yml"
-SIGNATURE_TYPE = "ea_v0_2_release_package_signature"
+SIGNATURE_TYPE = "ea_v0_9_release_candidate_package_signature"
 SIGNATURE_ALGORITHM = "ed25519"
 
 
@@ -90,7 +90,7 @@ def generate_release_keypair(
     existing = [path for path in [private_key_path, public_key_path] if path.exists()]
     if existing and not overwrite:
         return {
-            "schema_version": "0.2",
+            "schema_version": "0.9",
             "operation": "release_keygen",
             "status": "fail",
             "failures": [{"path": str(path), "reason": "path_exists"} for path in existing],
@@ -120,7 +120,7 @@ def generate_release_keypair(
         pass
 
     return {
-        "schema_version": "0.2",
+        "schema_version": "0.9",
         "operation": "release_keygen",
         "status": "complete",
         "algorithm": SIGNATURE_ALGORITHM,
@@ -158,7 +158,7 @@ def sign_release_package(
         failures.append({"path": str(public_key_path), "reason": "missing_public_key"})
     if failures:
         return {
-            "schema_version": "0.2",
+            "schema_version": "0.9",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": failures,
@@ -169,7 +169,7 @@ def sign_release_package(
         public_record = _public_key_record(public_key_path, key_id=key_id)
     except (OSError, TypeError, ValueError) as exc:
         return {
-            "schema_version": "0.2",
+            "schema_version": "0.9",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": [{"path": str(private_key_path), "reason": "invalid_signing_key", "detail": str(exc)}],
@@ -177,7 +177,7 @@ def sign_release_package(
     private_fingerprint = _private_key_public_fingerprint(private_key)
     if private_fingerprint != public_record["fingerprint_sha256"]:
         return {
-            "schema_version": "0.2",
+            "schema_version": "0.9",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": [
@@ -197,7 +197,7 @@ def sign_release_package(
             "sha256": _sha256_file(checksum_path),
         }
     payload = {
-        "schema_version": "0.2",
+        "schema_version": "0.9",
         "signature_type": SIGNATURE_TYPE,
         "algorithm": SIGNATURE_ALGORITHM,
         "archive": {
@@ -225,7 +225,7 @@ def sign_release_package(
     signature_path.write_text(yaml.safe_dump(sidecar, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     return {
-        "schema_version": "0.2",
+        "schema_version": "0.9",
         "operation": "release_package_sign",
         "status": "complete",
         "archive_path": str(archive_path),
@@ -249,8 +249,8 @@ def verify_release_signature(
     signature_path = (signature_path or _signature_sidecar_path(archive_path)).resolve()
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
-        "schema_version": "0.2",
-        "check_type": "ea_v0_2_release_package_signature",
+        "schema_version": "0.9",
+        "check_type": "ea_v0_9_release_candidate_package_signature",
         "status": "pass",
         "archive_path": str(archive_path),
         "signature_path": str(signature_path),
@@ -369,7 +369,7 @@ def verify_release_signature(
 
 
 def build_keygen_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an Ed25519 keypair for optional EA v0.2 release signing.")
+    parser = argparse.ArgumentParser(description="Generate an Ed25519 keypair for optional EA v0.9 release-candidate signing.")
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument("--overwrite", action="store_true")
@@ -378,7 +378,7 @@ def build_keygen_parser() -> argparse.ArgumentParser:
 
 
 def build_sign_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Sign an EA v0.2 release package with a user-managed Ed25519 private key.")
+    parser = argparse.ArgumentParser(description="Sign an EA v0.9 release-candidate package with a user-managed Ed25519 private key.")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
@@ -390,7 +390,7 @@ def build_sign_parser() -> argparse.ArgumentParser:
 
 
 def build_verify_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Verify an EA v0.2 release package detached signature.")
+    parser = argparse.ArgumentParser(description="Verify an EA v0.9 release-candidate package detached signature.")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument("--signature", type=Path)

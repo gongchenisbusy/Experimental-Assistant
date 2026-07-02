@@ -14,7 +14,7 @@ from ea.release_manifest import DEFAULT_INCLUDE_ROOTS, build_release_manifest, i
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-MANIFEST_ARCHIVE_NAME = "ea-v0.2-release-manifest.yml"
+MANIFEST_ARCHIVE_NAME = "ea-v0.9-rc-release-manifest.yml"
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -37,14 +37,14 @@ def _short_commit(manifest: dict[str, Any]) -> str:
 def _default_archive_path(root: Path, manifest: dict[str, Any]) -> Path:
     package = manifest["package"]
     name = str(package.get("name") or "ea-v0-2")
-    version = str(package.get("version") or "0.2.0")
+    version = str(package.get("version") or "0.9.0rc1")
     return root / "dist" / f"{name}-{version}-{_short_commit(manifest)}-release.zip"
 
 
 def _default_archive_root(manifest: dict[str, Any]) -> str:
     package = manifest["package"]
     name = str(package.get("name") or "ea-v0-2")
-    version = str(package.get("version") or "0.2.0")
+    version = str(package.get("version") or "0.9.0rc1")
     return f"{name}-{version}"
 
 
@@ -95,7 +95,7 @@ def write_release_package(
     checksum_path.write_text(f"{archive_sha256}  {output_path.name}\n", encoding="utf-8")
 
     return {
-        "schema_version": "0.2",
+        "schema_version": "0.9",
         "status": "complete",
         "archive_path": str(output_path),
         "archive_checksum_path": str(checksum_path),
@@ -117,8 +117,8 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
     archive_path = archive_path.resolve()
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
-        "schema_version": "0.2",
-        "check_type": "ea_v0_2_release_package",
+        "schema_version": "0.9",
+        "check_type": "ea_v0_9_release_candidate_package",
         "status": "pass",
         "archive_path": str(archive_path),
         "archive_checksum_path": str(checksum_path),
@@ -220,7 +220,7 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build an EA v0.2 repository release zip archive.")
+    parser = argparse.ArgumentParser(description="Build an EA v0.9 release-candidate repository zip archive.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
     parser.add_argument("--include-root", action="append", default=[])
@@ -229,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_verify_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Verify an EA v0.2 repository release zip archive.")
+    parser = argparse.ArgumentParser(description="Verify an EA v0.9 release-candidate repository zip archive.")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--checksum", type=Path)
     return parser

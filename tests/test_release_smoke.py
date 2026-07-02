@@ -19,9 +19,33 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
 
     assert commands["pytest"] == ["python", "-m", "pytest"]
     assert commands["skill_validation"] == ["python", "/tools/quick_validate.py", "skills/ea-v0-2"]
-    assert "main(['--help'])" in commands["cli_help"][2]
-    assert "main(['export', '--help'])" in commands["cli_export_help"][2]
-    assert "main(['eval', '--help'])" in commands["cli_eval_help"][2]
+    assert "raise SystemExit(main(['--help']))" in commands["cli_help"][2]
+    assert "raise SystemExit(main(['export', '--help']))" in commands["cli_export_help"][2]
+    assert "raise SystemExit(main(['eval', '--help']))" in commands["cli_eval_help"][2]
+    assert commands["public_example_raman_healthcheck"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['healthcheck', 'examples/public-raman-project']))"
+    )
+    assert commands["public_example_raman_eval"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['eval', 'project', 'examples/public-raman-project', '--no-write']))"
+    )
+    assert commands["public_example_ftir_source_healthcheck"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['healthcheck', 'examples/public-ftir-assignment-project']))"
+    )
+    assert commands["public_example_ftir_source_eval"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['eval', 'project', 'examples/public-ftir-assignment-project', '--no-write']))"
+    )
+    assert commands["public_example_uv_vis_healthcheck"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['healthcheck', 'examples/public-uv-vis-project']))"
+    )
+    assert commands["public_example_uv_vis_eval"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['eval', 'project', 'examples/public-uv-vis-project', '--no-write']))"
+    )
+    assert commands["public_example_xps_be_healthcheck"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['healthcheck', 'examples/public-xps-be-project']))"
+    )
+    assert commands["public_example_xps_be_eval"][2] == (
+        "from ea.cli import main; raise SystemExit(main(['eval', 'project', 'examples/public-xps-be-project', '--no-write']))"
+    )
     assert commands["release_manifest_help"] == ["python", "-m", "ea.release_manifest", "--help"]
     assert commands["release_package_help"] == ["python", "-m", "ea.release_package", "--help"]
     assert commands["release_package_verify_help"] == [

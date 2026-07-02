@@ -23,7 +23,7 @@ DEFAULT_INCLUDE_ROOTS = [
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "ea-v0.2-release-manifest.yml"
+DEFAULT_OUTPUT = Path("dist") / "ea-v0.9-rc-release-manifest.yml"
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -45,6 +45,14 @@ PUBLIC_BOUNDARY_NOTES = [
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
     "ea-public-release-smoke",
+    "ea healthcheck examples/public-raman-project",
+    "ea eval project examples/public-raman-project --no-write",
+    "ea healthcheck examples/public-ftir-assignment-project",
+    "ea eval project examples/public-ftir-assignment-project --no-write",
+    "ea healthcheck examples/public-uv-vis-project",
+    "ea eval project examples/public-uv-vis-project --no-write",
+    "ea healthcheck examples/public-xps-be-project",
+    "ea eval project examples/public-xps-be-project --no-write",
     "ea-release-package",
     "ea-verify-release-package",
     "ea-release-keygen",
@@ -162,10 +170,20 @@ def build_release_manifest(
     files = iter_release_files(root, include_roots)
     checksums = file_checksum_records(root, files)
     return {
-        "schema_version": "0.2",
-        "manifest_type": "ea_v0_2_repository_release",
+        "schema_version": "0.9",
+        "manifest_type": "ea_v0_9_release_candidate",
         "repository_root_name": root.name,
         "package": metadata,
+        "release_candidate": {
+            "label": "v0.9-rc1",
+            "version": metadata.get("version"),
+            "relationship_to_v1": "Public release candidate for manual testing and final v1.0 issue discovery.",
+            "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
+            "release_notes_ref": "docs/V0_9_RELEASE_NOTES.md",
+            "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
+            "manual_test_checklist_ref": "docs/V0_9_MANUAL_TEST_CHECKLIST.md",
+            "agent_handoff_ref": "docs/V0_9_AGENT_HANDOFF.md",
+        },
         "git": git_state(root),
         "release_inputs": {
             "include_roots": list(include_roots),
@@ -183,6 +201,14 @@ def build_release_manifest(
                 "cli_help",
                 "cli_export_help",
                 "cli_eval_help",
+                "public_example_raman_healthcheck",
+                "public_example_raman_eval",
+                "public_example_ftir_source_healthcheck",
+                "public_example_ftir_source_eval",
+                "public_example_uv_vis_healthcheck",
+                "public_example_uv_vis_eval",
+                "public_example_xps_be_healthcheck",
+                "public_example_xps_be_eval",
                 "release_manifest_help",
                 "release_package_help",
                 "release_package_verify_help",
@@ -222,7 +248,7 @@ def write_release_manifest(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an EA v0.2 repository release manifest.")
+    parser = argparse.ArgumentParser(description="Generate an EA v0.9 release-candidate repository manifest.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--include-root", action="append", default=[])

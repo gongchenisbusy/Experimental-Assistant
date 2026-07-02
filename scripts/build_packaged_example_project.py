@@ -42,7 +42,7 @@ EXAMPLE_DIALOGUE = (
 
 README_TEXT = """# EA v0.2 Public Raman Example Project
 
-This folder is a packaged, public-safe EA project example. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an EA v0.2 release package.
+This folder is a packaged, public-safe EA project example. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an EA v0.9 release-candidate package.
 
 The example contains a minimal review-gated Raman workflow:
 

@@ -53,7 +53,7 @@ Before publishing or redistributing a repository package, run:
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.2.0-COMMIT-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
 python3 scripts/build_distribution_checklist.py
 ```
 

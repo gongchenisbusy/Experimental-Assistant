@@ -23,6 +23,12 @@ DEFAULT_EXCLUDED_SCAN_PATHS = {
     "src/ea/config/service.py",
     "src/ea/release_smoke.py",
 }
+PUBLIC_EXAMPLE_PROJECTS = [
+    ("public_example_raman", "examples/public-raman-project"),
+    ("public_example_ftir_source", "examples/public-ftir-assignment-project"),
+    ("public_example_uv_vis", "examples/public-uv-vis-project"),
+    ("public_example_xps_be", "examples/public-xps-be-project"),
+]
 SECRET_KEY_RE = re.compile(
     r"""
     \b
@@ -109,7 +115,7 @@ def _default_quick_validate_path() -> Path:
 
 
 def _cli_snippet(argv: list[str]) -> str:
-    return f"from ea.cli import main; main({argv!r})"
+    return f"from ea.cli import main; raise SystemExit(main({argv!r}))"
 
 
 def build_command_steps(
@@ -120,6 +126,7 @@ def build_command_steps(
     skip_tests: bool = False,
     skip_skill_validation: bool = False,
     skip_cli_sanity: bool = False,
+    skip_public_examples: bool = False,
 ) -> list[SmokeStep]:
     steps: list[SmokeStep] = []
     if not skip_tests:
@@ -141,6 +148,15 @@ def build_command_steps(
                 SmokeStep("release_distribution_checklist_help", [python, "-c", "from ea.release_distribution import main; main(['--help'])"]),
             ]
         )
+    if not skip_public_examples:
+        for prefix, project in PUBLIC_EXAMPLE_PROJECTS:
+            steps.append(SmokeStep(f"{prefix}_healthcheck", [python, "-c", _cli_snippet(["healthcheck", project])]))
+            steps.append(
+                SmokeStep(
+                    f"{prefix}_eval",
+                    [python, "-c", _cli_snippet(["eval", "project", project, "--no-write"])],
+                )
+            )
     return steps
 
 
@@ -337,10 +353,11 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         skip_tests=args.skip_tests,
         skip_skill_validation=args.skip_skill_validation,
         skip_cli_sanity=args.skip_cli_sanity,
+        skip_public_examples=args.skip_public_examples,
     )
     if args.dry_run:
         return {
-            "schema_version": "0.2",
+            "schema_version": "0.9",
             "status": "dry_run",
             "root": str(root),
             "commands": [{"name": step.name, "command": step.command} for step in command_steps],
@@ -356,7 +373,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         results.append(run_sensitive_value_scan(root))
     status = "pass" if all(result["status"] == "pass" for result in results) else "fail"
     return {
-        "schema_version": "0.2",
+        "schema_version": "0.9",
         "status": status,
         "root": str(root),
         "results": results,
@@ -371,6 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-skill-validation", action="store_true")
     parser.add_argument("--skip-cli-sanity", action="store_true")
+    parser.add_argument("--skip-public-examples", action="store_true")
     parser.add_argument("--skip-portability-scan", action="store_true")
     parser.add_argument("--skip-sensitive-value-scan", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

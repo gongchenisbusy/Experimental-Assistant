@@ -23,7 +23,7 @@ def _minimal_release_root(root: Path) -> Path:
         """
 [project]
 name = "ea-v0-2"
-version = "0.2.0"
+version = "0.9.0rc1"
 description = "Release test"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=42", "pyyaml>=6.0"]
@@ -46,13 +46,18 @@ ea-release-checklist = "ea.release_distribution:main"
         encoding="utf-8",
     )
     (root / "README.md").write_text("# EA\n", encoding="utf-8")
-    (root / "src" / "ea" / "__init__.py").write_text("__version__ = '0.2.0'\n", encoding="utf-8")
+    (root / "src" / "ea" / "__init__.py").write_text("__version__ = '0.9.0rc1'\n", encoding="utf-8")
     (root / "src" / "ea" / "__pycache__" / "ignored.pyc").write_bytes(b"ignored")
     (root / "skills" / "ea-v0-2" / "SKILL.md").write_text("---\nname: ea-v0-2\ndescription: test\n---\n", encoding="utf-8")
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
     (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# EA v0.2 Public Onboarding\n", encoding="utf-8")
     (root / "docs" / "RELEASE_VERIFICATION.md").write_text("# EA v0.2 Release Verification\n", encoding="utf-8")
+    (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text("# EA v0.9 Public Acceptance Matrix\n", encoding="utf-8")
+    (root / "docs" / "V0_9_RELEASE_NOTES.md").write_text("# EA v0.9 Release Notes\n", encoding="utf-8")
+    (root / "docs" / "V0_9_KNOWN_LIMITATIONS.md").write_text("# EA v0.9 Known Limitations\n", encoding="utf-8")
+    (root / "docs" / "V0_9_MANUAL_TEST_CHECKLIST.md").write_text("# EA v0.9 Manual Test Checklist\n", encoding="utf-8")
+    (root / "docs" / "V0_9_AGENT_HANDOFF.md").write_text("# EA v0.9 Agent Handoff\n", encoding="utf-8")
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
         "# EA v0.2 Project Bundle Verification\n", encoding="utf-8"
     )
@@ -81,6 +86,11 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert "pyproject.toml" in paths
     assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "docs/RELEASE_VERIFICATION.md" in paths
+    assert "docs/PUBLIC_ACCEPTANCE_MATRIX.md" in paths
+    assert "docs/V0_9_RELEASE_NOTES.md" in paths
+    assert "docs/V0_9_KNOWN_LIMITATIONS.md" in paths
+    assert "docs/V0_9_MANUAL_TEST_CHECKLIST.md" in paths
+    assert "docs/V0_9_AGENT_HANDOFF.md" in paths
     assert "docs/PROJECT_BUNDLE_VERIFICATION.md" in paths
     assert "examples/example_manifest.yml" in paths
     assert "src/ea/__init__.py" in paths
@@ -89,6 +99,8 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert ".venv/ignored.txt" not in paths
     assert manifest["release_inputs"]["aggregate_sha256"]
     assert "release_manifest_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "public_example_raman_healthcheck" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "public_example_ftir_source_eval" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_package_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_package_verify_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "release_signature_keygen_help" in manifest["validation_contract"]["required_smoke_steps"]
@@ -104,7 +116,7 @@ def test_write_release_manifest_creates_yaml_manifest(tmp_path: Path) -> None:
     loaded = yaml.safe_load(output.read_text(encoding="utf-8"))
 
     assert output == root / "dist" / "release.yml"
-    assert loaded["manifest_type"] == "ea_v0_2_repository_release"
+    assert loaded["manifest_type"] == "ea_v0_9_release_candidate"
     assert loaded["release_inputs"]["aggregate_sha256"] == manifest["release_inputs"]["aggregate_sha256"]
 
 
@@ -116,7 +128,7 @@ def test_release_manifest_cli_writes_summary_json(tmp_path: Path, capsys) -> Non
 
     assert exit_code == 0
     assert summary["status"] == "complete"
-    assert summary["package"] == {"name": "ea-v0-2", "version": "0.2.0"}
+    assert summary["package"] == {"name": "ea-v0-2", "version": "0.9.0rc1"}
     assert Path(summary["manifest"]).exists()
     assert summary["file_count"] > 0
 
