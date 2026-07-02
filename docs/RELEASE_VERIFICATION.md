@@ -2,6 +2,8 @@
 
 This guide is for a release recipient, maintainer, or future agent who needs to verify an EA v0.2 repository release package before using or redistributing it. All checks are local. None of these commands require Zotero, browser profiles, institution login, live web search, PDF download, private caches, or developer-machine key paths.
 
+For first-time installation and Codex skill setup after verification, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
+
 ## 1. Expected Artifacts
 
 A normal EA v0.2 release handoff may include:

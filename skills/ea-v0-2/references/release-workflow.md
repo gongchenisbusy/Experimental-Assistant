@@ -4,6 +4,8 @@ Use this reference when preparing the EA v0.2 repository for public handoff or a
 
 For recipient-side artifact verification details in the repository docs, read `docs/RELEASE_VERIFICATION.md`.
 
+For public installation and Codex skill setup after a repository package is trusted, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
+
 Commands:
 
 ```bash

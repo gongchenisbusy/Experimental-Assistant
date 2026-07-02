@@ -219,7 +219,7 @@ Report bundle export is read-only for analysis state. It copies one indexed repo
 ## References
 
 - For project structure and workflow, read `references/project-workflow.md`.
-- For public-user initialization and forbidden defaults, read `references/public-initialization.md`.
+- For public-user installation, Codex skill setup, initialization, and forbidden defaults, read `references/public-initialization.md`.
 - For child skill manifests and `add-skills`, read `references/module-manifest.md`.
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
 - For scientific figure style infrastructure, read `references/scientific-figure-workflow.md`.

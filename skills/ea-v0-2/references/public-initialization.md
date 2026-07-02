@@ -4,6 +4,8 @@ Use this reference whenever project setup, literature setup, browser access, Zot
 
 EA must default to an unknown public user environment. Do not hardcode developer paths, accounts, browser profiles, institution login routes, Zotero collections, local literature cache folders, or test datasets.
 
+For public clone/release-package install and Codex skill copying, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
+
 For a first-project public-user walkthrough in the repository docs, read `docs/PUBLIC_ONBOARDING.md`.
 
 For a packaged public-safe project artifact that agents can inspect before touching a user's real project, read `examples/public-raman-project/README.md` from the repository root and run health/eval checks on that copied example.

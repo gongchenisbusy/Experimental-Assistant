@@ -4,11 +4,13 @@ EA v0.2 is the clean implementation workspace for the local-first Experimental A
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-New public users should start with `docs/PUBLIC_ONBOARDING.md`; it gives the shortest path from installation to a first review-gated project without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
+New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
 ## Public Setup
 
 EA must initialize projects for unknown users without assuming developer-machine Zotero, browser, institution login, cache, or test paths. Use:
+
+For a fresh public install and Codex skill setup, follow `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first. It separates ordinary user install (`python3 -m pip install -e .`), developer/test install (`python3 -m pip install -e ".[dev]"`), Codex skill copying into `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2`, and local-integration-test-only workflows.
 
 ```bash
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
