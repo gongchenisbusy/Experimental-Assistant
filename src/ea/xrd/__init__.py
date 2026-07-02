@@ -6,6 +6,7 @@ from ea.xrd.service import (
     builtin_xrd_assignment_libraries,
     default_xrd_processing_parameters,
     inspect_xrd_file,
+    prepare_xrd_assignment_review_package,
     process_xrd_result,
     suggest_xrd_assignments,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "builtin_xrd_assignment_libraries",
     "default_xrd_processing_parameters",
     "inspect_xrd_file",
+    "prepare_xrd_assignment_review_package",
     "process_xrd_result",
     "suggest_xrd_assignments",
 ]

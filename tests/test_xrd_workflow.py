@@ -248,6 +248,40 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert (workspace / suggestion_record["table_ref"]).exists()
     assert suggestion_record["provenance_ref"]
 
+    assert (
+        main(
+            [
+                "xrd",
+                "prepare-review",
+                str(workspace),
+                "--suggestion",
+                Path(suggestion_output["record"]).relative_to(workspace).as_posix(),
+                "--project-id",
+                project_id,
+            ]
+        )
+        == 0
+    )
+    review_package_output = _json_output(capsys)
+    review_package = read_yaml(Path(review_package_output["review_package"]))
+    review_package_markdown = Path(review_package_output["review_package_markdown"]).read_text(encoding="utf-8")
+    assert review_package_output["status"] == "review_package_prepared"
+    assert review_package_output["selected_candidate_count"] == 1
+    assert review_package_output["selected_status_counts"]["ready_for_user_review"] == 1
+    assert review_package["source"] == "ea.xrd.assignment_review_package:v0.2"
+    assert review_package["review_target_type"] == "xrd_assignment_suggestions"
+    assert review_package["review_target_ref"] == Path(suggestion_output["record"]).relative_to(workspace).as_posix()
+    assert review_package["groups"][0]["group"] == "ready_for_user_review"
+    assert review_package["groups"][0]["candidate_ids"] == ["xrd-builtin-mos2-mos2_002_layered_reflection"]
+    assert "builtin-xrd-jagminas-2019-mos2-xrd" in review_package["reference_ids"]
+    assert "ea review add /path/to/ea-project" in review_package["recommended_commands"]["create_review_record"]
+    assert "ea xrd suggest-assignments" in review_package["recommended_commands"]["rerun_after_reference_registration"]
+    assert "does not create a ReviewRecord" in " ".join(review_package["boundaries"])
+    assert read_yaml(Path(review_package_output["provenance"]))["workflow"] == "xrd_assignment_review_package"
+    assert "XRD Assignment Suggestion Review Package" in review_package_markdown
+    assert "MoS2 (002)/(00l)-type layered reflection candidate" in review_package_markdown
+    assert "does not apply XRD assignments" in review_package_markdown
+
     assert main(
         [
             "xrd",
@@ -596,3 +630,33 @@ candidates:
     assert record["candidates"][0]["status"] == "no_feature_match"
     assert record["candidates"][0]["matched_peak_ids"] == []
     assert record["warnings"][0]["code"] == "xrd_assignment_suggestion_no_feature_match"
+
+    assert (
+        main(
+            [
+                "xrd",
+                "prepare-review",
+                str(workspace),
+                "--project-id",
+                project_id,
+                "--suggestion",
+                Path(output["record"]).relative_to(workspace).as_posix(),
+                "--candidate-id",
+                "local-xrd-no-match",
+                "--candidate-id",
+                "missing-xrd-candidate",
+            ]
+        )
+        == 0
+    )
+    package_output = _json_output(capsys)
+    package = read_yaml(Path(package_output["review_package"]))
+    package_markdown = Path(package_output["review_package_markdown"]).read_text(encoding="utf-8")
+    assert package_output["status"] == "review_package_prepared"
+    assert package_output["selected_candidate_count"] == 1
+    assert package_output["selected_status_counts"]["no_feature_match"] == 1
+    assert package_output["missing_candidate_ids"] == ["missing-xrd-candidate"]
+    assert package["groups"][0]["group"] == "no_feature_match"
+    assert package["warnings"][0]["code"] == "xrd_review_package_candidate_not_found"
+    assert "local-xrd-no-match" in package_markdown
+    assert "no-match context" in package_markdown

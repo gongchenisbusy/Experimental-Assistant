@@ -12,6 +12,7 @@ ea_skill:
     - assignment_library_discovery_summary
     - assignment_source_packet
     - assignment_suggestions
+    - assignment_review_package
     - processed_result
     - figure_record
     - report_section
@@ -22,6 +23,7 @@ ea_skill:
     - ea xrd list-assignment-libraries
     - ea xrd build-assignment-packet
     - ea xrd suggest-assignments
+    - ea xrd prepare-review
     - ea xrd process
     - ea xrd report
   review_gates:

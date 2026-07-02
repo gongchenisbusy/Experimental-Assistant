@@ -123,6 +123,7 @@ from ea.xrd import (
     builtin_xrd_assignment_libraries,
     default_xrd_processing_parameters,
     inspect_xrd_file,
+    prepare_xrd_assignment_review_package,
     process_xrd_result,
     suggest_xrd_assignments,
 )
@@ -313,6 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
     xrd_suggest.add_argument("--source-file", required=True, type=Path)
     xrd_suggest.add_argument("--project-id")
     xrd_suggest.add_argument("--related-record", action="append", default=[])
+    xrd_prepare_review = xrd_sub.add_parser("prepare-review", help="prepare a grouped review package from XRD assignment suggestions")
+    xrd_prepare_review.add_argument("workspace", type=Path)
+    xrd_prepare_review.add_argument("--suggestion", required=True, type=Path)
+    xrd_prepare_review.add_argument("--project-id")
+    xrd_prepare_review.add_argument("--candidate-id", action="append", default=[])
     xrd_inspect = xrd_sub.add_parser("inspect", help="inspect a diffraction file and suggest XRD columns/unit")
     xrd_inspect.add_argument("workspace", type=Path)
     xrd_inspect.add_argument("pattern", type=Path)
@@ -1209,7 +1215,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.command == "xrd":
         project_id = getattr(args, "project_id", None)
-        if args.xrd_command in {"process", "report", "build-assignment-packet", "suggest-assignments"} and not project_id:
+        if args.xrd_command in {"process", "report", "build-assignment-packet", "suggest-assignments", "prepare-review"} and not project_id:
             project_id = _project_id_from_workspace(args.workspace)
         if args.xrd_command == "list-assignment-libraries":
             _print_json(
@@ -1251,6 +1257,16 @@ def main(argv: list[str] | None = None) -> int:
                     xrd_metadata_path=_project_path(args.workspace, args.metadata),
                     source_path=_project_path(args.workspace, args.source_file),
                     related_records=args.related_record,
+                )
+            )
+            return 0
+        if args.xrd_command == "prepare-review":
+            _print_json(
+                prepare_xrd_assignment_review_package(
+                    args.workspace,
+                    project_id=project_id,
+                    suggestion_path=_project_path(args.workspace, args.suggestion),
+                    candidate_ids=args.candidate_id,
                 )
             )
             return 0
