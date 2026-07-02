@@ -174,18 +174,18 @@ def test_materials_cli_lists_and_shows_assignments(capsys) -> None:
     assert pl["assignment_source"] == "ea.materials.builtin:ws2:pl:v0.2"
 
 
-def test_material_assignment_library_audit_reports_reference_gaps() -> None:
+def test_material_assignment_library_audit_reports_complete_reference_coverage() -> None:
     audit = audit_assignment_library()
 
-    assert audit["status"] == "ready_with_reference_gaps"
+    assert audit["status"] == "ready"
     assert audit["library_id"] == "builtin_material_assignments"
-    assert audit["library_version"] == "0.2.1"
+    assert audit["library_version"] == "0.2.2"
     assert audit["material_profile_count"] == 3
     assert audit["method_profile_count"] == 8
     assert audit["candidate_count"] == 10
-    assert audit["source_backed_candidate_count"] == 9
-    assert audit["missing_reference_candidate_count"] == 1
-    assert audit["reference_hint_count"] == 7
+    assert audit["source_backed_candidate_count"] == 10
+    assert audit["missing_reference_candidate_count"] == 0
+    assert audit["reference_hint_count"] == 8
 
     methods = {record["method"]: record for record in audit["methods"]}
     assert methods["raman"]["candidate_count"] == 5
@@ -193,11 +193,12 @@ def test_material_assignment_library_audit_reports_reference_gaps() -> None:
     assert methods["pl"]["candidate_count"] == 2
     assert methods["pl"]["missing_reference_candidate_count"] == 0
     assert methods["xrd"]["candidate_count"] == 3
-    assert methods["xrd"]["missing_reference_candidate_count"] == 1
+    assert methods["xrd"]["missing_reference_candidate_count"] == 0
 
-    missing = audit["missing_reference_candidates"]
-    assert [candidate["candidate_id"] for candidate in missing] == ["xrd-builtin-mos2-mos2_002_layered_reflection"]
-    assert missing[0]["source_backed"] is False
+    assert audit["missing_reference_candidates"] == []
+    assert "xrd-builtin-mos2-mos2_002_layered_reflection" in audit["source_backed_candidate_ids"]
+    hints = {hint["key"]: hint for hint in audit["reference_hints"]}
+    assert hints["jagminas-2019-mos2-xrd"]["doi"] == "10.1038/s41598-019-44085-7"
     assert "ea xrd list-assignment-libraries" == audit["recommended_discovery_commands"]["xrd"]
     assert any("does not run live literature search" in boundary for boundary in audit["boundaries"])
     assert any("do not prove material identity" in boundary for boundary in audit["boundaries"])
@@ -207,16 +208,20 @@ def test_cli_audits_material_assignment_library_with_filters(capsys) -> None:
     assert main(["materials", "audit-assignment-library", "--material", "MoS2", "--method", "xrd"]) == 0
     audit = _json_output(capsys)
 
-    assert audit["status"] == "ready_with_reference_gaps"
+    assert audit["status"] == "ready"
     assert audit["filters"]["resolved_materials"] == ["mos2"]
     assert audit["filters"]["normalized_methods"] == ["xrd"]
     assert audit["material_profile_count"] == 1
     assert audit["method_profile_count"] == 1
     assert audit["candidate_count"] == 1
-    assert audit["source_backed_candidate_count"] == 0
-    assert audit["missing_reference_candidate_count"] == 1
+    assert audit["source_backed_candidate_count"] == 1
+    assert audit["missing_reference_candidate_count"] == 0
     assert audit["materials"][0]["material_id"] == "mos2"
     assert audit["materials"][0]["methods"][0]["method"] == "xrd"
+    assert audit["materials"][0]["methods"][0]["candidates"][0]["source_backed"] is True
+    assert audit["materials"][0]["methods"][0]["candidates"][0]["reference_hint_keys"] == [
+        "jagminas-2019-mos2-xrd"
+    ]
 
     assert main(["materials", "audit-assignment-library", "--material", "hbn", "--method", "pl"]) == 0
     no_match = _json_output(capsys)
@@ -236,7 +241,7 @@ def test_raman_assignment_library_summary_filters_source_backed_candidates() -> 
     assert summary["status"] == "ready"
     assert summary["method"] == "raman"
     assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
-    assert summary["library_version"] == "0.2.1"
+    assert summary["library_version"] == "0.2.2"
     assert summary["total_candidate_count"] == 2
     assert summary["matching_candidate_count"] == 1
     assert summary["available_shift_range_cm-1"] == [375.0, 416.0]
@@ -321,7 +326,7 @@ def test_pl_assignment_library_summary_filters_source_backed_candidates() -> Non
     assert summary["status"] == "ready"
     assert summary["method"] == "pl"
     assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
-    assert summary["library_version"] == "0.2.1"
+    assert summary["library_version"] == "0.2.2"
     assert summary["total_candidate_count"] == 1
     assert summary["matching_candidate_count"] == 1
     assert summary["available_energy_range_eV"] == [1.9, 2.1]
@@ -402,7 +407,7 @@ def test_xrd_assignment_library_summary_filters_source_backed_candidates() -> No
     assert summary["status"] == "ready"
     assert summary["method"] == "xrd"
     assert summary["available_builtin_libraries"] == ["builtin_material_assignments"]
-    assert summary["library_version"] == "0.2.1"
+    assert summary["library_version"] == "0.2.2"
     assert summary["total_candidate_count"] == 1
     assert summary["matching_candidate_count"] == 1
     assert summary["available_two_theta_range_deg"] == [26.0, 27.4]
@@ -427,6 +432,19 @@ def test_xrd_assignment_library_summary_filters_source_backed_candidates() -> No
     assert "ea materials assignments hbn --method xrd" in summary["next_commands"]["inspect_material_profile"]
     assert any("does not run live literature search" in boundary for boundary in summary["boundaries"])
     assert any("do not prove phase identity" in boundary for boundary in summary["boundaries"])
+
+    mos2_summary = summarize_xrd_assignment_libraries(
+        materials=["MoS2"],
+        features=["002"],
+        two_theta_min_deg=14.0,
+        two_theta_max_deg=14.6,
+    )
+    assert mos2_summary["status"] == "ready"
+    assert mos2_summary["matching_reference_hint_keys"] == ["jagminas-2019-mos2-xrd"]
+    mos2_profile = mos2_summary["libraries"][0]["material_profiles"][0]
+    assert mos2_profile["reference_hints"][0]["doi"] == "10.1038/s41598-019-44085-7"
+    assert mos2_profile["reference_hints"][0]["url"] == "https://doi.org/10.1038/s41598-019-44085-7"
+    assert mos2_profile["candidates"][0]["source_backed"] is True
 
 
 def test_cli_lists_xrd_assignment_libraries_and_reports_no_matches(capsys) -> None:

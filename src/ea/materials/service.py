@@ -282,7 +282,7 @@ def audit_assignment_library(
         "recommended_next_actions": [
             "Use method-specific discovery commands to inspect windows and candidate caveats before interpretation.",
             "Register project references before citing assignment candidates in reports.",
-            "Treat missing-reference candidates as local screening metadata until the library is enriched or project-specific references are registered.",
+            "If a future audit reports missing-reference candidates, treat those candidates as local screening metadata until the library is enriched or project-specific references are registered.",
         ],
         "boundaries": [
             "This audit reads bundled material-assignment metadata only and does not create project files.",

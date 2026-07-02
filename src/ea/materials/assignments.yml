@@ -1,4 +1,4 @@
-library_version: "0.2.1"
+library_version: "0.2.2"
 materials:
   hbn:
     material_id: hbn
@@ -73,6 +73,10 @@ materials:
         label: "Splendiani et al. Nano Letters 2010"
         doi: "10.1021/nl903868w"
         methods: ["pl"]
+      - key: "jagminas-2019-mos2-xrd"
+        label: "Jagminas et al. Scientific Reports 2019"
+        doi: "10.1038/s41598-019-44085-7"
+        methods: ["xrd"]
     methods:
       raman:
         assignment_source: "ea.materials.builtin:mos2:raman:v0.2"

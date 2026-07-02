@@ -11,7 +11,7 @@ Required gates:
 5. Record smoothing, normalization, peak detection, d-spacing calculation, generated figure, report, and provenance.
 6. Mark XRD peaks in figures and put 2theta, optional d-spacing, prominence, and assignment confidence in report tables.
 7. Interpret structural features with project context, phase references, and literature references. Use confidence labels rather than definitive phase or mechanism claims.
-8. If source-backed XRD assignment candidates are useful, run `ea xrd list-assignment-libraries` to inspect built-in material-profile coverage, 2theta/d-spacing windows, DOI reference hints where available, filters, next commands, and no-auto-application boundaries before interpreting reflections.
+8. If source-backed XRD assignment candidates are useful, run `ea xrd list-assignment-libraries` to inspect built-in material-profile coverage, 2theta/d-spacing windows, DOI reference hints, filters, next commands, and no-auto-application boundaries before interpreting reflections.
 9. Write memory candidates only after user confirmation.
 
 Current v0.2 XRD support:
@@ -24,7 +24,7 @@ Current v0.2 XRD support:
 - Peak tables include `two_theta_deg`, `d_spacing_angstrom`, `height`, `prominence`, and phase-assignment fields.
 - When a project ID or context matches a built-in material profile, EA uses the material assignment library to mark XRD candidate reflections with medium or low confidence and explicit need for phase-reference review.
 - Current built-in XRD profiles include MoS2, WS2, and h-BN. Assignment metadata records `assignment_source`; inspect a rule with commands such as `ea materials assignments hbn --method xrd`.
-- `ea xrd list-assignment-libraries` prints a local JSON discovery summary for built-in XRD material-assignment profiles, with candidate counts, feature IDs, 2theta windows, d-spacing windows, reference hints where available, filters, recommended next commands, and no-auto-application boundaries. It does not create project files, run live lookup, register references, process diffraction patterns, match peaks, create ReviewRecords, inject report citations, write memory, or prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality.
+- `ea xrd list-assignment-libraries` prints a local JSON discovery summary for built-in XRD material-assignment profiles, with candidate counts, feature IDs, 2theta windows, d-spacing windows, DOI reference hints, filters, recommended next commands, and no-auto-application boundaries. It does not create project files, run live lookup, register references, process diffraction patterns, match peaks, create ReviewRecords, inject report citations, write memory, or prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality.
 - Reports include XRD peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
 
 CLI path:
