@@ -10,12 +10,13 @@ def test_ea_v0_2_skill_defaults_to_public_user_workflow() -> None:
     skill_doc = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
 
     assert "Do not assume developer-machine Zotero, browser, institution, cache, or test paths." in skill_doc
-    assert "# Experimental Assistant (EA v0.9 RC)" in skill_doc
-    assert "In new Codex threads, invoke this compatibility skill as `$ea-v0-2`." in skill_doc
+    assert "# Experimental Assistant v0.9.5" in skill_doc
+    assert "Internal compatibility id" in skill_doc
+    assert "$ea-v0-2" in skill_doc
     assert "ea codex install-skill" in skill_doc
     assert "ea install-check" in skill_doc
-    assert "Default Workflow" in skill_doc
-    assert "Install Check" in skill_doc
+    assert "Core Workflow" in skill_doc
+    assert "Setup And Onboarding" in skill_doc
     assert "References" in skill_doc
     assert "tests/fixtures/public/" not in skill_doc
 

@@ -18,6 +18,7 @@ from ea.literature.service import (
     recommended_top_n,
     render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
+    setup_literature_preflight,
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "recommended_top_n",
     "render_literature_acquisition_reconciliation",
     "search_public_literature_metadata",
+    "setup_literature_preflight",
     "summarize_zotero_codex_readiness",
     "sync_literature_acquisition_status",
 ]

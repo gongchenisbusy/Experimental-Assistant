@@ -1,25 +1,33 @@
 from ea.memory.service import (
     MemoryBoundaryError,
     commit_memory_candidate,
+    project_working_memory_status,
     propose_memory_candidate,
+    refresh_project_working_memory,
     record_suggestion,
     review_memory_candidate,
+    show_project_working_memory,
     update_suggestion_status,
     write_confirmed_finding,
     write_decision_log_entry,
     write_open_item,
+    write_project_working_memory_skeleton,
     write_progress_event,
 )
 
 __all__ = [
     "MemoryBoundaryError",
     "commit_memory_candidate",
+    "project_working_memory_status",
     "propose_memory_candidate",
+    "refresh_project_working_memory",
     "record_suggestion",
     "review_memory_candidate",
+    "show_project_working_memory",
     "update_suggestion_status",
     "write_confirmed_finding",
     "write_decision_log_entry",
     "write_open_item",
+    "write_project_working_memory_skeleton",
     "write_progress_event",
 ]

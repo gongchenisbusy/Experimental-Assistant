@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ea.evaluation import run_project_evaluation
+from ea.memory import project_working_memory_status
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.storage.ids import next_id
 
@@ -141,6 +142,8 @@ def _next_actions(brief: dict[str, Any]) -> list[str]:
         actions.append("Share the latest report path and key result summary; keep audit details in project files unless requested.")
     if brief["literature"]["status"] in {"decision_needed", "not_configured"}:
         actions.append("Ask whether to deploy a local literature library before source-backed literature acquisition.")
+    if brief["project_working_memory"]["stale"]:
+        actions.append("Refresh compact project working memory before long handoff or project-management continuation.")
     actions.append("Before handoff, run `ea eval project` and `ea trace view --focus <report-or-record>`.")
     return actions
 
@@ -156,6 +159,7 @@ def render_project_brief_markdown(brief: dict[str, Any]) -> str:
         f"- Reports: {len(brief['key_outputs']['reports'])}",
         f"- Figures: {brief['key_outputs']['figures']['figure_count']} total, {brief['key_outputs']['figures']['report_linked_count']} linked to reports",
         f"- Literature: `{brief['literature']['status']}`",
+        f"- Project working memory: `{'stale' if brief['project_working_memory']['stale'] else 'current'}`",
         "",
         "## Key Outputs",
     ]
@@ -221,6 +225,7 @@ def build_project_brief(
             "figures": _figure_summary(root),
         },
         "literature": _literature_summary(root),
+        "project_working_memory": project_working_memory_status(root),
         "needs_user_confirmation": [],
         "next_actions": [],
         "audit_commands": [

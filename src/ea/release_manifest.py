@@ -23,7 +23,7 @@ DEFAULT_INCLUDE_ROOTS = [
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "ea-v0.9-rc-release-manifest.yml"
+DEFAULT_OUTPUT = Path("dist") / "ea-v0.9.5-release-manifest.yml"
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -46,10 +46,12 @@ PUBLIC_REPOSITORY = {
     "project_name": "Experimental Assistant (EA)",
     "repository_full_name": "gongchenisbusy/Experimental-Assistant",
     "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
-    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1",
+    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5",
 }
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
+    "python3 scripts/check_version_identity.py",
+    "python3 scripts/check_downloaded_skill_instructions.py",
     "ea-public-release-smoke",
     "ea healthcheck examples/public-raman-project",
     "ea eval project examples/public-raman-project --no-write",
@@ -181,14 +183,14 @@ def build_release_manifest(
     checksums = file_checksum_records(root, files)
     return {
         "schema_version": "0.9",
-        "manifest_type": "ea_v0_9_release_candidate",
+        "manifest_type": "ea_v0_9_5_release",
         "repository_root_name": root.name,
         "public_repository": PUBLIC_REPOSITORY,
         "package": metadata,
-        "release_candidate": {
-            "label": "v0.9-rc1",
+        "release": {
+            "label": "v0.9.5",
             "version": metadata.get("version"),
-            "relationship_to_v1": "Public release candidate for manual testing and final v1.0 issue discovery.",
+            "relationship_to_v1": "Stabilization and usability release that keeps the public v0.9 workflow compatible while reducing routine context load.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
             "release_notes_ref": "docs/V0_9_RELEASE_NOTES.md",
             "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
@@ -214,6 +216,8 @@ def build_release_manifest(
                 "cli_version_help",
                 "cli_install_check_help",
                 "cli_codex_install_skill_help",
+                "version_identity_check",
+                "downloaded_skill_instruction_check",
                 "cli_export_help",
                 "cli_eval_help",
                 "install_check_console_help",
@@ -264,7 +268,7 @@ def write_release_manifest(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an EA v0.9 release-candidate repository manifest.")
+    parser = argparse.ArgumentParser(description="Generate an Experimental Assistant v0.9.5 repository manifest.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--include-root", action="append", default=[])

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ea.config import build_project_config, write_project_config
 from ea.literature import ensure_literature_status
-from ea.memory import write_open_item
+from ea.memory import write_open_item, write_project_working_memory_skeleton
 from ea.schema import Project, ProjectRuleCard
 from ea.schema.models import EARecord
 from ea.standards import slugify, standard_project_id
@@ -149,6 +149,15 @@ def initialize_project(
         output_records.append(str(literature_status_path.relative_to(root)))
     if literature_decision_path:
         output_records.append(str(literature_decision_path.relative_to(root)))
+    working_memory_path = write_project_working_memory_skeleton(
+        root,
+        project_id=project_id,
+        project_name=project_name,
+        material_system=material_system,
+        current_stage="initialized",
+        created_at=created_at,
+    )
+    output_records.append(str(working_memory_path.relative_to(root)))
     provenance_path = write_provenance_entry(
         root,
         workflow="project_initialization",
@@ -170,7 +179,7 @@ def initialize_project(
         project_frontmatter,
         "# EA Project\n\nThis project record is review-gated.",
     )
-    outputs = {"project": project_path, "rule_card": rule_card_path, "config": config_path}
+    outputs = {"project": project_path, "rule_card": rule_card_path, "config": config_path, "project_working_memory": working_memory_path}
     if literature_status_path:
         outputs["literature_status"] = literature_status_path
     if literature_decision_path:

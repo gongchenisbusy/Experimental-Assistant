@@ -1,11 +1,11 @@
-# EA v0.9 Agent Handoff
+# Experimental Assistant v0.9.5 Agent Handoff
 
-This file is the handoff anchor for future agents continuing from the v0.9 release candidate.
+This file is the handoff anchor for future agents continuing from Experimental Assistant v0.9.5.
 
 ## Current State
 
-- Release label: `v0.9-rc1`
-- Package version: `0.9.0rc1`
+- Release label: `v0.9.5`
+- Package version: `0.9.5`
 - Working branch: `codex/eav0.9`
 - Skill folder: `skills/ea-v0-2`
 - Public install guide: `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`
@@ -32,7 +32,7 @@ python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-COMMIT-release.zip
 python3 scripts/build_distribution_checklist.py
 ```
 

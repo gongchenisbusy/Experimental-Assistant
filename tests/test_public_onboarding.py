@@ -19,7 +19,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     text = ONBOARDING_PATH.read_text(encoding="utf-8")
 
-    assert "# EA v0.9 Public Onboarding" in text
+    assert "# Experimental Assistant v0.9.5 Public Onboarding" in text
     assert "docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md" in text
     assert "ea init-project" in text
     assert "ea healthcheck" in text
@@ -66,14 +66,14 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     text = INSTALL_SKILL_SETUP_PATH.read_text(encoding="utf-8")
 
     assert "# EA Public Install And Codex Skill Setup" in text
-    assert "Experimental Assistant (EA v0.9 RC, package compatibility name: ea-v0-2)" in text
-    assert "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1" in text
+    assert "Product identity: `Experimental Assistant v0.9.5` with package compatibility name `ea-v0-2`" in text
+    assert "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.5" in text
     assert "ea codex install-skill" in text
     assert "ea install-check" in text
     assert "ea version" in text
     assert "python3 scripts/check_install_env.py" in text
     assert "git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea" in text
-    assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1" in text
+    assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5" in text
     assert "OWNER/REPOSITORY" not in text
     assert "rm -rf" not in text
     assert "python3 -m pip install -e ." in text

@@ -1008,19 +1008,20 @@ def test_ftir_docs_and_skill_references_are_discoverable() -> None:
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     ftir_reference = root / "skills" / "ea-v0-2" / "references" / "ftir-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea ftir inspect" in readme
     assert "ea ftir list-assignment-libraries" in readme
-    assert "ea ftir process" in skill
-    assert "ea ftir list-assignment-libraries" in skill
-    assert "ea ftir suggest-assignments" in skill
-    assert "ea ftir propose-memory" in skill
-    assert "--assignment-suggestion" in skill
-    assert "--builtin-library" in skill
-    assert "register-seeds" in skill
     assert "references/ftir-workflow.md" in skill
+    assert "ea ftir process" in cli_index
+    assert "ea ftir list-assignment-libraries" in cli_index
+    assert "ea ftir suggest-assignments" in cli_index
+    assert "ea ftir propose-memory" in cli_index
+    assert "--assignment-suggestion" in cli_index
+    assert "--builtin-library" in cli_index
+    assert "register-seeds" in cli_index
     assert ftir_reference.exists()
     reference_text = ftir_reference.read_text(encoding="utf-8")
     assert "signal_mode" in reference_text

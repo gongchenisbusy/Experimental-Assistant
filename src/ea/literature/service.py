@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
 import time
 import urllib.parse
 import urllib.request
@@ -164,6 +165,130 @@ def ensure_literature_status(
         if not target.exists():
             write_yaml(target, data)
     return path
+
+
+def setup_literature_preflight(
+    root: Path,
+    *,
+    lang: Literal["zh", "en"] = "zh",
+    write_report: bool = True,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    checked_at = checked_at or EARecord.now_iso()
+    config = read_yaml(root / ".ea" / "project_config.yml") if (root / ".ea" / "project_config.yml").exists() else {}
+    literature_config = config.get("literature") or {}
+    zotero_config = config.get("zotero") or {}
+    browser_config = config.get("browser_assist") or {}
+    chrome_candidates = [
+        Path("/Applications/Google Chrome.app"),
+        Path.home() / "Applications" / "Google Chrome.app",
+    ]
+    zotero_candidates = [
+        Path("/Applications/Zotero.app"),
+        Path.home() / "Applications" / "Zotero.app",
+    ]
+    chrome_available = any(path.exists() for path in chrome_candidates) or shutil.which("google-chrome") is not None or shutil.which("chrome") is not None
+    zotero_available = any(path.exists() for path in zotero_candidates) or shutil.which("zotero") is not None
+    cache_root = literature_config.get("cache_root")
+    cache_path = Path(cache_root).expanduser() if cache_root else root / "literature"
+    cache_writable = cache_path.exists() and cache_path.is_dir()
+    network_probe = "not_run"
+    auto_done = [
+        {
+            "code": "project_config_checked",
+            "message": "已检查项目配置。" if lang == "zh" else "Project configuration checked.",
+            "status": "pass" if config else "warning",
+        },
+        {
+            "code": "literature_cache_path_checked",
+            "message": f"文献缓存/状态路径可写性：{cache_path}" if lang == "zh" else f"Literature cache/status path checked: {cache_path}",
+            "status": "pass" if cache_writable else "warning",
+        },
+    ]
+    manual = []
+    unavailable = []
+    if not chrome_available:
+        manual.append(
+            {
+                "code": "chrome_not_detected",
+                "message": "如需浏览器辅助，请先安装或打开 Chrome，并由用户自行完成登录。"
+                if lang == "zh"
+                else "Install/open Chrome if browser-assisted literature work is needed; the user must manage login.",
+            }
+        )
+    if not zotero_available:
+        manual.append(
+            {
+                "code": "zotero_not_detected",
+                "message": "如需 Zotero 文献获取，请先安装 Zotero 并确认本地库/Connector 可用。"
+                if lang == "zh"
+                else "Install Zotero and confirm the local library/Connector if Zotero acquisition is needed.",
+            }
+        )
+    if zotero_config.get("enabled") and not zotero_config.get("local_api_url"):
+        manual.append(
+            {
+                "code": "zotero_api_url_missing",
+                "message": "Zotero 已启用但未记录 local API URL；请由用户提供或保持关闭。"
+                if lang == "zh"
+                else "Zotero is enabled but no local API URL is recorded; provide one or keep Zotero disabled.",
+            }
+        )
+    if browser_config.get("enabled") and not browser_config.get("browser"):
+        manual.append(
+            {
+                "code": "browser_name_missing",
+                "message": "浏览器辅助已启用但未记录浏览器名称。" if lang == "zh" else "Browser assistance is enabled but no browser name is recorded.",
+            }
+        )
+    if config.get("institution_access", {}).get("enabled"):
+        manual.append(
+            {
+                "code": "institution_login_user_managed",
+                "message": "机构登录必须由用户在浏览器中自行完成，EA 不保存账号、密码、cookie 或 session token。"
+                if lang == "zh"
+                else "Institution login must be completed by the user in the browser; EA stores no account, password, cookie, or session token.",
+            }
+        )
+    if not cache_writable:
+        unavailable.append(
+            {
+                "code": "cache_path_not_ready",
+                "message": "当前缓存/状态路径不存在或不可写；先创建项目或选择可写路径。"
+                if lang == "zh"
+                else "The cache/status path is missing or not writable; initialize the project or choose a writable path first.",
+            }
+        )
+    result = {
+        "schema_version": "0.9.5",
+        "check_type": "ea_literature_setup_preflight",
+        "checked_at": checked_at,
+        "language": lang,
+        "status": "fail" if unavailable else "warning" if manual else "pass",
+        "workspace": str(root),
+        "已自动完成" if lang == "zh" else "auto_completed": auto_done,
+        "需要你手动完成" if lang == "zh" else "manual_steps": manual,
+        "暂时无法配置" if lang == "zh" else "temporarily_unavailable": unavailable,
+        "environment": {
+            "chrome_available": chrome_available,
+            "zotero_available": zotero_available,
+            "cache_path": str(cache_path),
+            "cache_writable": cache_writable,
+            "network_probe": network_probe,
+            "stores_credentials": False,
+        },
+        "next_commands": [
+            "ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only",
+            "ea literature zotero-readiness /path/to/ea-project",
+        ],
+        "boundaries": [
+            "No Zotero action, browser automation, institution login, full-text acquisition, or credential storage was performed.",
+            "Use index_only or open_access_only before user_authenticated access unless the user explicitly confirms otherwise.",
+        ],
+    }
+    if write_report:
+        write_yaml(root / "literature" / "setup_preflight.yml", result)
+    return result
 
 
 def _tokenize(text: str) -> list[str]:
@@ -628,7 +753,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use EA v0.9 RC literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Use Experimental Assistant v0.9.5 literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -3878,7 +4003,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "EA-v0.9-rc public-metadata-search/0.9rc1 (local-first research assistant)",
+            "User-Agent": "Experimental-Assistant-v0.9.5 public-metadata-search/0.9.5 (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )

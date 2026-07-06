@@ -1,6 +1,6 @@
-# EA v0.9 Public Acceptance Matrix
+# Experimental Assistant v0.9.5 Public Acceptance Matrix
 
-This matrix defines the public-safe acceptance surface for the EA v0.9 release candidate. It is a gate for maintainers and future agents; it does not require Zotero, browser sessions, institution login, private caches, signing keys, or network access unless a row explicitly says the user has chosen that workflow.
+This matrix defines the public-safe acceptance surface for Experimental Assistant v0.9.5. It is a gate for maintainers and future agents; it does not require Zotero, browser sessions, institution login, private caches, signing keys, or network access unless a row explicitly says the user has chosen that workflow.
 
 ## Required Automated Gates
 
@@ -13,7 +13,7 @@ python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-COMMIT-release.zip
 python3 scripts/build_distribution_checklist.py
 ```
 

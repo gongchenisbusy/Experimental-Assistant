@@ -1,6 +1,6 @@
-# EA v0.9 Known Limitations
+# Experimental Assistant v0.9.5 Known Limitations
 
-EA v0.9 is a release candidate. These limitations are expected and must be explained during public testing.
+These Experimental Assistant v0.9.5 limitations are expected and must be explained during public testing.
 
 ## Scientific Boundaries
 
@@ -24,7 +24,7 @@ EA v0.9 is a release candidate. These limitations are expected and must be expla
 - `ea literature zotero-readiness` does not operate Zotero, open browsers, download PDFs, parse full text, or repair records.
 - No-Zotero degraded mode can continue from user-supplied metadata and local references, but it is not exhaustive literature coverage.
 
-## Release Candidate Gaps To Watch
+## Release Follow-Up Gaps To Watch
 
 - Real public users may need clearer onboarding around which method workflow to start with.
 - Public examples cover representative paths, not every method combination.

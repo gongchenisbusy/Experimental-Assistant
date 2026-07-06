@@ -1,13 +1,13 @@
-# EA v0.9 Release Notes
+# Experimental Assistant v0.9.5 Release Notes
 
-EA v0.9 is a release candidate from the `ea-v0-2` compatibility line. It focuses on stability, public installability, agent-native handoff, report delivery, Zotero-Codex readiness, public examples, and release packaging rather than adding a new characterization method.
+Experimental Assistant v0.9.5 is a stabilization and usability release from the `ea-v0-2` compatibility line. It focuses on version consistency, lighter agent instructions, post-install onboarding, literature preflight, large-work confirmation, compact project working memory, review promotion, public installability, report delivery, and release packaging rather than adding a new characterization method.
 
 ## Version
 
-- Package version: `0.9.0rc1`
-- Release label: `v0.9-rc1`
+- Package version: `0.9.5`
+- Release label: `v0.9.5`
 - Skill folder: `skills/ea-v0-2`
-- Compatibility note: the skill name and package name keep `ea-v0-2` for continuity; release artifacts and docs identify the v0.9 release-candidate state.
+- Compatibility note: the skill name and package name keep `ea-v0-2` for continuity; release artifacts and docs identify the v0.9.5 release state.
 
 ## Major Changes Since v0.2 Baseline
 
@@ -17,11 +17,11 @@ EA v0.9 is a release candidate from the `ea-v0-2` compatibility line. It focuses
 - Added `ea export report-html` for readable HTML reports with embedded figures, canonical Markdown traceability, references, and provenance audit metadata.
 - Added `ea literature zotero-readiness` for local Zotero-Codex handoff/status readiness without operating Zotero, browsers, credentials, or downloads.
 - Promoted public examples to release smoke gates: Raman, FTIR source-backed assignment, UV-Vis screening, and XPS binding-energy candidate examples must pass healthcheck and eval.
-- Updated release manifest, package, verification, optional signing, and distribution checklist surfaces for v0.9 RC handoff.
+- Updated release manifest, package, verification, optional signing, and distribution checklist surfaces for v0.9.5 handoff.
 
 ## Relationship To v1.0
 
-v0.9 is not the final public v1.0. It is the candidate that should be handed to human testers and future agents to find remaining product, documentation, and scientific-boundary issues before v1.0. v1.0 should only be cut after the acceptance matrix, manual checklist, and real user walkthroughs have no blocking findings or have clear documented limitations.
+v0.9.5 is not the final public v1.0. It should be handed to human testers and future agents to find remaining product, documentation, and scientific-boundary issues before v1.0. v1.0 should only be cut after the acceptance matrix, manual checklist, and real user walkthroughs have no blocking findings or have clear documented limitations.
 
 ## Stable Entry Points
 
@@ -42,5 +42,5 @@ v0.9 is not the final public v1.0. It is the candidate that should be handed to 
 ## Migration Notes
 
 - Existing legacy EA project folders can continue to be inspected with healthcheck/eval.
-- For public handoff, regenerate any report bundles or release packages with the v0.9 RC code so manifests, checksums, and HTML exports use current metadata.
+- For public handoff, regenerate any report bundles or release packages with the v0.9.5 code so manifests, checksums, and HTML exports use current metadata.
 - Keep `skills/ea-v0-2` as the installed skill folder until a future version intentionally renames the skill.

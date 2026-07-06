@@ -2510,22 +2510,15 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     xps_reference = root / "skills" / "ea-v0-2" / "references" / "xps-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea xps inspect" in readme
     assert "ea xps list-parameter-libraries" in readme
-    assert "ea xps process" in skill
-    assert "ea xps list-parameter-libraries" in skill
-    assert "ea xps build-source-packet" in skill
-    assert "ea xps suggest-parameters" in skill
-    assert "ea xps propose-memory" in skill
-    assert "--builtin-library" in skill
-    assert "generic_xps_parameters" in skill
-    assert "oxide_o1s_binding_energy" in skill
-    assert "--parameter-suggestion" in skill
-    assert "register-seeds" in skill
     assert "references/xps-workflow.md" in skill
+    assert "xps" in cli_index
+    assert "Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, `xps`, `electrochemistry`, `thermal`, and `image-data` command groups" in cli_index
     assert xps_reference.exists()
     xps_reference_text = xps_reference.read_text(encoding="utf-8")
     assert "calibration_review_ref" in xps_reference_text

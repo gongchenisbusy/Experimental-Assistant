@@ -1394,12 +1394,13 @@ def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     electrochemistry_reference = root / "skills" / "ea-v0-2" / "references" / "electrochemistry-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea electrochemistry inspect" in readme
-    assert "ea electrochemistry process" in skill
     assert "references/electrochemistry-workflow.md" in skill
+    assert "ea electrochemistry process" in cli_index
     assert electrochemistry_reference.exists()
     reference_text = electrochemistry_reference.read_text(encoding="utf-8")
     assert "context_review_ref" in reference_text

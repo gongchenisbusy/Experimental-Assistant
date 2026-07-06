@@ -1,6 +1,6 @@
 # XPS Workflow
 
-Use this reference when processing X-ray photoelectron spectroscopy spectra in the EA v0.9 RC compatibility skill.
+Use this reference when processing X-ray photoelectron spectroscopy spectra in the Experimental Assistant v0.9.5 compatibility skill.
 
 Required gates:
 
@@ -15,7 +15,7 @@ Required gates:
 9. Treat automatic peaks, source-backed parameter suggestions, reviewed background-subtracted columns, component screening estimates, reviewed component-fit outputs, and multi-region records as screening/provenance evidence. Use calibration context, background model, peak model, references, and user review before writing chemical-state conclusions.
 10. Write memory candidates only after user confirmation.
 
-Current EA v0.9 RC XPS compatibility support:
+Current Experimental Assistant v0.9.5 XPS compatibility support:
 
 - Raw import uses `ea raw import --characterization-type xps`.
 - Inspection identifies common XPS files by path/name, binding-energy metadata, and binding-energy-like ranges.

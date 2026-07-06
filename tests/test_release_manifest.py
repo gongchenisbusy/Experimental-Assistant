@@ -23,7 +23,7 @@ def _minimal_release_root(root: Path) -> Path:
         """
 [project]
 name = "ea-v0-2"
-version = "0.9.0rc1"
+version = "0.9.5"
 description = "Release test"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=42", "pyyaml>=6.0"]
@@ -47,20 +47,20 @@ ea-install-check = "ea.install_experience:install_check_main"
         encoding="utf-8",
     )
     (root / "README.md").write_text("# EA\n", encoding="utf-8")
-    (root / "src" / "ea" / "__init__.py").write_text("__version__ = '0.9.0rc1'\n", encoding="utf-8")
+    (root / "src" / "ea" / "__init__.py").write_text("__version__ = '0.9.5'\n", encoding="utf-8")
     (root / "src" / "ea" / "__pycache__" / "ignored.pyc").write_bytes(b"ignored")
     (root / "skills" / "ea-v0-2" / "SKILL.md").write_text("---\nname: ea-v0-2\ndescription: test\n---\n", encoding="utf-8")
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
-    (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# EA v0.9 Public Onboarding\n", encoding="utf-8")
-    (root / "docs" / "RELEASE_VERIFICATION.md").write_text("# EA v0.9 Release Verification\n", encoding="utf-8")
-    (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text("# EA v0.9 Public Acceptance Matrix\n", encoding="utf-8")
-    (root / "docs" / "V0_9_RELEASE_NOTES.md").write_text("# EA v0.9 Release Notes\n", encoding="utf-8")
-    (root / "docs" / "V0_9_KNOWN_LIMITATIONS.md").write_text("# EA v0.9 Known Limitations\n", encoding="utf-8")
-    (root / "docs" / "V0_9_MANUAL_TEST_CHECKLIST.md").write_text("# EA v0.9 Manual Test Checklist\n", encoding="utf-8")
-    (root / "docs" / "V0_9_AGENT_HANDOFF.md").write_text("# EA v0.9 Agent Handoff\n", encoding="utf-8")
+    (root / "docs" / "PUBLIC_ONBOARDING.md").write_text("# Experimental Assistant v0.9.5 Public Onboarding\n", encoding="utf-8")
+    (root / "docs" / "RELEASE_VERIFICATION.md").write_text("# Experimental Assistant v0.9.5 Release Verification\n", encoding="utf-8")
+    (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text("# Experimental Assistant v0.9.5 Public Acceptance Matrix\n", encoding="utf-8")
+    (root / "docs" / "V0_9_RELEASE_NOTES.md").write_text("# Experimental Assistant v0.9.5 Release Notes\n", encoding="utf-8")
+    (root / "docs" / "V0_9_KNOWN_LIMITATIONS.md").write_text("# Experimental Assistant v0.9.5 Known Limitations\n", encoding="utf-8")
+    (root / "docs" / "V0_9_MANUAL_TEST_CHECKLIST.md").write_text("# Experimental Assistant v0.9.5 Manual Test Checklist\n", encoding="utf-8")
+    (root / "docs" / "V0_9_AGENT_HANDOFF.md").write_text("# Experimental Assistant v0.9.5 Agent Handoff\n", encoding="utf-8")
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
-        "# EA v0.9 RC Project Bundle Verification\n", encoding="utf-8"
+        "# Experimental Assistant v0.9.5 Project Bundle Verification\n", encoding="utf-8"
     )
     (root / "examples" / "example_manifest.yml").write_text("example_id: minimal\n", encoding="utf-8")
     (root / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
@@ -105,6 +105,8 @@ def test_release_manifest_collects_package_metadata_and_checksums(tmp_path: Path
     assert "cli_version_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "cli_install_check_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "cli_codex_install_skill_help" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "version_identity_check" in manifest["validation_contract"]["required_smoke_steps"]
+    assert "downloaded_skill_instruction_check" in manifest["validation_contract"]["required_smoke_steps"]
     assert "install_check_console_help" in manifest["validation_contract"]["required_smoke_steps"]
     assert "public_example_raman_healthcheck" in manifest["validation_contract"]["required_smoke_steps"]
     assert "public_example_ftir_source_eval" in manifest["validation_contract"]["required_smoke_steps"]
@@ -123,7 +125,7 @@ def test_write_release_manifest_creates_yaml_manifest(tmp_path: Path) -> None:
     loaded = yaml.safe_load(output.read_text(encoding="utf-8"))
 
     assert output == root / "dist" / "release.yml"
-    assert loaded["manifest_type"] == "ea_v0_9_release_candidate"
+    assert loaded["manifest_type"] == "ea_v0_9_5_release"
     assert loaded["release_inputs"]["aggregate_sha256"] == manifest["release_inputs"]["aggregate_sha256"]
 
 
@@ -135,7 +137,7 @@ def test_release_manifest_cli_writes_summary_json(tmp_path: Path, capsys) -> Non
 
     assert exit_code == 0
     assert summary["status"] == "complete"
-    assert summary["package"] == {"name": "ea-v0-2", "version": "0.9.0rc1"}
+    assert summary["package"] == {"name": "ea-v0-2", "version": "0.9.5"}
     assert Path(summary["manifest"]).exists()
     assert summary["file_count"] > 0
 

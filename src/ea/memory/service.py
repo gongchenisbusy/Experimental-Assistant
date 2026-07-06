@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -19,6 +20,8 @@ class MemoryBoundaryError(RuntimeError):
 DECISION_PHRASES = ["我采用", "我下一步计划", "接下来我决定", "这条路线先暂停", "我们改成"]
 MEMORY_CATEGORIES = {"finding", "interpretation", "hypothesis", "method_note", "project_rule"}
 CONFIDENCE_VALUES = {"high", "medium", "low", "insufficient"}
+PROJECT_WORKING_MEMORY_REF = "memory/project-working-memory.md"
+PROJECT_WORKING_MEMORY_SECTION_LIMIT = 8
 
 
 def _append_markdown(path: Path, text: str) -> None:
@@ -43,6 +46,316 @@ def _project_path(root: Path, value: Path) -> Path:
 
 def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _safe_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return read_yaml(path)
+    except Exception:
+        return {}
+
+
+def _safe_markdown_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
+    if not path.exists():
+        return {}, ""
+    try:
+        return read_markdown_record(path)
+    except Exception:
+        return {}, ""
+
+
+def _source_snapshot(root: Path) -> dict[str, Any]:
+    refs = [
+        "EA_PROJECT.md",
+        "PROJECT_RULE_CARD.md",
+        ".ea/project_config.yml",
+        "reports/index.yml",
+        "figures/index.yml",
+        "literature/deployment_status.yml",
+        "memory/index.yml",
+        "memory/candidates/index.yml",
+    ]
+    refs.extend(sorted(path.relative_to(root).as_posix() for path in (root / "open-items").glob("*.yml"))[:20])
+    records: dict[str, Any] = {}
+    for ref in refs:
+        path = root / ref
+        if path.exists():
+            stat = path.stat()
+            records[ref] = {"mtime_ns": stat.st_mtime_ns, "size_bytes": stat.st_size}
+        else:
+            records[ref] = None
+    digest = hashlib.sha256(json.dumps(records, sort_keys=True).encode("utf-8")).hexdigest()
+    return {"hash": digest, "records": records}
+
+
+def _project_frontmatter(root: Path) -> dict[str, Any]:
+    frontmatter, _ = _safe_markdown_frontmatter(root / "EA_PROJECT.md")
+    return frontmatter
+
+
+def _compact_open_items(root: Path, limit: int = PROJECT_WORKING_MEMORY_SECTION_LIMIT) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for path in sorted((root / "open-items").glob("*.yml")):
+        record = _safe_yaml(path)
+        if str(record.get("status") or "open") in {"closed", "resolved", "done"}:
+            continue
+        items.append(
+            {
+                "ref": _relative_ref(root, path),
+                "type": record.get("item_type") or "open_item",
+                "priority": record.get("priority"),
+                "description": str(record.get("description") or path.name)[:300],
+            }
+        )
+    return items[:limit]
+
+
+def _compact_reports(root: Path, limit: int = PROJECT_WORKING_MEMORY_SECTION_LIMIT) -> list[dict[str, Any]]:
+    index = _safe_yaml(root / "reports" / "index.yml")
+    reports = index.get("reports") or {}
+    items: list[dict[str, Any]] = []
+    for report_id, record in reports.items():
+        if not isinstance(record, dict):
+            continue
+        path = str(record.get("path") or f"reports/{report_id}.md")
+        frontmatter, _ = _safe_markdown_frontmatter(root / path)
+        items.append(
+            {
+                "report_id": report_id,
+                "ref": path,
+                "type": frontmatter.get("report_type") or record.get("report_type"),
+                "status": frontmatter.get("status"),
+                "created_at": frontmatter.get("created_at"),
+            }
+        )
+    return sorted(items, key=lambda item: str(item.get("created_at") or item.get("ref")), reverse=True)[:limit]
+
+
+def _compact_memory_candidates(root: Path, limit: int = PROJECT_WORKING_MEMORY_SECTION_LIMIT) -> list[dict[str, Any]]:
+    candidates = (_safe_yaml(root / "memory" / "candidates" / "index.yml").get("candidates") or {})
+    items: list[dict[str, Any]] = []
+    for record in candidates.values():
+        if not isinstance(record, dict):
+            continue
+        status = str(record.get("status") or "")
+        if status in {"committed", "rejected"}:
+            continue
+        items.append(
+            {
+                "ref": record.get("path"),
+                "status": status or "draft",
+                "category": record.get("category"),
+                "confidence": record.get("confidence"),
+            }
+        )
+    return items[:limit]
+
+
+def _markdown_list(items: list[str]) -> str:
+    if not items:
+        return "- None recorded."
+    return "\n".join(f"- {item}" for item in items)
+
+
+def write_project_working_memory_skeleton(
+    root: Path,
+    *,
+    project_id: str,
+    project_name: str | None = None,
+    material_system: str | None = None,
+    current_stage: str = "initialized",
+    created_at: str | None = None,
+) -> Path:
+    created_at = created_at or EARecord.now_iso()
+    snapshot = _source_snapshot(root)
+    body = f"""# Project Working Memory
+
+## Project Goal And Stage
+- Project: `{project_name or project_id}`
+- Current stage: `{current_stage}`
+- Material/sample scope: `{material_system or 'not recorded'}`
+
+## Active Decisions And Preferences
+- None recorded yet.
+
+## Current Status
+- Project workspace initialized.
+
+## Next Actions
+- Confirm project setup and import the first protected raw data copy when ready.
+- Consider literature setup preflight before broad literature work.
+
+## Blockers And Open Questions
+- None recorded yet.
+
+## Important Artifact Refs
+- `EA_PROJECT.md`
+- `PROJECT_RULE_CARD.md`
+- `.ea/project_config.yml`
+
+## Handoff Note
+Read this file first when continuing the project, then expand into detailed records only when the current task needs them.
+"""
+    frontmatter = {
+        "schema_version": "0.9.5",
+        "memory_type": "project_working_memory",
+        "project_id": project_id,
+        "updated_at": created_at,
+        "source_snapshot": snapshot,
+        "section_limits": {"max_items_per_section": PROJECT_WORKING_MEMORY_SECTION_LIMIT},
+        "scientific_memory_boundary": "Does not commit confirmed findings or replace memory candidate review/commit.",
+    }
+    return write_markdown_record(root / PROJECT_WORKING_MEMORY_REF, frontmatter, body)
+
+
+def refresh_project_working_memory(
+    root: Path,
+    *,
+    project_id: str | None = None,
+    refreshed_at: str | None = None,
+    max_items: int = PROJECT_WORKING_MEMORY_SECTION_LIMIT,
+) -> dict[str, Any]:
+    refreshed_at = refreshed_at or EARecord.now_iso()
+    project = _project_frontmatter(root)
+    project_id = project_id or str(project.get("project_id") or "unknown-project")
+    reports = _compact_reports(root, limit=max_items)
+    open_items = _compact_open_items(root, limit=max_items)
+    memory_candidates = _compact_memory_candidates(root, limit=max_items)
+    literature_status = _safe_yaml(root / "literature" / "deployment_status.yml")
+    snapshot = _source_snapshot(root)
+    status_lines = [
+        f"Evaluation-ready project records exist: `{(root / 'EA_PROJECT.md').exists()}`",
+        f"Recent reports indexed: `{len(reports)}`",
+        f"Open user questions: `{len(open_items)}`",
+        f"Memory candidates needing attention: `{len(memory_candidates)}`",
+        f"Literature status: `{literature_status.get('status') or 'not_configured'}`",
+    ]
+    report_lines = [
+        f"`{item['ref']}` ({item.get('type') or 'report'}, {item.get('status') or 'status unknown'})"
+        for item in reports
+    ]
+    open_item_lines = [
+        f"`{item['ref']}` {item['type']} [{item.get('priority') or 'priority n/a'}]: {item['description']}"
+        for item in open_items
+    ]
+    candidate_lines = [
+        f"`{item.get('ref')}` {item.get('category') or 'memory'} [{item.get('status')}] confidence={item.get('confidence')}"
+        for item in memory_candidates
+    ]
+    body = f"""# Project Working Memory
+
+## Project Goal And Stage
+- Project: `{project.get('project_name') or project_id}`
+- Project ID: `{project_id}`
+- Current stage: `{project.get('status') or 'draft'}`
+- Research direction: `{project.get('research_direction') or 'not recorded'}`
+- Material/sample scope: `{project.get('material_system') or 'not recorded'}`
+
+## Active Decisions And Preferences
+- Default report language: `{project.get('default_language') or 'not recorded'}`
+- Literature workflow: `{literature_status.get('status') or 'not_configured'}`
+
+## Current Status
+{_markdown_list(status_lines)}
+
+## Next Actions
+{_markdown_list(_next_project_memory_actions(reports, open_items, literature_status))}
+
+## Blockers And Open Questions
+{_markdown_list(open_item_lines)}
+
+## Recent Important Artifact Refs
+{_markdown_list(report_lines)}
+
+## Scientific Memory Candidates
+{_markdown_list(candidate_lines)}
+
+## Handoff Note
+Use this compact snapshot to resume the project after context compaction. Expand into full reports, literature records, raw data, provenance, reviews, or confirmed scientific memory only when the current task requires that detail.
+"""
+    frontmatter = {
+        "schema_version": "0.9.5",
+        "memory_type": "project_working_memory",
+        "project_id": project_id,
+        "updated_at": refreshed_at,
+        "source_snapshot": snapshot,
+        "section_limits": {"max_items_per_section": max_items},
+        "stale_reason": None,
+        "scientific_memory_boundary": "Does not commit confirmed findings or replace memory candidate review/commit.",
+    }
+    path = write_markdown_record(root / PROJECT_WORKING_MEMORY_REF, frontmatter, body)
+    return {
+        "path": str(path),
+        "ref": PROJECT_WORKING_MEMORY_REF,
+        "project_id": project_id,
+        "updated_at": refreshed_at,
+        "source_hash": snapshot["hash"],
+        "report_count": len(reports),
+        "open_item_count": len(open_items),
+        "memory_candidate_count": len(memory_candidates),
+        "status": "refreshed",
+    }
+
+
+def _next_project_memory_actions(
+    reports: list[dict[str, Any]],
+    open_items: list[dict[str, Any]],
+    literature_status: dict[str, Any],
+) -> list[str]:
+    actions: list[str] = []
+    if open_items:
+        actions.append("Resolve the highest-priority open user question before stronger claims or full workflow execution.")
+    if not reports:
+        actions.append("Import raw data, confirm review-gated columns/parameters, process one method, and generate the first report.")
+    else:
+        actions.append("Use the latest report refs above for user-facing status; keep detailed audit in local files unless requested.")
+    if not literature_status or literature_status.get("status") in {None, "not_started"}:
+        actions.append("Run `ea literature setup-preflight` before broad literature acquisition.")
+    return actions
+
+
+def project_working_memory_status(root: Path) -> dict[str, Any]:
+    path = root / PROJECT_WORKING_MEMORY_REF
+    if not path.exists():
+        return {"exists": False, "path": str(path), "stale": True, "stale_reason": "missing"}
+    frontmatter, _ = read_markdown_record(path)
+    current = _source_snapshot(root)
+    previous = frontmatter.get("source_snapshot") or {}
+    stale = current.get("hash") != previous.get("hash")
+    return {
+        "exists": True,
+        "path": str(path),
+        "stale": stale,
+        "stale_reason": "source_snapshot_changed" if stale else None,
+        "updated_at": frontmatter.get("updated_at"),
+        "source_hash": previous.get("hash"),
+        "current_source_hash": current.get("hash"),
+    }
+
+
+def show_project_working_memory(root: Path, *, compact: bool = True) -> dict[str, Any]:
+    path = root / PROJECT_WORKING_MEMORY_REF
+    if not path.exists():
+        return {"exists": False, "path": str(path), "markdown": None, "status": project_working_memory_status(root)}
+    frontmatter, body = read_markdown_record(path)
+    if compact:
+        lines = []
+        for line in body.splitlines():
+            if line.startswith("#") or line.startswith("- "):
+                lines.append(line)
+            if len(lines) >= 40:
+                lines.append("- Compact preview truncated; read the file for full bounded snapshot.")
+                break
+        body = "\n".join(lines).strip() + "\n"
+    return {
+        "exists": True,
+        "path": str(path),
+        "frontmatter": frontmatter,
+        "markdown": body,
+        "status": project_working_memory_status(root),
+    }
 
 
 def _load_candidate(root: Path, candidate_path: Path) -> tuple[Path, dict[str, Any], str]:

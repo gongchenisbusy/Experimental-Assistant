@@ -11,8 +11,8 @@ from ea.release_package import _checksum_sidecar_path, verify_release_package
 from ea.release_signature import _signature_sidecar_path, verify_release_signature
 
 
-DEFAULT_JSON_OUTPUT = Path("dist") / "ea-v0.9-rc-distribution-checklist.json"
-DEFAULT_MARKDOWN_OUTPUT = Path("dist") / "ea-v0.9-rc-distribution-checklist.md"
+DEFAULT_JSON_OUTPUT = Path("dist") / "ea-v0.9.5-distribution-checklist.json"
+DEFAULT_MARKDOWN_OUTPUT = Path("dist") / "ea-v0.9.5-distribution-checklist.md"
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -168,7 +168,7 @@ def build_distribution_checklist(
 
     return {
         "schema_version": "0.9",
-        "check_type": "ea_v0_9_release_candidate_distribution_checklist",
+        "check_type": "ea_v0_9_5_release_distribution_checklist",
         "status": "fail" if failures else "pass",
         "root": str(root),
         "package": {
@@ -207,7 +207,7 @@ def build_distribution_checklist(
 
 def render_distribution_markdown(checklist: dict[str, Any]) -> str:
     lines = [
-        "# EA v0.9 Release Candidate Distribution Checklist",
+        "# Experimental Assistant v0.9.5 Distribution Checklist",
         "",
         f"- Status: `{checklist['status']}`",
         f"- Package: `{checklist['package']['name']} {checklist['package']['version']}`",
@@ -272,7 +272,7 @@ def write_distribution_checklist(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an EA v0.9 release-candidate package distribution checklist.")
+    parser = argparse.ArgumentParser(description="Generate an Experimental Assistant v0.9.5 package distribution checklist.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--archive", type=Path, action="append", default=[])

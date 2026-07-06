@@ -29,6 +29,7 @@ def test_project_brief_previews_new_project_without_writing(tmp_path: Path) -> N
     assert brief["evaluation"]["status"] == "pass"
     assert brief["key_outputs"]["reports"] == []
     assert brief["literature"]["status"] == "decision_needed"
+    assert brief["project_working_memory"]["exists"] is True
     assert any("Import raw data" in action for action in brief["next_actions"])
     assert not list((tmp_path / "briefs").glob("*"))
 
@@ -63,5 +64,6 @@ def test_cli_brief_project_no_write_returns_concise_json(tmp_path: Path, capsys)
     assert output["markdown_path"] is None
     assert output["evaluation"]["status"] == "pass"
     assert output["key_outputs"]["reports"]
+    assert "project_working_memory" in output
     assert "markdown" not in output
     assert not list((workspace / "briefs").glob("*"))

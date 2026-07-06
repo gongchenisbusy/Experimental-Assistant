@@ -8,7 +8,7 @@ import pytest
 
 from ea import __version__
 from ea.cli import main
-from ea.install_experience import install_check, install_codex_skill, python_preflight_record
+from ea.install_experience import install_check, install_codex_skill, onboarding_post_install_record, python_preflight_record
 
 
 def _write_validator(path: Path) -> Path:
@@ -48,8 +48,10 @@ def test_codex_install_skill_backs_up_existing_skill_and_preserves_v0_1(tmp_path
 
     assert result["status"] == "pass"
     assert result["identity"]["product"] == "Experimental Assistant"
-    assert result["identity"]["public_version"] == "EA v0.9 RC"
+    assert result["identity"]["public_version"] == "Experimental Assistant v0.9.5"
+    assert result["identity"]["display_version"] == "Experimental Assistant v0.9.5"
     assert result["identity"]["package_compatibility_name"] == "ea-v0-2"
+    assert result["identity"]["compatibility_id"] == "ea-v0-2"
     assert result["identity"]["skill_invocation"] == "$ea-v0-2"
     assert result["backup"]
     assert Path(result["backup"]).exists()
@@ -91,12 +93,13 @@ def test_cli_version_and_install_commands(tmp_path: Path, capsys, monkeypatch) -
     version_output = capsys.readouterr().out
     assert "Experimental Assistant" in version_output
     assert __version__ in version_output
-    assert "v0.9-rc1" in version_output
+    assert "v0.9.5" in version_output
 
     assert main(["version", "--json"]) == 0
     identity = json.loads(capsys.readouterr().out)
     assert identity["product"] == "Experimental Assistant"
-    assert identity["public_version"] == "EA v0.9 RC"
+    assert identity["public_version"] == "Experimental Assistant v0.9.5"
+    assert identity["display_version"] == "Experimental Assistant v0.9.5"
     assert identity["package_compatibility_name"] == "ea-v0-2"
 
     validator = _write_validator(tmp_path)
@@ -137,4 +140,14 @@ def test_cli_version_and_install_commands(tmp_path: Path, capsys, monkeypatch) -
     )
     checked = json.loads(capsys.readouterr().out)
     assert checked["status"] == "pass"
-    assert checked["identity"]["public_version"] == "EA v0.9 RC"
+    assert checked["identity"]["public_version"] == "Experimental Assistant v0.9.5"
+
+
+def test_post_install_onboarding_is_version_bound_and_permission_gated() -> None:
+    record = onboarding_post_install_record(event="update", lang="zh")
+
+    assert record["identity"]["display_version"] == "Experimental Assistant v0.9.5"
+    assert record["event"] == "update"
+    assert record["confirmation_phrase"] == "确定配置"
+    assert record["compatibility"]["compatibility_id"] == "ea-v0-2"
+    assert "manage_local_literature_state_with_user_permission" in record["capabilities"]

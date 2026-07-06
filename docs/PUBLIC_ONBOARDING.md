@@ -1,8 +1,8 @@
-# EA v0.9 Public Onboarding
+# Experimental Assistant v0.9.5 Public Onboarding
 
-This guide is for a new public user or a fresh agent starting from an EA v0.9 release-candidate package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
+This guide is for a new public user or a fresh agent starting from an Experimental Assistant v0.9.5 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
-Version naming note: EA is currently a v0.9 release candidate. The package and Codex skill folder still use `ea-v0-2` for compatibility with existing installs and project records; the user-facing release state is EA v0.9 RC.
+Version naming note: the package and Codex skill folder still use `ea-v0-2` for compatibility with existing installs and project records; the user-facing product/version is Experimental Assistant v0.9.5.
 
 ## 1. Install
 
@@ -15,14 +15,14 @@ Requirements:
 Recommended public install:
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.5
 ea codex install-skill
 ea install-check
 ```
 
 For repository checkouts or extracted release packages, run `python3 scripts/check_install_env.py` before creating a venv. The `python3` used for `python3 -m pip install -e .` must be Python 3.11 or newer. Use `python3 -m pip install -e ".[dev]"` only for developers or maintainers who need pytest, release smoke checks, and package verification.
 
-To make the EA skill available to new Codex threads, run `ea codex install-skill`. The installed Codex skill is invoked as `$ea-v0-2`, the compatibility skill name for Experimental Assistant EA v0.9 RC. Restart Codex after installing or replacing the skill. `ea install-check` verifies the CLI, package identity, Codex skill path, skill validation, and optional example healthcheck; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for exact commands and troubleshooting.
+To make the EA skill available to new Codex threads, run `ea codex install-skill`. The installed Codex skill is invoked as `$ea-v0-2`, the compatibility skill name for Experimental Assistant v0.9.5. Restart Codex after installing or replacing the skill. `ea install-check` verifies the CLI, package identity, Codex skill path, skill validation, and optional example healthcheck; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for exact commands and troubleshooting.
 
 The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; `examples/public-uv-vis-project/`, a public-safe UV-Vis reviewed optical-screening artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
 
@@ -65,7 +65,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. EA v0.9 RC currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. Experimental Assistant v0.9.5 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
 
 Minimal Raman path:
 
@@ -305,13 +305,13 @@ For project-bundle provenance audit, checksum interpretation, and the boundary b
 
 ## 7. Repository Release Checks
 
-Before sharing an EA v0.9 release-candidate repository package:
+Before sharing an Experimental Assistant v0.9.5 repository package:
 
 ```bash
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.5-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -326,11 +326,11 @@ ea-release-keygen \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-sign-release-package dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
+ea-sign-release-package dist/ea-v0-2-0.9.5-COMMIT-release.zip \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
+ea-verify-release-signature dist/ea-v0-2-0.9.5-COMMIT-release.zip \
   --public-key /path/to/user-release-public.pem
 ```
 

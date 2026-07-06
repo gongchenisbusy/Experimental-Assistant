@@ -42,6 +42,17 @@ CONFIRM_PATTERNS = [
 REJECT_PATTERNS = ["拒绝", "不要保存", "不保存", "取消", "donotsave", "dontsave", "reject", "rejected"]
 DEFER_PATTERNS = ["再看看", "先放着", "之后再说", "稍后", "可能吧", "大概是", "maybelater", "later", "notreadyyet", "defer"]
 EDIT_PATTERNS = ["改成", "修改", "不对", "更正", "应该是", "editto", "change", "revise", "correct"]
+PARAMETER_CONFIRM_TARGET_FRAGMENTS = {
+    "columns",
+    "parameters",
+    "calibration",
+    "context",
+    "feature_matching",
+    "assignment_suggestions",
+    "interpretation_suggestions",
+    "parameter_suggestions",
+    "region_records",
+}
 
 
 def _normalize_response(text: str) -> str:
@@ -69,6 +80,13 @@ def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _target_allows_explicit_confirm(target_type: str) -> bool:
+    normalized = target_type.strip().lower()
+    if normalized in {"memory_candidate", "confirmed_finding"}:
+        return False
+    return any(fragment in normalized for fragment in PARAMETER_CONFIRM_TARGET_FRAGMENTS)
+
+
 def write_review_record(
     root: Path,
     *,
@@ -77,8 +95,15 @@ def write_review_record(
     user_response: str,
     reviewed_content: str,
     reviewed_at: str | None = None,
+    confirm: bool = False,
 ) -> Path:
     classification = classify_user_response(user_response)
+    explicit_confirm_applied = False
+    if confirm:
+        if not _target_allows_explicit_confirm(target_type):
+            raise ValueError(f"Explicit review confirmation is not allowed for target_type: {target_type}")
+        classification = ReviewClassification("user_confirmed", "explicitly_confirmed_by_user", True)
+        explicit_confirm_applied = True
     review_id = next_id(root, "review", reviewed_at[:10] if reviewed_at else None)
     record = ReviewRecord(
         review_id=review_id,
@@ -90,7 +115,10 @@ def write_review_record(
         user_original_text=user_response,
         reviewed_content_hash=content_hash(reviewed_content),
     )
-    return write_yaml(root / "reviews" / f"{review_id}.yml", record.model_dump(exclude_none=True))
+    data = record.model_dump(exclude_none=True)
+    if explicit_confirm_applied:
+        data["explicit_confirm"] = True
+    return write_yaml(root / "reviews" / f"{review_id}.yml", data)
 
 
 def review_path_for_ref(root: Path, review_ref: str) -> Path:
@@ -110,6 +138,40 @@ def require_confirmed_review(root: Path, review_ref: str) -> dict:
             f"ReviewRecord is not user_confirmed: {review_ref}"
         )
     return review
+
+
+def promote_review_record(
+    root: Path,
+    review_ref: str,
+    *,
+    user_response: str,
+    promoted_at: str | None = None,
+) -> Path:
+    path = review_path_for_ref(root, review_ref)
+    if not path.exists():
+        raise ReviewRequiredErrorForRef(f"ReviewRecord does not exist: {review_ref}")
+    review = read_yaml(path)
+    if review.get("review_status") == "user_confirmed":
+        return path
+    target_type = str(review.get("target_type") or "")
+    if not _target_allows_explicit_confirm(target_type):
+        raise ValueError(f"Review promotion is not allowed for target_type: {target_type}")
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        raise ValueError("Review promotion requires a clear confirmation response")
+    review.setdefault("promotion_history", []).append(
+        {
+            "from_status": review.get("review_status"),
+            "from_decision": review.get("decision"),
+            "user_response": user_response,
+            "promoted_at": promoted_at or EARecord.now_iso(),
+        }
+    )
+    review["review_status"] = "user_confirmed"
+    review["decision"] = "promoted_after_explicit_user_confirmation"
+    review["promotion_user_original_text"] = user_response
+    review["promoted_at"] = promoted_at or EARecord.now_iso()
+    return write_yaml(path, review)
 
 
 class ReviewRequiredErrorForRef(RuntimeError):

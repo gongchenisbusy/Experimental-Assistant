@@ -939,12 +939,13 @@ def test_thermal_docs_and_skill_references_are_discoverable() -> None:
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     thermal_reference = root / "skills" / "ea-v0-2" / "references" / "thermal-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea thermal inspect" in readme
-    assert "ea thermal process" in skill
     assert "references/thermal-workflow.md" in skill
+    assert "ea thermal process" in cli_index
     assert thermal_reference.exists()
     reference_text = thermal_reference.read_text(encoding="utf-8")
     assert "context_review_ref" in reference_text

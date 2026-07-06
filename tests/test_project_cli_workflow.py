@@ -35,6 +35,7 @@ def test_cli_runs_public_raman_workflow_end_to_end(tmp_path: Path, capsys) -> No
     ) == 0
     project = _json_output(capsys)
     assert project["literature_decision_open_item"].endswith(".yml")
+    assert project["project_working_memory"].endswith("memory/project-working-memory.md")
     literature_decision = read_yaml(Path(project["literature_decision_open_item"]))
     assert literature_decision["item_type"] == "literature_library_decision"
     assert "ea literature plan" in literature_decision["description"]

@@ -141,6 +141,8 @@ def build_command_steps(
                 SmokeStep("cli_version_help", [python, "-c", _cli_snippet(["version", "--help"])]),
                 SmokeStep("cli_install_check_help", [python, "-c", _cli_snippet(["install-check", "--help"])]),
                 SmokeStep("cli_codex_install_skill_help", [python, "-c", _cli_snippet(["codex", "install-skill", "--help"])]),
+                SmokeStep("version_identity_check", [python, "scripts/check_version_identity.py"]),
+                SmokeStep("downloaded_skill_instruction_check", [python, "scripts/check_downloaded_skill_instructions.py"]),
                 SmokeStep("cli_export_help", [python, "-c", _cli_snippet(["export", "--help"])]),
                 SmokeStep("cli_eval_help", [python, "-c", _cli_snippet(["eval", "--help"])]),
                 SmokeStep("install_check_console_help", [python, "-m", "ea.install_experience", "--help"]),
@@ -386,7 +388,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run EA v0.9 RC public-release smoke checks.")
+    parser = argparse.ArgumentParser(description="Run Experimental Assistant v0.9.5 public-release smoke checks.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--quick-validate", type=Path)

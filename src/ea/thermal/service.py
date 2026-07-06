@@ -398,7 +398,7 @@ def _apply_baseline_correction(
     if method != "linear_two_point":
         warning = _warning(
             "thermal_baseline_method_unsupported",
-            "Thermal baseline correction method is not supported by EA v0.9 RC.",
+            "Thermal baseline correction method is not supported by Experimental Assistant v0.9.5.",
             severity="medium",
             method=method,
         )
@@ -800,7 +800,7 @@ def _analyze_transitions(processed: pd.DataFrame, parameters: dict[str, Any], re
         ),
     }
     if method != "reviewed_window_screening":
-        warning = _warning("thermal_transition_method_unsupported", "Thermal transition analysis method is not supported by EA v0.9 RC.", severity="medium", method=method)
+        warning = _warning("thermal_transition_method_unsupported", "Thermal transition analysis method is not supported by Experimental Assistant v0.9.5.", severity="medium", method=method)
         warnings.append(warning)
         record.update({"status": "skipped_unsupported_method", "warnings": warnings})
         return pd.DataFrame(columns=THERMAL_TRANSITION_COLUMNS), record, warnings
@@ -998,7 +998,7 @@ def _record_transition_assignments(
         ),
     }
     if method != "user_confirmed_transition_assignments":
-        warning = _warning("thermal_transition_assignment_method_unsupported", "Thermal transition assignment method is not supported by EA v0.9 RC.", severity="medium", method=method)
+        warning = _warning("thermal_transition_assignment_method_unsupported", "Thermal transition assignment method is not supported by Experimental Assistant v0.9.5.", severity="medium", method=method)
         warnings.append(warning)
         record.update({"status": "skipped_unsupported_method", "warnings": warnings})
         return record, warnings

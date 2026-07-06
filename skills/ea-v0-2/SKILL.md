@@ -1,263 +1,99 @@
 ---
 name: ea-v0-2
-description: Experimental Assistant (EA v0.9 RC) local-first materials-research skill. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, or image workflows, generate templates or batches, export readable HTML reports or checksummed bundles, inspect assignment libraries, create traceable reports/figures/references, build report-memory traceability views, manage local literature state, validate EA child skills, run release smoke/package/sign/checklist commands, install/check the EA CLI or Codex skill, or preserve memory/provenance without developer-machine paths or accounts.
+description: Experimental Assistant v0.9.5 local-first materials-research skill. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated characterization workflows, manage literature state, preserve lightweight project working memory, generate reports or export bundles, build report-memory traceability views, validate release packages, install/check the EA CLI or Codex skill, or maintain provenance without developer-machine paths or accounts.
 ---
 
-# Experimental Assistant (EA v0.9 RC)
+# Experimental Assistant v0.9.5
 
 ## Overview
 
-EA is a local-first research workspace for experimental scientists. It keeps project records, raw data, processed results, figures, reports, literature state, memory, review records, and provenance linked so later agents can reconstruct what happened.
+Experimental Assistant is a local-first research workspace for experimental scientists. It keeps project records, raw data, processed results, figures, reports, literature state, memory, review records, and provenance linked so future agents can reconstruct what happened.
 
-Naming note: the skill folder and package name remain `ea-v0-2` for compatibility with existing Codex installs and project records. Do not present `ea-v0-2` as the current public release version; describe the user-facing product as Experimental Assistant / EA v0.9 RC (`0.9.0rc1`, `v0.9-rc1`). In new Codex threads, invoke this compatibility skill as `$ea-v0-2`.
+Internal compatibility id: the skill folder, Python package name, and Codex invocation remain `ea-v0-2` / `$ea-v0-2` so existing installs and project records continue to work. Do not present `ea-v0-2` as the current public version; the user-facing product/version is Experimental Assistant v0.9.5.
 
-Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Public-user initialization must ask for or explicitly disable environment-specific settings.
+Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Also do not assume keys or credentials. Public-user initialization must ask for or explicitly leave environment-specific settings disabled.
 
-Scientific caution means evidence layering, not silence. If project context and references are clear, EA may proactively gather, look up, and discuss source-backed parameters, assignments, model windows, or interpretation candidates from built-in libraries, registered references, local literature, public databases, user-provided sources, or user-confirmed/agent-led search workflows. Do not require every numeric value to be typed by the user; instead preserve source, applicability, confidence, review state, and provenance, and never silently apply values that change processing or conclusions. A no-live-lookup or no-auto-application boundary on a deterministic command is not a ban on source-backed assistant work; it means lookup, source registration, report citation, processing-parameter use, and memory commitment remain explicit and traceable steps.
+Scientific caution means evidence layering, not silence. Do not require every numeric value to be typed by the user. EA may proactively gather or discuss source-backed candidates from built-in libraries, registered references, local literature, public metadata, user-provided sources, or user-confirmed searches. A no-live-lookup or no-auto-application boundary is not a ban on source-backed assistant work; it means lookup, source registration, report citation, processing-parameter use, and memory commitment remain explicit and traceable. Preserve source, applicability, confidence, review state, and provenance, and never silently apply values that change processing or conclusions.
 
-## Default Workflow
+## Default Modes
 
-1. Read the project root files first: `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, `progress/`, `memory/`, `provenance/`, and relevant indices.
-2. If no project exists, run or emulate `ea init-project` and ask only for settings that affect the next work. Keep Zotero, browser, institution, and cache settings disabled or null unless the user provides them. If literature is not enabled at initialization, read the generated `open-items/*literature*` decision record and ask the user whether to deploy a local literature library before broad literature work.
-3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under `processed/`, `figures/`, `reports/`, `literature/`, or other non-raw directories.
-4. Before running analysis that changes interpretation, ensure the relevant user review gates exist or ask at the end for the missing confirmation.
-5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save possible durable memory as review-gated memory candidates, not confirmed findings.
-6. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff, user updates, or public-demo readiness checks. Use the brief as the user-facing summary; keep detailed JSON, refs, hashes, provenance, review records, and trace graphs in local files unless the user asks for audit detail.
-7. For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate and verify release artifacts with `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, or their script equivalents.
-8. Put questions that affect future work or scientific judgement at the end of the response.
+Start in consult mode unless the user clearly asks you to modify a project or run a command. Use record mode for local file updates that are requested or required by the workflow. Use execute mode for analysis, download/acquisition, report generation, batch runs, or release tasks after the relevant review and permission gates are satisfied.
 
-## Install Check
+When information is missing, ask only for the next decision that changes behavior. Put scientific judgement or future-work questions at the end of the response.
 
-If the user is setting up EA from GitHub, use:
+## Core Workflow
+
+1. Read the project root files first: `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, `memory/project-working-memory.md`, `progress/`, `memory/`, `provenance/`, and relevant indices.
+2. If no project exists, run or emulate `ea init-project`. Initialization creates a compact `memory/project-working-memory.md` skeleton and leaves Zotero, browser, institution, cache, and credential settings disabled unless the user supplies them.
+3. Treat raw files as protected assets. Import them as controlled copies and write generated outputs under non-raw directories.
+4. Before processing or report claims that change interpretation, ensure the relevant ReviewRecords exist. Use `ea review add --confirm` only for explicit parameter/field/suggestion confirmation. Use `ea review promote` when earlier advisory review evidence needs explicit user promotion.
+5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save durable scientific findings as review-gated memory candidates, not as automatic confirmed memory.
+6. Refresh compact project continuity with `ea memory refresh-project` after meaningful project changes and read it with `ea memory show-project` when resuming long work. This file stores pointers and current state, not full raw/report content.
+7. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff or user-facing summaries. Use `ea trace view` and `ea trace lookup` when the user needs compact report-memory traceability across figures, reports, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, and memory. Use the brief first; keep detailed JSON, hashes, refs, review records, and trace graphs in local files unless the user asks for audit detail.
+
+## Setup And Onboarding
+
+Use these after installing from GitHub or a release package:
 
 ```bash
 ea version
 ea codex install-skill
+ea onboarding post-install --event install --lang zh
 ea install-check
 ```
 
-`ea codex install-skill` installs the `ea-v0-2` compatibility skill into Codex, backs up an existing `ea-v0-2` folder by default, does not delete `ea-v0-1`, validates the skill when `quick_validate.py` is available, and prints the `$ea-v0-2` invocation plus restart guidance. `ea install-check` verifies Python version, EA CLI/package identity, Codex skill path, skill validation, and optional public example healthcheck via `--run-example-check`.
+The installer uses the `$ea-v0-2` compatibility invocation, backs up an existing `ea-v0-2` skill by default, does not delete `ea-v0-1`, and validates the downloaded skill when Codex `quick_validate.py` is available.
 
-## CLI Quick Start
+Run `ea literature setup-preflight /path/to/ea-project --lang zh` before literature acquisition or Zotero/browser handoff. It reports what is already configured, what the user must supply, and what cannot be configured automatically; it does not launch Zotero, open browsers, inspect credentials, download PDFs, or use institution access.
 
-Use the repository package when available:
+## Large Work Gates
 
-```bash
-ea init-project /path/to/ea-project --name "MoS2 mica CVD" --slug mos2-mica-cvd --direction "single-layer MoS2 on mica" --material MoS2 --experiment-type "CVD growth and Raman characterization"
-ea config doctor /path/to/ea-project
-ea healthcheck /path/to/ea-project
-ea eval project /path/to/ea-project
-ea brief project /path/to/ea-project
-ea trace view /path/to/ea-project
-ea trace lookup /path/to/ea-project rpt-mos2-mica-cvd-20260630-001
-ea export report-html /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001
-ea export report-bundle /path/to/ea-project --report-id rpt-mos2-mica-cvd-20260630-001 --include-trace --zip
-ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --include-trace --zip
-ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001
-ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-mos2-mica-cvd-20260630-001.zip
-ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
-ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
-ea raman list-assignment-libraries --material mos2 --feature mos2_a1g_like --shift-min-cm1 400 --shift-max-cm1 420
-ea review add /path/to/ea-project --target-type raman_columns --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=cm^-1"
-ea review add /path/to/ea-project --target-type raman_parameters --target-ref raw/raman/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default Raman parameters confirmed"
-ea raman process /path/to/ea-project --metadata raw/raman/char-20260630-001/metadata.yml --x-column col_0 --y-column col_1 --x-unit cm^-1 --column-review-ref review-20260630-001 --parameter-review-ref review-20260630-002 --sample-ref sample-001
-ea raman report /path/to/ea-project --metadata processed/sample-001/raman/res-project-raman-20260630-001/raman_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
-ea raw import /path/to/ea-project /path/to/raw-pl.txt --characterization-type pl --sample-ref sample-001 --experiment-ref exp-001
-ea pl inspect /path/to/ea-project raw/pl/char-20260630-001/raw-pl.txt
-ea pl list-assignment-libraries --material mos2 --energy-min-ev 1.8 --energy-max-ev 1.9
-ea review add /path/to/ea-project --target-type pl_columns --target-ref raw/pl/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=col_0, y=col_1, unit=eV"
-ea review add /path/to/ea-project --target-type pl_parameters --target-ref raw/pl/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default PL parameters confirmed"
-ea pl process /path/to/ea-project --metadata raw/pl/char-20260630-001/metadata.yml --x-column col_0 --y-column col_1 --x-unit eV --column-review-ref review-20260630-003 --parameter-review-ref review-20260630-004 --sample-ref sample-001
-ea pl report /path/to/ea-project --metadata processed/sample-001/pl/res-project-pl-20260630-001/pl_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
-ea raw import /path/to/ea-project /path/to/raw-xrd.txt --characterization-type xrd --sample-ref sample-001 --experiment-ref exp-001
-ea xrd inspect /path/to/ea-project raw/xrd/char-20260630-001/raw-xrd.txt
-ea xrd list-assignment-libraries --material hbn --feature 002 --two-theta-min-deg 26.4 --two-theta-max-deg 27.0
-ea xrd build-assignment-packet /path/to/ea-project --builtin-library builtin_material_assignments --material hbn --feature 002
-ea references register-seeds /path/to/ea-project --source-packet suggestions/xrd/source-packets/xrd_assignment_source_packet-20260630-001.yml
-ea review add /path/to/ea-project --target-type xrd_columns --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=two_theta, y=intensity, unit=2theta_deg"
-ea review add /path/to/ea-project --target-type xrd_parameters --target-ref raw/xrd/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XRD parameters confirmed"
-ea xrd process /path/to/ea-project --metadata raw/xrd/char-20260630-001/metadata.yml --x-column two_theta --y-column intensity --x-unit 2theta_deg --column-review-ref review-20260630-005 --parameter-review-ref review-20260630-006 --sample-ref sample-001
-ea xrd suggest-assignments /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --source-file suggestions/xrd/source-packets/xrd_assignment_source_packet-20260630-001.yml
-ea xrd prepare-review /path/to/ea-project --suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml
-ea review add /path/to/ea-project --target-type xrd_assignment_suggestions --target-ref suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed XRD assignment suggestion candidates"
-ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --assignment-review-ref review-20260630-007
-ea raw import /path/to/ea-project /path/to/raw-ftir.txt --characterization-type ftir --sample-ref sample-001 --experiment-ref exp-001
-ea ftir inspect /path/to/ea-project raw/ftir/char-20260630-001/raw-ftir.txt
-ea review add /path/to/ea-project --target-type ftir_columns --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavenumber, y=absorbance, unit=cm^-1, signal_mode=absorbance"
-ea review add /path/to/ea-project --target-type ftir_parameters --target-ref raw/ftir/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default FTIR parameters confirmed"
-ea ftir process /path/to/ea-project --metadata raw/ftir/char-20260630-001/metadata.yml --x-column wavenumber --y-column absorbance --x-unit cm^-1 --signal-mode absorbance --column-review-ref review-20260630-007 --parameter-review-ref review-20260630-008 --sample-ref sample-001
-ea ftir report /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
-ea ftir list-assignment-libraries --builtin-library generic_materials --assignment-type inorganic_ion --material-scope oxide --wavenumber-min-cm1 1300 --wavenumber-max-cm1 1500
-ea ftir build-assignment-packet /path/to/ea-project
-ea ftir build-assignment-packet /path/to/ea-project --builtin-library generic_materials --include-candidate ftir-builtin-carbonyl-co-stretching-generic
-ea ftir build-assignment-packet /path/to/ea-project --library-file project_ftir_assignment_library.yml
-ea ftir build-assignment-packet /path/to/ea-project --literature-manifest literature/confirmed_ftir_source_candidates.yml
-ea ftir suggest-assignments /path/to/ea-project --metadata processed/sample-001/ftir/res-project-ftir-20260630-001/ftir_metadata.yml --source-file suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
-ea ftir prepare-review /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml
-ea review add /path/to/ea-project --target-type ftir_assignment_suggestions --target-ref suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed FTIR assignment suggestion candidates"
-ea ftir propose-memory /path/to/ea-project --suggestion suggestions/ftir/suggestion-20260630-001/ftir_assignment_suggestions.yml --review-ref review-20260630-009
-ea raw import /path/to/ea-project /path/to/raw-uv-vis.txt --characterization-type uv_vis --sample-ref sample-001 --experiment-ref exp-001
-ea uv-vis inspect /path/to/ea-project raw/uv_vis/char-20260630-001/raw-uv-vis.txt
-ea review add /path/to/ea-project --target-type uv_vis_columns --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=wavelength_nm, y=absorbance, unit=nm, signal_mode=absorbance"
-ea review add /path/to/ea-project --target-type uv_vis_parameters --target-ref raw/uv_vis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default UV-Vis parameters confirmed"
-ea uv-vis process /path/to/ea-project --metadata raw/uv_vis/char-20260630-001/metadata.yml --x-column wavelength_nm --y-column absorbance --x-unit nm --signal-mode absorbance --column-review-ref review-20260630-009 --parameter-review-ref review-20260630-010 --sample-ref sample-001
-ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
-ea uv-vis list-source-libraries --builtin-library generic_optical_interpretation --candidate-type optical_gap_candidate --optical-target oxide --energy-min-ev 3.0 --energy-max-ev 3.4
-ea uv-vis build-source-packet /path/to/ea-project --builtin-library generic_optical_interpretation --candidate-type optical_gap_candidate --optical-target oxide --output suggestions/uv_vis/source-packets/uv_vis_builtin_source_packet.yml
-ea uv-vis build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_uv_vis_source_candidates.yml --output suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis suggest-interpretations /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --source-file suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis prepare-review /path/to/ea-project --suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml
-ea review add /path/to/ea-project --target-type uv_vis_interpretation_suggestions --target-ref suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed UV-Vis interpretation suggestion candidates"
-ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --interpretation-suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --interpretation-review-ref review-20260630-011
-ea uv-vis propose-memory /path/to/ea-project --suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --review-ref review-20260630-011
-ea uv-vis compare-replicates /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --metadata processed/sample-002/uv_vis/res-project-uv-vis-20260630-002/uv_vis_metadata.yml --comparison-label "replicate set"
-ea review add /path/to/ea-project --target-type uv_vis_feature_matching --target-ref processed/comparisons/uv_vis --user-response "可以，保存" --reviewed-content "feature_match_tolerance_eV=0.05 for this replicate set"
-ea uv-vis compare-replicates /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --metadata processed/sample-002/uv_vis/res-project-uv-vis-20260630-002/uv_vis_metadata.yml --comparison-label "replicate set with reviewed feature matching" --feature-match-tolerance-ev 0.05 --feature-match-review-ref review-20260630-012
-ea raw import /path/to/ea-project /path/to/raw-xps.txt --characterization-type xps --sample-ref sample-001 --experiment-ref exp-001
-ea xps inspect /path/to/ea-project raw/xps/char-20260630-001/raw-xps.txt
-ea review add /path/to/ea-project --target-type xps_columns --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=binding_energy_eV, y=intensity, unit=eV"
-ea review add /path/to/ea-project --target-type xps_calibration --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "C 1s reference at 284.8 eV; energy_shift_eV=0.0"
-ea review add /path/to/ea-project --target-type xps_parameters --target-ref raw/xps/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default XPS parameters confirmed"
-ea xps list-parameter-libraries --builtin-library generic_xps_parameters --suggestion-type binding_energy_candidate --element Si --core-level 2p
-ea xps build-source-packet /path/to/ea-project --builtin-library generic_xps_parameters --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
-ea xps build-source-packet /path/to/ea-project --builtin-library oxide_o1s_binding_energy --suggestion-type binding_energy_candidate --output suggestions/xps/source-packets/xps_o1s_oxide_source_packet.yml
-ea xps build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_xps_source_candidates.yml --output suggestions/xps/source-packets/xps_parameter_source_packet.yml
-ea references register-seeds /path/to/ea-project --source-packet suggestions/xps/source-packets/xps_parameter_source_packet.yml
-ea xps suggest-parameters /path/to/ea-project --source-file suggestions/xps/source-packets/xps_parameter_source_packet.yml --related-record raw/xps/char-20260630-001/metadata.yml
-ea xps prepare-review /path/to/ea-project --suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml
-ea review add /path/to/ea-project --target-type xps_parameter_suggestions --target-ref suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed XPS parameter suggestion candidates"
-ea xps propose-memory /path/to/ea-project --suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml --review-ref review-20260630-014
-ea xps process /path/to/ea-project --metadata raw/xps/char-20260630-001/metadata.yml --x-column binding_energy_eV --y-column intensity --x-unit eV --energy-shift-ev 0.0 --calibration-reference "C 1s 284.8 eV user-confirmed reference" --column-review-ref review-20260630-011 --calibration-review-ref review-20260630-012 --parameter-review-ref review-20260630-013 --sample-ref sample-001
-ea xps report /path/to/ea-project --metadata processed/sample-001/xps/res-project-xps-20260630-001/xps_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --parameter-suggestion suggestions/xps/suggestion-20260630-001/xps_parameter_suggestions.yml
-ea raw import /path/to/ea-project /path/to/raw-electrochemistry.txt --characterization-type electrochemistry --sample-ref sample-001 --experiment-ref exp-001
-ea electrochemistry inspect /path/to/ea-project raw/electrochemistry/char-20260630-001/raw-electrochemistry.txt
-ea review add /path/to/ea-project --target-type electrochemistry_columns --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "x=potential_V, y=current_mA, x_unit=V, current_unit=mA, mode=cv"
-ea review add /path/to/ea-project --target-type electrochemistry_context --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "electrode/electrolyte/reference-electrode/protocol confirmed"
-ea review add /path/to/ea-project --target-type electrochemistry_parameters --target-ref raw/electrochemistry/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default electrochemistry parameters confirmed"
-ea electrochemistry process /path/to/ea-project --metadata raw/electrochemistry/char-20260630-001/metadata.yml --x-column potential_V --y-column current_mA --x-unit V --current-unit mA --measurement-mode cv --context-summary "user-confirmed electrode/electrolyte/reference/protocol" --electrode-area-cm2 0.196 --column-review-ref review-20260630-014 --context-review-ref review-20260630-015 --parameter-review-ref review-20260630-016 --sample-ref sample-001
-ea electrochemistry report /path/to/ea-project --metadata processed/sample-001/electrochemistry/res-project-electrochemistry-20260630-001/electrochemistry_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
-ea raw import /path/to/ea-project /path/to/raw-tga.txt --characterization-type thermal_analysis --sample-ref sample-001 --experiment-ref exp-001
-ea thermal inspect /path/to/ea-project raw/thermal_analysis/char-20260630-001/raw-tga.txt
-ea review add /path/to/ea-project --target-type thermal_columns --target-ref raw/thermal_analysis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "temperature=temperature_C, signal=mass_percent, temperature_unit=C, signal_unit=%, mode=tga"
-ea review add /path/to/ea-project --target-type thermal_context --target-ref raw/thermal_analysis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "temperature program, atmosphere, sample mass, and baseline reviewed"
-ea review add /path/to/ea-project --target-type thermal_parameters --target-ref raw/thermal_analysis/char-20260630-001/metadata.yml --user-response "可以，保存" --reviewed-content "default thermal parameters confirmed"
-ea thermal process /path/to/ea-project --metadata raw/thermal_analysis/char-20260630-001/metadata.yml --temperature-column temperature_C --signal-column mass_percent --temperature-unit C --signal-unit % --measurement-mode tga --context-summary "N2 atmosphere; 10 C/min; sample mass and baseline reviewed" --column-review-ref review-20260630-017 --context-review-ref review-20260630-018 --parameter-review-ref review-20260630-019 --sample-ref sample-001
-ea thermal report /path/to/ea-project --metadata processed/sample-001/thermal_analysis/res-project-thermal-analysis-20260630-001/thermal_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
-ea materials list
-ea materials audit-assignment-library
-ea raman list-assignment-libraries --material mos2 --feature mos2_a1g_like --shift-min-cm1 400 --shift-max-cm1 420
-ea pl list-assignment-libraries --material mos2 --energy-min-ev 1.8 --energy-max-ev 1.9
-ea xrd list-assignment-libraries --material hbn --feature 002 --two-theta-min-deg 26.4 --two-theta-max-deg 27.0
-ea xrd build-assignment-packet /path/to/ea-project --builtin-library builtin_material_assignments --material hbn --feature 002
-ea xrd suggest-assignments /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --source-file suggestions/xrd/source-packets/xrd_assignment_source_packet-20260630-001.yml
-ea xrd prepare-review /path/to/ea-project --suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml
-ea review add /path/to/ea-project --target-type xrd_assignment_suggestions --target-ref suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed XRD assignment suggestion candidates"
-ea xrd report /path/to/ea-project --metadata processed/sample-001/xrd/res-project-xrd-20260630-001/xrd_metadata.yml --sample-ref sample-001 --experiment-ref exp-001 --assignment-suggestion suggestions/xrd/suggestion-20260630-001/xrd_assignment_suggestions.yml --assignment-review-ref review-20260630-007
-ea materials assignments mos2 --method raman
-ea materials assignments ws2 --method pl
-ea materials assignments hbn --method xrd
-ea templates parameters raman --output /path/to/ea-project/templates/raman_parameters.yml
-ea templates parameters ftir --output /path/to/ea-project/templates/ftir_parameters.yml
-ea templates parameters uv_vis --output /path/to/ea-project/templates/uv_vis_parameters.yml
-ea templates parameters xps --output /path/to/ea-project/templates/xps_parameters.yml
-ea templates parameters electrochemistry --output /path/to/ea-project/templates/electrochemistry_parameters.yml
-ea templates parameters thermal_analysis --output /path/to/ea-project/templates/thermal_parameters.yml
-ea templates batch-manifest /path/to/ea-project --method raman --method pl --method xrd --method ftir --method uv_vis --method xps --method electrochemistry --method thermal_analysis --output batch_manifest.yml
-ea batch validate /path/to/ea-project batch_manifest.yml
-ea batch run /path/to/ea-project batch_manifest.yml
-ea literature status /path/to/ea-project
-ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only
-ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
-ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
-ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
-ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed FTIR source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method ftir --manifest literature/confirmed_ftir_source_candidates.yml
-ea literature prepare-source-candidates /path/to/ea-project --method uv_vis --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed UV-Vis source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method uv_vis --manifest literature/confirmed_uv_vis_source_candidates.yml
-ea uv-vis build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_uv_vis_source_candidates.yml --output suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis suggest-interpretations /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --source-file suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis prepare-review /path/to/ea-project --suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml
-ea literature prepare-source-candidates /path/to/ea-project --method xps --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed XPS source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method xps --manifest literature/confirmed_xps_source_candidates.yml
-ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
-ea literature acquisition-request /path/to/ea-project
-ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
-ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
-ea literature zotero-readiness /path/to/ea-project
-ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
-ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
-ea literature reconcile-acquisition /path/to/ea-project
-ea literature render-reconciliation /path/to/ea-project --reconciliation literature/acquisition_reconciliation.yml
-ea literature acceptance-checklist /path/to/ea-project
-ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
-ea add-skills check /path/to/child-skill-manifest.yml
-ea add-skills dry-run /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
-ea add-skills register /path/to/child-skill-manifest.yml --workspace /path/to/ea-project --sample-output /path/to/sample-output.yml
-ea image-data record /path/to/ea-project --metadata raw/sem/char-20260630-001/metadata.yml --method sem --description "User-confirmed image notes" --description-review-ref review-20260630-001 --confidence low
-ea image-data report /path/to/ea-project --metadata processed/sample-001/sem/res-project-sem-20260630-001/image_metadata.yml --reference-id ref-20260630-001
-ea references add /path/to/ea-project --citation "Author A. Title. Journal volume, pages (year)." --doi 10.xxxx/example --url https://doi.org/10.xxxx/example
-ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib
-ea references register-seeds /path/to/ea-project --source-packet suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
-ea references validate-report /path/to/ea-project reports/rpt-example.md
-ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
-ea memory review /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --user-response "可以，保存"
-ea memory commit /path/to/ea-project --candidate memory/candidates/memcand-20260630-001.md --review-ref review-20260630-001
-ea trace view /path/to/ea-project --focus reports/rpt-example.md
-ea trace lookup /path/to/ea-project fig-project-raman-20260630-001
-ea lookup-figure /path/to/ea-project fig-project-raman-20260630-001
-```
+Before literature acquisition, broad public metadata searches, source-candidate preparation, long report bundles, or other expensive workflows, estimate the task with `ea estimate workflow`. EA v0.9.5 uses a fixed large-work threshold of `100` Codex-credit-equivalent units, based on the approved v0.9.5 planning estimate of about 20% of a practical Plus/GPT-5.5 five-hour window.
 
-The legacy `ea init` command remains as a compatibility alias. Prefer `ea init-project` for EA v0.9 RC work.
+If `ea estimate workflow` or `ea literature ...` reports `needs_confirmation`, summarize the expected work and ask whether to continue. Users may disable this reminder preference with `ea estimate reminders /path/to/ea-project --disable --reason "user requested no large-work reminders"`; safety, permission, and review gates still apply.
 
-Repository release smoke check:
+Relevant commands:
 
 ```bash
-ea-public-release-smoke --dry-run
-ea-public-release-smoke
-ea-release-manifest
-ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip
-ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-abcdef0-release.zip --public-key /path/to/user-release-public.pem
-ea-release-checklist
+ea estimate workflow /path/to/ea-project --workflow literature_acquisition --items 50 --mode standard
+ea estimate reminders /path/to/ea-project --disable --reason "user requested no large-work reminders"
+ea literature search-public /path/to/ea-project --source crossref --source openalex --max-results 20 --confirm-large-work
+ea literature acquisition-request /path/to/ea-project --confirm-large-work
+ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-large-work
 ```
 
-The smoke gate prints JSON and runs pytest, EA v0.9 RC skill validation, CLI help sanity checks, a portability scan for accidental developer-machine defaults, and a sensitive-value scan for credential-like assignments or token literals in release-facing files. The release manifest writes package metadata, git state, console scripts, release input checksums, smoke-gate requirements, and public-user boundary notes. The release package writes a deterministic zip plus `.sha256` sidecar containing the manifest and selected release inputs. The verifier checks the sidecar, embedded manifest, and manifest-listed payload checksums. Optional release signing writes a detached `.sig.yml` sidecar using an explicit user-managed Ed25519 keypair. The distribution checklist writes JSON/Markdown summaries of required release commands, artifacts, verification state, optional signature state, and public boundaries. These release checks do not use Zotero, browser profiles, institution login, local literature caches, or implicit developer-machine key paths.
+## Command Index
 
-Built-in child-skill manifests live in `skill-registry/builtins/` and are indexed by `skill-registry/index.yml`. Treat Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, image-data, scientific-figure style, and local-literature-library entries as concrete initial workflows. `ea materials audit-assignment-library` audits bundled Raman/PL/XRD material-candidate coverage, DOI reference-hint coverage, any missing-reference candidate IDs, recommended discovery commands, and no-auto-application boundaries without mutating a project. `ea raman list-assignment-libraries` discovers built-in source-backed Raman material-profile candidates for MoS2, WS2, and h-BN, including feature windows, pair-rule context, DOI reference hints, filters, next commands, and no-auto-application boundaries; it does not search, create project files, process spectra, match peaks, register references, inject citations, create ReviewRecords, write memory, or prove material identity, phase identity, layer number, strain/doping, or calibration. `ea pl list-assignment-libraries` discovers built-in source-backed PL near-band-edge emission candidates for MoS2 and WS2, including energy/wavelength windows, DOI reference hints, filters, next commands, and no-auto-application boundaries; it does not search, create project files, process spectra, match peaks, register references, inject citations, create ReviewRecords, write memory, or prove excitonic mechanism, material identity, layer number, defect origin, strain/doping, substrate effect, or calibration. `ea xrd list-assignment-libraries` discovers built-in source-backed XRD layered-reflection candidates for MoS2, WS2, and h-BN, including 2theta/d-spacing windows, DOI reference hints, filters, next commands, and no-auto-application boundaries; `ea xrd build-assignment-packet` copies built-in, project-local, editable-template, or explicitly confirmed literature/source-candidate XRD records into reviewable staging packets with filtered reference seeds, guidance, provenance, caveats, and next steps; `ea xrd suggest-assignments` matches those packets to processed XRD peak tables and writes advisory `assignment_suggestions` under `suggestions/xrd/`; `ea xrd prepare-review` writes grouped YAML/Markdown review packages for user decisions; `ea xrd report --assignment-suggestion ... --assignment-review-ref ...` can include reviewed source-backed assignment context with registered references while preserving unresolved/no-match/invalid candidates as warnings or context. XRD discovery/source-packet steps do not run live lookup, process diffraction patterns, register references, inject citations, create ReviewRecords, write memory, auto-apply assignments, or prove phase identity, material identity, crystallinity, texture, strain, lattice parameters, instrument calibration, or sample quality; suggestion records add peak-window matching only, review packages only organize review context without creating reviews, and report integration only reads existing confirmed ReviewRecords and registered references without mutating suggestions/source packets/processed outputs, applying assignments, or proving structural claims. The literature workflow covers initialization decisions, planning, confirmation, explicit public metadata search, supplied-candidate ranking, FTIR/UV-Vis/XPS source-candidate manifest preparation and preflight, handoff/request generation, import, and status sync; Zotero, browser, institution login, and PDF acquisition still run only after user confirmation in a dedicated or explicit workflow. Source-candidate manifest helpers are local deterministic staging only: fill candidate fields and run preflight before using the confirmed manifest with `ea ftir build-assignment-packet --literature-manifest ...`, `ea uv-vis build-source-packet --literature-manifest ...`, or `ea xps build-source-packet --literature-manifest ...`; XRD can consume manually prepared confirmed XRD source-candidate manifests with `ea xrd build-assignment-packet --literature-manifest ...`, but the helper that drafts source-candidate manifests is not XRD-specific yet. UV-Vis source-candidate preflight validates source-backed staging for optical-transition, optical-gap, optical-feature, and correction-context candidates; `ea uv-vis list-source-libraries` discovers bundled `generic_optical_interpretation` candidate coverage before packet creation; `ea uv-vis build-source-packet` copies reviewed built-in/local/template/confirmed-literature candidates into traceable source packets; `ea uv-vis suggest-interpretations` turns those packets plus processed UV-Vis metadata into advisory interpretation_suggestions under `suggestions/uv_vis/`; `ea uv-vis prepare-review` writes grouped YAML/Markdown review packages for user decisions; `ea uv-vis report --interpretation-suggestion ... --interpretation-review-ref ...` can include reviewed candidates with registered references while preserving unresolved/no-match/invalid candidates as warnings or context; `ea uv-vis propose-memory --suggestion ... --review-ref ...` can write draft interpretation memory candidates from ready reviewed suggestions; and `ea uv-vis compare-replicates` can summarize two or more processed UV-Vis metadata records into comparison YAML/CSV under `processed/comparisons/uv_vis/`. UV-Vis `numeric_correction` is disabled by default and may only apply user-reviewed `constant_offset` or `subtract_reference_column` preprocessing before smoothing/normalization/feature detection; it records corrected columns/provenance but does not choose references, prove correction validity, apply substrate models, rank samples, or prove optical claims. Feature positions remain ungrouped by default; only use `--feature-match-tolerance-ev` and/or `--feature-match-tolerance-nm` with a confirmed `uv_vis_feature_matching` ReviewRecord through `--feature-match-review-ref` when the user has reviewed the matching tolerance. UV-Vis discovery/source/suggestion/review artifacts preserve source/applicability/confidence/reference metadata and processed evidence links, but they do not create ReviewRecords, inject report citations, apply optical models/corrections, write memory, or prove band gaps; report and memory proposal integrations only read existing confirmed ReviewRecords and registered references, memory proposal does not commit confirmed memory, and replicate comparison does not reprocess raw data, silently infer replicate grouping, silently match features, rank samples, or prove optical assignments.
+For the command catalogue, read `references/cli-command-index.md` only when the task needs concrete CLI examples. Keep the top-level skill context compact during ordinary use.
 
-Healthcheck and evaluator reports are the local handoff gate. They audit batch run records under `processed/batches/` and require material assignments with `peak_analysis.assigned_features` to preserve `assignment_source` at result and feature level. Use `ea trace view` when the user or a future agent needs a compact YAML/Markdown map from a report or suggestion to figures, source packets, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `ea trace lookup <workspace> <id-or-ref>` when the user gives one report, figure, result, source-packet, suggestion, reference, review, provenance, or memory ID and needs the canonical local path plus immediate evidence neighbors. Trace views/lookups are read-only audit artifacts except for their own files under `traceability/`; they do not create reviews, commit memory, register references, inject citations, or prove scientific conclusions.
+## Release Checks
 
-Template commands write editable YAML only. They do not create review records, confirm columns/parameters, or make batch manifests valid until the user supplies real metadata and review refs.
+For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate and verify release artifacts with `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, and `ea-release-checklist`.
 
-Friendly HTML report export is read-only for analysis state. `ea export report-html` renders one indexed canonical Markdown report under `exports/user-reports/`, embeds linked figure files by default, preserves figure IDs/captions/original paths, checks citation numbers against registered References, summarizes provenance, and writes a sidecar YAML pointing back to the canonical report. Report bundle export copies one indexed report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/{report_id}` for handoff. Use `--include-trace` when the handoff should include focused traceability YAML/Markdown for the exported report. Batch bundle export copies one indexed batch run, its batch records, batch provenance, and nested per-report bundles into `exports/batch-bundles/{batch_id}`; `--include-trace` passes focused trace views into nested report bundles. Each bundle writes `bundle_checksums.yml`; use `--zip` or `--zip-output` when a portable archive and `.zip.sha256` sidecar should be created from the same bundle. Use `verify-bundle` and `verify-archive` after copying or before handoff.
+The smoke gate runs tests, validates the skill package, checks CLI help, scans portability/sensitive values, checks version identity, and verifies the downloaded skill instructions mention the current public version and v0.9.5 onboarding/literature/memory/estimate commands.
 
 ## References
 
 - For project structure and workflow, read `references/project-workflow.md`.
-- For public-user installation, Codex skill setup, initialization, and forbidden defaults, read `references/public-initialization.md`.
+- For public-user installation and forbidden defaults, read `references/public-initialization.md`.
+- For interaction modes and question style, read `references/interaction-modes.md`.
+- For CLI examples, read `references/cli-command-index.md`.
+- For post-install and downloaded-skill onboarding, read `references/onboarding-workflow.md`.
+- For large-work estimation and reminder preferences, read `references/token-economy-workflow.md`.
+- For compact long-running project continuity, read `references/project-working-memory.md`.
 - For child skill manifests and `add-skills`, read `references/module-manifest.md`.
 - For report, figure, ID, citation, and confidence standards, read `references/report-figure-reference-standard.md`.
-- For scientific figure style infrastructure, read `references/scientific-figure-workflow.md`.
 - For evaluator/readiness checks, read `references/evaluator-workflow.md`.
 - For repository smoke checks and release manifests, read `references/release-workflow.md`.
 - For report bundle export, read `references/export-workflow.md`.
-- For editable YAML template generation, read `references/template-workflow.md`.
-- For built-in material assignment records, read `references/material-assignment-library.md`.
-- For batch Raman/PL/XRD/FTIR/UV-Vis/XPS/electrochemistry/thermal execution, read `references/batch-workflow.md`.
 - For literature-library deployment, read `references/local-literature-library.md`.
-- For Raman workflow behavior in the v0.9 RC compatibility skill, read `references/raman-workflow.md`.
-- For PL workflow behavior in the v0.9 RC compatibility skill, read `references/pl-workflow.md`.
-- For XRD workflow behavior in the v0.9 RC compatibility skill, read `references/xrd-workflow.md`.
-- For FTIR workflow behavior in the v0.9 RC compatibility skill, read `references/ftir-workflow.md`.
-- For UV-Vis workflow behavior in the v0.9 RC compatibility skill, read `references/uv-vis-workflow.md`.
-- For XPS workflow behavior in the v0.9 RC compatibility skill, read `references/xps-workflow.md`.
-- For electrochemistry workflow behavior in the v0.9 RC compatibility skill, read `references/electrochemistry-workflow.md`.
-- For thermal analysis workflow behavior in the v0.9 RC compatibility skill, read `references/thermal-workflow.md`.
-- For SEM/TEM/optical microscopy image data, read `references/image-data-workflow.md`.
-- For review-gated durable project memory, read `references/memory-workflow.md`.
-
-## Scripts
-
-Repository scripts live outside the skill folder. Use `scripts/public_release_smoke.py` for release checks, `scripts/build_release_manifest.py` for release metadata, `scripts/build_release_package.py` for the portable release zip, `scripts/verify_release_package.py` for zip verification, `scripts/build_packaged_example_project.py` to regenerate `examples/public-raman-project/`, `scripts/build_public_ftir_assignment_example_project.py` to regenerate `examples/public-ftir-assignment-project/`, `scripts/build_public_uv_vis_example_project.py` to regenerate `examples/public-uv-vis-project/`, `scripts/build_public_xps_be_example_project.py` to regenerate `examples/public-xps-be-project/`, the release-signature scripts for optional user-managed detached signatures, and `scripts/build_distribution_checklist.py` for final handoff checklist artifacts. They are local-only and should not require user-specific Zotero, browser, institution, cache, or key settings unless the user explicitly supplies them.
+- For Raman workflow behavior, read `references/raman-workflow.md`.
+- For PL workflow behavior, read `references/pl-workflow.md`.
+- For XRD workflow behavior, read `references/xrd-workflow.md`.
+- For FTIR workflow behavior, read `references/ftir-workflow.md`.
+- For UV-Vis workflow behavior, read `references/uv-vis-workflow.md`.
+- For XPS workflow behavior, read `references/xps-workflow.md`.
+- For electrochemistry workflow behavior, read `references/electrochemistry-workflow.md`.
+- For thermal workflow behavior, read `references/thermal-workflow.md`.
+- For SEM/TEM/microscopy image data, read `references/image-data-workflow.md`.
+- For scientific figures, templates, batches, material assignments, and review-gated memory, read the corresponding reference file in `references/`.

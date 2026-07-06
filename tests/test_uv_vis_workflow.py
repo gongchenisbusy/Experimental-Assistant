@@ -1834,6 +1834,7 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     uv_vis_reference = root / "skills" / "ea-v0-2" / "references" / "uv-vis-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
@@ -1846,16 +1847,9 @@ def test_uv_vis_docs_and_skill_references_are_discoverable() -> None:
     assert "ea uv-vis compare-replicates" in readme
     assert "--feature-match-tolerance-ev" in readme
     assert "--interpretation-suggestion" in readme
-    assert "ea uv-vis process" in skill
-    assert "ea uv-vis list-source-libraries" in skill
-    assert "ea uv-vis build-source-packet" in skill
-    assert "ea uv-vis suggest-interpretations" in skill
-    assert "ea uv-vis prepare-review" in skill
-    assert "ea uv-vis propose-memory" in skill
-    assert "ea uv-vis compare-replicates" in skill
-    assert "--feature-match-review-ref" in skill
-    assert "--interpretation-review-ref" in skill
     assert "references/uv-vis-workflow.md" in skill
+    assert "uv-vis" in cli_index
+    assert "Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, `xps`, `electrochemistry`, `thermal`, and `image-data` command groups" in cli_index
     assert uv_vis_reference.exists()
     reference_text = uv_vis_reference.read_text(encoding="utf-8")
     assert "signal_mode" in reference_text

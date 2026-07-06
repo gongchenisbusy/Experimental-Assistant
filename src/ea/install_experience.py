@@ -16,9 +16,10 @@ from ea import __version__
 
 
 PRODUCT_NAME = "Experimental Assistant"
-PUBLIC_VERSION = "EA v0.9 RC"
+DISPLAY_VERSION = "v0.9.5"
+PUBLIC_VERSION = f"{PRODUCT_NAME} {DISPLAY_VERSION}"
 PACKAGE_NAME = "ea-v0-2"
-RELEASE_LABEL = "v0.9-rc1"
+RELEASE_LABEL = "v0.9.5"
 SKILL_NAME = "ea-v0-2"
 SKILL_INVOCATION = "$ea-v0-2"
 REPOSITORY_URL = "https://github.com/gongchenisbusy/Experimental-Assistant"
@@ -47,8 +48,11 @@ def _installed_distribution_version() -> str | None:
 def identity_record() -> dict[str, Any]:
     record = {
         "product": PRODUCT_NAME,
+        "display_name": PRODUCT_NAME,
+        "display_version": PUBLIC_VERSION,
         "public_version": PUBLIC_VERSION,
         "package_compatibility_name": PACKAGE_NAME,
+        "compatibility_id": PACKAGE_NAME,
         "package_version": _package_version(),
         "release_label": RELEASE_LABEL,
         "skill_folder": SKILL_NAME,
@@ -249,14 +253,15 @@ def install_codex_skill(
             "replaced_existing": replaced_existing,
             "legacy_skill_detected": legacy_skill.exists(),
             "legacy_skill_note": (
-                "Detected existing ea-v0-1. EA v0.9 RC uses ea-v0-2; old projects and old skills were not modified."
+                f"Detected existing ea-v0-1. {PUBLIC_VERSION} uses the ea-v0-2 internal compatibility skill path; old projects and old skills were not modified."
                 if legacy_skill.exists()
                 else None
             ),
             "validation": validation,
             "next_steps": [
                 f"Restart Codex before using {PRODUCT_NAME} in a new thread.",
-                f"In a new Codex thread, invoke EA as: {SKILL_INVOCATION}",
+                f"In a new Codex thread, invoke the compatibility skill as: {SKILL_INVOCATION}",
+                "Run `ea onboarding post-install` for the stable first-run summary.",
                 "Run `ea install-check` to verify CLI and Codex skill readiness.",
             ],
         }
@@ -365,7 +370,8 @@ def install_check(
         "skill_path": None if skip_codex_skill else str(target),
         "checks": checks,
         "next_steps": [
-            f"In a new Codex thread, invoke EA as: {SKILL_INVOCATION}",
+            f"In a new Codex thread, invoke the compatibility skill as: {SKILL_INVOCATION}",
+            "Run `ea onboarding post-install` for the stable first-run summary.",
             "Restart Codex after installing or replacing the skill.",
             "Use `ea init-project` for the first real project after the install check passes.",
         ],
@@ -378,9 +384,10 @@ def render_install_summary(result: dict[str, Any]) -> str:
         f"{PRODUCT_NAME} installation check: {result['status']}",
         "",
         f"Product: {identity['product']}",
-        f"Version: {identity['public_version']} ({identity['package_version']})",
-        f"Compatibility package: {identity['package_compatibility_name']}",
-        f"Codex invocation: {identity['skill_invocation']}",
+        f"Version: {identity['display_version']}",
+        f"Package version: {identity['package_version']}",
+        f"Internal compatibility id: {identity['compatibility_id']}",
+        f"Codex compatibility invocation: {identity['skill_invocation']}",
         "",
         "Checks:",
     ]
@@ -398,9 +405,10 @@ def render_install_skill_summary(result: dict[str, Any]) -> str:
     identity = result["identity"]
     lines = [
         f"Installed {identity['product']} ({identity['public_version']}).",
-        f"Package compatibility name: {identity['package_compatibility_name']} {identity['package_version']}.",
+        f"Package version: {identity['package_version']}.",
+        f"Internal compatibility id: {identity['compatibility_id']}.",
         f"Codex skill: {result['target']}",
-        f"Codex invocation: {identity['skill_invocation']}",
+        f"Codex compatibility invocation: {identity['skill_invocation']}",
         f"Validation: {result['validation']['status']}",
     ]
     if result.get("backup"):
@@ -408,11 +416,99 @@ def render_install_skill_summary(result: dict[str, Any]) -> str:
     if result.get("legacy_skill_note"):
         lines.append(result["legacy_skill_note"])
     lines.append("Restart Codex before using this skill in a new thread.")
+    lines.append("Run `ea onboarding post-install` to see the stable first-run summary.")
+    return "\n".join(lines)
+
+
+def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") -> dict[str, Any]:
+    if event not in {"install", "update"}:
+        raise ValueError("event must be install or update")
+    if lang not in {"zh", "en"}:
+        raise ValueError("lang must be zh or en")
+    identity = identity_record()
+    return {
+        "schema_version": "0.9.5",
+        "message_type": "ea_post_install_onboarding",
+        "event": event,
+        "language": lang,
+        "identity": identity,
+        "capabilities": [
+            "consult_or_plan_without_project_writes_by_default",
+            "record_review_gated_project_artifacts_after_confirmation",
+            "process_raman_pl_xrd_ftir_uv_vis_xps_electrochemistry_thermal_and_image_records",
+            "generate_reports_exports_traceability_and_project_briefs",
+            "manage_local_literature_state_with_user_permission",
+            "maintain_lightweight_project_working_memory",
+        ],
+        "recommended_first_checks": [
+            "ea version --json",
+            "ea install-check --json",
+            "ea literature setup-preflight /path/to/ea-project",
+        ],
+        "confirmation_phrase": "确定配置" if lang == "zh" else "Confirm setup",
+        "boundaries": [
+            "Post-install onboarding does not create EA project files.",
+            "Zotero, browser assistance, institution login, and full-text acquisition stay opt-in.",
+            "Scientific memory remains review-gated; project working memory is a compact continuation aid.",
+            "Large literature/report jobs may ask for confirmation when the estimated work is unusually large.",
+        ],
+        "compatibility": {
+            "compatibility_id": PACKAGE_NAME,
+            "skill_folder": SKILL_NAME,
+            "skill_invocation": SKILL_INVOCATION,
+            "note": "Compatibility identifiers are install paths, not the public EA version.",
+        },
+    }
+
+
+def render_onboarding_post_install(record: dict[str, Any]) -> str:
+    identity = record["identity"]
+    lang = record.get("language", "zh")
+    if lang == "en":
+        lines = [
+            f"{identity['display_version']} is ready.",
+            "",
+            "What EA can do:",
+            "- Answer research workflow questions in consult mode without creating project files by default.",
+            "- Initialize and maintain local EA projects after explicit confirmation.",
+            "- Process reviewed characterization data and write traceable reports, exports, briefs, and memory candidates.",
+            "- Help configure a local literature workflow only after you confirm the scope and access mode.",
+            "",
+            "Recommended checks:",
+        ]
+        lines.extend(f"- {command}" for command in record["recommended_first_checks"])
+        lines.extend(
+            [
+                "",
+                f"To configure literature support later, say `{record['confirmation_phrase']}` or run the preflight command.",
+                f"Internal compatibility id: `{identity['compatibility_id']}`; public version: `{identity['display_version']}`.",
+            ]
+        )
+        return "\n".join(lines)
+    lines = [
+        f"{identity['display_version']} 已就绪。",
+        "",
+        "EA 可以做什么：",
+        "- 默认先以咨询模式回答研究流程问题，不会自动创建项目文件。",
+        "- 在你明确确认后，初始化并维护本地 EA 项目。",
+        "- 处理已审核的表征数据，并写入可追踪报告、导出包、项目简报和记忆候选。",
+        "- 在你确认范围和访问方式后，协助配置本地文献工作流。",
+        "",
+        "建议先检查：",
+    ]
+    lines.extend(f"- `{command}`" for command in record["recommended_first_checks"])
+    lines.extend(
+        [
+            "",
+            f"之后如果要配置文献支持，可以回复 `{record['confirmation_phrase']}`，或运行文献预检命令。",
+            f"内部兼容标识：`{identity['compatibility_id']}`；公开版本：`{identity['display_version']}`。",
+        ]
+    )
     return "\n".join(lines)
 
 
 def build_install_check_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Check Experimental Assistant (EA v0.9 RC) installation readiness.")
+    parser = argparse.ArgumentParser(description=f"Check {PUBLIC_VERSION} installation readiness.")
     parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--skill-path", type=Path)
     parser.add_argument("--quick-validate", type=Path)

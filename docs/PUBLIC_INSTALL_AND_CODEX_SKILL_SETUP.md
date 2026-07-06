@@ -2,18 +2,18 @@
 
 This guide is the shortest public path from GitHub to a working Experimental Assistant CLI and Codex skill.
 
-Product identity: `Experimental Assistant (EA v0.9 RC, package compatibility name: ea-v0-2)`. The Python package name and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects and skill installs. That name is not the public release version.
+Product identity: `Experimental Assistant v0.9.5` with package compatibility name `ea-v0-2`. The Python package name and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects and skill installs. That name is not the public release version.
 
 Public repository: `https://github.com/gongchenisbusy/Experimental-Assistant`
 
-Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`
+Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5`
 
 ## Quick Start For Users
 
 Recommended public install from the fixed release tag:
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.5
 ea codex install-skill
 ea install-check
 ```
@@ -21,13 +21,13 @@ ea install-check
 Expected result:
 
 ```text
-Installed Experimental Assistant (EA v0.9 RC).
-Package compatibility name: ea-v0-2 0.9.0rc1.
+Installed Experimental Assistant v0.9.5.
+Package compatibility name: ea-v0-2 0.9.5.
 Codex invocation: $ea-v0-2
 Restart Codex before using this skill in a new thread.
 ```
 
-After restarting Codex, open a new thread and invoke EA as `$ea-v0-2`. This is the compatibility skill name for Experimental Assistant EA v0.9 RC.
+After restarting Codex, open a new thread and invoke EA as `$ea-v0-2`. This is the compatibility skill name for Experimental Assistant v0.9.5.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ If your system `python3` is older than 3.11, do not continue with `python3 -m pi
 
 ```bash
 uv python install 3.12
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9-rc1
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.5
 ```
 
 From a repository checkout, you can run the standalone preflight before installing dependencies:
@@ -68,7 +68,7 @@ ea codex install-skill
 
 The installer:
 
-- locates the local checkout skill or fetches the `v0.9-rc1` skill from GitHub;
+- locates the local checkout skill or fetches the `v0.9.5` skill from GitHub;
 - installs it to `${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2`;
 - backs up an existing `ea-v0-2` folder by default;
 - does not delete `ea-v0-1`;
@@ -123,7 +123,7 @@ Use this path for development validation, local contribution, or when you want t
 ```bash
 git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea
 cd ea
-git checkout v0.9-rc1
+git checkout v0.9.5
 python3 scripts/check_install_env.py
 python3 -m venv .venv
 . .venv/bin/activate
@@ -136,10 +136,10 @@ The `python3` used here must be Python 3.11 or newer.
 
 ## Release Package Install
 
-Use the GitHub Release zip when you need a fixed handoff package rather than a git checkout. Download `ea-v0-2-0.9.0rc1-COMMIT-release.zip` and its `.sha256` sidecar from the release page, verify them, then install from the extracted folder:
+Use the GitHub Release zip when you need a fixed handoff package rather than a git checkout. Download `ea-v0-2-0.9.5-COMMIT-release.zip` and its `.sha256` sidecar from the release page, verify them, then install from the extracted folder:
 
 ```bash
-shasum -a 256 -c ea-v0-2-0.9.0rc1-COMMIT-release.zip.sha256
+shasum -a 256 -c ea-v0-2-0.9.5-COMMIT-release.zip.sha256
 python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install -e .
@@ -149,9 +149,9 @@ ea install-check --run-example-check
 
 ## Existing EA Skills
 
-EA v0.9 RC uses the `ea-v0-2` compatibility skill folder. Older `ea-v0-1` skills may remain installed for old workflows. The v0.9 installer does not remove `ea-v0-1` and does not modify existing project folders.
+Experimental Assistant v0.9.5 uses the `ea-v0-2` compatibility skill folder. Older `ea-v0-1` skills may remain installed for old workflows. The v0.9.5 installer does not remove `ea-v0-1` and does not modify existing project folders.
 
-Use `$ea-v0-2` for new EA v0.9 RC work. Existing project folders from the EA compatibility line can be inspected with `ea healthcheck` and `ea eval project`.
+Use `$ea-v0-2` for new Experimental Assistant v0.9.5 work. Existing project folders from the EA compatibility line can be inspected with `ea healthcheck` and `ea eval project`.
 
 ## First Real Project
 
@@ -182,7 +182,7 @@ python3 -m pytest -q
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-COMMIT-release.zip
 python3 scripts/build_distribution_checklist.py
 ```
 

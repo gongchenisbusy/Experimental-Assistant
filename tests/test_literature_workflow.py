@@ -2199,7 +2199,12 @@ def test_cli_literature_plan_and_confirm(tmp_path: Path, capsys) -> None:
     assert handoff["status"]["status"] == "acquisition_handoff_ready"
     assert handoff["handoff"]["literature_thread_id"] == "thread-cli-lit"
 
-    assert main(["literature", "acquisition-request", str(tmp_path)]) == 0
+    assert main(["literature", "acquisition-request", str(tmp_path)]) == 2
+    gated = json.loads(capsys.readouterr().out)
+    assert gated["status"] == "needs_confirmation"
+    assert gated["estimate"]["requires_confirmation_before_run"] is True
+
+    assert main(["literature", "acquisition-request", str(tmp_path), "--confirm-large-work"]) == 0
     request = json.loads(capsys.readouterr().out)
     assert request["request"]["status"] == "awaiting_search_results"
     assert request["request"]["query_manifest_ref"] == "literature/zotero_codex_queries.jsonl"
@@ -2239,6 +2244,7 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     readme = (root / "README.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
     reference = (root / "skills" / "ea-v0-2" / "references" / "local-literature-library.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     registry = read_yaml(root / "skill-registry" / "index.yml")
     manifest = read_yaml(root / "skill-registry" / "builtins" / "local-literature-library.yml")["ea_skill"]
 
@@ -2259,6 +2265,14 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "render-reconciliation" in readme
     assert "acceptance-checklist" in readme
     assert "repair_actions" in readme
+    assert "references/cli-command-index.md" in skill
+    assert "references/local-literature-library.md" in skill
+    assert "rank-candidates" in cli_index
+    assert "search-public" in cli_index
+    assert "prepare-source-candidates" in cli_index
+    assert "preflight-source-candidates" in cli_index
+    assert "setup-preflight" in cli_index
+    assert "--confirm-large-work" in cli_index
     assert "open-items/" in reference
     assert "rank-candidates" in reference
     assert "search-public" in reference
@@ -2281,11 +2295,11 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     assert "look up or invent journal impact factors" in reference
     assert "decision_status: enabled_at_initialization" in reference
     assert "contract boundaries until their implementation services exist" not in skill
-    assert "prepare-source-candidates" in skill
-    assert "preflight-source-candidates" in skill
-    assert "acceptance-checklist" in skill
-    assert "confirmed_uv_vis_source_candidates.yml" in skill
-    assert "ea uv-vis build-source-packet" in skill
+    assert "prepare-source-candidates" in cli_index
+    assert "preflight-source-candidates" in cli_index
+    assert "acceptance-checklist" in cli_index
+    assert "confirmed_uv_vis_source_candidates.yml" in readme
+    assert "ea uv-vis build-source-packet" in cli_index
     literature_record = next(item for item in registry["skills"] if item["id"] == "ea.local-literature-library")
     assert "Literature initialization decision" in literature_record["notes"]
     assert "source-candidate manifest preparation/preflight" in literature_record["notes"]

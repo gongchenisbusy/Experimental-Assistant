@@ -20,7 +20,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_project_bundle_verification_doc_is_public_safe_and_actionable() -> None:
     text = BUNDLE_DOC.read_text(encoding="utf-8")
 
-    assert "# EA v0.9 RC Project Bundle Verification" in text
+    assert "# Experimental Assistant v0.9.5 Project Bundle Verification" in text
     assert "ea export report-bundle" in text
     assert "ea export batch-bundle" in text
     assert "ea export verify-bundle" in text

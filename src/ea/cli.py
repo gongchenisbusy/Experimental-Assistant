@@ -47,9 +47,12 @@ from ea.install_experience import (
     identity_record,
     install_check,
     install_codex_skill,
+    onboarding_post_install_record,
+    render_onboarding_post_install,
     render_install_skill_summary,
     render_install_summary,
 )
+from ea.estimates import estimate_workflow, large_work_gate, large_work_reminders_disabled, set_large_work_reminders
 from ea.literature import (
     confirm_literature_selection,
     ensure_literature_status,
@@ -67,6 +70,7 @@ from ea.literature import (
     reconcile_literature_acquisition,
     render_literature_acquisition_reconciliation,
     search_public_literature_metadata,
+    setup_literature_preflight,
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
@@ -79,7 +83,13 @@ from ea.materials import (
     summarize_raman_assignment_libraries,
     summarize_xrd_assignment_libraries,
 )
-from ea.memory import commit_memory_candidate, propose_memory_candidate, review_memory_candidate
+from ea.memory import (
+    commit_memory_candidate,
+    propose_memory_candidate,
+    refresh_project_working_memory,
+    review_memory_candidate,
+    show_project_working_memory,
+)
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
 from ea.raman import RamanProcessingRequest, default_processing_parameters, inspect_spectrum_file, process_raman_result
@@ -95,7 +105,7 @@ from ea.reports import (
     generate_xps_report,
     generate_xrd_report,
 )
-from ea.review import write_review_record
+from ea.review import promote_review_record, write_review_record
 from ea.skills import register_skill_manifest, run_skill_dry_run, validate_skill_manifest
 from ea.storage.files import read_markdown_record, read_yaml
 from ea.templates import (
@@ -150,8 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=(
-            f"Experimental Assistant ({PUBLIC_VERSION}) package {PACKAGE_NAME} {__version__} "
-            f"({RELEASE_LABEL}); invoke Codex skill as {SKILL_INVOCATION}"
+            f"{PUBLIC_VERSION} package {PACKAGE_NAME} {__version__} "
+            f"({RELEASE_LABEL}); compatibility skill invocation {SKILL_INVOCATION}"
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -170,14 +180,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     codex = sub.add_parser("codex", help="Codex integration helpers for Experimental Assistant")
     codex_sub = codex.add_subparsers(dest="codex_command", required=True)
-    codex_install = codex_sub.add_parser("install-skill", help="install the EA v0.9 RC compatibility skill into Codex")
+    codex_install = codex_sub.add_parser("install-skill", help="install the Experimental Assistant compatibility skill into Codex")
     codex_install.add_argument("--source", type=Path, help="path to a skills/ea-v0-2 folder; defaults to local checkout or GitHub release fetch")
     codex_install.add_argument("--codex-home", type=Path)
     codex_install.add_argument("--quick-validate", type=Path)
     codex_install.add_argument("--no-backup", action="store_true", help="replace existing ea-v0-2 without making a timestamped backup")
     codex_install.add_argument("--no-github-fetch", action="store_true", help="do not fetch the public release from GitHub if no local skill source is found")
-    codex_install.add_argument("--release-ref", default="v0.9-rc1")
+    codex_install.add_argument("--release-ref", default=RELEASE_LABEL)
     codex_install.add_argument("--json", action="store_true")
+
+    onboarding = sub.add_parser("onboarding", help="version-bound onboarding messages")
+    onboarding_sub = onboarding.add_subparsers(dest="onboarding_command", required=True)
+    onboarding_post = onboarding_sub.add_parser("post-install", help="show stable post-install/update onboarding")
+    onboarding_post.add_argument("--event", choices=["install", "update"], default="install")
+    onboarding_post.add_argument("--lang", choices=["zh", "en"], default="zh")
+    onboarding_post.add_argument("--json", action="store_true")
 
     init = sub.add_parser("init", help="initialize a local EA project workspace (v0.1-compatible alias)")
     init.add_argument("workspace", type=Path)
@@ -186,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--material", required=True)
     init.add_argument("--experiment-type", required=True)
 
-    init_project = sub.add_parser("init-project", help="initialize a public-user EA v0.9 RC project workspace")
+    init_project = sub.add_parser("init-project", help="initialize a public-user Experimental Assistant v0.9.5 project workspace")
     init_project.add_argument("workspace", type=Path)
     init_project.add_argument("--name", required=True)
     init_project.add_argument("--slug", required=True)
@@ -277,6 +294,11 @@ def build_parser() -> argparse.ArgumentParser:
     review_add.add_argument("--target-ref", required=True)
     review_add.add_argument("--user-response", required=True)
     review_add.add_argument("--reviewed-content")
+    review_add.add_argument("--confirm", action="store_true", help="explicitly mark parameter/field review as user-confirmed")
+    review_promote = review_sub.add_parser("promote", help="promote a parameter/field ReviewRecord after explicit user confirmation")
+    review_promote.add_argument("workspace", type=Path)
+    review_promote.add_argument("--review-ref", required=True)
+    review_promote.add_argument("--user-response", required=True)
 
     raman = sub.add_parser("raman", help="Raman inspection, processing, and report helpers")
     raman_sub = raman.add_subparsers(dest="raman_command", required=True)
@@ -751,12 +773,18 @@ def build_parser() -> argparse.ArgumentParser:
     lit_search.add_argument("--top-n", type=int)
     lit_search.add_argument("--reference-year", type=int)
     lit_search.add_argument("--keyword", action="append", default=[])
+    lit_search.add_argument("--confirm-large-work", action="store_true")
     lit_handoff = literature_sub.add_parser("handoff", help="prepare an acquisition handoff packet for a dedicated literature workflow")
     lit_handoff.add_argument("workspace", type=Path)
     lit_handoff.add_argument("--mode", choices=["dedicated_thread", "manual_agent", "same_thread"], default="dedicated_thread")
     lit_handoff.add_argument("--literature-thread-id")
     lit_request = literature_sub.add_parser("acquisition-request", help="prepare confirmed acquisition request and Zotero-Codex target manifests")
     lit_request.add_argument("workspace", type=Path)
+    lit_request.add_argument("--confirm-large-work", action="store_true")
+    lit_setup = literature_sub.add_parser("setup-preflight", help="diagnose literature setup readiness without launching Zotero/browser/downloads")
+    lit_setup.add_argument("workspace", type=Path)
+    lit_setup.add_argument("--lang", choices=["zh", "en"], default="zh")
+    lit_setup.add_argument("--no-write", action="store_true")
     lit_access = literature_sub.add_parser("institution-access-guide", help="prepare public-safe institution access guidance")
     lit_access.add_argument("workspace", type=Path)
     lit_access.add_argument("--institution-name")
@@ -817,6 +845,7 @@ def build_parser() -> argparse.ArgumentParser:
     lit_prepare_sources.add_argument("--confirm-for-source-packet", action="store_true")
     lit_prepare_sources.add_argument("--user-response")
     lit_prepare_sources.add_argument("--max-items", type=int)
+    lit_prepare_sources.add_argument("--confirm-large-work", action="store_true")
     lit_preflight_sources = literature_sub.add_parser(
         "preflight-source-candidates",
         help="preflight a confirmed FTIR/UV-Vis/XPS source-candidate manifest",
@@ -900,6 +929,38 @@ def build_parser() -> argparse.ArgumentParser:
     memory_commit.add_argument("workspace", type=Path)
     memory_commit.add_argument("--candidate", required=True, type=Path)
     memory_commit.add_argument("--review-ref")
+    memory_refresh_project = memory_sub.add_parser("refresh-project", help="refresh compact project working memory")
+    memory_refresh_project.add_argument("workspace", type=Path)
+    memory_refresh_project.add_argument("--project-id")
+    memory_refresh_project.add_argument("--max-items", type=int, default=8)
+    memory_show_project = memory_sub.add_parser("show-project", help="show compact project working memory")
+    memory_show_project.add_argument("workspace", type=Path)
+    memory_show_project.add_argument("--full", action="store_true")
+
+    estimate = sub.add_parser("estimate", help="estimate unusually large EA workflows before running them")
+    estimate_sub = estimate.add_subparsers(dest="estimate_command", required=True)
+    estimate_work = estimate_sub.add_parser("workflow", help="estimate a literature/report/handoff workflow")
+    estimate_work.add_argument("workspace", type=Path)
+    estimate_work.add_argument(
+        "--workflow",
+        required=True,
+        choices=[
+            "literature_search",
+            "literature_acquisition",
+            "literature_source_candidates",
+            "analysis_report",
+            "multi_method_report_bundle",
+            "project_handoff",
+        ],
+    )
+    estimate_work.add_argument("--items", type=int)
+    estimate_work.add_argument("--mode", choices=["brief", "standard", "full"], default="standard")
+    estimate_reminders = estimate_sub.add_parser("reminders", help="show or change large-work reminder preference for one project")
+    estimate_reminders.add_argument("workspace", type=Path)
+    reminder_group = estimate_reminders.add_mutually_exclusive_group()
+    reminder_group.add_argument("--disable", action="store_true")
+    reminder_group.add_argument("--enable", action="store_true")
+    estimate_reminders.add_argument("--reason")
 
     add_skills = sub.add_parser("add-skills", help="validate EA child-skill manifests")
     add_skills_sub = add_skills.add_subparsers(dest="add_skills_command", required=True)
@@ -1078,6 +1139,14 @@ def _main_impl(argv: list[str] | None = None) -> int:
             else:
                 print(render_install_skill_summary(result))
             return 0 if result["status"] != "fail" else 2
+    if args.command == "onboarding":
+        if args.onboarding_command == "post-install":
+            record = onboarding_post_install_record(event=args.event, lang=args.lang)
+            if args.json:
+                _print_json(record)
+            else:
+                print(render_onboarding_post_install(record))
+            return 0
     if args.command == "init":
         initialize_project(
             args.workspace,
@@ -1148,6 +1217,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                         "evaluation",
                         "key_outputs",
                         "literature",
+                        "project_working_memory",
                         "needs_user_confirmation",
                         "next_actions",
                         "scope",
@@ -1273,9 +1343,27 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 target_ref=args.target_ref,
                 user_response=args.user_response,
                 reviewed_content=args.reviewed_content or args.user_response,
+                confirm=args.confirm,
             )
             data = read_yaml(path)
             _print_json({"review": str(path), "review_id": path.stem, "review_status": data.get("review_status")})
+            return 0
+        if args.review_command == "promote":
+            path = promote_review_record(
+                args.workspace,
+                args.review_ref,
+                user_response=args.user_response,
+            )
+            data = read_yaml(path)
+            _print_json(
+                {
+                    "review": str(path),
+                    "review_id": path.stem,
+                    "review_status": data.get("review_status"),
+                    "decision": data.get("decision"),
+                    "promoted_at": data.get("promoted_at"),
+                }
+            )
             return 0
     if args.command == "raman":
         project_id = getattr(args, "project_id", None)
@@ -1989,6 +2077,16 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.literature_command == "search-public":
+            requested_items = (args.max_results or 20) * max(1, len(args.source or []) or 1) * max(1, args.query_limit or 1) * max(1, args.page_limit or 1)
+            gate = large_work_gate(
+                args.workspace,
+                workflow="literature_search",
+                requested_items=requested_items,
+                confirmed=args.confirm_large_work,
+            )
+            if gate["status"] == "needs_confirmation":
+                _print_json(gate)
+                return 2
             _print_json(
                 search_public_literature_metadata(
                     args.workspace,
@@ -2014,7 +2112,24 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.literature_command == "acquisition-request":
+            gate = large_work_gate(
+                args.workspace,
+                workflow="literature_acquisition",
+                confirmed=args.confirm_large_work,
+            )
+            if gate["status"] == "needs_confirmation":
+                _print_json(gate)
+                return 2
             _print_json(prepare_literature_acquisition_request(args.workspace))
+            return 0
+        if args.literature_command == "setup-preflight":
+            _print_json(
+                setup_literature_preflight(
+                    args.workspace,
+                    lang=args.lang,
+                    write_report=not args.no_write,
+                )
+            )
             return 0
         if args.literature_command == "institution-access-guide":
             _print_json(
@@ -2119,6 +2234,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
             output_path = args.output
             if output_path and not output_path.is_absolute():
                 output_path = args.workspace / output_path
+            gate = large_work_gate(
+                args.workspace,
+                workflow="literature_source_candidates",
+                requested_items=args.max_items,
+                confirmed=args.confirm_large_work,
+            )
+            if gate["status"] == "needs_confirmation":
+                _print_json(gate)
+                return 2
             _print_json(
                 prepare_literature_source_candidate_manifest(
                     args.workspace,
@@ -2276,6 +2400,43 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 review_ref=args.review_ref,
             )
             _print_json({"memory": str(path)})
+            return 0
+        if args.memory_command == "refresh-project":
+            _print_json(
+                refresh_project_working_memory(
+                    args.workspace,
+                    project_id=args.project_id,
+                    max_items=args.max_items,
+                )
+            )
+            return 0
+        if args.memory_command == "show-project":
+            _print_json(show_project_working_memory(args.workspace, compact=not args.full))
+            return 0
+    if args.command == "estimate":
+        if args.estimate_command == "workflow":
+            _print_json(
+                estimate_workflow(
+                    args.workspace,
+                    workflow=args.workflow,
+                    requested_items=args.items,
+                    mode=args.mode,
+                )
+            )
+            return 0
+        if args.estimate_command == "reminders":
+            if args.disable:
+                _print_json(set_large_work_reminders(args.workspace, disabled=True, reason=args.reason or "user_disabled"))
+                return 0
+            if args.enable:
+                _print_json(set_large_work_reminders(args.workspace, disabled=False, reason=args.reason or "user_enabled"))
+                return 0
+            _print_json(
+                {
+                    "preferences_path": str(args.workspace / ".ea" / "preferences.yml"),
+                    "large_work_reminders_disabled": large_work_reminders_disabled(args.workspace),
+                }
+            )
             return 0
     if args.command == "add-skills":
         if args.add_skills_command == "check":

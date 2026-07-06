@@ -1,6 +1,6 @@
-# EA v0.9 Release Candidate Verification
+# Experimental Assistant v0.9.5 Release Verification
 
-This guide is for a release recipient, maintainer, or future agent who needs to verify an EA v0.9 release-candidate repository package before using or redistributing it. All checks are local. None of these commands require Zotero, browser profiles, institution login, live web search, PDF download, private caches, or developer-machine key paths.
+This guide is for a release recipient, maintainer, or future agent who needs to verify an Experimental Assistant v0.9.5 repository package before using or redistributing it. All checks are local. None of these commands require Zotero, browser profiles, institution login, live web search, PDF download, private caches, or developer-machine key paths.
 
 For first-time installation and Codex skill setup after verification, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
 After installing, run `ea install-check` to verify the EA CLI, package identity, Codex skill path, skill validation, and optional public example healthcheck.
@@ -8,21 +8,21 @@ After installing, run `ea install-check` to verify the EA CLI, package identity,
 Public repository and release page:
 
 - Repository: `https://github.com/gongchenisbusy/Experimental-Assistant`
-- Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9-rc1`
+- Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5`
 
 ## 1. Expected Artifacts
 
-A normal EA v0.9 release-candidate handoff may include:
+A normal Experimental Assistant v0.9.5 handoff may include:
 
-- `ea-v0.9-rc-release-manifest.yml`
-- `ea-v0-2-0.9.0rc1-COMMIT-release.zip`
-- `ea-v0-2-0.9.0rc1-COMMIT-release.zip.sha256`
-- optional `ea-v0-2-0.9.0rc1-COMMIT-release.zip.sig.yml`
+- `ea-v0.9.5-release-manifest.yml`
+- `ea-v0-2-0.9.5-COMMIT-release.zip`
+- `ea-v0-2-0.9.5-COMMIT-release.zip.sha256`
+- optional `ea-v0-2-0.9.5-COMMIT-release.zip.sig.yml`
 - optional public key file supplied by the release author
-- optional `ea-v0.9-rc-distribution-checklist.json`
-- optional `ea-v0.9-rc-distribution-checklist.md`
+- optional `ea-v0.9.5-distribution-checklist.json`
+- optional `ea-v0.9.5-distribution-checklist.md`
 
-The `ea-v0-2` archive prefix is a compatibility package identifier, not the public release version. Use the package version `0.9.0rc1`, release label `v0.9-rc1`, and embedded manifest when identifying this release.
+The `ea-v0-2` archive prefix is a compatibility package identifier, not the public release version. Use the package version `0.9.5`, release label `v0.9.5`, and embedded manifest when identifying this release.
 
 The manifest and checksum prove local file integrity. The optional detached signature can add authorship or release-intent evidence only when the verifier trusts the supplied public key through an external channel.
 
@@ -34,14 +34,14 @@ Run checks in this order:
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.5-COMMIT-release.zip
 ea-release-checklist
 ```
 
 If a detached signature sidecar is present and the release author supplied a trusted public key:
 
 ```bash
-ea-verify-release-signature dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
+ea-verify-release-signature dist/ea-v0-2-0.9.5-COMMIT-release.zip \
   --public-key /path/to/release-public.pem
 ```
 
@@ -51,9 +51,9 @@ Use the script equivalents when console entry points are not installed:
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-COMMIT-release.zip
 python3 scripts/build_distribution_checklist.py
-python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.0rc1-COMMIT-release.zip \
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.5-COMMIT-release.zip \
   --public-key /path/to/release-public.pem
 ```
 
