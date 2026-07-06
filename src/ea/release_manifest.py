@@ -23,7 +23,7 @@ DEFAULT_INCLUDE_ROOTS = [
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "ea-v0.9.5-release-manifest.yml"
+DEFAULT_OUTPUT = Path("dist") / "ea-v0.9.6-release-manifest.yml"
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -46,7 +46,7 @@ PUBLIC_REPOSITORY = {
     "project_name": "Experimental Assistant (EA)",
     "repository_full_name": "gongchenisbusy/Experimental-Assistant",
     "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
-    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5",
+    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.6",
 }
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
@@ -183,12 +183,12 @@ def build_release_manifest(
     checksums = file_checksum_records(root, files)
     return {
         "schema_version": "0.9",
-        "manifest_type": "ea_v0_9_5_release",
+        "manifest_type": "ea_v0_9_6_release",
         "repository_root_name": root.name,
         "public_repository": PUBLIC_REPOSITORY,
         "package": metadata,
         "release": {
-            "label": "v0.9.5",
+            "label": "v0.9.6",
             "version": metadata.get("version"),
             "relationship_to_v1": "Stabilization and usability release that keeps the public v0.9 workflow compatible while reducing routine context load.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
@@ -268,7 +268,7 @@ def write_release_manifest(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an Experimental Assistant v0.9.5 repository manifest.")
+    parser = argparse.ArgumentParser(description="Generate an Experimental Assistant v0.9.6 repository manifest.")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--include-root", action="append", default=[])

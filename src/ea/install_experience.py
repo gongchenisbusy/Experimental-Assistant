@@ -16,10 +16,10 @@ from ea import __version__
 
 
 PRODUCT_NAME = "Experimental Assistant"
-DISPLAY_VERSION = "v0.9.5"
+DISPLAY_VERSION = "v0.9.6"
 PUBLIC_VERSION = f"{PRODUCT_NAME} {DISPLAY_VERSION}"
 PACKAGE_NAME = "ea-v0-2"
-RELEASE_LABEL = "v0.9.5"
+RELEASE_LABEL = "v0.9.6"
 SKILL_NAME = "ea-v0-2"
 SKILL_INVOCATION = "$ea-v0-2"
 REPOSITORY_URL = "https://github.com/gongchenisbusy/Experimental-Assistant"
@@ -427,7 +427,7 @@ def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") 
         raise ValueError("lang must be zh or en")
     identity = identity_record()
     return {
-        "schema_version": "0.9.5",
+        "schema_version": "0.9.6",
         "message_type": "ea_post_install_onboarding",
         "event": event,
         "language": lang,

@@ -1,6 +1,6 @@
 # PL Workflow
 
-Use this reference when processing photoluminescence spectra in the Experimental Assistant v0.9.5 compatibility skill.
+Use this reference when processing photoluminescence spectra in the Experimental Assistant v0.9.6 compatibility skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret emission features with project context and literature references. Use confidence labels rather than definitive mechanism claims.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.5 PL compatibility support:
+Current Experimental Assistant v0.9.6 PL compatibility support:
 
 - Raw import uses `ea raw import --characterization-type pl`.
 - Inspection reuses the spectrum reader and identifies common PL files by filename, `AxisUnit[1]=eV`, or an eV-like x range.

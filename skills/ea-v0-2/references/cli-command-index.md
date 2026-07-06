@@ -1,4 +1,4 @@
-# EA v0.9.5 CLI Command Index
+# EA v0.9.6 CLI Command Index
 
 Use this reference only when the task needs concrete command examples. The top-level skill file stays compact so routine EA use does not load the full command catalogue.
 
@@ -14,6 +14,7 @@ ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea brief project /path/to/ea-project
+ea brief project /path/to/ea-project --json
 ```
 
 ## Review
@@ -101,14 +102,19 @@ Use the matching `pl`, `xrd`, `ftir`, `uv-vis`, `xps`, `electrochemistry`, `ther
 ## Reports, Traceability, And Export
 
 ```bash
+ea trace index /path/to/ea-project
+ea trace focus /path/to/ea-project reports/rpt-project-YYYYMMDD-001.md --depth 2
 ea trace view /path/to/ea-project
-ea trace lookup /path/to/ea-project rpt-project-YYYYMMDD-001
+ea trace lookup /path/to/ea-project rpt-project-YYYYMMDD-001 --json-full
+ea trace export /path/to/ea-project --full
 ea export report-html /path/to/ea-project --report-id rpt-project-YYYYMMDD-001
 ea export report-bundle /path/to/ea-project --report-id rpt-project-YYYYMMDD-001 --include-trace --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-YYYYMMDD-001 --include-trace --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-YYYYMMDD-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-YYYYMMDD-001.zip
 ```
+
+Default `ea brief project` and `ea trace ...` output is intentionally compact. Use `--json` for compact structured output and `--json-full` only when an automation needs the full trace/brief object in stdout.
 
 ## Release
 
@@ -118,7 +124,7 @@ python3 scripts/check_downloaded_skill_instructions.py
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.5-COMMIT-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.6-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -126,6 +132,6 @@ Optional signing uses only explicit user-managed key paths:
 
 ```bash
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.9.5-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.9.5-COMMIT-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.9.6-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.9.6-COMMIT-release.zip --public-key /path/to/user-release-public.pem
 ```

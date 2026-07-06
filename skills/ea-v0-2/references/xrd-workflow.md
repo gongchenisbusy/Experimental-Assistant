@@ -1,6 +1,6 @@
 # XRD Workflow
 
-Use this reference when processing X-ray diffraction patterns in the Experimental Assistant v0.9.5 compatibility skill.
+Use this reference when processing X-ray diffraction patterns in the Experimental Assistant v0.9.6 compatibility skill.
 
 Required gates:
 
@@ -19,7 +19,7 @@ Required gates:
 13. Create a confirmed `xrd_assignment_suggestions` ReviewRecord before passing assignment suggestions into `ea xrd report --assignment-suggestion ... --assignment-review-ref ...`.
 14. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.5 XRD compatibility support:
+Current Experimental Assistant v0.9.6 XRD compatibility support:
 
 - Raw import uses `ea raw import --characterization-type xrd`.
 - Inspection identifies common two-column XRD files by filename, 2theta axis metadata, degree units, or a 2theta-like x range.

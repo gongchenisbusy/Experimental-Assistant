@@ -830,7 +830,7 @@ def _apply_potential_conversion(
         warnings.append(
             _warning(
                 "electrochemistry_potential_conversion_method_unsupported",
-                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.5 workflow.",
+                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1063,7 +1063,7 @@ def _apply_ir_drop_correction(
         warnings.append(
             _warning(
                 "electrochemistry_ir_drop_correction_method_unsupported",
-                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.5 workflow.",
+                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1396,7 +1396,7 @@ def _apply_tafel_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_tafel_analysis_method_unsupported",
-                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.5 workflow.",
+                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1772,7 +1772,7 @@ def _apply_gcd_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_gcd_analysis_method_unsupported",
-                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.5 workflow.",
+                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2301,7 +2301,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_method_unsupported",
-                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.5 workflow.",
+                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2313,7 +2313,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_model_unsupported",
-                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.5 workflow.",
+                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.6 workflow.",
                 severity="medium",
                 circuit_model=circuit_model,
             )

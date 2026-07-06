@@ -5,20 +5,29 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 
 def test_ea_v0_2_skill_defaults_to_public_user_workflow() -> None:
     skill_doc = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
 
     assert "Do not assume developer-machine Zotero, browser, institution, cache, or test paths." in skill_doc
-    assert "# Experimental Assistant v0.9.5" in skill_doc
+    assert "# Experimental Assistant v0.9.6" in skill_doc
     assert "Internal compatibility id" in skill_doc
     assert "$ea-v0-2" in skill_doc
     assert "ea codex install-skill" in skill_doc
     assert "ea install-check" in skill_doc
     assert "Core Workflow" in skill_doc
     assert "Setup And Onboarding" in skill_doc
+    assert "references/routing-index.yml" in skill_doc
     assert "References" in skill_doc
     assert "tests/fixtures/public/" not in skill_doc
+
+    routing_index = yaml.safe_load(Path("skills/ea-v0-2/references/routing-index.yml").read_text(encoding="utf-8"))
+    assert routing_index["schema_version"] == "0.9.6"
+    assert "method_analysis" in routing_index["routes"]
+    assert routing_index["routes"]["method_analysis"]["choose_one_method_ref"]["xps"] == "references/xps-workflow.md"
+    assert "ea trace focus" in routing_index["routes"]["traceability"]["preferred_commands"]
 
 
 def test_ea_v0_2_skill_public_demo_command_runs(tmp_path: Path) -> None:

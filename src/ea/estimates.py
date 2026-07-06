@@ -51,7 +51,7 @@ def large_work_reminders_disabled(root: Path) -> bool:
 def set_large_work_reminders(root: Path, *, disabled: bool, reason: str | None = None) -> dict[str, Any]:
     path = _preferences_path(root)
     prefs = _safe_yaml(path)
-    prefs.setdefault("schema_version", "0.9.5")
+    prefs.setdefault("schema_version", "0.9.6")
     prefs["large_work_reminders"] = {
         "disabled": disabled,
         "reason": reason,
@@ -125,7 +125,7 @@ def estimate_workflow(
     reminders_disabled = large_work_reminders_disabled(root)
     exceeds = credits > LARGE_WORK_THRESHOLD_CODEX_CREDITS
     return {
-        "schema_version": "0.9.5",
+        "schema_version": "0.9.6",
         "estimate_type": "ea_workflow_scale_estimate",
         "workflow": workflow,
         "mode": mode,
@@ -139,7 +139,7 @@ def estimate_workflow(
         "large_work_reminders_disabled": reminders_disabled,
         "requires_confirmation_before_run": exceeds and not reminders_disabled,
         "basis": (
-            "v0.9.5 fixed threshold: 100 Codex-credit-equivalent, roughly 20% of a practical "
+            "v0.9.6 fixed threshold: 100 Codex-credit-equivalent, roughly 20% of a practical "
             "Plus/GPT-5.5 5-hour estimate; local estimate uses workflow profile, item count, "
             "mode, and prompt-cache assumption."
         ),

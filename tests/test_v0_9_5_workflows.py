@@ -95,7 +95,7 @@ def test_cli_v0_9_5_new_commands(tmp_path: Path, capsys) -> None:
             "init-project",
             str(tmp_path),
             "--name",
-            "CLI v0.9.5",
+            "CLI v0.9.6",
             "--slug",
             "cli-v0-9-5",
             "--direction",
@@ -111,7 +111,7 @@ def test_cli_v0_9_5_new_commands(tmp_path: Path, capsys) -> None:
 
     assert main(["onboarding", "post-install", "--json"]) == 0
     onboarding = json.loads(capsys.readouterr().out)
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.5"
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.6"
 
     assert main(["memory", "refresh-project", str(tmp_path)]) == 0
     refreshed = json.loads(capsys.readouterr().out)

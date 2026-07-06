@@ -1,6 +1,6 @@
-# Experimental Assistant v0.9.5 Manual Test Checklist
+# Experimental Assistant v0.9.6 Manual Test Checklist
 
-Use this checklist after automated gates pass. Record failures as issues before promoting v0.9.5 toward v1.0.
+Use this checklist after automated gates pass. Record failures as issues before promoting v0.9.6 toward v1.0.
 
 ## Install And Skill Setup
 

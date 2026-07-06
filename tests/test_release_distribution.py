@@ -80,7 +80,7 @@ def test_distribution_checklist_cli_writes_json_and_markdown(tmp_path: Path, cap
     assert summary["status"] == "pass"
     assert Path(summary["json_path"]).exists()
     assert Path(summary["markdown_path"]).exists()
-    assert "Experimental Assistant v0.9.5 Distribution Checklist" in Path(summary["markdown_path"]).read_text(encoding="utf-8")
+    assert "Experimental Assistant v0.9.6 Distribution Checklist" in Path(summary["markdown_path"]).read_text(encoding="utf-8")
 
 
 def test_distribution_checklist_markdown_includes_required_checks(tmp_path: Path) -> None:

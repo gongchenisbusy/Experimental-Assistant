@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ea.cli import main
 from ea.storage import read_yaml, write_markdown_record, write_yaml
-from ea.traceability import build_project_trace_view, lookup_trace_record
+from ea.traceability import build_project_trace_view, build_trace_focus, build_trace_index, export_full_trace, lookup_trace_record
 
 
 def _write_trace_fixture(root: Path) -> None:
@@ -638,6 +638,62 @@ def test_trace_view_focus_accepts_bare_processed_result_id(tmp_path: Path) -> No
     assert "result:res-public-uv-vis-example-uv-vis-20260605-001" in {node["id"] for node in trace["nodes"]}
 
 
+def test_trace_index_writes_compact_project_index(tmp_path: Path) -> None:
+    _write_trace_fixture(tmp_path)
+
+    result = build_trace_index(tmp_path, created_at="2026-07-01T18:14:00")
+    index = read_yaml(Path(result["index_path"]))
+
+    assert result["schema_version"] == "0.9.6"
+    assert result["index_ref"] == "traceability/index.yml"
+    assert result["node_count"] == index["summary"]["node_count"]
+    assert result["edge_count"] == index["summary"]["edge_count"]
+    assert index["source"] == "ea.traceability.trace_index:v0.9.6"
+    assert index["nodes"]
+    assert all("metadata" not in node for node in index["nodes"])
+    assert any(node["id"] == "reports/rpt-trace-20260701-001.md" for node in index["nodes"])
+
+
+def test_trace_focus_writes_depth_limited_subgraph(tmp_path: Path) -> None:
+    _write_trace_fixture(tmp_path)
+
+    full = build_project_trace_view(
+        tmp_path,
+        output_path=tmp_path / "traceability" / "full_for_compare.yml",
+        created_at="2026-07-01T18:15:00",
+    )
+    focus = build_trace_focus(
+        tmp_path,
+        "review-trace-001",
+        depth=1,
+        output_path=tmp_path / "traceability" / "review_focus.yml",
+        created_at="2026-07-01T18:16:00",
+    )
+    full_trace = read_yaml(Path(full["trace_path"]))
+    focus_trace = read_yaml(Path(focus["trace_path"]))
+    node_ids = {node["id"] for node in focus_trace["nodes"]}
+
+    assert focus["schema_version"] == "0.9.6"
+    assert focus["focus_depth"] == 1
+    assert focus["node_count"] < full["node_count"]
+    assert "reviews/review-trace-001.yml" in node_ids
+    assert "suggestions/ftir/suggestion-20260701-001/ftir_assignment_suggestions.yml" in node_ids
+    assert "reports/rpt-trace-20260701-001.md" not in node_ids
+    assert len(focus_trace["nodes"]) < len(full_trace["nodes"])
+
+
+def test_export_full_trace_writes_full_graph_to_files(tmp_path: Path) -> None:
+    _write_trace_fixture(tmp_path)
+
+    result = export_full_trace(tmp_path, created_at="2026-07-01T18:17:00")
+
+    assert result["export_mode"] == "full"
+    assert result["trace_ref"] == "traceability/full_trace.yml"
+    assert result["markdown_ref"] == "traceability/full_trace.md"
+    assert Path(result["trace_path"]).exists()
+    assert Path(result["markdown_path"]).exists()
+
+
 def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
     _write_trace_fixture(tmp_path)
 
@@ -651,6 +707,7 @@ def test_cli_trace_view_supports_focus_refs(tmp_path: Path, capsys) -> None:
                 "review-trace-001",
                 "--output",
                 "traceability/focused_trace.yml",
+                "--json",
             ]
         )
         == 0
@@ -679,6 +736,7 @@ def test_cli_trace_lookup_prints_compact_record_neighbors(tmp_path: Path, capsys
                 "fig-trace-ftir-001",
                 "--output",
                 str(tmp_path / "traceability" / "lookup_trace.yml"),
+                "--json-full",
             ]
         )
         == 0
@@ -697,6 +755,28 @@ def test_cli_trace_lookup_prints_compact_record_neighbors(tmp_path: Path, capsys
     assert output["markdown_ref"] == "traceability/lookup_trace.md"
 
 
+def test_cli_trace_index_focus_and_export_use_compact_outputs(tmp_path: Path, capsys) -> None:
+    _write_trace_fixture(tmp_path)
+
+    assert main(["trace", "index", str(tmp_path)]) == 0
+    text = capsys.readouterr().out
+    assert "EA trace index" in text
+    assert "traceability/index.yml" in text
+    assert (tmp_path / "traceability" / "index.yml").exists()
+
+    assert main(["trace", "focus", str(tmp_path), "review-trace-001", "--depth", "1", "--json"]) == 0
+    focus_output = json.loads(capsys.readouterr().out)
+    assert focus_output["focus_depth"] == 1
+    assert focus_output["trace_ref"].startswith("traceability/focus-review-trace-001")
+    assert "boundaries" not in focus_output
+
+    assert main(["trace", "export", str(tmp_path), "--full", "--json"]) == 0
+    export_output = json.loads(capsys.readouterr().out)
+    assert export_output["export_mode"] == "full"
+    assert export_output["trace_ref"] == "traceability/full_trace.yml"
+    assert "trace" not in export_output
+
+
 def test_traceability_docs_and_registry_are_discoverable() -> None:
     root = Path.cwd()
     readme = (root / "README.md").read_text(encoding="utf-8")
@@ -705,25 +785,36 @@ def test_traceability_docs_and_registry_are_discoverable() -> None:
     registry = read_yaml(root / "skill-registry" / "index.yml")
     manifest = read_yaml(root / "skill-registry" / "builtins" / "project-traceability.yml")["ea_skill"]
 
+    assert "ea trace index" in readme
+    assert "ea trace focus" in readme
     assert "ea trace view" in readme
     assert "ea trace lookup" in readme
-    assert "traceability/project_trace.yml" in readme
+    assert "traceability/index.yml" in readme
+    assert "traceability/full_trace.yml" in readme
     assert "registered references, reference seeds, built-in/source-library refs" in readme
     assert "build report-memory traceability views" in skill
-    assert "ea trace view" in skill
+    assert "ea trace index" in skill
+    assert "ea trace focus" in skill
     assert "ea trace lookup" in skill
     assert "registered references, reference seeds, built-in/source-library refs" in skill
-    assert "ea trace view" in onboarding
+    assert "ea trace index" in onboarding
+    assert "ea trace focus" in onboarding
     assert "ea trace lookup" in onboarding
     assert "registered references, reference seeds, built-in/source-library refs" in onboarding
     trace_record = next(item for item in registry["skills"] if item["id"] == "ea.project-traceability")
-    assert "Project traceability view implemented" in trace_record["notes"]
+    assert "Project traceability implemented" in trace_record["notes"]
     assert "reference seeds" in trace_record["notes"]
+    assert "ea trace focus" in trace_record["notes"]
     assert "ea trace lookup" in trace_record["notes"]
+    assert "traceability_index" in manifest["output_artifacts"]
+    assert "traceability_focus_view" in manifest["output_artifacts"]
     assert "traceability_view" in manifest["output_artifacts"]
     assert "traceability_markdown" in manifest["output_artifacts"]
     assert "trace_lookup_json" in manifest["output_artifacts"]
     assert "literature_reference_index" in manifest["input_artifacts"]
+    assert "compact_trace_index_yaml" in manifest["current_v0_2_support"]["implemented"]
+    assert "depth_limited_focus_trace_yaml_and_markdown" in manifest["current_v0_2_support"]["implemented"]
+    assert "full_trace_export_yaml_and_markdown" in manifest["current_v0_2_support"]["implemented"]
     assert "project_trace_view_yaml_and_markdown" in manifest["current_v0_2_support"]["implemented"]
     assert "compact_trace_lookup_json" in manifest["current_v0_2_support"]["implemented"]
     assert "registered_reference_and_reference_seed_edges" in manifest["current_v0_2_support"]["implemented"]

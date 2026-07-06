@@ -1,6 +1,6 @@
 # Release Workflow
 
-Use this reference when preparing the Experimental Assistant v0.9.5 repository for public handoff or a release checkpoint.
+Use this reference when preparing the Experimental Assistant v0.9.6 repository for public handoff or a release checkpoint.
 
 For recipient-side artifact verification details in the repository docs, read `docs/RELEASE_VERIFICATION.md`.
 
@@ -12,10 +12,10 @@ Commands:
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.5-abcdef0-release.zip
+ea-verify-release-package dist/ea-v0-2-0.9.6-abcdef0-release.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.9.5-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.9.5-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.9.6-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.9.6-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea-release-checklist
 ```
 
@@ -25,10 +25,10 @@ Script equivalents:
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-abcdef0-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.6-abcdef0-release.zip
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/sign_release_package.py dist/ea-v0-2-0.9.5-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.5-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/ea-v0-2-0.9.6-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.6-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 python3 scripts/build_distribution_checklist.py
 ```
 
@@ -47,7 +47,7 @@ Release smoke gate:
 
 Release manifest:
 
-- Writes `dist/ea-v0.9.5-release-manifest.yml` by default.
+- Writes `dist/ea-v0.9.6-release-manifest.yml` by default.
 - Records package metadata from `pyproject.toml`.
 - Records git commit, branch, tags at `HEAD`, and dirty files.
 - Records console script entry points.
@@ -58,10 +58,10 @@ Release manifest:
 
 Release package:
 
-- Writes `dist/ea-v0-2-0.9.5-{commit}-release.zip` by default.
+- Writes `dist/ea-v0-2-0.9.6-{commit}-release.zip` by default.
 - Writes a `.zip.sha256` sidecar next to the archive.
 - Stores all archive members under one top-level directory.
-- Includes `ea-v0.9.5-release-manifest.yml` inside the archive.
+- Includes `ea-v0.9.6-release-manifest.yml` inside the archive.
 - Includes the same selected release inputs covered by the manifest.
 - Uses fixed zip timestamps and sorted input order for deterministic archive metadata.
 
@@ -69,7 +69,7 @@ Release package verification:
 
 - Verifies the `.zip.sha256` sidecar.
 - Verifies that the zip opens successfully.
-- Finds the embedded `ea-v0.9.5-release-manifest.yml`.
+- Finds the embedded `ea-v0.9.6-release-manifest.yml`.
 - Verifies every release input listed by the manifest exists in the archive.
 - Verifies each listed payload file size and SHA-256.
 - Returns JSON with `status: pass` or `status: fail` and concrete failure records.
@@ -85,7 +85,7 @@ Optional release package signing:
 
 Distribution checklist:
 
-- Writes `dist/ea-v0.9.5-distribution-checklist.json` and `dist/ea-v0.9.5-distribution-checklist.md` by default.
+- Writes `dist/ea-v0.9.6-distribution-checklist.json` and `dist/ea-v0.9.6-distribution-checklist.md` by default.
 - Summarizes current package metadata, git state, tags at `HEAD`, required release commands, public boundary notes, required artifact presence, package verification state, and optional signature state.
 - Reads existing `dist/` artifacts; it does not build packages, generate keys, sign archives, upload releases, or use network access.
 - Treats detached signatures as optional. If a signature is present and the user supplies `--public-key`, the checklist verifies it; otherwise it records that the signature is absent or unverified.

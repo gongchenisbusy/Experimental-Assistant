@@ -1,6 +1,6 @@
 # Raman Workflow
 
-Use this reference when processing Raman spectra in the Experimental Assistant v0.9.5 compatibility skill.
+Use this reference when processing Raman spectra in the Experimental Assistant v0.9.6 compatibility skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret peaks with project context and literature references. Use confidence labels rather than empty caution.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.5 preprocessing compatibility support:
+Current Experimental Assistant v0.9.6 preprocessing compatibility support:
 
 - Baseline correction is optional and uses AsLS when `baseline_correction.enabled` is true.
 - Smoothing is optional and uses Savitzky-Golay when `smoothing.enabled` is true.

@@ -8,6 +8,7 @@ from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 
 
+TRACE_SCHEMA_VERSION = "0.9.6"
 TRACE_BOUNDARIES = [
     "Trace views read local EA artifacts and write traceability audit files only.",
     "They do not mutate reports, figures, source packets, suggestion records, review records, references, or memory.",
@@ -25,6 +26,13 @@ def _project_ref(root: Path, path: Path) -> str:
 def _project_path(root: Path, ref: str) -> Path:
     path = Path(ref)
     return path if path.is_absolute() else root / path
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(character if character.isalnum() or character in {"-", "_"} else "-" for character in value.strip())
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    return cleaned.strip("-")[:96] or "focus"
 
 
 def _safe_yaml(path: Path) -> dict[str, Any]:
@@ -559,7 +567,14 @@ def _normalize_aliases(builder: TraceBuilder) -> None:
     builder.edges = normalized_edges
 
 
-def _filter_focus(nodes: dict[str, dict[str, Any]], edges: list[dict[str, str]], focus: str | None, aliases: dict[str, str]) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], str | None]:
+def _filter_focus(
+    nodes: dict[str, dict[str, Any]],
+    edges: list[dict[str, str]],
+    focus: str | None,
+    aliases: dict[str, str],
+    *,
+    max_depth: int | None = None,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], str | None]:
     if not focus:
         return nodes, edges, None
     focus_id = aliases.get(focus, focus)
@@ -570,12 +585,16 @@ def _filter_focus(nodes: dict[str, dict[str, Any]], edges: list[dict[str, str]],
         graph.setdefault(edge["from"], set()).add(edge["to"])
         graph.setdefault(edge["to"], set()).add(edge["from"])
     selected = {focus_id}
+    depths = {focus_id: 0}
     queue: deque[str] = deque([focus_id])
     while queue:
         current = queue.popleft()
+        if max_depth is not None and depths[current] >= max_depth:
+            continue
         for neighbor in graph.get(current, set()):
             if neighbor not in selected:
                 selected.add(neighbor)
+                depths[neighbor] = depths[current] + 1
                 queue.append(neighbor)
     return (
         {node_id: record for node_id, record in nodes.items() if node_id in selected},
@@ -653,9 +672,16 @@ def _trace_payload(
     builder: TraceBuilder,
     focus_ref: str | None,
     created_at: str,
+    focus_depth: int | None = None,
 ) -> dict[str, Any]:
     trace_id = f"trace-{created_at[:10].replace('-', '')}-{created_at[11:19].replace(':', '')}"
-    nodes, edges, canonical_focus = _filter_focus(builder.nodes, builder.edges, focus_ref, builder.aliases)
+    nodes, edges, canonical_focus = _filter_focus(
+        builder.nodes,
+        builder.edges,
+        focus_ref,
+        builder.aliases,
+        max_depth=focus_depth,
+    )
     node_list = sorted(nodes.values(), key=lambda item: (item.get("kind", ""), item.get("id", "")))
     edge_list = sorted(edges, key=lambda item: (item["from"], item["relation"], item["to"]))
     kind_counts = Counter(node["kind"] for node in node_list)
@@ -671,6 +697,7 @@ def _trace_payload(
         "root_ref": ".",
         "focus_ref": focus_ref,
         "canonical_focus_ref": canonical_focus,
+        "focus_depth": focus_depth,
         "summary": {
             "node_count": len(node_list),
             "edge_count": len(edge_list),
@@ -682,6 +709,28 @@ def _trace_payload(
         "edges": edge_list,
         "missing_nodes": missing_nodes,
         "boundaries": TRACE_BOUNDARIES,
+    }
+
+
+def _compact_node(node: dict[str, Any]) -> dict[str, Any]:
+    keys = ["id", "kind", "label", "path", "status", "source", "exists"]
+    return {key: node[key] for key in keys if key in node and node[key] not in (None, "", [], {})}
+
+
+def _compact_trace_index_payload(trace: dict[str, Any], *, index_id: str) -> dict[str, Any]:
+    return {
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "source": "ea.traceability.trace_index:v0.9.6",
+        "index_id": index_id,
+        "status": trace["status"],
+        "created_at": trace["created_at"],
+        "trace_id": trace["trace_id"],
+        "root_ref": trace["root_ref"],
+        "summary": trace["summary"],
+        "nodes": [_compact_node(node) for node in trace["nodes"]],
+        "edges": trace["edges"],
+        "missing_nodes": trace["missing_nodes"],
+        "boundaries": trace["boundaries"],
     }
 
 
@@ -713,6 +762,7 @@ def build_project_trace_view(
     output_path: Path | None = None,
     markdown_output_path: Path | None = None,
     created_at: str | None = None,
+    focus_depth: int | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
     created_at = created_at or EARecord.now_iso()
@@ -723,9 +773,11 @@ def build_project_trace_view(
     )
 
     builder = _build_trace_builder(root)
-    trace = _trace_payload(root=root, builder=builder, focus_ref=focus_ref, created_at=created_at)
+    trace = _trace_payload(root=root, builder=builder, focus_ref=focus_ref, created_at=created_at, focus_depth=focus_depth)
     _write_trace_outputs(root, trace, output_path, markdown_output_path)
     return {
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "source": "ea.traceability.project_trace_view_summary:v0.9.6",
         "trace_id": trace["trace_id"],
         "status": trace["status"],
         "trace_path": str(output_path),
@@ -737,8 +789,86 @@ def build_project_trace_view(
         "missing_node_count": trace["summary"]["missing_node_count"],
         "focus_ref": focus_ref,
         "canonical_focus_ref": trace["canonical_focus_ref"],
+        "focus_depth": focus_depth,
+        "node_counts_by_kind": trace["summary"]["node_counts_by_kind"],
+        "edge_counts_by_relation": trace["summary"]["edge_counts_by_relation"],
         "boundaries": TRACE_BOUNDARIES,
     }
+
+
+def build_trace_index(
+    root: Path,
+    *,
+    output_path: Path | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    created_at = created_at or EARecord.now_iso()
+    output_path = output_path or root / "traceability" / "index.yml"
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    builder = _build_trace_builder(root)
+    trace = _trace_payload(root=root, builder=builder, focus_ref=None, created_at=created_at)
+    index_id = f"trace-index-{created_at[:10].replace('-', '')}-{created_at[11:19].replace(':', '')}"
+    index = _compact_trace_index_payload(trace, index_id=index_id)
+    write_yaml(output_path, index)
+    return {
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "source": "ea.traceability.trace_index_summary:v0.9.6",
+        "status": index["status"],
+        "index_id": index_id,
+        "index_path": str(output_path),
+        "index_ref": _project_ref(root, output_path),
+        "node_count": index["summary"]["node_count"],
+        "edge_count": index["summary"]["edge_count"],
+        "missing_node_count": index["summary"]["missing_node_count"],
+        "node_counts_by_kind": index["summary"]["node_counts_by_kind"],
+        "edge_counts_by_relation": index["summary"]["edge_counts_by_relation"],
+        "boundaries": TRACE_BOUNDARIES,
+    }
+
+
+def build_trace_focus(
+    root: Path,
+    record_ref: str,
+    *,
+    depth: int = 2,
+    output_path: Path | None = None,
+    markdown_output_path: Path | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    safe_ref = _safe_filename(record_ref)
+    output_path = output_path or root / "traceability" / f"focus-{safe_ref}.yml"
+    markdown_output_path = markdown_output_path or output_path.with_suffix(".md")
+    return build_project_trace_view(
+        root,
+        focus_ref=record_ref,
+        output_path=output_path,
+        markdown_output_path=markdown_output_path,
+        created_at=created_at,
+        focus_depth=max(depth, 0),
+    )
+
+
+def export_full_trace(
+    root: Path,
+    *,
+    output_path: Path | None = None,
+    markdown_output_path: Path | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    output_path = output_path or root / "traceability" / "full_trace.yml"
+    markdown_output_path = markdown_output_path or output_path.with_suffix(".md")
+    result = build_project_trace_view(
+        root,
+        output_path=output_path,
+        markdown_output_path=markdown_output_path,
+        created_at=created_at,
+    )
+    result["export_mode"] = "full"
+    return result
 
 
 def _node_lookup_payload(root: Path, node: dict[str, Any] | None, node_id: str) -> dict[str, Any]:
@@ -818,8 +948,8 @@ def lookup_trace_record(
     node = builder.nodes.get(canonical_ref)
     status = "found" if node is not None else "not_found"
     return {
-        "schema_version": "0.2",
-        "source": "ea.traceability.lookup_trace_record:v0.2",
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "source": "ea.traceability.lookup_trace_record:v0.9.6",
         "status": status,
         "query": record_ref,
         "canonical_ref": canonical_ref,

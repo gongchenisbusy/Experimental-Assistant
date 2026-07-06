@@ -1,12 +1,12 @@
-# Experimental Assistant v0.9.5 Build
+# Experimental Assistant v0.9.6 Build
 
-Experimental Assistant v0.9.5 is the public stabilization release of the local-first Experimental Assistant. Package compatibility name: `ea-v0-2`. Package version: `0.9.5`.
+Experimental Assistant v0.9.6 is the public stabilization release of the local-first Experimental Assistant. Package compatibility name: `ea-v0-2`. Package version: `0.9.6`.
 
-Naming note: the Python package name, release archive prefix, and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects, tests, and skill installs. Treat `ea-v0-2` as the stable compatibility identifier; the user-facing product/version is Experimental Assistant v0.9.5.
+Naming note: the Python package name, release archive prefix, and Codex skill folder intentionally remain `ea-v0-2` for compatibility with existing projects, tests, and skill installs. Treat `ea-v0-2` as the stable compatibility identifier; the user-facing product/version is Experimental Assistant v0.9.6.
 
 Active design references are in `docs/`. The runnable Python core is in `src/ea/`. The agent skill package is in `skills/ea-v0-2/`.
 
-Public GitHub repository: `https://github.com/gongchenisbusy/Experimental-Assistant`. Public release assets for this code-version line are published under `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5`.
+Public GitHub repository: `https://github.com/gongchenisbusy/Experimental-Assistant`. Public release assets for this code-version line are published under `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.6`.
 
 New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for clone/release-package install, CLI sanity checks, Codex skill setup, and the first public example. Then use `docs/PUBLIC_ONBOARDING.md` for the first review-gated project workflow without assuming developer-machine Zotero, browser, institution, cache, key, or test paths. Packaged public-safe examples live in `examples/public-raman-project/`, `examples/public-ftir-assignment-project/`, `examples/public-uv-vis-project/`, and `examples/public-xps-be-project/`; the FTIR and XPS examples show source-backed candidate flows through review, report, references, memory candidates, and traceability, while the UV-Vis example shows reviewed Tauc/derivative/correction-context screening without source-backed claims. Use `docs/PUBLIC_ACCEPTANCE_MATRIX.md` and `docs/V0_9_MANUAL_TEST_CHECKLIST.md` for release acceptance, `docs/PROJECT_BUNDLE_VERIFICATION.md` when handing off report or batch export bundles, and `docs/RELEASE_VERIFICATION.md` before installing or redistributing a repository release package.
 
@@ -15,12 +15,12 @@ New public users should start with `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md
 Recommended public install:
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.5
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.6
 ea codex install-skill
 ea install-check
 ```
 
-In a new Codex thread, invoke EA as `$ea-v0-2`. That is the compatibility skill name for Experimental Assistant v0.9.5.
+In a new Codex thread, invoke EA as `$ea-v0-2`. That is the compatibility skill name for Experimental Assistant v0.9.6.
 
 ## Public Setup
 
@@ -37,7 +37,8 @@ ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
 ea brief project /path/to/ea-project
-ea trace view /path/to/ea-project
+ea trace index /path/to/ea-project
+ea trace focus /path/to/ea-project reports/rpt-example.md
 ea trace lookup /path/to/ea-project rpt-project-slug-20260630-001
 ea healthcheck examples/public-raman-project
 ea eval project examples/public-raman-project --no-write
@@ -53,8 +54,8 @@ ea export batch-bundle /path/to/ea-project --batch-id batch-20260630-001 --inclu
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001
 ea export verify-archive /path/to/ea-project/exports/report-bundles/rpt-project-slug-20260630-001.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/ea-v0-2-0.9.5-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/ea-v0-2-0.9.5-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/ea-v0-2-0.9.6-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/ea-v0-2-0.9.6-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea-release-checklist
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
 ea raman inspect /path/to/ea-project raw/raman/char-20260630-001/raw-spectrum.txt
@@ -194,7 +195,9 @@ ea references import-bibtex /path/to/ea-project /path/to/user-exported-reference
 ea references register-seeds /path/to/ea-project --source-packet suggestions/ftir/source-packets/ftir_assignment_source_packet-20260630-001.yml
 ea references validate-report /path/to/ea-project reports/rpt-example.md
 ea memory propose /path/to/ea-project --text "Candidate finding..." --source-ref reports/rpt-example.md --provenance-ref prov-20260630-001 --category interpretation --confidence medium
-ea trace view /path/to/ea-project --focus reports/rpt-example.md
+ea trace index /path/to/ea-project
+ea trace focus /path/to/ea-project reports/rpt-example.md
+ea trace export /path/to/ea-project --full
 ea trace lookup /path/to/ea-project fig-project-raman-20260630-001
 ```
 
@@ -223,8 +226,8 @@ Batch characterization records live under `processed/batches/`; `ea batch valida
 
 `ea healthcheck` audits project config, raw hashes, provenance links, figure/report backlinks, registered references, report citation numbering, review-gated memory indices, batch records, and material-assignment traceability.
 `ea eval project` wraps healthcheck/config checks and adds deterministic handoff/readiness summaries for figure style/source-data traces, report citations, batch runs, material assignments, and persisted evaluation records under `evaluation/`.
-`ea brief project` writes `briefs/brief-YYYYMMDD-001.yml` and `.md` as the agent-native user summary: current status, key outputs, user confirmations, and recommended next actions. It keeps detailed refs, hashes, provenance, ReviewRecords, and trace graphs in local audit files unless the user asks for them.
-`ea trace view` writes `traceability/project_trace.yml` and `.md` by linking reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. Use `--focus <report-or-record-ref>` to render one connected subgraph. Use `ea trace lookup <workspace> <id-or-ref>` when the user provides one report, figure, result, source-packet, suggestion, reference, review, provenance, or memory ID and needs the canonical local path plus immediate incoming/outgoing evidence neighbors. Trace view/lookup are read-only audit helpers except for their own trace files; they do not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
+`ea brief project` writes `briefs/brief-YYYYMMDD-001.yml` and `.md` as the agent-native user summary: current status, key outputs, user confirmations, and recommended next actions. The default terminal output is a short human summary; use `--json` for compact structured output or `--json-full` when an automation needs the full result object. It keeps detailed refs, hashes, provenance, ReviewRecords, and trace graphs in local audit files unless the user asks for them.
+`ea trace index` writes compact traceability metadata to `traceability/index.yml`. `ea trace focus <workspace> <id-or-ref>` writes a depth-limited YAML/Markdown subgraph for one report, figure, result, source packet, suggestion, reference, review, provenance, or memory record. Trace graphs link reports, figures, source packets, source-backed suggestion records, review packages, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, memory candidates, and committed memory. `ea trace export --full` writes the complete graph to `traceability/full_trace.yml` and `.md`. `ea trace lookup` resolves one ID to its canonical local path plus immediate evidence-neighbor counts by default; use `--json-full` when automation needs the complete incoming/outgoing neighbor lists. Legacy `ea trace view --focus <report-or-record-ref>` remains available for connected-subgraph trace views. Trace commands are read-only audit helpers except for their own trace files; they do not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.
 `ea export report-html` renders one indexed canonical Markdown report into `exports/user-reports/{report_id}.html` with embedded figure images, captions, reference records, citation-number checks, provenance summary, and an audit appendix. The sidecar `*.html.yml` records the canonical Markdown path so the friendly report stays traceable without mutating analysis outputs.
 `ea export report-bundle` copies one report plus linked figures, source data, result metadata, references, local reference files, and provenance into `exports/report-bundles/` for handoff. Add `--include-trace` to include a focused report traceability YAML/Markdown view inside the bundle. `ea export batch-bundle` copies one batch run plus nested per-report bundles into `exports/batch-bundles/`; with `--include-trace`, each nested report bundle includes its own focused trace view. Each bundle writes `bundle_checksums.yml`; add `--zip` or `--zip-output` when the handoff should include a portable archive plus `.zip.sha256` sidecar. Use `ea export verify-bundle` and `ea export verify-archive` to verify local handoff integrity after copying. For provenance audit and checksum/signature boundaries, read `docs/PROJECT_BUNDLE_VERIFICATION.md`.
 
@@ -239,21 +242,21 @@ python3 scripts/public_release_smoke.py --dry-run
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.5-abcdef0-release.zip
+python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.6-abcdef0-release.zip
 python3 scripts/build_packaged_example_project.py --force
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/sign_release_package.py dist/ea-v0-2-0.9.5-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.5-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/ea-v0-2-0.9.6-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.6-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 python3 scripts/build_distribution_checklist.py
 ```
 
 `scripts/public_release_smoke.py` is the repository-level public-release gate. It prints JSON and runs tests, EA skill validation, CLI help sanity checks, public example healthcheck/eval checks, a portability scan for accidental developer-machine defaults, and a sensitive-value scan for credential-like assignments or token literals in release-facing files. The installed console entry point is `ea-public-release-smoke`.
-`scripts/build_release_manifest.py` writes `dist/ea-v0.9.5-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, v0.9.5 docs, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
+`scripts/build_release_manifest.py` writes `dist/ea-v0.9.6-release-manifest.yml` with package metadata, git state, console scripts, release input checksums, v0.9.6 docs, smoke-gate requirements, and public-user boundary notes. The installed console entry point is `ea-release-manifest`.
 `scripts/build_release_package.py` writes a deterministic release zip plus `.sha256` sidecar under `dist/`. The archive includes the release manifest and selected repository inputs. The installed console entry point is `ea-release-package`.
 `scripts/verify_release_package.py` verifies a release zip sidecar, embedded manifest, and manifest-listed payload checksums. The installed console entry point is `ea-verify-release-package`.
 `scripts/build_packaged_example_project.py` regenerates the public-safe Raman example project under `examples/public-raman-project/`; `scripts/build_public_ftir_assignment_example_project.py` regenerates the public-safe FTIR source-backed assignment example under `examples/public-ftir-assignment-project/`; `scripts/build_public_uv_vis_example_project.py` regenerates the public-safe UV-Vis reviewed optical-screening example under `examples/public-uv-vis-project/`; `scripts/build_public_xps_be_example_project.py` regenerates the public-safe XPS binding-energy candidate example under `examples/public-xps-be-project/`. These examples are included in default release manifests/packages and should pass `ea healthcheck` and `ea eval project --no-write`.
 `scripts/generate_release_keypair.py`, `scripts/sign_release_package.py`, and `scripts/verify_release_signature.py` implement an optional detached Ed25519 signature workflow for release packages. Private/public key paths must be supplied explicitly by the user; EA does not assume or search developer-machine key locations. The installed console entry points are `ea-release-keygen`, `ea-sign-release-package`, and `ea-verify-release-signature`.
-`scripts/build_distribution_checklist.py` writes `dist/ea-v0.9.5-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
+`scripts/build_distribution_checklist.py` writes `dist/ea-v0.9.6-distribution-checklist.json` and `.md`, summarizing required release commands, current git/package state, manifest/package artifacts, package verification, optional signature status, and public-user boundary notes. The installed console entry point is `ea-release-checklist`.
 
 ## Local Test Fixtures
 

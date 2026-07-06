@@ -260,7 +260,7 @@ def setup_literature_preflight(
             }
         )
     result = {
-        "schema_version": "0.9.5",
+        "schema_version": "0.9.6",
         "check_type": "ea_literature_setup_preflight",
         "checked_at": checked_at,
         "language": lang,
@@ -753,7 +753,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use Experimental Assistant v0.9.5 literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Use Experimental Assistant v0.9.6 literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -4003,7 +4003,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Experimental-Assistant-v0.9.5 public-metadata-search/0.9.5 (local-first research assistant)",
+            "User-Agent": "Experimental-Assistant-v0.9.6 public-metadata-search/0.9.6 (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )

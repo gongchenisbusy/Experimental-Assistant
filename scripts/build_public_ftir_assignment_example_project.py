@@ -61,7 +61,7 @@ EXAMPLE_DIALOGUE = (
 
 README_TEXT = """# EA v0.2 Public FTIR Assignment Example
 
-This folder is a packaged, public-safe EA project example for the FTIR source-backed assignment workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.5 package.
+This folder is a packaged, public-safe EA project example for the FTIR source-backed assignment workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.6 package.
 
 The example contains a minimal review-gated FTIR workflow:
 

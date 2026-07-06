@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 
 
-EXPECTED_VERSION = "v0.9.5"
-EXPECTED_PACKAGE_VERSION = "0.9.5"
+EXPECTED_VERSION = "v0.9.6"
+EXPECTED_PACKAGE_VERSION = "0.9.6"
 SCAN_ROOTS = [
     "README.md",
     "docs",

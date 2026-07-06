@@ -56,7 +56,7 @@ def test_cli_brief_project_no_write_returns_concise_json(tmp_path: Path, capsys)
     workspace = tmp_path / "public-raman-project"
     shutil.copytree(PUBLIC_RAMAN_EXAMPLE, workspace)
 
-    return_code = main(["brief", "project", str(workspace), "--no-write"])
+    return_code = main(["brief", "project", str(workspace), "--no-write", "--json"])
     output = json.loads(capsys.readouterr().out)
 
     assert return_code == 0
@@ -67,3 +67,16 @@ def test_cli_brief_project_no_write_returns_concise_json(tmp_path: Path, capsys)
     assert "project_working_memory" in output
     assert "markdown" not in output
     assert not list((workspace / "briefs").glob("*"))
+
+
+def test_cli_brief_project_default_returns_human_summary(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "public-raman-project"
+    shutil.copytree(PUBLIC_RAMAN_EXAMPLE, workspace)
+
+    return_code = main(["brief", "project", str(workspace), "--no-write"])
+    output = capsys.readouterr().out
+
+    assert return_code == 0
+    assert "EA project brief" in output
+    assert "- status: pass" in output
+    assert "markdown" not in output

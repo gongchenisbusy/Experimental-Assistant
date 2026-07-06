@@ -1,15 +1,15 @@
 ---
 name: ea-v0-2
-description: Experimental Assistant v0.9.5 local-first materials-research skill. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated characterization workflows, manage literature state, preserve lightweight project working memory, generate reports or export bundles, build report-memory traceability views, validate release packages, install/check the EA CLI or Codex skill, or maintain provenance without developer-machine paths or accounts.
+description: Experimental Assistant v0.9.6 local-first materials-research skill. Use when Codex needs to initialize or continue EA projects, structure experiment logs, import protected raw data, run review-gated characterization workflows, manage literature state, preserve lightweight project working memory, generate reports or export bundles, build report-memory traceability views, validate release packages, install/check the EA CLI or Codex skill, or maintain provenance without developer-machine paths or accounts.
 ---
 
-# Experimental Assistant v0.9.5
+# Experimental Assistant v0.9.6
 
 ## Overview
 
 Experimental Assistant is a local-first research workspace for experimental scientists. It keeps project records, raw data, processed results, figures, reports, literature state, memory, review records, and provenance linked so future agents can reconstruct what happened.
 
-Internal compatibility id: the skill folder, Python package name, and Codex invocation remain `ea-v0-2` / `$ea-v0-2` so existing installs and project records continue to work. Do not present `ea-v0-2` as the current public version; the user-facing product/version is Experimental Assistant v0.9.5.
+Internal compatibility id: the skill folder, Python package name, and Codex invocation remain `ea-v0-2` / `$ea-v0-2` so existing installs and project records continue to work. Do not present `ea-v0-2` as the current public version; the user-facing product/version is Experimental Assistant v0.9.6.
 
 Do not assume developer-machine Zotero, browser, institution, cache, or test paths. Also do not assume keys or credentials. Public-user initialization must ask for or explicitly leave environment-specific settings disabled.
 
@@ -29,7 +29,7 @@ When information is missing, ask only for the next decision that changes behavio
 4. Before processing or report claims that change interpretation, ensure the relevant ReviewRecords exist. Use `ea review add --confirm` only for explicit parameter/field/suggestion confirmation. Use `ea review promote` when earlier advisory review evidence needs explicit user promotion.
 5. Generate reports with IDs, inline numeric citations, figure links, confidence labels, and provenance. Save durable scientific findings as review-gated memory candidates, not as automatic confirmed memory.
 6. Refresh compact project continuity with `ea memory refresh-project` after meaningful project changes and read it with `ea memory show-project` when resuming long work. This file stores pointers and current state, not full raw/report content.
-7. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff or user-facing summaries. Use `ea trace view` and `ea trace lookup` when the user needs compact report-memory traceability across figures, reports, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, and memory. Use the brief first; keep detailed JSON, hashes, refs, review records, and trace graphs in local files unless the user asks for audit detail.
+7. Run `ea healthcheck`, `ea eval project`, and `ea brief project` before handoff or user-facing summaries. Use `ea trace index`, `ea trace focus`, and `ea trace lookup` when the user needs compact report-memory traceability across figures, reports, ReviewRecords, registered references, reference seeds, built-in/source-library refs, provenance, and memory. Use `ea trace export --full` only for explicit audit/release/debug needs. Use the brief first; keep detailed JSON, hashes, refs, review records, and trace graphs in local files unless the user asks for audit detail.
 
 ## Setup And Onboarding
 
@@ -48,7 +48,7 @@ Run `ea literature setup-preflight /path/to/ea-project --lang zh` before literat
 
 ## Large Work Gates
 
-Before literature acquisition, broad public metadata searches, source-candidate preparation, long report bundles, or other expensive workflows, estimate the task with `ea estimate workflow`. EA v0.9.5 uses a fixed large-work threshold of `100` Codex-credit-equivalent units, based on the approved v0.9.5 planning estimate of about 20% of a practical Plus/GPT-5.5 five-hour window.
+Before literature acquisition, broad public metadata searches, source-candidate preparation, long report bundles, or other expensive workflows, estimate the task with `ea estimate workflow`. EA v0.9.6 uses a fixed large-work threshold of `100` Codex-credit-equivalent units, based on the approved v0.9.6 planning estimate of about 20% of a practical Plus/GPT-5.5 five-hour window.
 
 If `ea estimate workflow` or `ea literature ...` reports `needs_confirmation`, summarize the expected work and ask whether to continue. Users may disable this reminder preference with `ea estimate reminders /path/to/ea-project --disable --reason "user requested no large-work reminders"`; safety, permission, and review gates still apply.
 
@@ -66,15 +66,20 @@ ea literature prepare-source-candidates /path/to/ea-project --method ftir --sour
 
 For the command catalogue, read `references/cli-command-index.md` only when the task needs concrete CLI examples. Keep the top-level skill context compact during ordinary use.
 
+## Route Index
+
+For non-trivial tasks, read `references/routing-index.yml` first when the workflow route or required reference set is not obvious. It maps common EA tasks to the smallest useful reference set and records which heavy artifacts should stay on disk unless explicitly requested.
+
 ## Release Checks
 
 For repository-level public-release checks, run `ea-public-release-smoke` or `python3 scripts/public_release_smoke.py`, then generate and verify release artifacts with `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, and `ea-release-checklist`.
 
-The smoke gate runs tests, validates the skill package, checks CLI help, scans portability/sensitive values, checks version identity, and verifies the downloaded skill instructions mention the current public version and v0.9.5 onboarding/literature/memory/estimate commands.
+The smoke gate runs tests, validates the skill package, checks CLI help, scans portability/sensitive values, checks version identity, and verifies the downloaded skill instructions mention the current public version and v0.9.6 onboarding/literature/memory/estimate commands.
 
 ## References
 
 - For project structure and workflow, read `references/project-workflow.md`.
+- For task routing and progressive-disclosure reference selection, read `references/routing-index.yml`.
 - For public-user installation and forbidden defaults, read `references/public-initialization.md`.
 - For interaction modes and question style, read `references/interaction-modes.md`.
 - For CLI examples, read `references/cli-command-index.md`.

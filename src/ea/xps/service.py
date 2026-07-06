@@ -2178,7 +2178,7 @@ def _reviewed_background_region(
             "assignment_source": source,
             "boundary": (
                 "This XPS background region records a user-reviewed background model choice and provenance only; "
-                "Experimental Assistant v0.9.5 does not automatically apply Shirley/Tougaard subtraction or prove chemical-state/composition claims from this record."
+                "Experimental Assistant v0.9.6 does not automatically apply Shirley/Tougaard subtraction or prove chemical-state/composition claims from this record."
             ),
         },
         warnings,
@@ -2201,12 +2201,12 @@ def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any]
         "regions": [],
         "reference_ids": [],
         "boundary": (
-            "XPS background model records preserve user-reviewed model/provenance choices only. Experimental Assistant v0.9.5 does not automatically perform "
+            "XPS background model records preserve user-reviewed model/provenance choices only. Experimental Assistant v0.9.6 does not automatically perform "
             "Shirley/Tougaard background subtraction, spin-orbit constrained fitting, formal composition, or chemical-state proof from this record."
         ),
     }
     if method != "reviewed_background_record":
-        warning = _warning("xps_background_model_method_unsupported", "XPS background model method is not supported by Experimental Assistant v0.9.5.", severity="medium", method=method)
+        warning = _warning("xps_background_model_method_unsupported", "XPS background model method is not supported by Experimental Assistant v0.9.6.", severity="medium", method=method)
         warnings.append(warning)
         record.update({"status": "skipped_unsupported_method", "warnings": warnings})
         return record, warnings
@@ -2661,7 +2661,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
             "XPS background_subtraction applies only user-reviewed numeric preprocessing inside explicit binding-energy regions. "
-            "Experimental Assistant v0.9.5 may suggest source-backed endpoints/windows or Tougaard parameters through traceable records, but this record does not silently choose or apply them, "
+            "Experimental Assistant v0.9.6 may suggest source-backed endpoints/windows or Tougaard parameters through traceable records, but this record does not silently choose or apply them, "
             "fit Tougaard parameters, run QUASES/depth-profile modeling or peak fitting, assign chemical states, prove composition, or perform spin-orbit constrained fitting."
         ),
     }
@@ -2669,7 +2669,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         warnings.append(
             _warning(
                 "xps_background_subtraction_method_unsupported",
-                "XPS background_subtraction method is not supported by Experimental Assistant v0.9.5.",
+                "XPS background_subtraction method is not supported by Experimental Assistant v0.9.6.",
                 severity="medium",
                 method=method,
                 supported_methods=sorted(supported_methods),
@@ -3661,7 +3661,7 @@ def _component_fit_spin_orbit_constraints(
             warnings.append(
                 _warning(
                     "xps_component_fit_spin_orbit_chained_constraint",
-                    "XPS spin-orbit constrained component-fit was skipped because chained or cyclic constraints are not supported in Experimental Assistant v0.9.5.",
+                    "XPS spin-orbit constrained component-fit was skipped because chained or cyclic constraints are not supported in Experimental Assistant v0.9.6.",
                     severity="medium",
                     region_id=region_id,
                     constraint_id=constraint_id,
@@ -3797,7 +3797,7 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         warnings.append(
             _warning(
                 "xps_component_fit_method_unsupported",
-                "Only reviewed_component_fit_screening is supported for XPS component_fit in Experimental Assistant v0.9.5.",
+                "Only reviewed_component_fit_screening is supported for XPS component_fit in Experimental Assistant v0.9.6.",
                 severity="medium",
                 requested_method=method,
             )
@@ -3855,7 +3855,7 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS component_fit is reviewed screening-level numerical modeling only. Experimental Assistant v0.9.5 may use reviewed user-provided or source-backed "
+            "XPS component_fit is reviewed screening-level numerical modeling only. Experimental Assistant v0.9.6 may use reviewed user-provided or source-backed "
             "component/background/bounds/peak-shape candidates, but this record does not silently choose them, use unsourced spin-orbit constants, "
             "or prove chemical states or definitive composition."
         ),
@@ -4407,7 +4407,7 @@ def _apply_region_records(
         warnings.append(
             _warning(
                 "xps_region_records_method_unsupported",
-                "Only reviewed_multi_region_project_record is supported for XPS region_records in Experimental Assistant v0.9.5.",
+                "Only reviewed_multi_region_project_record is supported for XPS region_records in Experimental Assistant v0.9.6.",
                 severity="medium",
                 requested_method=method,
             )
@@ -4439,7 +4439,7 @@ def _apply_region_records(
         "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS region_records are reviewed project-organization and provenance records only. Experimental Assistant v0.9.5 does not share charge correction "
+            "XPS region_records are reviewed project-organization and provenance records only. Experimental Assistant v0.9.6 does not share charge correction "
             "or align survey/core-level spectra without review/provenance, assign chemical states, calculate formal multi-region composition, or rank samples."
         ),
     }

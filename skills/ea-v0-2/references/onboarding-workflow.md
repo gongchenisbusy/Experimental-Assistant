@@ -1,4 +1,4 @@
-# EA v0.9.5 Onboarding Workflow
+# EA v0.9.6 Onboarding Workflow
 
 Use this reference after installing, updating, or downloading the skill.
 
@@ -17,7 +17,7 @@ For an update, use:
 ea onboarding post-install --event update --lang zh
 ```
 
-The onboarding message should identify Experimental Assistant v0.9.5, mention the internal compatibility id `ea-v0-2`, and remind the user to restart Codex after skill installation or replacement.
+The onboarding message should identify Experimental Assistant v0.9.6, mention the internal compatibility id `ea-v0-2`, and remind the user to restart Codex after skill installation or replacement.
 
 ## Downloaded Instructions Sync
 

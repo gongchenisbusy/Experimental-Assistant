@@ -20,7 +20,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_release_verification_doc_is_public_safe_and_actionable() -> None:
     text = VERIFICATION_DOC.read_text(encoding="utf-8")
 
-    assert "# Experimental Assistant v0.9.5 Release Verification" in text
+    assert "# Experimental Assistant v0.9.6 Release Verification" in text
     assert "ea-public-release-smoke" in text
     assert "ea-release-manifest" in text
     assert "ea-release-package" in text
@@ -29,7 +29,7 @@ def test_release_verification_doc_is_public_safe_and_actionable() -> None:
     assert "ea-release-checklist" in text
     assert "ea install-check" in text
     assert "https://github.com/gongchenisbusy/Experimental-Assistant" in text
-    assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.5" in text
+    assert "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.6" in text
     assert "What Each Check Proves" in text
     assert "sensitive-value scan" in text
     assert "Scope Limits" in text

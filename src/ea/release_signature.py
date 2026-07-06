@@ -18,7 +18,7 @@ from ea.release_package import _checksum_sidecar_path, _sha256_file, verify_rele
 
 
 SIGNATURE_SIDECAR_SUFFIX = ".sig.yml"
-SIGNATURE_TYPE = "ea_v0_9_5_release_package_signature"
+SIGNATURE_TYPE = "ea_v0_9_6_release_package_signature"
 SIGNATURE_ALGORITHM = "ed25519"
 
 
@@ -250,7 +250,7 @@ def verify_release_signature(
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
         "schema_version": "0.9",
-        "check_type": "ea_v0_9_5_release_package_signature",
+        "check_type": "ea_v0_9_6_release_package_signature",
         "status": "pass",
         "archive_path": str(archive_path),
         "signature_path": str(signature_path),
@@ -369,7 +369,7 @@ def verify_release_signature(
 
 
 def build_keygen_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an Ed25519 keypair for optional Experimental Assistant v0.9.5 signing.")
+    parser = argparse.ArgumentParser(description="Generate an Ed25519 keypair for optional Experimental Assistant v0.9.6 signing.")
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument("--overwrite", action="store_true")
@@ -378,7 +378,7 @@ def build_keygen_parser() -> argparse.ArgumentParser:
 
 
 def build_sign_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Sign an Experimental Assistant v0.9.5 package with a user-managed Ed25519 private key.")
+    parser = argparse.ArgumentParser(description="Sign an Experimental Assistant v0.9.6 package with a user-managed Ed25519 private key.")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
@@ -390,7 +390,7 @@ def build_sign_parser() -> argparse.ArgumentParser:
 
 
 def build_verify_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Verify an Experimental Assistant v0.9.5 package detached signature.")
+    parser = argparse.ArgumentParser(description="Verify an Experimental Assistant v0.9.6 package detached signature.")
     parser.add_argument("archive", type=Path)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument("--signature", type=Path)

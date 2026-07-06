@@ -199,7 +199,7 @@ def write_project_working_memory_skeleton(
 Read this file first when continuing the project, then expand into detailed records only when the current task needs them.
 """
     frontmatter = {
-        "schema_version": "0.9.5",
+        "schema_version": "0.9.6",
         "memory_type": "project_working_memory",
         "project_id": project_id,
         "updated_at": created_at,
@@ -276,7 +276,7 @@ def refresh_project_working_memory(
 Use this compact snapshot to resume the project after context compaction. Expand into full reports, literature records, raw data, provenance, reviews, or confirmed scientific memory only when the current task requires that detail.
 """
     frontmatter = {
-        "schema_version": "0.9.5",
+        "schema_version": "0.9.6",
         "memory_type": "project_working_memory",
         "project_id": project_id,
         "updated_at": refreshed_at,

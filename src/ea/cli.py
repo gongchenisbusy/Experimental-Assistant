@@ -116,7 +116,7 @@ from ea.templates import (
     write_processing_parameters_template,
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
-from ea.traceability import build_project_trace_view, lookup_trace_record
+from ea.traceability import build_project_trace_view, build_trace_focus, build_trace_index, export_full_trace, lookup_trace_record
 from ea.uv_vis import (
     UVVisProcessingRequest,
     build_uv_vis_source_packet,
@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--material", required=True)
     init.add_argument("--experiment-type", required=True)
 
-    init_project = sub.add_parser("init-project", help="initialize a public-user Experimental Assistant v0.9.5 project workspace")
+    init_project = sub.add_parser("init-project", help="initialize a public-user Experimental Assistant v0.9.6 project workspace")
     init_project.add_argument("workspace", type=Path)
     init_project.add_argument("--name", required=True)
     init_project.add_argument("--slug", required=True)
@@ -230,6 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
     brief_project.add_argument("workspace", type=Path)
     brief_project.add_argument("--no-write", action="store_true")
     brief_project.add_argument("--output", type=Path)
+    brief_project.add_argument("--json", action="store_true", help="print compact structured JSON instead of the default human summary")
+    brief_project.add_argument("--json-full", action="store_true", help="print the full brief result JSON")
     brief_project.add_argument("--print-markdown", action="store_true")
 
     eval_parser = sub.add_parser("eval", help="run EA evaluation suites")
@@ -990,16 +992,40 @@ def build_parser() -> argparse.ArgumentParser:
 
     trace = sub.add_parser("trace", help="build local traceability views across reports, figures, reviews, suggestions, and memory")
     trace_sub = trace.add_subparsers(dest="trace_command", required=True)
+    trace_index = trace_sub.add_parser("index", help="write a compact project traceability index")
+    trace_index.add_argument("workspace", type=Path)
+    trace_index.add_argument("--output", type=Path)
+    trace_index.add_argument("--json", action="store_true")
+    trace_index.add_argument("--json-full", action="store_true")
     trace_view = trace_sub.add_parser("view", help="write a project traceability YAML/Markdown view")
     trace_view.add_argument("workspace", type=Path)
     trace_view.add_argument("--focus")
     trace_view.add_argument("--output", type=Path)
     trace_view.add_argument("--markdown-output", type=Path)
+    trace_view.add_argument("--json", action="store_true")
+    trace_view.add_argument("--json-full", action="store_true")
+    trace_focus = trace_sub.add_parser("focus", help="write a depth-limited focus subgraph for one record")
+    trace_focus.add_argument("workspace", type=Path)
+    trace_focus.add_argument("record_ref")
+    trace_focus.add_argument("--depth", type=int, default=2)
+    trace_focus.add_argument("--output", type=Path)
+    trace_focus.add_argument("--markdown-output", type=Path)
+    trace_focus.add_argument("--json", action="store_true")
+    trace_focus.add_argument("--json-full", action="store_true")
+    trace_export = trace_sub.add_parser("export", help="export traceability artifacts")
+    trace_export.add_argument("workspace", type=Path)
+    trace_export.add_argument("--full", action="store_true", help="write the full project trace graph to disk")
+    trace_export.add_argument("--output", type=Path)
+    trace_export.add_argument("--markdown-output", type=Path)
+    trace_export.add_argument("--json", action="store_true")
+    trace_export.add_argument("--json-full", action="store_true")
     trace_lookup = trace_sub.add_parser("lookup", help="resolve one report/figure/result/reference/review/suggestion/memory ID through the trace graph")
     trace_lookup.add_argument("workspace", type=Path)
     trace_lookup.add_argument("record_ref")
     trace_lookup.add_argument("--output", type=Path)
     trace_lookup.add_argument("--markdown-output", type=Path)
+    trace_lookup.add_argument("--json", action="store_true")
+    trace_lookup.add_argument("--json-full", action="store_true")
 
     figure = sub.add_parser("lookup-figure", help="look up a figure by figure_id")
     figure.add_argument("workspace", type=Path)
@@ -1010,6 +1036,110 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _print_json(data: object) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def _compact_brief_result(result: dict) -> dict:
+    keys = {
+        "schema_version",
+        "brief_type",
+        "created_at",
+        "workspace",
+        "brief_id",
+        "yaml_path",
+        "markdown_path",
+        "project",
+        "evaluation",
+        "key_outputs",
+        "project_working_memory",
+        "needs_user_confirmation",
+        "next_actions",
+        "scope",
+    }
+    return {key: value for key, value in result.items() if key in keys}
+
+
+def _print_brief_summary(result: dict) -> None:
+    project = result.get("project") or {}
+    evaluation = result.get("evaluation") or {}
+    key_outputs = result.get("key_outputs") or {}
+    print("EA project brief")
+    print(f"- status: {evaluation.get('status', 'unknown')}")
+    print(f"- project: {project.get('project_id') or project.get('name') or 'unknown'}")
+    if result.get("markdown_path"):
+        print(f"- markdown: {result['markdown_path']}")
+    if result.get("yaml_path"):
+        print(f"- yaml: {result['yaml_path']}")
+    print(f"- reports: {len(key_outputs.get('reports') or [])}")
+    print(f"- next_actions: {len(result.get('next_actions') or [])}")
+    if result.get("needs_user_confirmation"):
+        print(f"- needs_user_confirmation: {len(result['needs_user_confirmation'])}")
+
+
+def _compact_trace_result(result: dict) -> dict:
+    keys = {
+        "schema_version",
+        "source",
+        "status",
+        "trace_id",
+        "index_id",
+        "trace_ref",
+        "index_ref",
+        "markdown_ref",
+        "node_count",
+        "edge_count",
+        "missing_node_count",
+        "focus_ref",
+        "canonical_focus_ref",
+        "focus_depth",
+        "export_mode",
+    }
+    compact = {key: value for key, value in result.items() if key in keys}
+    if "query" in result:
+        related = result.get("related") or {}
+        compact.update(
+            {
+                "query": result.get("query"),
+                "canonical_ref": result.get("canonical_ref"),
+                "node": result.get("node"),
+                "related": {
+                    "incoming_count": related.get("incoming_count", 0),
+                    "outgoing_count": related.get("outgoing_count", 0),
+                },
+                "trace_ref": result.get("trace_ref"),
+                "markdown_ref": result.get("markdown_ref"),
+            }
+        )
+    return {key: value for key, value in compact.items() if value not in (None, "", [], {})}
+
+
+def _print_trace_summary(result: dict, *, label: str) -> None:
+    compact = _compact_trace_result(result)
+    print(f"EA trace {label}")
+    for key in [
+        "status",
+        "index_ref",
+        "trace_ref",
+        "markdown_ref",
+        "focus_ref",
+        "canonical_focus_ref",
+        "focus_depth",
+        "node_count",
+        "edge_count",
+        "missing_node_count",
+    ]:
+        if key in compact:
+            print(f"- {key}: {compact[key]}")
+    if "related" in compact:
+        print(f"- incoming: {compact['related']['incoming_count']}")
+        print(f"- outgoing: {compact['related']['outgoing_count']}")
+
+
+def _trace_full_result(result: dict) -> dict:
+    if result.get("index_path"):
+        return {**result, "index": read_yaml(Path(result["index_path"]))}
+    if result.get("trace_path"):
+        return {**result, "trace": read_yaml(Path(result["trace_path"]))}
+    return result
 
 
 def _project_id_from_workspace(workspace: Path) -> str:
@@ -1200,30 +1330,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if args.print_markdown:
                 print(result["markdown"])
                 return 0 if result["evaluation"]["status"] != "fail" else 2
-            _print_json(
-                {
-                    key: value
-                    for key, value in result.items()
-                    if key
-                    in {
-                        "schema_version",
-                        "brief_type",
-                        "created_at",
-                        "workspace",
-                        "brief_id",
-                        "yaml_path",
-                        "markdown_path",
-                        "project",
-                        "evaluation",
-                        "key_outputs",
-                        "literature",
-                        "project_working_memory",
-                        "needs_user_confirmation",
-                        "next_actions",
-                        "scope",
-                    }
-                }
-            )
+            if args.json_full:
+                _print_json(result)
+            elif args.json:
+                _print_json(_compact_brief_result(result))
+            else:
+                _print_brief_summary(result)
             return 0 if result["evaluation"]["status"] != "fail" else 2
     if args.command == "eval":
         if args.eval_command == "project":
@@ -2468,6 +2580,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
             _print_json(result)
             return 0 if result["ok"] else 2
     if args.command == "trace":
+        if args.trace_command == "index":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            result = build_trace_index(args.workspace, output_path=output_path)
+            if args.json_full:
+                _print_json(_trace_full_result(result))
+            elif args.json:
+                _print_json(_compact_trace_result(result))
+            else:
+                _print_trace_summary(result, label="index")
+            return 0
         if args.trace_command == "view":
             output_path = args.output
             if output_path and not output_path.is_absolute():
@@ -2475,14 +2599,61 @@ def _main_impl(argv: list[str] | None = None) -> int:
             markdown_output_path = args.markdown_output
             if markdown_output_path and not markdown_output_path.is_absolute():
                 markdown_output_path = args.workspace / markdown_output_path
-            _print_json(
-                build_project_trace_view(
-                    args.workspace,
-                    focus_ref=args.focus,
-                    output_path=output_path,
-                    markdown_output_path=markdown_output_path,
-                )
+            result = build_project_trace_view(
+                args.workspace,
+                focus_ref=args.focus,
+                output_path=output_path,
+                markdown_output_path=markdown_output_path,
             )
+            if args.json_full:
+                _print_json(_trace_full_result(result))
+            elif args.json:
+                _print_json(_compact_trace_result(result))
+            else:
+                _print_trace_summary(result, label="view")
+            return 0
+        if args.trace_command == "focus":
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_output_path = args.markdown_output
+            if markdown_output_path and not markdown_output_path.is_absolute():
+                markdown_output_path = args.workspace / markdown_output_path
+            result = build_trace_focus(
+                args.workspace,
+                args.record_ref,
+                depth=args.depth,
+                output_path=output_path,
+                markdown_output_path=markdown_output_path,
+            )
+            if args.json_full:
+                _print_json(_trace_full_result(result))
+            elif args.json:
+                _print_json(_compact_trace_result(result))
+            else:
+                _print_trace_summary(result, label="focus")
+            return 0
+        if args.trace_command == "export":
+            if not args.full:
+                _print_json({"status": "fail", "error": "trace export currently requires --full"})
+                return 2
+            output_path = args.output
+            if output_path and not output_path.is_absolute():
+                output_path = args.workspace / output_path
+            markdown_output_path = args.markdown_output
+            if markdown_output_path and not markdown_output_path.is_absolute():
+                markdown_output_path = args.workspace / markdown_output_path
+            result = export_full_trace(
+                args.workspace,
+                output_path=output_path,
+                markdown_output_path=markdown_output_path,
+            )
+            if args.json_full:
+                _print_json(_trace_full_result(result))
+            elif args.json:
+                _print_json(_compact_trace_result(result))
+            else:
+                _print_trace_summary(result, label="export")
             return 0
         if args.trace_command == "lookup":
             output_path = args.output
@@ -2491,14 +2662,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
             markdown_output_path = args.markdown_output
             if markdown_output_path and not markdown_output_path.is_absolute():
                 markdown_output_path = args.workspace / markdown_output_path
-            _print_json(
-                lookup_trace_record(
-                    args.workspace,
-                    args.record_ref,
-                    output_path=output_path,
-                    markdown_output_path=markdown_output_path,
-                )
+            result = lookup_trace_record(
+                args.workspace,
+                args.record_ref,
+                output_path=output_path,
+                markdown_output_path=markdown_output_path,
             )
+            if args.json_full:
+                _print_json(_trace_full_result(result))
+            elif args.json:
+                _print_json(_compact_trace_result(result))
+            else:
+                _print_trace_summary(result, label="lookup")
             return 0
     if args.command == "lookup-figure":
         _print_json(lookup_figure(args.workspace, args.figure_id))

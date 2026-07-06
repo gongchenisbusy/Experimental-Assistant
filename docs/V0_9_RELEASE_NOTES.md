@@ -1,34 +1,32 @@
-# Experimental Assistant v0.9.5 Release Notes
+# Experimental Assistant v0.9.6 Release Notes
 
-Experimental Assistant v0.9.5 is a stabilization and usability release from the `ea-v0-2` compatibility line. It focuses on version consistency, lighter agent instructions, post-install onboarding, literature preflight, large-work confirmation, compact project working memory, review promotion, public installability, report delivery, and release packaging rather than adding a new characterization method.
+Experimental Assistant v0.9.6 is a token-efficiency and runtime-lightness update on top of the v0.9.5 stabilization release. It keeps the `ea-v0-2` compatibility line, preserves full scientific/reporting capability, and focuses on router-style skill loading, traceability focus-subgraphs, compact default CLI output, and v0.9.6 release metadata rather than adding a new characterization method.
 
 ## Version
 
-- Package version: `0.9.5`
-- Release label: `v0.9.5`
+- Package version: `0.9.6`
+- Release label: `v0.9.6`
 - Skill folder: `skills/ea-v0-2`
-- Compatibility note: the skill name and package name keep `ea-v0-2` for continuity; release artifacts and docs identify the v0.9.5 release state.
+- Compatibility note: the skill name and package name keep `ea-v0-2` for continuity; release artifacts and docs identify the v0.9.6 release state.
 
-## Major Changes Since v0.2 Baseline
+## Major Changes Since v0.9.5
 
-- Stabilized known v0.2 issues around project dates, review ID collisions, bilingual confirmations, deferred memory-candidate healthcheck legality, figure report footers, Raman raw/processed plotting, inherited warnings, user-facing CLI boundary errors, and memory review output.
-- Added a public install and Codex skill setup guide for fresh clones and release packages.
-- Added `ea brief project` for concise agent-facing project summaries and next actions.
-- Added `ea export report-html` for readable HTML reports with embedded figures, canonical Markdown traceability, references, and provenance audit metadata.
-- Added `ea literature zotero-readiness` for local Zotero-Codex handoff/status readiness without operating Zotero, browsers, credentials, or downloads.
-- Promoted public examples to release smoke gates: Raman, FTIR source-backed assignment, UV-Vis screening, and XPS binding-energy candidate examples must pass healthcheck and eval.
-- Updated release manifest, package, verification, optional signing, and distribution checklist surfaces for v0.9.5 handoff.
+- Added `references/routing-index.yml` so the EA skill can choose the smallest useful reference set for project, method, report, traceability, memory, literature-state, and release/install routes.
+- Added explicit traceability entry points: `ea trace index`, `ea trace focus`, and `ea trace export --full`, while preserving `ea trace view` and `ea trace lookup`.
+- Made `ea trace ...` and `ea brief project` default terminal output concise; use `--json` for compact structured output and `--json-full` for full automation/debug output.
+- Kept comprehensive report generation intact. v0.9.6 does not reduce report depth, split reports into weaker stages, or remove existing analysis capability.
+- Updated package, skill, downloaded instructions, release manifest/package/checklist/signature metadata, and public install docs to v0.9.6.
 
 ## Relationship To v1.0
 
-v0.9.5 is not the final public v1.0. It should be handed to human testers and future agents to find remaining product, documentation, and scientific-boundary issues before v1.0. v1.0 should only be cut after the acceptance matrix, manual checklist, and real user walkthroughs have no blocking findings or have clear documented limitations.
+v0.9.6 is not the final public v1.0. It should be handed to human testers and future agents to find remaining product, documentation, and scientific-boundary issues before v1.0. v1.0 should only be cut after the acceptance matrix, manual checklist, and real user walkthroughs have no blocking findings or have clear documented limitations.
 
 ## Stable Entry Points
 
 - `ea init-project`, `ea config doctor`, `ea healthcheck`, `ea eval project`, `ea brief project`
 - Raman/PL/XRD/FTIR/UV-Vis/XPS/electrochemistry/thermal/image-data local workflows when user review gates are satisfied
 - `ea export report-html`, `ea export report-bundle`, `ea export batch-bundle`, `ea export verify-bundle`, `ea export verify-archive`
-- `ea trace view`, `ea trace lookup`
+- `ea trace index`, `ea trace focus`, `ea trace view`, `ea trace lookup`, `ea trace export --full`
 - release commands: `ea-public-release-smoke`, `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, `ea-release-checklist`
 
 ## Screening Or Experimental Entry Points
@@ -42,5 +40,5 @@ v0.9.5 is not the final public v1.0. It should be handed to human testers and fu
 ## Migration Notes
 
 - Existing legacy EA project folders can continue to be inspected with healthcheck/eval.
-- For public handoff, regenerate any report bundles or release packages with the v0.9.5 code so manifests, checksums, and HTML exports use current metadata.
+- For public handoff, regenerate any report bundles or release packages with the v0.9.6 code so manifests, checksums, and HTML exports use current metadata.
 - Keep `skills/ea-v0-2` as the installed skill folder until a future version intentionally renames the skill.

@@ -1,6 +1,6 @@
-# Experimental Assistant v0.9.5 Known Limitations
+# Experimental Assistant v0.9.6 Known Limitations
 
-These Experimental Assistant v0.9.5 limitations are expected and must be explained during public testing.
+These Experimental Assistant v0.9.6 limitations are expected and must be explained during public testing.
 
 ## Scientific Boundaries
 

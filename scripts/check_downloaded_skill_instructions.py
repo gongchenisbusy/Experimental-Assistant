@@ -9,10 +9,11 @@ REQUIRED_FILES = [
     Path("skills/ea-v0-2/SKILL.md"),
     Path("skills/ea-v0-2/agents/openai.yaml"),
     Path("skills/ea-v0-2/references/cli-command-index.md"),
+    Path("skills/ea-v0-2/references/routing-index.yml"),
     Path("docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md"),
 ]
 REQUIRED_STRINGS = [
-    "Experimental Assistant v0.9.5",
+    "Experimental Assistant v0.9.6",
     "Internal compatibility id",
     "ea onboarding post-install",
     "ea literature setup-preflight",
@@ -21,6 +22,10 @@ REQUIRED_STRINGS = [
     "ea estimate workflow",
     "ea estimate reminders",
     "ea review promote",
+    "references/routing-index.yml",
+    "ea trace index",
+    "ea trace focus",
+    "ea trace export",
     "--confirm-large-work",
 ]
 FORBIDDEN_STRINGS = [
