@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a user-centered EA improvement.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Explain the research task or friction before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+  - type: dropdown
+    id: maturity
+    attributes:
+      label: Expected maturity
+      options: [Stable core, Beta workflow, Experimental or companion integration, Unsure]
+  - type: textarea
+    id: safety
+    attributes:
+      label: Data, scientific, access, or compatibility risks

@@ -1,51 +1,51 @@
-# Experimental Assistant v0.9.6 Manual Test Checklist
+# Experimental Assistant v0.9.7 Manual Test Checklist
 
-Use this checklist after automated gates pass. Record failures as issues before promoting v0.9.6 toward v1.0.
+Record tester, operating system, Python version, commit/tag, date, commands, artifact paths, and each failure. Do not convert an unchecked item into inferred evidence.
 
-## Install And Skill Setup
+## Install And Identity
 
-- [ ] Clone or unpack the release package in a path that is not the development checkout.
-- [ ] Create a new virtual environment and run `python3 -m pip install -e .`.
-- [ ] Confirm `ea --help` works without Zotero, browser state, institution access, private caches, or signing keys.
-- [ ] Copy `skills/ea-v0-2` into the Codex skills directory and run `quick_validate.py`.
-- [ ] Start a fresh Codex thread and confirm the skill can orient from `docs/PUBLIC_ONBOARDING.md`.
+- [ ] Install the wheel in a clean environment and run PATH-resolved `ea version --json`, `ea capabilities --json`, `ea doctor --json`, and `ea --help`.
+- [ ] Repeat from the sdist.
+- [ ] Run `ea setup`, restart Codex, and invoke `$ea` in a fresh task.
+- [ ] Confirm `$ea-v0-2` routes to `$ea` without loading a second full instruction set.
+- [ ] Preview update, rollback, and uninstall; perform them only in a disposable test environment.
 
-## Public Examples
+## First Project
 
-- [ ] Run healthcheck and eval on `examples/public-raman-project`.
-- [ ] Run healthcheck and eval on `examples/public-ftir-assignment-project`.
-- [ ] Export the FTIR source-backed report as HTML and confirm the figure and references are visible.
-- [ ] Export the FTIR source-backed report bundle with trace and zip, then verify the bundle and archive.
-- [ ] Run healthcheck and eval on `examples/public-uv-vis-project`.
-- [ ] Run healthcheck and eval on `examples/public-xps-be-project`.
+- [ ] Preview and confirm `ea start` using a non-developer path and Chinese project metadata.
+- [ ] Run status, healthcheck, eval, and brief; confirm default output is concise and useful.
+- [ ] Preview/import UTF-8 BOM, GB18030/CP936, and comma/tab/semicolon fixtures; reject changed hashes, directories, binaries, and unapproved symlinks.
+- [ ] Interrupt a migration or atomic write in a disposable project and verify journal/backup recovery.
+- [ ] Exercise consult, record, execute, and audit boundaries and verify blocked commands explain next actions.
 
-## First Real Project Walkthrough
+## Scientific And Export
 
-- [ ] Initialize a project with explicit user-provided metadata.
-- [ ] Run config doctor, healthcheck, eval, and brief.
-- [ ] Import one small raw file, create required review records, process, generate a report, export HTML, and export a report bundle.
-- [ ] Confirm the user-facing response can use the brief without dumping JSON, hashes, or review IDs by default.
+- [ ] Run all four packaged examples through healthcheck/eval.
+- [ ] Complete one reviewed inspect/process/report path from imported raw data.
+- [ ] Export HTML and a traced report bundle; run `ea export verify-bundle` and `ea export verify-archive`.
+- [ ] Record the exact `ea export report-bundle ... --include-trace --zip` command used for the handoff artifact.
+- [ ] Run Raman golden benchmark and inspect the external-review status without marking it complete.
 
-## Literature Boundary Walkthrough
+## Literature
 
-- [ ] Run a no-Zotero literature readiness check and confirm it gives degraded-mode next actions.
-- [ ] Generate a Zotero-Codex bridge/readiness view from placeholder user settings and confirm no credentials or account files are stored.
-- [ ] Simulate an acquisition status import from local status artifacts and run reconciliation/acceptance checklist if artifacts are available.
-- [ ] Confirm institution access guidance pauses for user-managed login rather than attempting access.
+- [ ] Run `ea literature zotero-readiness` in no-Zotero degraded mode and a mixed acquired/blocked five-paper handoff.
+- [ ] Confirm login/subscription blockers pause for user action and expose no signed URL, cookie, token, profile, or session value.
+- [ ] Run the ten-paper evidence-dataset pilot; review accept/reject/edit/defer/not-comparable states.
+- [ ] Confirm only accepted/edited values enter plots and the privacy export excludes raw/private full text and absolute source paths.
+- [ ] Confirm an image-only PDF produces OCR-required rather than fabricated data.
 
-## Release Package Walkthrough
+## Release Engineering
 
-- [ ] Run full pytest.
-- [ ] Run skill validation.
-- [ ] Run public release smoke.
-- [ ] Build release manifest and release package.
-- [ ] Verify release package.
-- [ ] Build distribution checklist.
-- [ ] Confirm the release package includes docs, examples, tests, scripts, skill package, and source code, but excludes `.venv`, `dist`, caches, and local-test-only files.
+- [ ] Full tests and both skill validations pass.
+- [ ] Native CI passes on Windows, Ubuntu, macOS with Python 3.11-3.13; Python 3.14 result is recorded separately.
+- [ ] Clean wheel/sdist builds are reproducible under the documented conditions.
+- [ ] SBOM exists and vulnerability report status is `pass`.
+- [ ] Release manifest, repository package, SHA-256 sidecar, package verification, and distribution checklist pass.
+- [ ] Public release assets can be downloaded and independently verified/installed.
 
-## Decision
+## v1.0 Promotion
 
-- [ ] No blocking automated failures remain.
-- [ ] No public safety boundary failure remains.
-- [ ] Known limitations are documented in `docs/V0_9_KNOWN_LIMITATIONS.md`.
-- [ ] Any v1.0 follow-up issue is documented with reproduction steps and artifact paths.
+- [ ] Independent novice trials pass on each supported OS family.
+- [ ] Independent scientific reviewer signs off Raman benchmark interpretation and literature-dataset evidence fidelity.
+- [ ] Public issue #1-#7 disposition is recorded with no unresolved blocker.
+- [ ] Known limitations and support policy match observed behavior.

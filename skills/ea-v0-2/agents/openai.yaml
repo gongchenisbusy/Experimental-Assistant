@@ -1,4 +1,4 @@
 interface:
-  display_name: "Experimental Assistant"
-  short_description: "Experimental Assistant v0.9.6 local-first materials-research assistant"
-  default_prompt: "Use $ea-v0-2 as the Experimental Assistant v0.9.6 compatibility skill to initialize or continue a local experimental research project. Treat ea-v0-2 as the internal compatibility id, not the public version name."
+  display_name: "Experimental Assistant (Compatibility)"
+  short_description: "Legacy $ea-v0-2 entry for the v0.9.7 $ea skill"
+  default_prompt: "Use $ea-v0-2 only as a compatibility entry, then follow the installed $ea skill without rewriting historical project identifiers."

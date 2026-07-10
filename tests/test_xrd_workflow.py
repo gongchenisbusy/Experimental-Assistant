@@ -301,8 +301,8 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     )
     boundary_error = _json_output(capsys)
     assert boundary_error["status"] == "error"
-    assert boundary_error["error_type"] == "ValueError"
-    assert "Each --assignment-suggestion requires one matching --assignment-review-ref" in boundary_error["message"]
+    assert boundary_error["cause"]["type"] == "ValueError"
+    assert "Each --assignment-suggestion requires one matching --assignment-review-ref" in boundary_error["cause"]["message"]
 
     assert (
         main(

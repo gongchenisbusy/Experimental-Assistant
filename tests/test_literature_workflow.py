@@ -5,8 +5,11 @@ import json
 import urllib.parse
 from pathlib import Path
 
+from ea.brief import build_project_brief
 from ea.cli import main
+from ea.evaluation import run_project_evaluation
 from ea.literature import (
+    build_search_queries,
     confirm_literature_selection,
     generate_literature_keywords,
     import_literature_acquisition_manifest,
@@ -26,6 +29,7 @@ from ea.literature import (
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
+from ea.literature.handoff import classify_blocked_reason, normalize_acquisition_handoff
 from ea.projects import initialize_project
 from ea.storage import read_yaml, write_yaml
 
@@ -43,6 +47,83 @@ def test_literature_keywords_extract_project_methods_and_materials() -> None:
     assert "raman" in keywords["method_terms"]
     assert "cvd" in keywords["method_terms"]
     assert "strain" in keywords["exact_terms"]
+
+
+def test_search_queries_preserve_confirmed_phrases_with_provenance() -> None:
+    keywords = generate_literature_keywords(
+        project_name="2D alumina dielectric project",
+        research_direction="dielectric behavior of two-dimensional alumina",
+        material_system="two-dimensional alumina",
+        experiment_type="dielectric characterization",
+        extra_keywords=["dielectric constant"],
+    )
+
+    queries = build_search_queries(keywords)
+
+    assert queries
+    for query in queries:
+        assert '"two-dimensional alumina"' in query["query"]
+        assert '"dielectric constant"' in query["query"]
+        assert query["immutable_clauses"] == ["two-dimensional alumina", "dielectric constant"]
+        assert all(item["immutable"] is True for item in query["query_provenance"])
+
+
+def test_required_material_and_application_gate_precedes_authority_ranking(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="2D alumina dielectric",
+        research_direction="dielectric behavior",
+        material_system="two-dimensional alumina",
+        experiment_type="dielectric characterization",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="index_only", extra_keywords=["dielectric constant"])
+    confirm_literature_selection(tmp_path, selected_top_n=2, user_response="确认 top 2。")
+    write_yaml(
+        tmp_path / "literature" / "candidate_input.yml",
+        {
+            "candidates": [
+                {
+                    "title": "Highly cited copper nanoparticle review",
+                    "doi": "10.1000/irrelevant",
+                    "year": 2026,
+                    "venue": "Nature",
+                    "project_relevance": 5,
+                    "venue_authority": 5,
+                    "recency": 5,
+                    "citation_or_influence": 5,
+                    "fulltext_availability_and_usefulness": 5,
+                },
+                {
+                    "title": "Dielectric constant of two-dimensional alumina",
+                    "doi": "10.1000/relevant",
+                    "year": 2024,
+                    "venue": "Example Materials",
+                    "project_relevance": 3,
+                    "venue_authority": 2,
+                    "recency": 4,
+                    "citation_or_influence": 1,
+                    "fulltext_availability_and_usefulness": 2,
+                },
+            ]
+        },
+    )
+
+    result = rank_literature_candidates(
+        tmp_path,
+        candidates_path=Path("literature/candidate_input.yml"),
+        extra_keywords=["dielectric constant"],
+    )
+    with (tmp_path / "literature" / "ranking.csv").open(encoding="utf-8") as handle:
+        ranked = list(csv.DictReader(handle))
+    with (tmp_path / "literature" / "candidates.csv").open(encoding="utf-8") as handle:
+        candidates = list(csv.DictReader(handle))
+
+    assert result["relevance_rejected_count"] == 1
+    assert [row["doi"] for row in ranked] == ["10.1000/relevant"]
+    rejected = next(row for row in candidates if row["doi"] == "10.1000/irrelevant")
+    assert rejected["relevance_gate_status"] == "fail"
+    assert "material" in rejected["missing_required_groups"]
 
 
 def test_literature_plan_writes_confirmation_package_and_skeleton_tables(tmp_path: Path) -> None:
@@ -214,6 +295,46 @@ def test_literature_acquisition_request_writes_zotero_codex_targets_after_confir
     assert status["status"] == "acquisition_request_ready"
     assert status["zotero_codex_targets_ref"] == "literature/zotero_codex_targets.jsonl"
     assert "No live search" in status["summary_for_origin_thread"]
+
+
+def test_acquisition_request_deduplicates_normalized_doi_and_is_idempotent(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="DOI idempotency",
+        project_slug="doi-idempotency",
+        research_direction="literature acquisition identity",
+        material_system="MoS2",
+        experiment_type="Raman",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
+    confirm_literature_selection(tmp_path, selected_top_n=3, user_response="confirmed top 3")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "items": [
+                {"candidate_id": "cand-1", "title": "Same DOI A", "doi": "10.1000/SAME."},
+                {"candidate_id": "cand-2", "title": "Same DOI B", "doi": "https://doi.org/10.1000/same"},
+                {"candidate_id": "cand-3", "title": "Unique", "doi": "10.1000/unique"},
+            ]
+        },
+    )
+
+    first = prepare_literature_acquisition_request(tmp_path, created_at="2026-07-10T19:00:00")
+    first_bytes = (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_bytes()
+    second = prepare_literature_acquisition_request(tmp_path, created_at="2026-07-10T19:00:00")
+    second_bytes = (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_bytes()
+    targets = [json.loads(line) for line in first_bytes.decode("utf-8").splitlines()]
+
+    assert first["request"]["input_candidate_count"] == 3
+    assert first["request"]["target_count"] == 2
+    assert first["request"]["duplicate_target_count"] == 1
+    assert first["request"]["duplicate_targets"][0]["identity"] == "doi:10.1000/same"
+    assert targets[0]["source_candidate_id"] == "cand-1"
+    assert targets[0]["duplicate_source_candidate_ids"] == ["cand-2"]
+    assert [target["target_id"] for target in targets] == ["target-001", "target-002"]
+    assert second["request"] == first["request"]
+    assert second_bytes == first_bytes
 
 
 def test_literature_acquisition_request_without_targets_keeps_search_boundary(tmp_path: Path) -> None:
@@ -661,7 +782,7 @@ def test_cli_literature_zotero_readiness_wires_outputs(tmp_path: Path, capsys, m
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert result["readiness"]["status"] == "ready_for_zotero_codex_handoff"
+    assert result["status"] == "ready_for_zotero_codex_handoff"
 
 
 def test_literature_import_zotero_status_writes_update_and_syncs(tmp_path: Path) -> None:
@@ -785,7 +906,206 @@ def test_literature_import_zotero_status_tracks_login_and_blocked_items(tmp_path
     assert update["needs_user_login"][0]["doi"] == "10.1000/login"
     assert update["blocked_items"][0]["doi"] == "10.1000/failed"
     assert "did not run Zotero" in update["summary_for_origin_thread"]
-    assert deployment["needs_user_login"][0]["status"] == "needs-login"
+    assert deployment["needs_user_login"][0]["status"] == "needs_login"
+
+
+def test_external_handoff_five_paper_status_is_compact_private_and_resumable(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="2D conductivity external cache",
+        project_slug="2d-conductivity-external-cache",
+        research_direction="two-dimensional material conductivity",
+        material_system="two-dimensional materials",
+        experiment_type="literature data collection",
+        enable_literature=False,
+    )
+    source = tmp_path / "literature" / "zotero_codex_batch_status.json"
+    source.write_text(
+        json.dumps(
+            {
+                "request_id": "request-current-five",
+                "target_count": 5,
+                "targets": [
+                    {
+                        "target_id": "target-001",
+                        "title": "Paper A",
+                        "doi": "10.1000/a",
+                        "status": "downloaded",
+                        "url": "https://example.org/a.pdf?X-Amz-Signature=secret&token=private",
+                        "cache_path": "/Users/private/Library/Caches/zotero/A.pdf",
+                        "source_hash": "a" * 64,
+                    },
+                    {
+                        "target_id": "target-002",
+                        "title": "Paper B",
+                        "doi": "10.1000/b",
+                        "status": "cached",
+                        "cache_path": "knowledge/project/fulltext/B",
+                        "zotero_item_key": "ITEMB",
+                    },
+                    {
+                        "target_id": "target-003",
+                        "title": "Paper C",
+                        "doi": "10.1000/c",
+                        "status": "needs-login",
+                        "reason": "publisher login required",
+                        "retry_command": "browser-fetch https://publisher.test/c?session=secret --browser-profile /Users/private/Profile",
+                        "session_id": "session-secret",
+                    },
+                    {
+                        "target_id": "target-004",
+                        "title": "Paper D",
+                        "doi": "10.1000/d",
+                        "status": "needs-subscription",
+                        "reason": "subscription required",
+                    },
+                    {
+                        "target_id": "target-005",
+                        "title": "Paper E",
+                        "doi": "10.1000/e",
+                        "status": "blocked",
+                        "error": "missing attachment file",
+                    },
+                ],
+                "optional_capabilities": [{"status": "inactive", "message": "browser bridge is optional"}],
+                "sessions": [
+                    {
+                        "target_id": "old-target",
+                        "doi": "10.1000/old",
+                        "status": "failed",
+                        "message": "old acquisition session failed",
+                        "session_id": "old-session-secret",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = import_zotero_codex_batch_status(tmp_path, imported_at="2026-07-10T14:00:00")
+    state = read_yaml(tmp_path / "literature" / "external_acquisition_state.yml")
+    compact = (tmp_path / "literature" / "acquisition_status_compact.md").read_text(encoding="utf-8")
+    brief = build_project_brief(tmp_path, write_report=False, created_at="2026-07-10T14:01:00")
+    evaluation = run_project_evaluation(tmp_path, write_report=False, created_at="2026-07-10T14:01:00")
+    readiness = summarize_zotero_codex_readiness(tmp_path, write_report=False, checked_at="2026-07-10T14:01:00")
+
+    assert result["sync"]["status"] == "external_state_recorded_without_local_literature_deployment"
+    assert state["schema_version"] == "1.0"
+    assert state["summary"] == {
+        "target_count": 5,
+        "ready_count": 2,
+        "acquired_count": 1,
+        "cache_verified_count": 1,
+        "blocked_count": 3,
+    }
+    assert [item["status"] for item in state["targets"]] == [
+        "acquired",
+        "cache_verified",
+        "needs_login",
+        "needs_subscription",
+        "blocked",
+    ]
+    assert len(state["current_task_blockers"]) == 3
+    assert len(state["stale_global_state"]) == 1
+    assert state["targets"][0]["url"] == "https://example.org/a.pdf"
+    assert state["targets"][0]["cache_dir"].startswith("external-cache://")
+    serialized = json.dumps(state, ensure_ascii=False)
+    assert "secret" not in serialized
+    assert "/Users/private" not in serialized
+    assert all("session_id" not in target for target in state["targets"])
+    assert compact.count("| Paper ") == 5
+    assert "ready: 2/5" in compact
+    assert brief["literature"]["status"] == "external_cache_used_with_attention"
+    assert brief["literature"]["external_ready_count"] == 2
+    assert evaluation["literature"]["external_cache_used"] is True
+    assert evaluation["literature"]["ready_count"] == 2
+    assert readiness["readiness"]["status"] == "external_cache_used_with_attention"
+    assert len(readiness["readiness"]["current_task_blockers"]) == 3
+
+
+def test_completed_external_cache_is_not_failed_by_optional_bridge_or_old_session(tmp_path: Path) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="External cache complete",
+        project_slug="external-cache-complete",
+        research_direction="external fulltext cache",
+        material_system="MoS2",
+        experiment_type="literature review",
+        enable_literature=False,
+    )
+    payload = {
+        "request_id": "current-request",
+        "targets": [
+            {"target_id": "one", "doi": "10.1000/one", "status": "cached", "cache_path": "cache/one"},
+            {"target_id": "two", "doi": "10.1000/two", "status": "downloaded", "pdf_path": "cache/two.pdf"},
+        ],
+        "optional_capabilities": [{"status": "inactive", "message": "browser bridge not enabled"}],
+        "sessions": [{"target_id": "old", "doi": "10.1000/old", "status": "failed", "message": "old failure"}],
+    }
+    source = tmp_path / "literature" / "status.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    import_zotero_codex_batch_status(tmp_path, batch_status_path=Path("literature/status.json"), imported_at="2026-07-10T14:10:00")
+    readiness = summarize_zotero_codex_readiness(tmp_path, write_report=False, checked_at="2026-07-10T14:11:00")["readiness"]
+    reconciliation = reconcile_literature_acquisition(tmp_path, reconciled_at="2026-07-10T14:11:00")["reconciliation"]
+
+    assert readiness["status"] == "external_cache_used"
+    assert readiness["current_task_blockers"] == []
+    assert len(readiness["optional_capabilities"]) == 1
+    assert len(readiness["stale_global_state"]) == 1
+    assert reconciliation["status"] != "fail"
+    assert reconciliation["summary"]["external_cache_used"] is True
+
+
+def test_handoff_error_taxonomy_and_schema_are_stable() -> None:
+    examples = {
+        "EPERM: operation not permitted": "permission_denied",
+        "ECONNREFUSED connection refused": "connection_refused",
+        "request timed out": "timeout",
+        "Zotero software not running": "software_not_running",
+        "duplicate parent is ambiguous": "duplicate_parent_ambiguous",
+        "missing attachment file": "missing_attachment_file",
+        "path is a directory": "path_is_directory",
+    }
+    assert {message: classify_blocked_reason(message) for message in examples} == examples
+
+    state = normalize_acquisition_handoff(
+        {"request_id": "schema-test", "targets": [{"target_id": "one", "status": "not-attempted"}]},
+        updated_at="2026-07-10T14:20:00",
+    )
+    for key in (
+        "schema_version",
+        "request_id",
+        "targets",
+        "attempts",
+        "status",
+        "cache_dir",
+        "zotero_item_key",
+        "blocked_reason",
+        "retry_command",
+        "source_hash",
+        "updated_at",
+    ):
+        assert key in state
+
+
+def test_handoff_accepts_current_zotero_codex_batch_v1_fixture() -> None:
+    fixture_path = Path("tests/fixtures/zotero_codex_batch_v1.json")
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    state = normalize_acquisition_handoff(payload, updated_at="2026-07-10T15:01:00+08:00")
+    schema = json.loads(Path("schemas/literature-acquisition-handoff.schema.json").read_text(encoding="utf-8"))
+
+    assert state["schema_version"] == schema["properties"]["schema_version"]["const"]
+    assert set(schema["required"]) <= set(state)
+    assert state["targets"][0]["status"] == "cache_verified"
+    assert state["targets"][0]["zotero_item_key"] == "ABCD1234"
+    assert state["targets"][0]["cache_dir"].startswith("external-cache://")
+    assert state["targets"][1]["status"] == "needs_login"
+    assert state["targets"][1]["retry_command"]
+    assert "/Users/test" not in state["targets"][1]["retry_command"]
+    assert {item["status"] for item in state["targets"]} <= set(
+        schema["$defs"]["target"]["properties"]["status"]["enum"]
+    )
 
 
 def test_cli_literature_import_zotero_status_wires_arguments(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -817,7 +1137,8 @@ def test_cli_literature_import_zotero_status_wires_arguments(tmp_path: Path, cap
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert result["status_update"]["status"] == "acquisition_complete"
+    assert result["status"] == "acquisition_complete"
+    assert result["target_count"] == 0
 
 
 def test_literature_reconcile_acquisition_passes_consistent_records(tmp_path: Path) -> None:
@@ -1019,7 +1340,7 @@ def test_cli_literature_reconcile_acquisition_wires_arguments(tmp_path: Path, ca
 
     assert main(["literature", "reconcile-acquisition", str(tmp_path)]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["reconciliation"]["status"] == "pass"
+    assert result["status"] == "pass"
 
 
 def test_literature_render_reconciliation_regenerates_markdown(tmp_path: Path) -> None:
@@ -1186,8 +1507,9 @@ def test_literature_rank_candidates_dedupes_scores_and_exports_selected_items(tm
         ranking = list(csv.DictReader(handle))
 
     assert result["candidate_count"] == 4
-    assert result["deduped_count"] == 3
+    assert result["deduped_count"] == 2
     assert result["duplicate_candidate_count"] == 1
+    assert result["relevance_rejected_count"] == 2
     assert result["selection_status"] == "selected_from_ranked_candidates"
     assert status["status"] == "ranked_candidates_ready"
     assert status["candidate_ranking_method"]["weights"]["project_relevance"] == 0.40
@@ -2242,9 +2564,9 @@ def test_literature_initialization_docs_and_registry_are_discoverable() -> None:
     root = Path.cwd()
 
     readme = (root / "README.md").read_text(encoding="utf-8")
-    skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
-    reference = (root / "skills" / "ea-v0-2" / "references" / "local-literature-library.md").read_text(encoding="utf-8")
-    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
+    skill = (root / "skills" / "ea" / "SKILL.md").read_text(encoding="utf-8")
+    reference = (root / "skills" / "ea" / "references" / "local-literature-library.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
     registry = read_yaml(root / "skill-registry" / "index.yml")
     manifest = read_yaml(root / "skill-registry" / "builtins" / "local-literature-library.yml")["ea_skill"]
 

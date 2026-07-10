@@ -8,7 +8,7 @@ import sys
 
 MIN_PYTHON = (3, 11)
 REPOSITORY_URL = "https://github.com/gongchenisbusy/Experimental-Assistant"
-RELEASE_LABEL = "v0.9.6"
+RELEASE_LABEL = "v0.9.7"
 
 
 def main() -> int:
@@ -16,11 +16,11 @@ def main() -> int:
     python_ok = version >= MIN_PYTHON
     uv_path = shutil.which("uv")
     result = {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "check_type": "ea_install_environment_preflight",
         "status": "pass" if python_ok else "fail",
         "product": "Experimental Assistant",
-        "public_version": "Experimental Assistant v0.9.6",
+        "public_version": "Experimental Assistant v0.9.7",
         "python": {
             "executable": sys.executable,
             "version": ".".join(str(part) for part in version),

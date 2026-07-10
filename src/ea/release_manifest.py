@@ -11,19 +11,41 @@ from typing import Any, Iterable
 
 import yaml
 
+from ea.identity import (
+    DISTRIBUTION_NAME,
+    LEGACY_SKILL_NAMES,
+    PROJECT_FORMAT_VERSION,
+    RELEASE_LABEL,
+    SKILL_NAME,
+    SUPPORTED_PYTHON_MINORS,
+)
+
 
 DEFAULT_INCLUDE_ROOTS = [
     "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "CITATION.cff",
+    "GOVERNANCE.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
     "pyproject.toml",
     "src/ea",
+    "skills/ea",
     "skills/ea-v0-2",
     "skill-registry",
     "docs",
+    "schemas",
+    "benchmarks",
+    "requirements",
+    ".github",
     "examples",
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "ea-v0.9.6-release-manifest.yml"
+DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-v0.9.7-release-manifest.yml"
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -46,12 +68,14 @@ PUBLIC_REPOSITORY = {
     "project_name": "Experimental Assistant (EA)",
     "repository_full_name": "gongchenisbusy/Experimental-Assistant",
     "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
-    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.6",
+    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.7",
 }
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
     "python3 scripts/check_version_identity.py",
     "python3 scripts/check_downloaded_skill_instructions.py",
+    "python3 scripts/validate_skill_packages.py",
+    "python3 scripts/run_scientific_benchmarks.py",
     "ea-public-release-smoke",
     "ea healthcheck examples/public-raman-project",
     "ea eval project examples/public-raman-project --no-write",
@@ -62,9 +86,12 @@ SMOKE_GATE_COMMANDS = [
     "ea healthcheck examples/public-xps-be-project",
     "ea eval project examples/public-xps-be-project --no-write",
     "ea version",
-    "ea install-check",
-    "ea codex install-skill",
+    "ea setup",
+    "ea doctor",
     "ea-install-check",
+    "ea-release-artifact-smoke",
+    "ea-release-reproducibility",
+    "ea-release-supply-chain",
     "ea-release-package",
     "ea-verify-release-package",
     "ea-release-keygen",
@@ -93,7 +120,9 @@ def _run_git(root: Path, args: list[str]) -> str | None:
 
 
 def git_state(root: Path) -> dict[str, Any]:
-    status_lines = (_run_git(root, ["status", "--short", "--untracked-files=all"]) or "").splitlines()
+    status_lines = (
+        _run_git(root, ["status", "--short", "--untracked-files=all"]) or ""
+    ).splitlines()
     tags = (_run_git(root, ["tag", "--points-at", "HEAD"]) or "").splitlines()
     return {
         "commit": _run_git(root, ["rev-parse", "HEAD"]),
@@ -127,14 +156,20 @@ def _should_skip(path: Path) -> bool:
     return path.suffix in EXCLUDED_SUFFIXES
 
 
-def iter_release_files(root: Path, include_roots: Iterable[str] = DEFAULT_INCLUDE_ROOTS) -> list[Path]:
+def iter_release_files(
+    root: Path, include_roots: Iterable[str] = DEFAULT_INCLUDE_ROOTS
+) -> list[Path]:
     files: list[Path] = []
     seen: set[Path] = set()
     for rel in include_roots:
         path = root / rel
         if not path.exists():
             continue
-        candidates = [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
+        candidates = (
+            [path]
+            if path.is_file()
+            else sorted(item for item in path.rglob("*") if item.is_file())
+        )
         for candidate in candidates:
             rel_path = candidate.relative_to(root)
             if rel_path in seen or _should_skip(rel_path):
@@ -168,7 +203,11 @@ def file_checksum_records(root: Path, files: Iterable[Path]) -> list[dict[str, A
 def aggregate_checksum(records: Iterable[dict[str, Any]]) -> str:
     digest = hashlib.sha256()
     for record in sorted(records, key=lambda item: item["path"]):
-        digest.update(f"{record['path']}\0{record['sha256']}\0{record['size_bytes']}\n".encode("utf-8"))
+        digest.update(
+            f"{record['path']}\0{record['sha256']}\0{record['size_bytes']}\n".encode(
+                "utf-8"
+            )
+        )
     return digest.hexdigest()
 
 
@@ -182,20 +221,22 @@ def build_release_manifest(
     files = iter_release_files(root, include_roots)
     checksums = file_checksum_records(root, files)
     return {
-        "schema_version": "0.9",
-        "manifest_type": "ea_v0_9_6_release",
+        "schema_version": "1.0",
+        "manifest_type": "experimental_assistant_release",
         "repository_root_name": root.name,
         "public_repository": PUBLIC_REPOSITORY,
         "package": metadata,
         "release": {
-            "label": "v0.9.6",
+            "label": RELEASE_LABEL,
             "version": metadata.get("version"),
-            "relationship_to_v1": "Stabilization and usability release that keeps the public v0.9 workflow compatible while reducing routine context load.",
+            "relationship_to_v1": "Full v1.0 release candidate; promotion requires controlled novice/platform trials and external scientific review evidence.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
             "release_notes_ref": "docs/V0_9_RELEASE_NOTES.md",
             "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
             "manual_test_checklist_ref": "docs/V0_9_MANUAL_TEST_CHECKLIST.md",
             "agent_handoff_ref": "docs/V0_9_AGENT_HANDOFF.md",
+            "trial_report_ref": "docs/V0_9_7_TRIAL_REPORT.md",
+            "issue_disposition_ref": "docs/V0_9_7_ISSUE_DISPOSITION.md",
         },
         "git": git_state(root),
         "release_inputs": {
@@ -210,7 +251,8 @@ def build_release_manifest(
             "smoke_gate_commands": SMOKE_GATE_COMMANDS,
             "required_smoke_steps": [
                 "pytest",
-                "skill_validation",
+                "primary_skill_validation",
+                "compatibility_skill_validation",
                 "cli_help",
                 "cli_global_version",
                 "cli_version_help",
@@ -235,11 +277,44 @@ def build_release_manifest(
                 "release_signature_keygen_help",
                 "release_signature_sign_help",
                 "release_signature_verify_help",
+                "release_artifact_smoke_help",
+                "release_reproducibility_help",
+                "release_supply_chain_help",
                 "release_distribution_checklist_help",
                 "portability_scan",
             ],
-            "skill_validation_target": "skills/ea-v0-2",
-            "portability_scan_scope": ["README.md", "pyproject.toml", "src", "skills/ea-v0-2", "skill-registry", "examples"],
+            "skill_validation_targets": ["skills/ea", "skills/ea-v0-2"],
+            "portability_scan_scope": [
+                "README.md",
+                "pyproject.toml",
+                "src",
+                "skills/ea",
+                "skills/ea-v0-2/SKILL.md",
+                "skill-registry",
+                "examples",
+            ],
+        },
+        "identity_contract": {
+            "distribution": DISTRIBUTION_NAME,
+            "primary_skill": SKILL_NAME,
+            "compatibility_skills": list(LEGACY_SKILL_NAMES),
+            "project_format_version": PROJECT_FORMAT_VERSION,
+            "supported_python_minors": [
+                f"{major}.{minor}" for major, minor in SUPPORTED_PYTHON_MINORS
+            ],
+        },
+        "supply_chain": {
+            "sbom_ref": "dist/experimental-assistant-0.9.7-sbom.json",
+            "vulnerability_report_ref": "dist/experimental-assistant-0.9.7-vulnerability-report.json",
+            "install_smoke_ref": "dist/experimental-assistant-0.9.7-install-smoke.json",
+            "reproducibility_ref": "dist/experimental-assistant-0.9.7-reproducibility.json",
+            "vulnerability_policy_ref": "docs/RELEASE_SECURITY_POLICY.md",
+            "release_constraints_ref": "requirements/release.txt",
+        },
+        "scientific_evidence": {
+            "raman_benchmark_ref": "benchmarks/raman-v1/benchmark.yml",
+            "raman_review_ref": "benchmarks/raman-v1/scientific-review.yml",
+            "raman_status": "beta_pending_external_reviewer",
         },
         "public_boundaries": PUBLIC_BOUNDARY_NOTES,
         "signature": {
@@ -263,12 +338,16 @@ def write_release_manifest(
         output_path = root / output_path
     manifest = build_release_manifest(root, include_roots=include_roots)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    output_path.write_text(
+        yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
     return output_path, manifest
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate an Experimental Assistant v0.9.6 repository manifest.")
+    parser = argparse.ArgumentParser(
+        description="Generate an Experimental Assistant v0.9.7 repository manifest."
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--include-root", action="append", default=[])
@@ -285,7 +364,9 @@ def main(argv: list[str] | None = None) -> int:
         manifest = build_release_manifest(root, include_roots=include_roots)
         output_path = None
     else:
-        output_path, manifest = write_release_manifest(root, output=args.output, include_roots=include_roots)
+        output_path, manifest = write_release_manifest(
+            root, output=args.output, include_roots=include_roots
+        )
     summary = {
         "status": "complete",
         "manifest": str(output_path) if output_path else None,

@@ -780,7 +780,7 @@ def test_cli_trace_index_focus_and_export_use_compact_outputs(tmp_path: Path, ca
 def test_traceability_docs_and_registry_are_discoverable() -> None:
     root = Path.cwd()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
+    skill = (root / "skills" / "ea" / "SKILL.md").read_text(encoding="utf-8")
     onboarding = (root / "docs" / "PUBLIC_ONBOARDING.md").read_text(encoding="utf-8")
     registry = read_yaml(root / "skill-registry" / "index.yml")
     manifest = read_yaml(root / "skill-registry" / "builtins" / "project-traceability.yml")["ea_skill"]

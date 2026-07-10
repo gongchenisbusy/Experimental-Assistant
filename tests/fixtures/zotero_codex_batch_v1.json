@@ -1,0 +1,35 @@
+{
+  "schema_version": "zotero-codex-batch/v1",
+  "updated_at": "2026-07-10T15:00:00+08:00",
+  "items": [
+    {
+      "id": "target-001",
+      "rank": 1,
+      "doi": "10.1000/cache",
+      "title": "Cached paper",
+      "status": "cached",
+      "result": {
+        "status": "acquired_and_cached",
+        "item_key": "ABCD1234",
+        "cache_dir": "/Users/test/.codex/zotero-codex/fulltext-cache/ABCD1234"
+      }
+    },
+    {
+      "id": "target-002",
+      "rank": 2,
+      "doi": "10.1000/login",
+      "title": "Login paper",
+      "status": "needs-login",
+      "next_action": {
+        "retry_command": [
+          "/usr/bin/python3",
+          "/Users/test/.codex/skills/zotero-codex-literature/scripts/acquire_paper.py",
+          "--doi",
+          "10.1000/login",
+          "--json"
+        ]
+      }
+    }
+  ],
+  "summary": {"total": 2, "cached": 1, "needs_login": 1, "failed": 0, "planned": 0}
+}

@@ -1,32 +1,33 @@
-# Experimental Assistant v0.9.6 Known Limitations
-
-These Experimental Assistant v0.9.6 limitations are expected and must be explained during public testing.
+# Experimental Assistant v0.9.7 Known Limitations
 
 ## Scientific Boundaries
 
-- EA does not automatically prove material identity, phase identity, layer count, crystallinity, composition, chemical state, optical band gap, electrochemical performance, thermal stability, mechanism, or sample ranking.
-- Source-backed candidates are evidence layers. They require registered references, user review, and explicit report or memory integration before they can support a claim.
-- Screening calculations are useful for inspection and discussion, not final conclusions without reviewed method assumptions and references.
-- Built-in source libraries are starter coverage, not exhaustive literature or database coverage.
+- EA does not automatically prove material or phase identity, layer count, crystallinity, composition, chemical state, optical band gap, electrochemical performance, thermal stability, mechanism, or sample ranking.
+- Source-backed candidates and screening calculations require applicable references, explicit review, and traceable report integration.
+- Built-in libraries and public-search results are starter coverage, not exhaustive literature or database coverage.
+- Raman has a deterministic machine benchmark but remains beta until independent scientific sign-off is recorded.
 
-## Workflow Boundaries
+## Literature Evidence Dataset Beta
 
-- Raw data remain protected; EA writes controlled copies and generated artifacts but does not mutate source raw files.
-- Review records are required before processing choices, interpretation reuse, and durable memory commitment.
-- `ea brief project` is a user-facing summary, not a substitute for traceability, provenance, or healthcheck/eval.
-- HTML reports are readable exports of canonical Markdown reports. The Markdown/YAML records remain the authoritative project records.
-- Checksums verify local file integrity; they are not authorship proof or scientific validation.
+- Extraction quality depends on searchable full text, table/caption structure, and a sufficiently narrow user-defined schema.
+- Scanned PDFs are marked OCR-required. v0.9.7 does not silently perform or validate OCR inside the core workflow.
+- Plot digitization and complex supplementary-file parsing are not general automatic capabilities.
+- Conductivity, resistivity, sheet resistance/conductance, contact resistance, and mobility are never treated as interchangeable. Missing geometry or conditions can make records not comparable.
+- Only accepted or edited records enter datasets and plots; this improves reviewability but does not prove that a paper's reported value is scientifically valid.
 
-## Literature And Zotero-Codex Boundaries
+## Integration Boundaries
 
-- EA does not store credentials, cookies, session data, or private account state.
-- EA does not bypass publisher, SSO, MFA, paywall, or institution access controls.
-- `ea literature zotero-readiness` does not operate Zotero, open browsers, download PDFs, parse full text, or repair records.
-- No-Zotero degraded mode can continue from user-supplied metadata and local references, but it is not exhaustive literature coverage.
+- EA stores no credentials, cookies, browser profiles, or private account state and does not bypass publisher, SSO, MFA, paywall, or institution controls.
+- Zotero/browser acquisition is an optional companion workflow. Core EA can continue in degraded local mode.
+- Diagnostics are local-only and do not submit reports automatically.
 
-## Release Follow-Up Gaps To Watch
+## Release Evidence
 
-- Real public users may need clearer onboarding around which method workflow to start with.
-- Public examples cover representative paths, not every method combination.
-- Larger curated libraries for FTIR, XPS, electrochemistry, and thermal workflows remain future enrichment work.
-- The repository package can be optionally signed, but project export bundles currently rely on checksums unless a separate user-managed signing process is used.
+- Automated local tests are not native Windows/Linux/macOS evidence; the repository CI matrix provides that evidence only after it runs successfully on the public commit.
+- Independent novice and expert trials are pending until real testers complete and record them. v1.0 promotion is blocked while they remain pending.
+- Checksums verify integrity, not publisher identity or scientific correctness. Detached signatures require an independently trusted key fingerprint.
+
+## Compatibility
+
+- `$ea-v0-2` remains a thin compatibility entry through v1.0.x. Removal requires a later announced deprecation window.
+- Historical project schema/version strings are preserved where rewriting would damage provenance; use the migration commands rather than manual edits.

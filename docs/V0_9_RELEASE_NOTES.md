@@ -1,44 +1,42 @@
-# Experimental Assistant v0.9.6 Release Notes
+# Experimental Assistant v0.9.7 Release Notes
 
-Experimental Assistant v0.9.6 is a token-efficiency and runtime-lightness update on top of the v0.9.5 stabilization release. It keeps the `ea-v0-2` compatibility line, preserves full scientific/reporting capability, and focuses on router-style skill loading, traceability focus-subgraphs, compact default CLI output, and v0.9.6 release metadata rather than adding a new characterization method.
+v0.9.7 is the full engineering candidate for v1.0. It focuses on ordinary-user safety, cross-platform release quality, stable identity, literature evidence collection, and honest capability maturity while preserving existing scientific workflows.
 
 ## Version
 
-- Package version: `0.9.6`
-- Release label: `v0.9.6`
-- Skill folder: `skills/ea-v0-2`
-- Compatibility note: the skill name and package name keep `ea-v0-2` for continuity; release artifacts and docs identify the v0.9.6 release state.
+- Package version: `0.9.7`
+- Release label: `v0.9.7`
+- Distribution: `experimental-assistant`
+- CLI: `ea`
+- Primary Codex skill: `$ea`
+- Compatibility: `$ea-v0-2` thin wrapper through v1.0.x
+- License: Apache-2.0
 
-## Major Changes Since v0.9.5
+## Major Changes Since v0.9.6
 
-- Added `references/routing-index.yml` so the EA skill can choose the smallest useful reference set for project, method, report, traceability, memory, literature-state, and release/install routes.
-- Added explicit traceability entry points: `ea trace index`, `ea trace focus`, and `ea trace export --full`, while preserving `ea trace view` and `ea trace lookup`.
-- Made `ea trace ...` and `ea brief project` default terminal output concise; use `--json` for compact structured output and `--json-full` for full automation/debug output.
-- Kept comprehensive report generation intact. v0.9.6 does not reduce report depth, split reports into weaker stages, or remove existing analysis capability.
-- Updated package, skill, downloaded instructions, release manifest/package/checklist/signature metadata, and public install docs to v0.9.6.
+- Unified the public identity around Experimental Assistant / `ea` / `$ea`; legacy names remain diagnostic compatibility metadata only.
+- Added transactional setup, doctor, update, rollback, and uninstall flows with exact PATH identity checks.
+- Added project-format migration planning, backups, journals, rollback, atomic writes, and stale-lock recovery.
+- Added two-stage protected import with UTF-8 BOM/UTF-8/GB18030/CP936/CP1252 and delimiter detection.
+- Added ordinary-user start/status/analyze/report routes, stable structured errors, explicit consult/record/execute/audit semantics, review-gated draft promotion, and privacy-safe local diagnostics.
+- Added a machine-readable stable/beta/experimental capability contract and Python/platform CI matrix.
+- Hardened literature queries, relevance checks, DOI deduplication, acquisition status normalization, Zotero companion handoff, redaction, and compact outputs.
+- Added the beta literature data-plan/extract/review/validate/plot/export workflow with evidence anchors, typed electrical properties, resumable checkpoints, conflict retention, reviewed-only outputs, and privacy-scoped bundles.
+- Added a deterministic Raman golden benchmark and external scientific-review evidence surface; Raman remains beta pending sign-off.
+- Added Apache-2.0 governance, security, support, contribution, citation, SBOM, vulnerability, constraints, checksum, signature, and reproducibility policies.
 
 ## Relationship To v1.0
 
-v0.9.6 is not the final public v1.0. It should be handed to human testers and future agents to find remaining product, documentation, and scientific-boundary issues before v1.0. v1.0 should only be cut after the acceptance matrix, manual checklist, and real user walkthroughs have no blocking findings or have clear documented limitations.
+The v0.9.7 code is intended to become v1.0 without feature expansion if controlled trials find no blockers. Promotion still requires real independent novice trials on the supported platforms and independent scientific review of the beta evidence surfaces. Pending evidence is not treated as a pass.
 
-## Stable Entry Points
+## Maturity
 
-- `ea init-project`, `ea config doctor`, `ea healthcheck`, `ea eval project`, `ea brief project`
-- Raman/PL/XRD/FTIR/UV-Vis/XPS/electrochemistry/thermal/image-data local workflows when user review gates are satisfied
-- `ea export report-html`, `ea export report-bundle`, `ea export batch-bundle`, `ea export verify-bundle`, `ea export verify-archive`
-- `ea trace index`, `ea trace focus`, `ea trace view`, `ea trace lookup`, `ea trace export --full`
-- release commands: `ea-public-release-smoke`, `ea-release-manifest`, `ea-release-package`, `ea-verify-release-package`, `ea-release-checklist`
+- Stable: project lifecycle, protected import, implemented characterization methods, review/provenance, health/eval, trace, reports and bundle exports.
+- Beta: Raman benchmarked analysis and literature evidence datasets.
+- Experimental/companion: browser-assisted lawful acquisition and external Zotero coordination.
 
-## Screening Or Experimental Entry Points
+See `docs/CAPABILITY_MATRIX.md`, `docs/V0_9_KNOWN_LIMITATIONS.md`, and `docs/PUBLIC_ACCEPTANCE_MATRIX.md`.
 
-- Material assignment libraries, source packets, suggestion records, and review packages are advisory until reviewed and cited.
-- UV-Vis Tauc, derivative, correction, and replicate comparison helpers are screening workflows unless a reviewed method model and references support stronger claims.
-- XPS background, component fitting, spin-orbit constraints, Tougaard starting points, and binding-energy candidates remain reviewed screening aids unless the project has enough source-backed evidence.
-- Electrochemistry and thermal derived metrics summarize reviewed windows and context; they do not rank performance or prove mechanisms by themselves.
-- Zotero-Codex integration is a local handoff/readiness contract; the companion workflow remains user-managed and optional.
+## Migration
 
-## Migration Notes
-
-- Existing legacy EA project folders can continue to be inspected with healthcheck/eval.
-- For public handoff, regenerate any report bundles or release packages with the v0.9.6 code so manifests, checksums, and HTML exports use current metadata.
-- Keep `skills/ea-v0-2` as the installed skill folder until a future version intentionally renames the skill.
+Run `ea migrate status` and `ea migrate plan` before changing an existing project. Use `$ea` for new Codex tasks. Existing `$ea-v0-2` invocation and historical records remain supported during v1.0.x and are not rewritten merely for naming.

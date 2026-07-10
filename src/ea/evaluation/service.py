@@ -74,6 +74,28 @@ def _evaluation_status(error_count: int, warning_count: int) -> str:
     return "pass"
 
 
+def _external_literature_summary(root: Path, findings: list[EvaluationFinding]) -> dict[str, Any]:
+    path = root / "literature" / "external_acquisition_state.yml"
+    if not path.exists():
+        return {
+            "external_cache_used": False,
+            "ready_count": 0,
+            "blocked_count": 0,
+            "state_ref": None,
+        }
+    state = _safe_read_yaml(path, findings)
+    summary = state.get("summary") or {}
+    return {
+        "external_cache_used": bool(int(summary.get("ready_count") or 0)),
+        "ready_count": int(summary.get("ready_count") or 0),
+        "blocked_count": int(summary.get("blocked_count") or 0),
+        "current_task_blocker_count": len(state.get("current_task_blockers") or []),
+        "optional_capability_count": len(state.get("optional_capabilities") or []),
+        "stale_global_state_count": len(state.get("stale_global_state") or []),
+        "state_ref": "literature/external_acquisition_state.yml",
+    }
+
+
 def _check_project_record(root: Path, findings: list[EvaluationFinding]) -> dict[str, Any]:
     project_path = root / "EA_PROJECT.md"
     if not project_path.exists():
@@ -478,6 +500,7 @@ def run_project_evaluation(
     report_summary = _check_reports(root, findings)
     batch_summary = _check_batches(root, findings)
     material_assignment_summary = _check_material_assignments(root, findings)
+    literature_summary = _external_literature_summary(root, findings)
 
     error_count = sum(1 for finding in findings if finding.severity == "error")
     warning_count = sum(1 for finding in findings if finding.severity == "warning")
@@ -504,6 +527,7 @@ def run_project_evaluation(
         "reports": report_summary,
         "batches": batch_summary,
         "material_assignments": material_assignment_summary,
+        "literature": literature_summary,
         "scope": {
             "local_only": True,
             "live_literature_search": False,

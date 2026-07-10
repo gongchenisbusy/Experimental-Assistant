@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import shutil
+import tempfile
 from typing import Any
 
 import yaml
@@ -8,6 +11,10 @@ import yaml
 
 EA_PROJECT_DIRS = [
     ".ea",
+    ".ea/migrations",
+    ".ea/migrations/backups",
+    ".ea/migrations/history",
+    ".ea/operations",
     "experiments",
     "evaluation",
     "briefs",
@@ -40,6 +47,8 @@ EA_PROJECT_DIRS = [
     "suggestions",
     "progress",
     "freezes",
+    "drafts",
+    "literature/data-extractions",
 ]
 
 
@@ -49,13 +58,75 @@ def ensure_project_dirs(root: Path) -> None:
         (root / rel).mkdir(parents=True, exist_ok=True)
 
 
-def write_yaml(path: Path, data: dict[str, Any]) -> Path:
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        directory_fd = os.open(str(path), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def atomic_write_bytes(path: Path, content: bytes, *, mode: int | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(temp_path, mode)
+        os.replace(temp_path, path)
+        _fsync_directory(path.parent)
+    except BaseException:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
     return path
+
+
+def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8", mode: int | None = None) -> Path:
+    return atomic_write_bytes(path, content.encode(encoding), mode=mode)
+
+
+def atomic_copy_file(source: Path, destination: Path) -> Path:
+    source = source.expanduser()
+    if not source.exists():
+        raise FileNotFoundError(f"Source file does not exist: {source}")
+    if not source.is_file():
+        raise IsADirectoryError(f"Source path is not a file: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        shutil.copy2(source, temp_path)
+        with temp_path.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temp_path, destination)
+        _fsync_directory(destination.parent)
+    except BaseException:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return destination
+
+
+def write_yaml(path: Path, data: dict[str, Any]) -> Path:
+    return atomic_write_text(
+        path,
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+    )
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -65,10 +136,8 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 
 def write_markdown_record(path: Path, frontmatter: dict[str, Any], body: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
     yaml_text = yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False)
-    path.write_text(f"---\n{yaml_text}---\n\n{body.strip()}\n", encoding="utf-8")
-    return path
+    return atomic_write_text(path, f"---\n{yaml_text}---\n\n{body.strip()}\n")
 
 
 def read_markdown_record(path: Path) -> tuple[dict[str, Any], str]:

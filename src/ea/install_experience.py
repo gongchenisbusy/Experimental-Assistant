@@ -1,28 +1,39 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+from importlib import metadata
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
-from importlib import metadata
-from pathlib import Path
 from typing import Any
+import uuid
+
+import yaml
 
 from ea import __version__
+from ea.identity import (
+    DISPLAY_VERSION,
+    DISTRIBUTION_NAME,
+    LEGACY_DISTRIBUTION_NAMES,
+    LEGACY_SKILL_INVOCATIONS,
+    LEGACY_SKILL_NAMES,
+    PRODUCT_NAME,
+    PUBLIC_VERSION,
+    RELEASE_LABEL,
+    REPOSITORY_URL,
+    SKILL_INVOCATION,
+    SKILL_NAME,
+    SUPPORTED_PYTHON_MINORS,
+)
 
 
-PRODUCT_NAME = "Experimental Assistant"
-DISPLAY_VERSION = "v0.9.6"
-PUBLIC_VERSION = f"{PRODUCT_NAME} {DISPLAY_VERSION}"
-PACKAGE_NAME = "ea-v0-2"
-RELEASE_LABEL = "v0.9.6"
-SKILL_NAME = "ea-v0-2"
-SKILL_INVOCATION = "$ea-v0-2"
-REPOSITORY_URL = "https://github.com/gongchenisbusy/Experimental-Assistant"
+PACKAGE_NAME = DISTRIBUTION_NAME
+PACKAGE_COMPATIBILITY_NAME = LEGACY_DISTRIBUTION_NAMES[0]
 MIN_PYTHON = (3, 11)
 
 
@@ -38,56 +49,78 @@ def _package_version() -> str:
     return __version__
 
 
+def _installed_distribution_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for name in (DISTRIBUTION_NAME, *LEGACY_DISTRIBUTION_NAMES):
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return versions
+
+
 def _installed_distribution_version() -> str | None:
-    try:
-        return metadata.version(PACKAGE_NAME)
-    except metadata.PackageNotFoundError:
-        return None
+    return _installed_distribution_versions().get(DISTRIBUTION_NAME)
 
 
 def identity_record() -> dict[str, Any]:
-    record = {
+    installed = _installed_distribution_versions()
+    official_installed = installed.get(DISTRIBUTION_NAME)
+    record: dict[str, Any] = {
+        "schema_version": "1.0",
         "product": PRODUCT_NAME,
         "display_name": PRODUCT_NAME,
         "display_version": PUBLIC_VERSION,
         "public_version": PUBLIC_VERSION,
-        "package_compatibility_name": PACKAGE_NAME,
-        "compatibility_id": PACKAGE_NAME,
+        "distribution_name": DISTRIBUTION_NAME,
+        "package_name": DISTRIBUTION_NAME,
+        "package_compatibility_name": PACKAGE_COMPATIBILITY_NAME,
+        "compatibility_id": PACKAGE_COMPATIBILITY_NAME,
+        "legacy_distribution_names": list(LEGACY_DISTRIBUTION_NAMES),
         "package_version": _package_version(),
+        "installed_distributions": installed,
         "release_label": RELEASE_LABEL,
         "skill_folder": SKILL_NAME,
         "skill_invocation": SKILL_INVOCATION,
+        "legacy_skill_folders": list(LEGACY_SKILL_NAMES),
+        "legacy_skill_invocations": list(LEGACY_SKILL_INVOCATIONS),
         "repository_url": REPOSITORY_URL,
     }
-    installed_version = _installed_distribution_version()
-    if installed_version and installed_version != record["package_version"]:
-        record["installed_distribution_version"] = installed_version
-        record["version_warning"] = (
-            "Installed package metadata differs from EA code version; reinstall the EA CLI if this persists outside a development checkout."
+    warnings: list[str] = []
+    if official_installed and official_installed != record["package_version"]:
+        warnings.append(
+            f"Installed {DISTRIBUTION_NAME} metadata is {official_installed}, but running code is {record['package_version']}."
         )
+    for legacy_name in LEGACY_DISTRIBUTION_NAMES:
+        if legacy_name in installed:
+            warnings.append(
+                f"Legacy distribution {legacy_name} {installed[legacy_name]} is installed; remove it after the v0.9.7 migration is verified."
+            )
+    if warnings:
+        record["identity_warnings"] = warnings
     return record
 
 
 def python_preflight_record() -> dict[str, Any]:
     version = _python_version_tuple()
-    ok = version >= MIN_PYTHON
+    minor = version[:2]
+    ok = minor in SUPPORTED_PYTHON_MINORS
     return {
         "name": "python_version",
         "status": "pass" if ok else "fail",
         "python": sys.executable,
         "version": _python_version_label(),
-        "required": f">={MIN_PYTHON[0]}.{MIN_PYTHON[1]}",
+        "supported": [f"{major}.{minor_version}" for major, minor_version in SUPPORTED_PYTHON_MINORS],
         "message": (
-            "Python version is compatible."
+            "Python version is in the supported v0.9.7 matrix."
             if ok
-            else "Python 3.11 or newer is required before installing EA dependencies."
+            else "EA v0.9.7 supports Python 3.11, 3.12, and 3.13."
         ),
         "next_steps": []
         if ok
         else [
-            "Install a newer Python, for example: uv python install 3.12",
+            "Install a supported Python, for example: uv python install 3.12",
             f"Then install EA with: uv tool install --python 3.12 git+{REPOSITORY_URL}.git@{RELEASE_LABEL}",
-            "If using a venv, create it with a Python 3.11+ interpreter before running pip install.",
         ],
     }
 
@@ -108,8 +141,7 @@ def _repo_root_candidates(start: Path | None = None) -> list[Path]:
     roots: list[Path] = []
     cwd = (start or Path.cwd()).resolve()
     roots.extend([cwd, *cwd.parents])
-    package_root = Path(__file__).resolve()
-    roots.extend(package_root.parents)
+    roots.extend(Path(__file__).resolve().parents)
     deduped: list[Path] = []
     seen: set[Path] = set()
     for root in roots:
@@ -122,7 +154,7 @@ def _repo_root_candidates(start: Path | None = None) -> list[Path]:
 def find_local_skill_source(start: Path | None = None) -> Path | None:
     for root in _repo_root_candidates(start):
         candidate = root / "skills" / SKILL_NAME
-        if (candidate / "SKILL.md").exists():
+        if (candidate / "SKILL.md").is_file():
             return candidate
     return None
 
@@ -133,21 +165,18 @@ def quick_validate_path(codex_home_path: Path | None = None) -> Path | None:
         home / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py",
         Path.home() / ".codex" / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py",
     ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return None
+    return next((path for path in candidates if path.is_file()), None)
 
 
 def validate_skill(skill_path: Path, *, validator: Path | None = None) -> dict[str, Any]:
     validator_path = validator or quick_validate_path()
-    if validator_path is None or not validator_path.exists():
+    if validator_path is None:
         return {
             "name": "codex_skill_validation",
             "status": "warning",
             "path": str(skill_path),
             "validator": None,
-            "message": "Codex skill quick_validate.py was not found; copied skill could not be automatically validated.",
+            "message": "Codex quick_validate.py was not found.",
         }
     completed = subprocess.run(
         [sys.executable, str(validator_path), str(skill_path)],
@@ -167,7 +196,38 @@ def validate_skill(skill_path: Path, *, validator: Path | None = None) -> dict[s
     }
 
 
-def _clone_skill_source(release_ref: str) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+def _skill_manifest(path: Path) -> dict[str, Any]:
+    skill_md = path / "SKILL.md"
+    if not skill_md.is_file():
+        return {}
+    text = skill_md.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return {}
+    try:
+        frontmatter = text.split("---\n", 2)[1]
+        return yaml.safe_load(frontmatter) or {}
+    except (IndexError, yaml.YAMLError):
+        return {}
+
+
+def inspect_skill_identity(path: Path, *, expected_name: str) -> dict[str, Any]:
+    manifest = _skill_manifest(path)
+    actual_name = manifest.get("name")
+    description = str(manifest.get("description") or "")
+    version_ok = "v0.9.7" in description
+    status = "pass" if actual_name == expected_name and version_ok else "fail"
+    return {
+        "name": "codex_skill_identity",
+        "status": status,
+        "path": str(path),
+        "expected_name": expected_name,
+        "actual_name": actual_name,
+        "version_detected": "v0.9.7" if version_ok else None,
+        "next_steps": [] if status == "pass" else ["Run `ea codex install-skill` to replace the mismatched skill."],
+    }
+
+
+def _clone_skill_sources(release_ref: str) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     temp = tempfile.TemporaryDirectory(prefix="ea-skill-install-")
     checkout = Path(temp.name) / "Experimental-Assistant"
     completed = subprocess.run(
@@ -179,16 +239,45 @@ def _clone_skill_source(release_ref: str) -> tuple[tempfile.TemporaryDirectory[s
     )
     if completed.returncode != 0:
         temp.cleanup()
-        raise RuntimeError(
-            "Could not fetch the EA skill from GitHub. "
-            "Run from a repository checkout or pass --source /path/to/skills/ea-v0-2.\n"
-            f"git stderr: {completed.stderr.strip()}"
-        )
+        raise RuntimeError(f"Could not fetch EA {release_ref}: {completed.stderr.strip()}")
     source = checkout / "skills" / SKILL_NAME
-    if not (source / "SKILL.md").exists():
+    if not (source / "SKILL.md").is_file():
         temp.cleanup()
-        raise FileNotFoundError(f"Fetched repository does not contain skills/{SKILL_NAME}/SKILL.md")
+        raise FileNotFoundError(f"Fetched release does not contain skills/{SKILL_NAME}/SKILL.md")
     return temp, source
+
+
+def _normalize_primary_source(source: Path) -> Path:
+    resolved = source.resolve()
+    checkout_skill = resolved / "skills" / SKILL_NAME
+    if (checkout_skill / "SKILL.md").is_file():
+        return checkout_skill
+    if resolved.name in LEGACY_SKILL_NAMES:
+        sibling = resolved.parent / SKILL_NAME
+        if sibling.is_dir():
+            return sibling
+    return resolved
+
+
+def _skill_sources(primary: Path) -> list[tuple[str, Path]]:
+    sources = [(SKILL_NAME, primary)]
+    for legacy_name in LEGACY_SKILL_NAMES:
+        legacy = primary.parent / legacy_name
+        if not (legacy / "SKILL.md").is_file():
+            raise FileNotFoundError(f"Compatibility skill source is missing: {legacy}")
+        sources.append((legacy_name, legacy))
+    return sources
+
+
+def _backup_path(skills_dir: Path, name: str, stamp: str) -> Path:
+    backup_root = skills_dir / ".backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    candidate = backup_root / f"{name}-{stamp}"
+    counter = 1
+    while candidate.exists():
+        candidate = backup_root / f"{name}-{stamp}-{counter}"
+        counter += 1
+    return candidate
 
 
 def install_codex_skill(
@@ -201,77 +290,280 @@ def install_codex_skill(
     release_ref: str = RELEASE_LABEL,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    identity = identity_record()
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
-    target = default_skill_target(home)
-    source_path = source.resolve() if source else find_local_skill_source()
+    source_path = _normalize_primary_source(source) if source else find_local_skill_source()
     temp_checkout: tempfile.TemporaryDirectory[str] | None = None
     source_origin = "local"
     if source_path is None and allow_github_fetch:
-        temp_checkout, source_path = _clone_skill_source(release_ref)
+        temp_checkout, source_path = _clone_skill_sources(release_ref)
         source_origin = f"github:{release_ref}"
     if source_path is None:
-        raise FileNotFoundError(
-            f"Could not locate skills/{SKILL_NAME}. Run from an EA checkout, pass --source, "
-            "or allow GitHub fetch."
-        )
-    if not (source_path / "SKILL.md").exists():
-        raise FileNotFoundError(f"Skill source is missing SKILL.md: {source_path}")
+        raise FileNotFoundError(f"Could not locate skills/{SKILL_NAME}; pass --source or allow GitHub fetch.")
+
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    stage_root = skills_dir / ".staging" / f"ea-{uuid.uuid4().hex}"
+    rollback_root = stage_root / ".rollback"
+    staged: dict[str, Path] = {}
+    validations: dict[str, dict[str, Any]] = {}
+    backups: dict[str, str | None] = {}
+    replaced: list[str] = []
+    installed: list[str] = []
+    touched: list[str] = []
+    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
 
     try:
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        backup_path: Path | None = None
-        replaced_existing = target.exists()
-        if replaced_existing:
-            if backup_existing:
-                stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
-                backup_root = skills_dir / ".backups"
-                backup_root.mkdir(parents=True, exist_ok=True)
-                backup_path = backup_root / f"{SKILL_NAME}-{stamp}"
-                counter = 1
-                while backup_path.exists():
-                    backup_path = backup_root / f"{SKILL_NAME}-{stamp}-{counter}"
-                    counter += 1
-                shutil.move(str(target), str(backup_path))
-            else:
-                shutil.rmtree(target)
-        shutil.copytree(source_path, target)
-        validation = validate_skill(target, validator=validator)
-        legacy_skill = skills_dir / "ea-v0-1"
-        checks = [validation]
-        status = "fail" if any(check["status"] == "fail" for check in checks) else "pass"
+        for name, skill_source in _skill_sources(source_path):
+            stage = stage_root / name
+            stage.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(skill_source, stage)
+            validation = validate_skill(stage, validator=validator)
+            identity = inspect_skill_identity(stage, expected_name=name)
+            validations[name] = {"structure": validation, "identity": identity}
+            if validation["status"] == "fail" or identity["status"] == "fail":
+                return {
+                    "schema_version": "1.0",
+                    "check_type": "ea_codex_skill_install",
+                    "status": "fail",
+                    "identity": identity_record(),
+                    "source": {"path": str(source_path), "origin": source_origin},
+                    "target": str(default_skill_target(home)),
+                    "targets": {},
+                    "backups": {},
+                    "validation": validation,
+                    "validations": validations,
+                    "restored_previous": True,
+                    "next_steps": ["Fix the staged skill validation failure; the existing installation was not changed."],
+                }
+            staged[name] = stage
+
+        for name, _ in _skill_sources(source_path):
+            target = skills_dir / name
+            rollback = rollback_root / name
+            backup: Path | None = None
+            if target.exists():
+                replaced.append(name)
+                rollback.parent.mkdir(parents=True, exist_ok=True)
+                if backup_existing:
+                    backup = _backup_path(skills_dir, name, stamp)
+                    shutil.move(str(target), str(backup))
+                else:
+                    shutil.move(str(target), str(rollback))
+            touched.append(name)
+            backups[name] = str(backup) if backup else None
+            os.replace(staged[name], target)
+            installed.append(name)
+
+        for name in installed:
+            target = skills_dir / name
+            post_validation = validate_skill(target, validator=validator)
+            post_identity = inspect_skill_identity(target, expected_name=name)
+            if post_validation["status"] == "fail" or post_identity["status"] == "fail":
+                raise RuntimeError(f"Post-install validation failed for {name}")
+            validations[name]["post_install"] = post_validation
+
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "check_type": "ea_codex_skill_install",
-            "status": status,
-            "identity": identity,
+            "status": "pass",
+            "identity": identity_record(),
             "source": {"path": str(source_path), "origin": source_origin},
             "codex_home": str(home),
-            "target": str(target),
-            "backup": str(backup_path) if backup_path else None,
-            "replaced_existing": replaced_existing,
-            "legacy_skill_detected": legacy_skill.exists(),
-            "legacy_skill_note": (
-                f"Detected existing ea-v0-1. {PUBLIC_VERSION} uses the ea-v0-2 internal compatibility skill path; old projects and old skills were not modified."
-                if legacy_skill.exists()
-                else None
-            ),
-            "validation": validation,
+            "target": str(default_skill_target(home)),
+            "targets": {name: str(skills_dir / name) for name in installed},
+            "backup": backups.get(SKILL_NAME),
+            "backups": backups,
+            "replaced_existing": bool(replaced),
+            "replaced_skills": replaced,
+            "validation": validations[SKILL_NAME]["post_install"],
+            "validations": validations,
+            "restored_previous": False,
             "next_steps": [
-                f"Restart Codex before using {PRODUCT_NAME} in a new thread.",
-                f"In a new Codex thread, invoke the compatibility skill as: {SKILL_INVOCATION}",
-                "Run `ea onboarding post-install` for the stable first-run summary.",
-                "Run `ea install-check` to verify CLI and Codex skill readiness.",
+                "Restart Codex before using the updated skill in a new task.",
+                f"Use the public invocation: {SKILL_INVOCATION}",
+                "Run `ea doctor` to verify CLI and skill identity.",
             ],
         }
+    except BaseException:
+        for name in reversed(touched):
+            target = skills_dir / name
+            if target.exists():
+                shutil.rmtree(target)
+            backup_value = backups.get(name)
+            backup = Path(backup_value) if backup_value else rollback_root / name
+            if backup.exists():
+                shutil.move(str(backup), str(target))
+        raise
     finally:
+        if stage_root.exists():
+            shutil.rmtree(stage_root, ignore_errors=True)
         if temp_checkout is not None:
             temp_checkout.cleanup()
 
 
+def _latest_backup(skills_dir: Path, name: str) -> Path | None:
+    backup_root = skills_dir / ".backups"
+    if not backup_root.exists():
+        return None
+    candidates = sorted((path for path in backup_root.glob(f"{name}-*") if path.is_dir()), key=lambda path: path.stat().st_mtime)
+    return candidates[-1] if candidates else None
+
+
+def rollback_codex_skills(
+    *,
+    codex_home_path: Path | None = None,
+    validator: Path | None = None,
+    confirmed: bool = False,
+) -> dict[str, Any]:
+    home = codex_home_path or codex_home()
+    skills_dir = codex_skills_dir(home)
+    selected = {name: _latest_backup(skills_dir, name) for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)}
+    missing = [name for name, backup in selected.items() if backup is None]
+    if missing:
+        raise FileNotFoundError(f"No rollback backup is available for: {', '.join(missing)}")
+    if not confirmed:
+        return {
+            "schema_version": "1.0",
+            "status": "needs_confirmation",
+            "will_restore": {name: str(path) for name, path in selected.items()},
+            "will_replace": {name: str(skills_dir / name) for name in selected},
+        }
+    stage = skills_dir / ".staging" / f"rollback-{uuid.uuid4().hex}"
+    current = stage / ".current"
+    restored: list[str] = []
+    try:
+        for name, backup in selected.items():
+            staged = stage / name
+            shutil.copytree(backup, staged)
+            validation = validate_skill(staged, validator=validator)
+            identity = inspect_skill_identity(staged, expected_name=name)
+            if validation["status"] == "fail" or identity["status"] == "fail":
+                raise RuntimeError(f"Rollback backup validation failed for {name}")
+        for name in selected:
+            target = skills_dir / name
+            if target.exists():
+                (current / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(target), str(current / name))
+            os.replace(stage / name, target)
+            restored.append(name)
+        return {
+            "schema_version": "1.0",
+            "status": "completed",
+            "restored": restored,
+            "sources": {name: str(path) for name, path in selected.items()},
+        }
+    except BaseException:
+        for name in restored:
+            target = skills_dir / name
+            if target.exists():
+                shutil.rmtree(target)
+            previous = current / name
+            if previous.exists():
+                shutil.move(str(previous), str(target))
+        raise
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def uninstall_codex_skills(
+    *,
+    codex_home_path: Path | None = None,
+    confirmed: bool = False,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    home = codex_home_path or codex_home()
+    skills_dir = codex_skills_dir(home)
+    targets = [skills_dir / name for name in (SKILL_NAME, *LEGACY_SKILL_NAMES) if (skills_dir / name).exists()]
+    if not confirmed:
+        return {"schema_version": "1.0", "status": "needs_confirmation", "will_remove": [str(path) for path in targets]}
+    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    backups: dict[str, str] = {}
+    for target in targets:
+        backup = _backup_path(skills_dir, target.name, f"uninstall-{stamp}")
+        shutil.move(str(target), str(backup))
+        backups[target.name] = str(backup)
+    return {"schema_version": "1.0", "status": "completed", "removed": [path.name for path in targets], "backups": backups}
+
+
 def _ea_executable() -> str | None:
     return shutil.which("ea")
+
+
+def read_ea_executable_identity(executable: str | None = None) -> dict[str, Any]:
+    path = executable or _ea_executable()
+    if not path:
+        return {"status": "fail", "path": None, "identity": {}, "returncode": None, "stderr": "EA CLI was not found on PATH."}
+    try:
+        completed = subprocess.run(
+            [path, "version", "--json"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "fail", "path": path, "identity": {}, "returncode": None, "stderr": str(exc)}
+    try:
+        detected = json.loads(completed.stdout) if completed.stdout.strip() else {}
+    except json.JSONDecodeError:
+        detected = {}
+    return {
+        "status": "pass" if completed.returncode == 0 and detected else "fail",
+        "path": path,
+        "identity": detected,
+        "returncode": completed.returncode,
+        "stderr": completed.stderr.strip(),
+    }
+
+
+def inspect_ea_executable(executable: str | None = None) -> dict[str, Any]:
+    raw = read_ea_executable_identity(executable)
+    path = raw["path"]
+    if not path:
+        return {
+            "name": "ea_cli",
+            "status": "fail",
+            "path": None,
+            "code": "EA-INSTALL-CLI-NOT-FOUND",
+            "message": "EA CLI was not found on PATH.",
+            "next_steps": [f"Install with: uv tool install --python 3.12 git+{REPOSITORY_URL}.git@{RELEASE_LABEL}"],
+        }
+    if raw["status"] == "fail":
+        return {
+            "name": "ea_cli",
+            "status": "fail",
+            "path": path,
+            "code": "EA-INSTALL-CLI-EXECUTION-FAILED",
+            "message": f"PATH-resolved EA CLI could not be executed: {raw['stderr']}",
+            "next_steps": [f"Repair or remove the stale executable at `{path}`, then reinstall {DISTRIBUTION_NAME}."],
+        }
+    detected = raw["identity"]
+    expected = identity_record()
+    matches = (
+        raw["returncode"] == 0
+        and detected.get("package_version") == expected["package_version"]
+        and detected.get("distribution_name") == DISTRIBUTION_NAME
+        and detected.get("release_label") == RELEASE_LABEL
+        and detected.get("skill_invocation") == SKILL_INVOCATION
+    )
+    return {
+        "name": "ea_cli",
+        "status": "pass" if matches else "fail",
+        "path": path,
+        "returncode": raw["returncode"],
+        "detected_identity": detected,
+        "expected_identity": {
+            "distribution_name": DISTRIBUTION_NAME,
+            "package_version": __version__,
+            "release_label": RELEASE_LABEL,
+            "skill_invocation": SKILL_INVOCATION,
+        },
+        "stderr": raw["stderr"],
+        "code": None if matches else "EA-INSTALL-CLI-IDENTITY-MISMATCH",
+        "message": "PATH-resolved EA CLI identity matches." if matches else "PATH resolves to a missing, stale, or mismatched EA CLI.",
+        "next_steps": [] if matches else [f"Reinstall {DISTRIBUTION_NAME} {__version__} and ensure `{path}` is the intended executable."],
+    }
 
 
 def _repo_example_path(start: Path | None = None) -> Path | None:
@@ -285,12 +577,7 @@ def _repo_example_path(start: Path | None = None) -> Path | None:
 def run_public_example_check(example_workspace: Path | None = None) -> dict[str, Any]:
     workspace = example_workspace or _repo_example_path()
     if workspace is None or not workspace.exists():
-        return {
-            "name": "public_example_healthcheck",
-            "status": "warning",
-            "workspace": str(example_workspace) if example_workspace else None,
-            "message": "Public Raman example was not found. Run this check from a repository checkout or pass --example-workspace.",
-        }
+        return {"name": "public_example_healthcheck", "status": "warning", "workspace": str(workspace) if workspace else None}
     from ea.healthcheck import run_healthcheck
 
     result = run_healthcheck(workspace)
@@ -312,49 +599,48 @@ def install_check(
     run_example: bool = False,
     example_workspace: Path | None = None,
     skip_codex_skill: bool = False,
+    executable: str | None = None,
 ) -> dict[str, Any]:
     identity = identity_record()
     home = codex_home_path or codex_home()
     target = skill_path or default_skill_target(home)
-    checks: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = [python_preflight_record()]
 
-    checks.append(python_preflight_record())
+    installed = identity["installed_distributions"]
+    official_version = installed.get(DISTRIBUTION_NAME)
+    legacy_installed = {name: installed[name] for name in LEGACY_DISTRIBUTION_NAMES if name in installed}
+    package_status = "pass" if official_version == __version__ and not legacy_installed else "fail"
     checks.append(
         {
-            "name": "ea_package",
-            "status": "pass",
-            "package": PACKAGE_NAME,
-            "version": _package_version(),
-            "installed_distribution_version": _installed_distribution_version(),
-            "public_version": PUBLIC_VERSION,
-            "release_label": RELEASE_LABEL,
-        }
-    )
-    exe = _ea_executable()
-    checks.append(
-        {
-            "name": "ea_cli",
-            "status": "pass" if exe else "fail",
-            "path": exe,
-            "message": "EA CLI is on PATH." if exe else "EA CLI was not found on PATH.",
+            "name": "ea_distribution",
+            "status": package_status,
+            "distribution": DISTRIBUTION_NAME,
+            "expected_version": __version__,
+            "installed_version": official_version,
+            "legacy_installed": legacy_installed,
+            "code": None if package_status == "pass" else "EA-INSTALL-DISTRIBUTION-MISMATCH",
             "next_steps": []
-            if exe
-            else [f"Install with: uv tool install --python 3.12 git+{REPOSITORY_URL}.git@{RELEASE_LABEL}"],
+            if package_status == "pass"
+            else [f"Install {DISTRIBUTION_NAME} {__version__} and remove legacy distributions after verification."],
         }
     )
+    checks.append(inspect_ea_executable(executable))
+
     if not skip_codex_skill:
-        exists = target.exists()
-        checks.append(
-            {
-                "name": "codex_skill_path",
-                "status": "pass" if exists else "fail",
-                "path": str(target),
-                "message": "Codex skill folder exists." if exists else "Codex skill folder is missing.",
-                "next_steps": [] if exists else ["Run `ea codex install-skill`."],
-            }
-        )
-        if exists:
-            checks.append(validate_skill(target, validator=validator))
+        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES):
+            path = target if name == SKILL_NAME else target.parent / name
+            exists = path.is_dir()
+            checks.append(
+                {
+                    "name": f"codex_skill_path:{name}",
+                    "status": "pass" if exists else "fail",
+                    "path": str(path),
+                    "next_steps": [] if exists else ["Run `ea codex install-skill`."],
+                }
+            )
+            if exists:
+                checks.append(inspect_skill_identity(path, expected_name=name))
+                checks.append(validate_skill(path, validator=validator))
     if run_example:
         checks.append(run_public_example_check(example_workspace))
 
@@ -362,7 +648,7 @@ def install_check(
     warnings = [check for check in checks if check["status"] == "warning"]
     status = "fail" if failures else "warning" if warnings else "pass"
     return {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "check_type": "ea_install_check",
         "status": status,
         "identity": identity,
@@ -370,54 +656,174 @@ def install_check(
         "skill_path": None if skip_codex_skill else str(target),
         "checks": checks,
         "next_steps": [
-            f"In a new Codex thread, invoke the compatibility skill as: {SKILL_INVOCATION}",
-            "Run `ea onboarding post-install` for the stable first-run summary.",
-            "Restart Codex after installing or replacing the skill.",
-            "Use `ea init-project` for the first real project after the install check passes.",
+            "Resolve every failed identity check before using mutating workflows.",
+            f"Use {SKILL_INVOCATION} in a new Codex task after checks pass.",
         ],
     }
 
 
-def render_install_summary(result: dict[str, Any]) -> str:
-    identity = result["identity"]
-    lines = [
-        f"{PRODUCT_NAME} installation check: {result['status']}",
-        "",
-        f"Product: {identity['product']}",
-        f"Version: {identity['display_version']}",
-        f"Package version: {identity['package_version']}",
-        f"Internal compatibility id: {identity['compatibility_id']}",
-        f"Codex compatibility invocation: {identity['skill_invocation']}",
-        "",
-        "Checks:",
-    ]
-    for check in result.get("checks", []):
-        label = check.get("name", "check")
-        detail = check.get("message") or check.get("path") or check.get("version") or ""
-        lines.append(f"- {label}: {check.get('status')} {detail}".rstrip())
-    lines.extend(["", "Next steps:"])
-    for step in result.get("next_steps", []):
-        lines.append(f"- {step}")
-    return "\n".join(lines)
+def setup_installation(
+    *,
+    source: Path | None = None,
+    codex_home_path: Path | None = None,
+    validator: Path | None = None,
+    release_ref: str = RELEASE_LABEL,
+    lang: str = "zh",
+) -> dict[str, Any]:
+    installed = install_codex_skill(
+        source=source,
+        codex_home_path=codex_home_path,
+        validator=validator,
+        release_ref=release_ref,
+    )
+    return {
+        "schema_version": "1.0",
+        "status": installed["status"],
+        "skill_install": installed,
+        "onboarding": onboarding_post_install_record(event="install", lang=lang),
+        "next_command": "ea doctor",
+    }
 
 
-def render_install_skill_summary(result: dict[str, Any]) -> str:
-    identity = result["identity"]
-    lines = [
-        f"Installed {identity['product']} ({identity['public_version']}).",
-        f"Package version: {identity['package_version']}.",
-        f"Internal compatibility id: {identity['compatibility_id']}.",
-        f"Codex skill: {result['target']}",
-        f"Codex compatibility invocation: {identity['skill_invocation']}",
-        f"Validation: {result['validation']['status']}",
-    ]
-    if result.get("backup"):
-        lines.append(f"Previous {SKILL_NAME} backup: {result['backup']}")
-    if result.get("legacy_skill_note"):
-        lines.append(result["legacy_skill_note"])
-    lines.append("Restart Codex before using this skill in a new thread.")
-    lines.append("Run `ea onboarding post-install` to see the stable first-run summary.")
-    return "\n".join(lines)
+def lifecycle_update_plan(*, release_ref: str = RELEASE_LABEL) -> dict[str, Any]:
+    previous = read_ea_executable_identity()
+    previous_ref = previous.get("identity", {}).get("release_label")
+    return {
+        "schema_version": "1.0",
+        "status": "ready",
+        "release_ref": release_ref,
+        "previous_release_ref": previous_ref,
+        "will_write": ["installed CLI environment", "Codex skills/ea", "Codex skills/ea-v0-2"],
+        "cli_command": [
+            "uv",
+            "tool",
+            "install",
+            "--force",
+            "--python",
+            "3.12",
+            f"git+{REPOSITORY_URL}.git@{release_ref}",
+        ],
+        "skill_command": ["ea", "codex", "install-skill", "--release-ref", release_ref],
+        "rollback_command": ["ea", "rollback", "--yes"],
+        "read_only": True,
+    }
+
+
+def _run_lifecycle_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+
+def update_installation(
+    *,
+    release_ref: str = RELEASE_LABEL,
+    confirmed: bool = False,
+    uv_executable: str | None = None,
+    command_runner=None,
+) -> dict[str, Any]:
+    plan = lifecycle_update_plan(release_ref=release_ref)
+    if not confirmed:
+        return {**plan, "status": "needs_confirmation"}
+    uv = uv_executable or shutil.which("uv")
+    if not uv:
+        raise FileNotFoundError("uv was not found; install uv or perform the documented manual package transaction.")
+    runner = command_runner or _run_lifecycle_command
+    previous_ref = plan.get("previous_release_ref") or "v0.9.6"
+    python_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    install_command = [uv, "tool", "install", "--force", "--python", python_minor, f"git+{REPOSITORY_URL}.git@{release_ref}"]
+    rollback_command = [uv, "tool", "install", "--force", "--python", python_minor, f"git+{REPOSITORY_URL}.git@{previous_ref}"]
+    package_result = runner(install_command)
+    if package_result.returncode != 0:
+        return {
+            **plan,
+            "status": "fail",
+            "stage": "cli_update",
+            "command": install_command,
+            "stderr": package_result.stderr.strip(),
+            "restored_previous": True,
+        }
+    executable = _ea_executable()
+    skill_command = [executable or "ea", "codex", "install-skill", "--release-ref", release_ref, "--json"]
+    skill_result = runner(skill_command)
+    if skill_result.returncode != 0:
+        rollback_result = runner(rollback_command)
+        return {
+            **plan,
+            "status": "fail",
+            "stage": "skill_update",
+            "command": skill_command,
+            "stderr": skill_result.stderr.strip(),
+            "rollback_command": rollback_command,
+            "restored_previous": rollback_result.returncode == 0,
+            "rollback_stderr": rollback_result.stderr.strip(),
+        }
+    return {
+        **plan,
+        "status": "completed",
+        "cli_command": install_command,
+        "skill_command": skill_command,
+        "previous_release_ref": previous_ref,
+        "rollback_command": rollback_command,
+        "restored_previous": False,
+    }
+
+
+def rollback_installation(
+    *,
+    release_ref: str = "v0.9.6",
+    confirmed: bool = False,
+    uv_executable: str | None = None,
+    command_runner=None,
+) -> dict[str, Any]:
+    return update_installation(
+        release_ref=release_ref,
+        confirmed=confirmed,
+        uv_executable=uv_executable,
+        command_runner=command_runner,
+    )
+
+
+def uninstall_installation(
+    *,
+    codex_home_path: Path | None = None,
+    confirmed: bool = False,
+    uv_executable: str | None = None,
+    command_runner=None,
+) -> dict[str, Any]:
+    skill_plan = uninstall_codex_skills(codex_home_path=codex_home_path, confirmed=False)
+    uv = uv_executable or shutil.which("uv")
+    cli_command = [uv or "uv", "tool", "uninstall", DISTRIBUTION_NAME]
+    if not confirmed:
+        return {
+            "schema_version": "1.0",
+            "status": "needs_confirmation",
+            "skill_plan": skill_plan,
+            "cli_command": cli_command,
+            "read_only": True,
+        }
+    if not uv:
+        raise FileNotFoundError("uv was not found; uninstall the CLI manually after removing the Codex skills.")
+    skills_result = uninstall_codex_skills(codex_home_path=codex_home_path, confirmed=True)
+    runner = command_runner or _run_lifecycle_command
+    cli_result = runner(cli_command)
+    if cli_result.returncode != 0:
+        try:
+            rollback_codex_skills(codex_home_path=codex_home_path, confirmed=True)
+            restored = True
+        except (OSError, RuntimeError, FileNotFoundError):
+            restored = False
+        return {
+            "schema_version": "1.0",
+            "status": "fail",
+            "stage": "cli_uninstall",
+            "stderr": cli_result.stderr.strip(),
+            "restored_previous": restored,
+        }
+    return {
+        "schema_version": "1.0",
+        "status": "completed",
+        "skill_uninstall": skills_result,
+        "cli_command": cli_command,
+    }
 
 
 def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") -> dict[str, Any]:
@@ -425,85 +831,78 @@ def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") 
         raise ValueError("event must be install or update")
     if lang not in {"zh", "en"}:
         raise ValueError("lang must be zh or en")
-    identity = identity_record()
     return {
-        "schema_version": "0.9.6",
+        "schema_version": "1.0",
         "message_type": "ea_post_install_onboarding",
         "event": event,
         "language": lang,
-        "identity": identity,
+        "identity": identity_record(),
         "capabilities": [
-            "consult_or_plan_without_project_writes_by_default",
-            "record_review_gated_project_artifacts_after_confirmation",
-            "process_raman_pl_xrd_ftir_uv_vis_xps_electrochemistry_thermal_and_image_records",
-            "generate_reports_exports_traceability_and_project_briefs",
-            "manage_local_literature_state_with_user_permission",
-            "maintain_lightweight_project_working_memory",
+            "consult_without_project_writes",
+            "guided_project_creation",
+            "protected_raw_import_and_review_gated_analysis",
+            "traceable_reports_exports_and_project_status",
+            "permission_gated_literature_and_beta_evidence_datasets",
         ],
-        "recommended_first_checks": [
-            "ea version --json",
-            "ea install-check --json",
-            "ea literature setup-preflight /path/to/ea-project",
-        ],
+        "recommended_first_checks": ["ea version --json", "ea doctor --json", "ea start --help"],
         "confirmation_phrase": "确定配置" if lang == "zh" else "Confirm setup",
         "boundaries": [
-            "Post-install onboarding does not create EA project files.",
-            "Zotero, browser assistance, institution login, and full-text acquisition stay opt-in.",
-            "Scientific memory remains review-gated; project working memory is a compact continuation aid.",
-            "Large literature/report jobs may ask for confirmation when the estimated work is unusually large.",
+            "Onboarding does not create project files.",
+            "Zotero, browser, institution access, and full-text acquisition remain opt-in.",
+            "Scientific decisions and durable memory remain review-gated.",
         ],
         "compatibility": {
-            "compatibility_id": PACKAGE_NAME,
-            "skill_folder": SKILL_NAME,
-            "skill_invocation": SKILL_INVOCATION,
-            "note": "Compatibility identifiers are install paths, not the public EA version.",
+            "legacy_distribution_names": list(LEGACY_DISTRIBUTION_NAMES),
+            "legacy_skill_invocations": list(LEGACY_SKILL_INVOCATIONS),
+            "note": "Use $ea for new work; historical compatibility identifiers remain readable.",
         },
     }
 
 
 def render_onboarding_post_install(record: dict[str, Any]) -> str:
     identity = record["identity"]
-    lang = record.get("language", "zh")
-    if lang == "en":
-        lines = [
-            f"{identity['display_version']} is ready.",
-            "",
-            "What EA can do:",
-            "- Answer research workflow questions in consult mode without creating project files by default.",
-            "- Initialize and maintain local EA projects after explicit confirmation.",
-            "- Process reviewed characterization data and write traceable reports, exports, briefs, and memory candidates.",
-            "- Help configure a local literature workflow only after you confirm the scope and access mode.",
-            "",
-            "Recommended checks:",
-        ]
-        lines.extend(f"- {command}" for command in record["recommended_first_checks"])
-        lines.extend(
+    if record["language"] == "en":
+        return "\n".join(
             [
-                "",
-                f"To configure literature support later, say `{record['confirmation_phrase']}` or run the preflight command.",
-                f"Internal compatibility id: `{identity['compatibility_id']}`; public version: `{identity['display_version']}`.",
+                f"{identity['public_version']} is ready.",
+                "Use $ea for new work. Consult mode writes no project files.",
+                "Run `ea doctor` to verify CLI, distribution, and both skill identities.",
+                "Run `ea start` when you want a guided first project.",
+                "Literature acquisition and evidence datasets remain permission-gated beta/experimental workflows.",
             ]
         )
-        return "\n".join(lines)
-    lines = [
-        f"{identity['display_version']} 已就绪。",
-        "",
-        "EA 可以做什么：",
-        "- 默认先以咨询模式回答研究流程问题，不会自动创建项目文件。",
-        "- 在你明确确认后，初始化并维护本地 EA 项目。",
-        "- 处理已审核的表征数据，并写入可追踪报告、导出包、项目简报和记忆候选。",
-        "- 在你确认范围和访问方式后，协助配置本地文献工作流。",
-        "",
-        "建议先检查：",
-    ]
-    lines.extend(f"- `{command}`" for command in record["recommended_first_checks"])
-    lines.extend(
+    return "\n".join(
         [
-            "",
-            f"之后如果要配置文献支持，可以回复 `{record['confirmation_phrase']}`，或运行文献预检命令。",
-            f"内部兼容标识：`{identity['compatibility_id']}`；公开版本：`{identity['display_version']}`。",
+            f"{identity['public_version']} 已就绪。",
+            "新任务请使用 `$ea`；咨询模式不会写入项目文件。",
+            "运行 `ea doctor` 检查 CLI、distribution 和两个 skill 身份。",
+            "准备创建首个项目时运行 `ea start`。",
+            "文献获取和证据数据集仍是需要授权的 beta/experimental 工作流。",
         ]
     )
+
+
+def render_install_summary(result: dict[str, Any]) -> str:
+    lines = [f"{PRODUCT_NAME} doctor: {result['status']}", f"Version: {result['identity']['public_version']}", "Checks:"]
+    for check in result.get("checks", []):
+        detail = check.get("message") or check.get("path") or check.get("installed_version") or ""
+        lines.append(f"- {check.get('name')}: {check.get('status')} {detail}".rstrip())
+        for step in check.get("next_steps", []):
+            lines.append(f"  next: {step}")
+    return "\n".join(lines)
+
+
+def render_install_skill_summary(result: dict[str, Any]) -> str:
+    lines = [
+        f"Installed {result['identity']['public_version']} Codex skills.",
+        f"Primary invocation: {SKILL_INVOCATION}",
+        f"Primary target: {result['target']}",
+        f"Validation: {result['validation']['status']}",
+    ]
+    for name, backup in result.get("backups", {}).items():
+        if backup:
+            lines.append(f"Previous {name} backup: {backup}")
+    lines.extend(["Restart Codex.", "Run `ea doctor` before a mutating workflow."])
     return "\n".join(lines)
 
 
@@ -529,10 +928,7 @@ def install_check_main(argv: list[str] | None = None) -> int:
         example_workspace=args.example_workspace,
         skip_codex_skill=args.skip_codex_skill,
     )
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(render_install_summary(result))
+    print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else render_install_summary(result))
     return 0 if result["status"] != "fail" else 2
 
 

@@ -1,129 +1,96 @@
-# Experimental Assistant v0.9.6 Release Verification
+# Experimental Assistant v0.9.7 Release Verification
 
-This guide is for a release recipient, maintainer, or future agent who needs to verify an Experimental Assistant v0.9.6 repository package before using or redistributing it. All checks are local. None of these commands require Zotero, browser profiles, institution login, live web search, PDF download, private caches, or developer-machine key paths.
+This guide defines the maintainer and recipient checks for Experimental Assistant v0.9.7. Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>. Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.7>.
 
-For first-time installation and Codex skill setup after verification, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`.
-After installing, run `ea install-check` to verify the EA CLI, package identity, Codex skill path, skill validation, and optional public example healthcheck.
+The checks do not require Zotero, browser profiles, institution login, private literature caches, or developer-machine key paths.
 
-Public repository and release page:
+## Expected Artifacts
 
-- Repository: `https://github.com/gongchenisbusy/Experimental-Assistant`
-- Release assets: `https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.6`
+- `experimental_assistant-0.9.7-py3-none-any.whl`
+- `experimental_assistant-0.9.7.tar.gz`
+- `experimental-assistant-v0.9.7-release-manifest.yml`
+- `experimental-assistant-0.9.7-COMMIT-release.zip`
+- `experimental-assistant-0.9.7-COMMIT-release.zip.sha256`
+- `experimental-assistant-0.9.7-sbom.json`
+- `experimental-assistant-0.9.7-vulnerability-report.json`
+- `experimental-assistant-v0.9.7-distribution-checklist.json`
+- `experimental-assistant-v0.9.7-distribution-checklist.md`
+- optional detached signature sidecar and independently trusted public key
 
-## 1. Expected Artifacts
+## Maintainer Order
 
-A normal Experimental Assistant v0.9.6 handoff may include:
-
-- `ea-v0.9.6-release-manifest.yml`
-- `ea-v0-2-0.9.6-COMMIT-release.zip`
-- `ea-v0-2-0.9.6-COMMIT-release.zip.sha256`
-- optional `ea-v0-2-0.9.6-COMMIT-release.zip.sig.yml`
-- optional public key file supplied by the release author
-- optional `ea-v0.9.6-distribution-checklist.json`
-- optional `ea-v0.9.6-distribution-checklist.md`
-
-The `ea-v0-2` archive prefix is a compatibility package identifier, not the public release version. Use the package version `0.9.6`, release label `v0.9.6`, and embedded manifest when identifying this release.
-
-The manifest and checksum prove local file integrity. The optional detached signature can add authorship or release-intent evidence only when the verifier trusts the supplied public key through an external channel.
-
-## 2. Verification Order
-
-Run checks in this order:
+Use a clean checkout at the intended release commit. Build and test wheel and sdist in isolated Python 3.11-3.13 environments, using the PATH-resolved `ea` executable rather than repository imports.
 
 ```bash
-ea-public-release-smoke
+python3 scripts/check_install_env.py
+python3 scripts/validate_skill_packages.py
+python3 scripts/check_version_identity.py
+python3 scripts/check_downloaded_skill_instructions.py
+python3 scripts/public_release_smoke.py
+python3 -m build
+ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/ea-v0-2-0.9.6-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip
 ea-release-checklist
 ```
 
-If a detached signature sidecar is present and the release author supplied a trusted public key:
+For each clean wheel/sdist installation, run:
 
 ```bash
-ea-verify-release-signature dist/ea-v0-2-0.9.6-COMMIT-release.zip \
+ea version --json
+ea capabilities --json
+ea doctor --json
+ea --help
+```
+
+Repeat clean builds with the same commit and `SOURCE_DATE_EPOCH`; the wheel and release-tool-canonicalized sdist must be byte-identical. Canonicalization fixes archive order, uid/gid, owner names, tar mtimes, and gzip header time without changing payload bytes. The deterministic repository zip, manifest inputs, and checksum sidecars must also match. Record any format-level exception rather than silently accepting different bytes.
+
+## Supply Chain Gate
+
+`ea-release-supply-chain` generates a CycloneDX 1.5 SBOM and `pip-audit` report from the clean release environment. Scanner unavailability, scanner error, or any unallowlisted known vulnerability is release-blocking. The v0.9.7 allowlist is empty. See `docs/RELEASE_SECURITY_POLICY.md` and `requirements/release.txt`.
+
+## What Each Check Proves
+
+- `ea-public-release-smoke`: tests, both skill validations, CLI help, examples, portability scan, and sensitive-value scan.
+- `ea-release-supply-chain`: installed-component inventory and known-vulnerability policy result for the clean environment.
+- `ea-release-manifest`: exact release inputs, identity, git state, validation contract, scientific evidence refs, and supply-chain refs.
+- `ea-release-package`: deterministic repository handoff zip and SHA-256 sidecar.
+- `ea-verify-release-package`: sidecar, embedded manifest, file sizes, and manifest-listed SHA-256 values.
+- `ea-verify-release-signature`: optional Ed25519 proof of key possession after package verification.
+- `ea-release-checklist`: consolidated release status for git, package, supply chain, and artifacts.
+- `ea install-check` / `ea doctor`: installed CLI and skill identity, not scientific validity.
+
+## Blocking Failures
+
+- dirty worktree or release tag not at the intended commit;
+- failed full tests, skill validation, identity, downloaded-instruction, portability, privacy, or public-example gate;
+- wheel or sdist cannot install and run from a clean supported interpreter;
+- missing SBOM or vulnerability report;
+- vulnerability scan status other than `pass`;
+- non-reproducible artifact without an explicit public exception;
+- missing archive/checksum/embedded manifest or any size/SHA-256 mismatch;
+- unexpected developer paths, credentials, tokens, cookies, signed URLs, browser/session identifiers, raw project data, or private full text in release artifacts.
+
+Independent novice/platform trial and external scientific-review evidence are promotion gates for v1.0. They may remain honestly marked pending for a controlled v0.9.7 release candidate, but must never be recorded as passed without real evidence.
+
+## Optional Signing
+
+```bash
+ea-release-keygen --private-key /path/to/release-private.pem --public-key /path/to/release-public.pem
+ea-sign-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip \
+  --private-key /path/to/release-private.pem \
+  --public-key /path/to/release-public.pem
+ea-verify-release-signature dist/experimental-assistant-0.9.7-COMMIT-release.zip \
   --public-key /path/to/release-public.pem
 ```
 
-Use the script equivalents when console entry points are not installed:
+A checksum detects corruption. A detached signature proves possession of a key. Publisher identity exists only when the verifier obtains the trusted public-key fingerprint through an independent stable channel.
 
-```bash
-python3 scripts/public_release_smoke.py
-python3 scripts/build_release_manifest.py
-python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.6-COMMIT-release.zip
-python3 scripts/build_distribution_checklist.py
-python3 scripts/verify_release_signature.py dist/ea-v0-2-0.9.6-COMMIT-release.zip \
-  --public-key /path/to/release-public.pem
-```
+## Recipient Record
 
-## 3. What Each Check Proves
+Record the release tag and commit, filenames, SHA-256 values, embedded manifest identity, SBOM component count, vulnerability status, package verification status, optional signature/fingerprint result, verification date, and verifier role.
 
-`ea-public-release-smoke` proves the repository can run the current public gate: tests, skill validation, CLI help, release helper help, portability scan, and sensitive-value scan for accidental credential-like assignments or token literals in release-facing files.
+## Scope Limits
 
-`ea-release-manifest` records package metadata, git state, release input paths, checksums, smoke-gate requirements, public-boundary notes, and optional signing support.
-
-`ea-release-package` builds a deterministic zip archive plus `.sha256` sidecar using the manifest release inputs.
-
-`ea-verify-release-package` checks the `.sha256` sidecar, opens the zip, finds the embedded manifest, and verifies every manifest-listed file by size and SHA-256.
-
-`ea-verify-release-signature` first verifies the package integrity gate, then verifies the detached Ed25519 signature sidecar with the user-supplied public key.
-
-`ea-release-checklist` summarizes whether the default manifest, at least one release package, package verification, optional signature state, git cleanliness, and tag-at-HEAD state are ready for handoff.
-
-## 4. Pass/Fail Expectations
-
-Treat these as blocking failures before public handoff:
-
-- dirty release worktree when generating final artifacts;
-- missing default manifest;
-- missing release zip;
-- missing `.zip.sha256` sidecar;
-- release package verification status other than `pass`;
-- missing embedded manifest inside the zip;
-- manifest-listed payload missing from the zip;
-- size or SHA-256 mismatch for any manifest-listed file.
-
-Treat these as warnings or follow-up work:
-
-- no tag at `HEAD`;
-- missing optional detached signature;
-- signature sidecar present but not verified because no trusted public key was supplied.
-
-Treat this as a trust failure when signing is required:
-
-- detached signature verification status other than `pass`;
-- public-key fingerprint mismatch;
-- public key supplied through an untrusted channel.
-
-## 5. Scope Limits
-
-Release verification does not prove:
-
-- scientific correctness of reports or material assignments;
-- completeness of literature search;
-- truth of cited references;
-- security of the user's Python environment;
-- authorship unless detached signature verification is performed with a trusted public key.
-
-Release verification must not:
-
-- rely on developer-machine Zotero, browser, institution, cache, key, or test paths;
-- run live web search or PDF acquisition;
-- store credentials;
-- bypass SSO, MFA, paywalls, or access controls;
-- modify raw project data.
-
-## 6. Recommended Recipient Record
-
-When a recipient verifies a release, save a short note with:
-
-- release archive filename;
-- archive SHA-256 from `.zip.sha256`;
-- embedded manifest git commit and tags at HEAD;
-- `ea-verify-release-package` status;
-- `ea-verify-release-signature` status if used;
-- `ea-release-checklist` status;
-- verification date and verifier name or role.
-
-This note can be stored outside the release package or alongside local deployment records.
+Release verification does not prove scientific correctness, completeness of a literature search, truth of references, lawful access to a user's sources, or authorship without an independently trusted signature. It must not bypass SSO, MFA, subscriptions, publisher controls, or modify protected project data.

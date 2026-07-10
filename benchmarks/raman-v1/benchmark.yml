@@ -1,0 +1,40 @@
+schema_version: "1.0"
+benchmark_id: raman-mos2-public-fixture-v1
+benchmark_type: internal_reproducibility_golden
+maturity_effect: beta_until_external_review
+source:
+  path: examples/public-raman-project/source-inputs/raw/mos2-raman-public-fixture.txt
+  sha256: 33d7f2c9a7712058f7b376c715ea730df278dde8984e7320728f7e0403fce998
+  material: MoS2
+  x_unit: cm^-1
+  provenance_note: Public synthetic/curated EA fixture; not an independent external scientific dataset.
+processing:
+  parameters: ea.raman.default_processing_parameters
+  reviewed_columns: x=col_0, y=col_1, unit=cm^-1
+expected:
+  peak_count:
+    minimum: 7
+    maximum: 12
+  assigned_features:
+    mos2_e2g_like:
+      center_cm-1: 386.09224149454843
+      absolute_tolerance_cm-1: 0.75
+    mos2_a1g_like:
+      center_cm-1: 405.8477471765893
+      absolute_tolerance_cm-1: 0.75
+  mode_separation_cm-1:
+    value: 19.755505682040848
+    absolute_tolerance_cm-1: 1.0
+  assignment_confidence: medium
+invalid_use_cases:
+  - code: wrong_axis_unit
+    expected: rejected_before_processing
+  - code: missing_review_record
+    expected: rejected_before_processing
+  - code: layer_number_claim_from_raman_alone
+    expected: prohibited_by_report_boundary
+promotion_requirements:
+  - independent external fixture or blinded sample set
+  - external domain reviewer approval
+  - documented instrument/calibration applicability limits
+  - invalid-use and uncertainty review

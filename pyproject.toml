@@ -3,26 +3,57 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ea-v0-2"
-version = "0.9.6"
-description = "Modular local-first Experimental Assistant core"
+name = "experimental-assistant"
+version = "0.9.7"
+description = "Local-first materials research assistant with review-gated evidence and provenance"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [
+  {name = "Experimental Assistant maintainers"},
+]
+maintainers = [
+  {name = "gongchenisbusy", email = "ea_feedback@163.com"},
+]
+keywords = ["materials-science", "research", "provenance", "spectroscopy", "literature"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
 dependencies = [
-  "cryptography>=42",
-  "pydantic>=2.7",
-  "pyyaml>=6.0",
-  "pandas>=2.2",
-  "numpy>=1.26",
-  "scipy>=1.12",
-  "matplotlib>=3.8",
-  "openpyxl>=3.1",
+  "cryptography>=42,<50",
+  "pydantic>=2.7,<3",
+  "pyyaml>=6.0,<7",
+  "pandas>=2.2,<4",
+  "numpy>=1.26,<3",
+  "scipy>=1.12,<2",
+  "matplotlib>=3.8,<4",
+  "openpyxl>=3.1,<4",
+  "pypdf>=5,<7",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.2",
+  "pytest>=8.2,<10",
+  "ruff>=0.12,<1",
 ]
+release = [
+  "build>=1.2,<2",
+  "pip-audit>=2.7,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/gongchenisbusy/Experimental-Assistant"
+Documentation = "https://github.com/gongchenisbusy/Experimental-Assistant/tree/main/docs"
+Issues = "https://github.com/gongchenisbusy/Experimental-Assistant/issues"
+Changelog = "https://github.com/gongchenisbusy/Experimental-Assistant/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ea = "ea.cli:main"
@@ -34,6 +65,9 @@ ea-release-keygen = "ea.release_signature:keygen_main"
 ea-sign-release-package = "ea.release_signature:sign_main"
 ea-verify-release-signature = "ea.release_signature:verify_main"
 ea-release-checklist = "ea.release_distribution:main"
+ea-release-supply-chain = "ea.release_supply_chain:main"
+ea-release-artifact-smoke = "ea.release_artifacts:main"
+ea-release-reproducibility = "ea.release_reproducibility:main"
 ea-install-check = "ea.install_experience:install_check_main"
 
 [tool.setuptools.packages.find]
@@ -43,6 +77,7 @@ where = ["src"]
 "ea.materials" = ["*.yml"]
 "ea.ftir" = ["*.yml"]
 "ea.xps" = ["*.yml"]
+"ea" = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

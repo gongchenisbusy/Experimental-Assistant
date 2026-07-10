@@ -1,49 +1,61 @@
-# Experimental Assistant v0.9.6 Public Acceptance Matrix
+# Experimental Assistant v0.9.7 Public Acceptance Matrix
 
-This matrix defines the public-safe acceptance surface for Experimental Assistant v0.9.6. It is a gate for maintainers and future agents; it does not require Zotero, browser sessions, institution login, private caches, signing keys, or network access unless a row explicitly says the user has chosen that workflow.
+This matrix is the release-candidate contract for ordinary users. A row is passed only by current evidence; automated tests do not substitute for novice usability or independent scientific review.
 
-## Required Automated Gates
+| Area | Required evidence | v0.9.7 gate |
+|---|---|---|
+| Identity | `experimental-assistant 0.9.7`, CLI `ea`, primary `$ea`, thin `$ea-v0-2` wrapper | Blocking |
+| Platforms | Native Windows, Ubuntu, macOS on Python 3.11-3.13; 3.14 observation only | Blocking |
+| Install lifecycle | clean wheel and sdist install; setup, doctor, update plan, rollback plan, uninstall plan | Blocking |
+| Project safety | migration plan/apply/rollback, atomic writes, interruption recovery, protected raw import | Blocking |
+| User surface | start/status/import/analyze/report/export, stable errors, mode semantics, local diagnostics | Blocking |
+| Scientific workflows | full tests, public examples, health/eval, review and provenance boundaries | Blocking |
+| Literature | confirmed query clauses, relevance gates, DOI idempotency, lawful acquisition ledger | Blocking |
+| Evidence dataset beta | ten-paper pilot, anchors, review states, reviewed-only plot/export, OCR failure state | Blocking for beta claim |
+| Raman beta | deterministic golden/tolerance benchmark | Blocking for beta claim |
+| Supply chain | clean-build SBOM, vulnerability report `pass`, checksums, reproducibility record | Blocking |
+| Novice UX | independent first-install/first-project trials on Windows, Ubuntu, macOS | Required for v1.0 promotion |
+| Scientific review | independent Raman and evidence-dataset review | Required for v1.0 promotion |
 
-Run these from a fresh checkout or extracted release package after installing developer dependencies:
+## Automated Commands
 
 ```bash
-python3 -m pip install -e ".[dev]"
+python3 -m pip install -e ".[dev,release]"
 python3 -m pytest -q
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
+python3 scripts/validate_skill_packages.py
+python3 scripts/check_version_identity.py
+python3 scripts/check_downloaded_skill_instructions.py
 python3 scripts/public_release_smoke.py
-python3 scripts/build_release_manifest.py
-python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.6-COMMIT-release.zip
-python3 scripts/build_distribution_checklist.py
+ea-public-release-smoke
+python3 -m build
+ea-release-supply-chain
+ea-release-manifest
+ea-release-package
+ea-verify-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip
+ea-release-checklist
 ```
 
-`scripts/public_release_smoke.py` includes pytest, skill validation, CLI help checks, public example `healthcheck` and `eval --no-write`, release helper help checks, portability scan, and sensitive-value scan.
+## Public Examples
 
-## Public Example Matrix
-
-| Scenario | Fixture | Required commands | Pass condition |
-|---|---|---|---|
-| Raman first example | `examples/public-raman-project` | `ea healthcheck ...`; `ea eval project ... --no-write`; optional `ea export report-html ...` | 0 health/eval errors; no writes during eval; readable report export succeeds when requested |
-| Literature plus source-backed report | `examples/public-ftir-assignment-project` | `ea healthcheck ...`; `ea eval project ... --no-write`; `ea export report-html ...`; `ea export report-bundle ... --include-trace --zip`; `ea export verify-bundle ...`; `ea export verify-archive ...` | registered references, source-backed suggestions, review records, memory candidates, figures, HTML export, and checksummed bundle are present and verifiable |
-| Source-backed XPS boundary | `examples/public-xps-be-project` | `ea healthcheck ...`; `ea eval project ... --no-write` | source-backed binding-energy candidates are advisory and reviewed; no chemical-state proof is claimed |
-| UV-Vis screening boundary | `examples/public-uv-vis-project` | `ea healthcheck ...`; `ea eval project ... --no-write` | Tauc, derivative, correction, and feature records remain screening evidence, not final band-gap or ranking claims |
-
-## Environment Matrix
-
-| Environment | Expected behavior | Evidence |
+| Scenario | Fixture | Pass condition |
 |---|---|---|
-| Fresh clone or release package | Ordinary install can run `ea --help`; developer install can run tests and smoke | install guide plus smoke result |
-| No Zotero installed | Literature readiness reports degraded local mode and next commands without failing core project work | `ea literature zotero-readiness /path/to/project --no-write` |
-| Zotero available but no institution access | EA can prepare a handoff/settings request and record missing access as user-managed action | `ea literature zotero-bridge`; `ea literature zotero-readiness` |
-| Open-access acquisition chosen by user | EA can import a local acquisition manifest and reconcile local cache/reference state | `ea literature import-acquisition`; `ea literature reconcile-acquisition`; `ea literature acceptance-checklist` |
-| Institution login required | EA must pause for user-managed login and record guidance only | `ea literature institution-access-guide` |
-| No network or restricted network | Public examples, healthcheck, eval, HTML export, report bundles, release package verification, and no-Zotero literature paths remain local | smoke with no live acquisition commands |
-| Different local path | Commands must use user-supplied paths and release scans must reject developer-machine defaults | portability scan passes |
-| Project handoff | Report or batch bundle can be exported with trace and verified by checksum | `ea export report-bundle ... --include-trace --zip`; `ea export verify-bundle`; `ea export verify-archive` |
+| Raman orientation | `examples/public-raman-project` | health/eval pass; no unsupported scientific claim |
+| FTIR evidence/report handoff | `examples/public-ftir-assignment-project` | registered evidence, review, trace, HTML and verified bundle |
+| UV-Vis screening | `examples/public-uv-vis-project` | Tauc/derivative/correction remain screening evidence |
+| XPS candidate boundary | `examples/public-xps-be-project` | binding-energy candidates remain advisory and reviewed |
+| Conductivity dataset beta | synthetic ten-paper test fixture | source anchors, quantity separation, conflicts retained, reviewed-only plot/export |
+
+## Degraded Environments
+
+- Without Zotero or network access, core projects, examples, health/eval, trace, export, diagnostics, and release-package verification continue locally.
+- Subscription/login blockers are recorded as user-managed next actions. EA does not bypass SSO, MFA, paywalls, or publisher controls.
+- Scanned PDFs without extractable text produce an explicit OCR-required state; no value is invented.
 
 ## Blocking Failures
 
-- Any full-test, skill-validation, smoke, public-example healthcheck/eval, release-package verification, or handoff-bundle verification failure.
-- Any release-facing developer-machine default, private account path, credential-like value, or token-like literal.
-- Any public example that requires live web, Zotero, browser state, institution access, or private cache to pass local checks.
-- Any report or memory surface that converts screening or advisory evidence into a definitive material, phase, composition, band-gap, chemical-state, performance, or mechanism claim.
+- Any required automated, native-CI, clean-install, migration/interruption, privacy, package, SBOM, vulnerability, checksum, or reproducibility failure.
+- Any hidden developer path, credential, browser/session value, private full text, or raw project data in release artifacts.
+- Any conversion of advisory/screening evidence into definitive material, phase, composition, band-gap, chemical-state, performance, or mechanism claims.
+- Any claim that an external novice or scientific review passed without real recorded evidence.
+
+External trials may remain `pending` for a controlled v0.9.7 candidate. They must pass before the same commit is promoted to v1.0.

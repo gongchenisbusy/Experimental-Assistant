@@ -40,9 +40,9 @@ EXAMPLE_DIALOGUE = (
     "另外两片也有10到30微米的三角形区域，可以作为后续 Raman 表征候选样品。"
 )
 
-README_TEXT = """# EA v0.2 Public Raman Example Project
+README_TEXT = """# Experimental Assistant v0.9.7 Public Raman Example Project
 
-This folder is a packaged, public-safe EA project example. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.6 package.
+This folder is a packaged, public-safe EA project example. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.7 package.
 
 The example contains a minimal review-gated Raman workflow:
 
@@ -245,7 +245,7 @@ def build_example(output: Path, *, fixture_raw: Path = DEFAULT_FIXTURE_RAW, forc
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build the packaged EA v0.2 public Raman example project.")
+    parser = argparse.ArgumentParser(description="Build the packaged Experimental Assistant v0.9.7 public Raman example project.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--fixture-raw", type=Path, default=DEFAULT_FIXTURE_RAW)
     parser.add_argument("--force", action="store_true")

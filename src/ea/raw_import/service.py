@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +9,7 @@ from typing import Any
 from ea.provenance import file_sha256, write_provenance_entry
 from ea.schema import CharacterizationFile
 from ea.schema.models import EARecord
-from ea.storage.files import read_yaml, write_yaml
+from ea.storage.files import atomic_copy_file, read_yaml, write_yaml
 from ea.storage.ids import next_id
 
 
@@ -78,6 +77,8 @@ def import_raw_file(
 ) -> RawImportResult:
     if not source_path.exists():
         raise FileNotFoundError(source_path)
+    if not source_path.is_file():
+        raise IsADirectoryError(f"raw source path is not a file: {source_path}")
     if source_path.stat().st_size == 0:
         raise ValueError(f"raw file is empty: {source_path}")
 
@@ -161,7 +162,7 @@ def import_raw_file(
     raw_dir = root / "raw" / characterization_type / characterization_id
     raw_dir.mkdir(parents=True, exist_ok=True)
     destination = raw_dir / source_path.name
-    shutil.copy2(source_path, destination)
+    atomic_copy_file(source_path, destination)
     readonly_warning = _set_readonly(destination)
     warnings = []
     if readonly_warning:

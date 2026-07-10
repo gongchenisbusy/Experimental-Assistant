@@ -1,0 +1,22 @@
+schema_version: "1.0"
+benchmark_id: raman-mos2-public-fixture-v1
+review_status: pending_external_reviewer
+reviewer:
+  name: null
+  affiliation: null
+  expertise: null
+  conflict_of_interest: null
+review_scope:
+  units: pending
+  preprocessing_defaults: pending
+  peak_detection_and_fitting: pending
+  assignment_windows: pending
+  uncertainty_and_tolerances: pending
+  invalid_use_cases: pending
+  report_language: pending
+decision: null
+reviewed_at: null
+signature_or_public_record_ref: null
+notes:
+  - This template must be completed by an independent Raman/materials reviewer.
+  - Maintainer self-review or automated tests cannot satisfy this gate.

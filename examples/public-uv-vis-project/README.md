@@ -1,4 +1,4 @@
-# EA v0.2 Public UV-Vis Example
+# Experimental Assistant v0.9.7 Public UV-Vis Example
 
 This folder is a packaged, public-safe EA project example for the UV-Vis reviewed optical-screening workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an EA v0.9 release-candidate package.
 

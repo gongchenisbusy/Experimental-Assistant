@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timezone
+import json
 import os
 from pathlib import Path
+import socket
 import time
 
 from ea.storage.files import read_yaml, write_yaml
@@ -29,6 +31,10 @@ KIND_PREFIX = {
     "evaluation": "eval",
 }
 
+LOCK_STALE_AFTER_SECONDS = 30.0
+LOCK_WAIT_ATTEMPTS = 400
+LOCK_WAIT_INTERVAL_SECONDS = 0.005
+
 
 def today_key(value: date | str | None = None) -> str:
     if value is None:
@@ -45,18 +51,85 @@ def format_id(kind: str, day: date | str | None = None, sequence: int = 1) -> st
     return f"{prefix}-{today_key(day)}-{sequence:03d}"
 
 
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_lock_record(lock_path: Path) -> dict:
+    try:
+        return json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def recover_stale_counter_lock(root: Path, *, stale_after_seconds: float = LOCK_STALE_AFTER_SECONDS) -> dict:
+    lock_path = root / ".ea" / "id_counters.lock"
+    if not lock_path.exists():
+        return {"status": "not_present", "path": str(lock_path), "recovered": False}
+    record = _read_lock_record(lock_path)
+    try:
+        age_seconds = max(0.0, time.time() - lock_path.stat().st_mtime)
+    except FileNotFoundError:
+        return {"status": "not_present", "path": str(lock_path), "recovered": False}
+    owner_host = str(record.get("hostname") or "")
+    owner_pid = int(record.get("pid") or 0)
+    same_host = not owner_host or owner_host == socket.gethostname()
+    owner_alive = same_host and _pid_is_alive(owner_pid)
+    stale = (same_host and owner_pid > 0 and not owner_alive) or (age_seconds >= stale_after_seconds and not owner_alive)
+    if not stale:
+        return {
+            "status": "active",
+            "path": str(lock_path),
+            "recovered": False,
+            "pid": owner_pid or None,
+            "hostname": owner_host or None,
+            "age_seconds": round(age_seconds, 3),
+        }
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+    return {
+        "status": "recovered",
+        "path": str(lock_path),
+        "recovered": True,
+        "pid": owner_pid or None,
+        "hostname": owner_host or None,
+        "age_seconds": round(age_seconds, 3),
+    }
+
+
 @contextmanager
 def _counter_lock(root: Path):
     lock_path = root / ".ea" / "id_counters.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd: int | None = None
-    for _ in range(400):
+    for _ in range(LOCK_WAIT_ATTEMPTS):
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode("utf-8"))
+            record = {
+                "pid": os.getpid(),
+                "hostname": socket.gethostname(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            os.write(fd, json.dumps(record, sort_keys=True).encode("utf-8"))
+            os.fsync(fd)
             break
         except FileExistsError:
-            time.sleep(0.005)
+            recovered = recover_stale_counter_lock(root)
+            if recovered["recovered"]:
+                continue
+            time.sleep(LOCK_WAIT_INTERVAL_SECONDS)
     if fd is None:
         raise TimeoutError(f"Timed out waiting for ID counter lock: {lock_path}")
     try:

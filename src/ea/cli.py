@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 
 from ea import __version__
+from ea.identity import CAPABILITY_MATURITY
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.brief import build_project_brief
 from ea.config import doctor_project_config
+from ea.data_import import apply_import, preview_import
+from ea.diagnostics import collect_diagnostics
+from ea.drafts import draft_artifact_status, promote_draft_artifact, stage_draft_artifact
 from ea.electrochemistry import (
     ElectrochemistryProcessingRequest,
     default_electrochemistry_processing_parameters,
@@ -16,6 +21,7 @@ from ea.electrochemistry import (
     process_electrochemistry_result,
 )
 from ea.evaluation import run_project_evaluation
+from ea.errors import error_record
 from ea.exports import (
     ReportBundleError,
     export_batch_bundle,
@@ -47,18 +53,31 @@ from ea.install_experience import (
     identity_record,
     install_check,
     install_codex_skill,
+    lifecycle_update_plan,
     onboarding_post_install_record,
+    rollback_codex_skills,
+    rollback_installation,
     render_onboarding_post_install,
     render_install_skill_summary,
     render_install_summary,
+    setup_installation,
+    uninstall_codex_skills,
+    uninstall_installation,
+    update_installation,
 )
 from ea.estimates import estimate_workflow, large_work_gate, large_work_reminders_disabled, set_large_work_reminders
 from ea.literature import (
+    PROPERTY_KINDS,
+    REVIEW_DECISIONS,
     confirm_literature_selection,
     ensure_literature_status,
+    export_literature_data,
+    extract_literature_data,
     import_literature_acquisition_manifest,
     import_zotero_codex_batch_status,
     plan_literature_deployment,
+    plan_literature_data_extraction,
+    plot_literature_data,
     preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
     prepare_literature_acceptance_checklist,
@@ -69,10 +88,12 @@ from ea.literature import (
     rank_literature_candidates,
     reconcile_literature_acquisition,
     render_literature_acquisition_reconciliation,
+    review_literature_data,
     search_public_literature_metadata,
     setup_literature_preflight,
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
+    validate_literature_data,
 )
 from ea.materials import (
     audit_assignment_library,
@@ -89,6 +110,12 @@ from ea.memory import (
     refresh_project_working_memory,
     review_memory_candidate,
     show_project_working_memory,
+)
+from ea.migrations import (
+    apply_project_migration,
+    plan_project_migration,
+    project_format_status,
+    rollback_project_migration,
 )
 from ea.pl import PLProcessingRequest, default_pl_processing_parameters, inspect_pl_file, process_pl_result
 from ea.projects.service import initialize_project
@@ -117,6 +144,7 @@ from ea.templates import (
 )
 from ea.thermal import ThermalAnalysisProcessingRequest, default_thermal_processing_parameters, inspect_thermal_file, process_thermal_result
 from ea.traceability import build_project_trace_view, build_trace_focus, build_trace_index, export_full_trace, lookup_trace_record
+from ea.user_surface import build_project_dashboard, generate_user_report, inspect_analysis_source, start_project
 from ea.uv_vis import (
     UVVisProcessingRequest,
     build_uv_vis_source_packet,
@@ -157,17 +185,127 @@ from ea.xrd import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ea")
     parser.add_argument(
+        "--mode",
+        dest="interaction_mode",
+        choices=["consult", "record", "execute", "audit"],
+        default=os.environ.get("EA_MODE", "execute"),
+        help="set read/write interaction semantics for this command",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=(
             f"{PUBLIC_VERSION} package {PACKAGE_NAME} {__version__} "
-            f"({RELEASE_LABEL}); compatibility skill invocation {SKILL_INVOCATION}"
+            f"({RELEASE_LABEL}); skill invocation {SKILL_INVOCATION}"
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     version = sub.add_parser("version", help="show Experimental Assistant product, package, release, and skill identity")
     version.add_argument("--json", action="store_true")
+    capabilities = sub.add_parser("capabilities", help="show the stable, beta, and experimental capability contract")
+    capabilities.add_argument("--maturity", choices=["stable", "beta", "experimental"])
+    capabilities.add_argument("--json", action="store_true")
+    mode = sub.add_parser("mode", help="show consult, record, execute, and audit semantics")
+    mode.add_argument("--json", action="store_true")
+    diagnostics = sub.add_parser("diagnostics", help="collect privacy-safe local diagnostics without submission")
+    diagnostics_sub = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
+    diagnostics_collect = diagnostics_sub.add_parser("collect", help="summarize version, errors, operations, and selected logs")
+    diagnostics_collect.add_argument("workspace", type=Path)
+    diagnostics_collect.add_argument("--output", type=Path)
+    diagnostics_collect.add_argument("--log", action="append", type=Path, default=[])
+    diagnostics_collect.add_argument("--debug-json", action="store_true")
+    drafts = sub.add_parser("draft", help="stage, inspect, and review-promote a formal project artifact")
+    drafts_sub = drafts.add_subparsers(dest="draft_command", required=True)
+    draft_stage = drafts_sub.add_parser("stage", help="copy one non-raw file into the project draft layer")
+    draft_stage.add_argument("workspace", type=Path)
+    draft_stage.add_argument("--source", required=True, type=Path)
+    draft_stage.add_argument("--target", required=True)
+    draft_stage.add_argument("--draft-id")
+    draft_stage.add_argument("--yes", action="store_true")
+    draft_status = drafts_sub.add_parser("status", help="inspect one draft without writing")
+    draft_status.add_argument("workspace", type=Path)
+    draft_status.add_argument("--draft-id", required=True)
+    draft_promote = drafts_sub.add_parser("promote", help="atomically promote a reviewed draft without overwriting")
+    draft_promote.add_argument("workspace", type=Path)
+    draft_promote.add_argument("--draft-id", required=True)
+    draft_promote.add_argument("--review-ref", required=True)
+    draft_promote.add_argument("--yes", action="store_true")
+
+    setup = sub.add_parser("setup", help="install the $ea and compatibility skills and show first-run onboarding")
+    setup.add_argument("--source", type=Path, help="repository root or primary skills/ea folder")
+    setup.add_argument("--codex-home", type=Path)
+    setup.add_argument("--quick-validate", type=Path)
+    setup.add_argument("--release-ref", default=RELEASE_LABEL)
+    setup.add_argument("--lang", choices=["zh", "en"], default="zh")
+    setup.add_argument("--json", action="store_true")
+
+    public_doctor = sub.add_parser("doctor", help="verify exact CLI, distribution, and Codex skill identity")
+    public_doctor.add_argument("--codex-home", type=Path)
+    public_doctor.add_argument("--skill-path", type=Path)
+    public_doctor.add_argument("--quick-validate", type=Path)
+    public_doctor.add_argument("--run-example-check", action="store_true")
+    public_doctor.add_argument("--example-workspace", type=Path)
+    public_doctor.add_argument("--skip-codex-skill", action="store_true")
+    public_doctor.add_argument("--json", action="store_true")
+
+    public_import = sub.add_parser("import", help="preview and confirm a protected delimited-text import")
+    public_import_sub = public_import.add_subparsers(dest="import_command", required=True)
+    public_import_preview = public_import_sub.add_parser("preview", help="inspect encoding, delimiter, columns, units, and hash without writing")
+    public_import_preview.add_argument("source", type=Path)
+    public_import_preview.add_argument("--encoding", default="auto")
+    public_import_preview.add_argument("--delimiter", default="auto")
+    public_import_preview.add_argument("--allow-symlink", action="store_true")
+    public_import_preview.add_argument("--max-rows", type=int, default=5)
+    public_import_apply = public_import_sub.add_parser("apply", help="import the exact reviewed source hash as a protected copy")
+    public_import_apply.add_argument("workspace", type=Path)
+    public_import_apply.add_argument("source", type=Path)
+    public_import_apply.add_argument("--characterization-type", required=True)
+    public_import_apply.add_argument("--sample-ref", action="append", default=[])
+    public_import_apply.add_argument("--experiment-ref", action="append", default=[])
+    public_import_apply.add_argument("--encoding", default="auto")
+    public_import_apply.add_argument("--delimiter", default="auto")
+    public_import_apply.add_argument("--allow-symlink", action="store_true")
+    public_import_apply.add_argument("--preview-hash")
+    public_import_apply.add_argument("--yes", action="store_true")
+
+    start = sub.add_parser("start", help="plan or create a first EA project with safe defaults")
+    start.add_argument("workspace", type=Path)
+    start.add_argument("--name")
+    start.add_argument("--direction")
+    start.add_argument("--material")
+    start.add_argument("--experiment-type")
+    start.add_argument("--report-language", choices=["zh", "en"], default="zh")
+    start.add_argument("--yes", action="store_true")
+
+    analyze = sub.add_parser("analyze", help="inspect a method input without writing or applying parameters")
+    analyze.add_argument("workspace", type=Path)
+    analyze.add_argument("source", type=Path)
+    analyze.add_argument("--method", required=True)
+
+    public_report = sub.add_parser("report", help="plan or generate a method report from reviewed processed metadata")
+    public_report.add_argument("workspace", type=Path)
+    public_report.add_argument("--method", required=True)
+    public_report.add_argument("--metadata", type=Path, required=True)
+    public_report.add_argument("--sample-ref", action="append", default=[])
+    public_report.add_argument("--experiment-ref", action="append", default=[])
+    public_report.add_argument("--reference-id", action="append", default=[])
+    public_report.add_argument("--yes", action="store_true")
+
+    update = sub.add_parser("update", help="plan or perform a transactional CLI and skill update")
+    update.add_argument("--release-ref", default=RELEASE_LABEL)
+    update.add_argument("--yes", action="store_true", help="confirm package and skill replacement")
+    update.add_argument("--json", action="store_true")
+
+    rollback = sub.add_parser("rollback", help="plan or perform rollback to a verified EA release")
+    rollback.add_argument("--release-ref", default="v0.9.6")
+    rollback.add_argument("--yes", action="store_true", help="confirm package and skill replacement")
+    rollback.add_argument("--json", action="store_true")
+
+    uninstall = sub.add_parser("uninstall", help="plan or remove the EA CLI and Codex skills with recoverable skill backups")
+    uninstall.add_argument("--codex-home", type=Path)
+    uninstall.add_argument("--yes", action="store_true", help="confirm CLI and skill removal")
+    uninstall.add_argument("--json", action="store_true")
 
     install_check_parser = sub.add_parser("install-check", help="verify EA CLI and Codex skill installation readiness")
     install_check_parser.add_argument("--codex-home", type=Path)
@@ -180,14 +318,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     codex = sub.add_parser("codex", help="Codex integration helpers for Experimental Assistant")
     codex_sub = codex.add_subparsers(dest="codex_command", required=True)
-    codex_install = codex_sub.add_parser("install-skill", help="install the Experimental Assistant compatibility skill into Codex")
-    codex_install.add_argument("--source", type=Path, help="path to a skills/ea-v0-2 folder; defaults to local checkout or GitHub release fetch")
+    codex_install = codex_sub.add_parser("install-skill", help="transactionally install the $ea skill and compatibility wrapper into Codex")
+    codex_install.add_argument("--source", type=Path, help="repository root or primary skills/ea folder; defaults to local checkout or GitHub release fetch")
     codex_install.add_argument("--codex-home", type=Path)
     codex_install.add_argument("--quick-validate", type=Path)
-    codex_install.add_argument("--no-backup", action="store_true", help="replace existing ea-v0-2 without making a timestamped backup")
+    codex_install.add_argument("--no-backup", action="store_true", help="replace existing EA skills without making timestamped backups")
     codex_install.add_argument("--no-github-fetch", action="store_true", help="do not fetch the public release from GitHub if no local skill source is found")
     codex_install.add_argument("--release-ref", default=RELEASE_LABEL)
     codex_install.add_argument("--json", action="store_true")
+    codex_rollback = codex_sub.add_parser("rollback-skill", help="restore the latest validated $ea and compatibility backups")
+    codex_rollback.add_argument("--codex-home", type=Path)
+    codex_rollback.add_argument("--quick-validate", type=Path)
+    codex_rollback.add_argument("--yes", action="store_true")
+    codex_rollback.add_argument("--json", action="store_true")
+    codex_uninstall = codex_sub.add_parser("uninstall-skills", help="remove EA skills into recoverable backups")
+    codex_uninstall.add_argument("--codex-home", type=Path)
+    codex_uninstall.add_argument("--yes", action="store_true")
+    codex_uninstall.add_argument("--json", action="store_true")
 
     onboarding = sub.add_parser("onboarding", help="version-bound onboarding messages")
     onboarding_sub = onboarding.add_subparsers(dest="onboarding_command", required=True)
@@ -203,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--material", required=True)
     init.add_argument("--experiment-type", required=True)
 
-    init_project = sub.add_parser("init-project", help="initialize a public-user Experimental Assistant v0.9.6 project workspace")
+    init_project = sub.add_parser("init-project", help="initialize a public-user Experimental Assistant v0.9.7 project workspace")
     init_project.add_argument("workspace", type=Path)
     init_project.add_argument("--name", required=True)
     init_project.add_argument("--slug", required=True)
@@ -220,6 +367,22 @@ def build_parser() -> argparse.ArgumentParser:
     init_project.add_argument("--browser-name")
     init_project.add_argument("--browser-profile")
     init_project.add_argument("--institution-access")
+
+    migrate = sub.add_parser("migrate", help="plan, apply, inspect, or roll back EA project-format migrations")
+    migrate_sub = migrate.add_subparsers(dest="migrate_command", required=True)
+    migrate_status = migrate_sub.add_parser("status", help="inspect project format without writing")
+    migrate_status.add_argument("workspace", type=Path)
+    migrate_plan = migrate_sub.add_parser("plan", help="show migration writes and backups without writing")
+    migrate_plan.add_argument("workspace", type=Path)
+    migrate_plan.add_argument("--target-version", default="1.0")
+    migrate_apply = migrate_sub.add_parser("apply", help="apply a confirmed, backed-up project-format migration")
+    migrate_apply.add_argument("workspace", type=Path)
+    migrate_apply.add_argument("--target-version", default="1.0")
+    migrate_apply.add_argument("--yes", action="store_true", help="confirm the migration plan")
+    migrate_rollback = migrate_sub.add_parser("rollback", help="restore a confirmed migration backup")
+    migrate_rollback.add_argument("workspace", type=Path)
+    migrate_rollback.add_argument("--migration-id", required=True)
+    migrate_rollback.add_argument("--yes", action="store_true", help="confirm rollback")
 
     status = sub.add_parser("status", help="summarize an EA project workspace")
     status.add_argument("workspace", type=Path)
@@ -815,6 +978,7 @@ def build_parser() -> argparse.ArgumentParser:
     lit_readiness.add_argument("--no-write", action="store_true")
     lit_readiness.add_argument("--output", type=Path)
     lit_readiness.add_argument("--markdown-output", type=Path)
+    lit_readiness.add_argument("--full", action="store_true")
     lit_import = literature_sub.add_parser("import-acquisition", help="import acquisition manifest output from a dedicated literature workflow")
     lit_import.add_argument("workspace", type=Path)
     lit_import.add_argument("--manifest", required=True, type=Path)
@@ -824,8 +988,10 @@ def build_parser() -> argparse.ArgumentParser:
     lit_zotero_status.add_argument("--sidecar-verification", type=Path)
     lit_zotero_status.add_argument("--status-markdown", type=Path)
     lit_zotero_status.add_argument("--no-sync", action="store_true")
+    lit_zotero_status.add_argument("--full", action="store_true")
     lit_reconcile = literature_sub.add_parser("reconcile-acquisition", help="reconcile local literature acquisition records")
     lit_reconcile.add_argument("workspace", type=Path)
+    lit_reconcile.add_argument("--full", action="store_true")
     lit_render_reconciliation = literature_sub.add_parser("render-reconciliation", help="render acquisition reconciliation markdown audit")
     lit_render_reconciliation.add_argument("workspace", type=Path)
     lit_render_reconciliation.add_argument("--reconciliation", type=Path)
@@ -856,6 +1022,45 @@ def build_parser() -> argparse.ArgumentParser:
     lit_preflight_sources.add_argument("--method", required=True, choices=["ftir", "uv_vis", "xps"])
     lit_preflight_sources.add_argument("--manifest", required=True, type=Path)
     lit_preflight_sources.add_argument("--output", type=Path)
+    lit_data_plan = literature_sub.add_parser("data-plan", help="define a beta cross-paper property evidence dataset")
+    lit_data_plan.add_argument("workspace", type=Path)
+    lit_data_plan.add_argument("--property", required=True)
+    lit_data_plan.add_argument("--kind", required=True, choices=sorted(PROPERTY_KINDS))
+    lit_data_plan.add_argument("--material", required=True)
+    lit_data_plan.add_argument("--dataset-id")
+    lit_data_plan.add_argument("--source", action="append", type=Path, default=[])
+    lit_data_plan.add_argument("--required-condition", action="append", default=[])
+    lit_data_plan.add_argument("--comparability-rule", action="append", default=[])
+    lit_data_plan.add_argument("--yes", action="store_true")
+    lit_data_extract = literature_sub.add_parser("data-extract", help="extract resumable beta candidate values from searchable sources")
+    lit_data_extract.add_argument("workspace", type=Path)
+    lit_data_extract.add_argument("--dataset", required=True)
+    lit_data_extract.add_argument("--max-sources", type=int)
+    lit_data_extract.add_argument("--yes", action="store_true")
+    lit_data_review = literature_sub.add_parser("data-review", help="review one extracted literature value")
+    lit_data_review.add_argument("workspace", type=Path)
+    lit_data_review.add_argument("--dataset", required=True)
+    lit_data_review.add_argument("--record", required=True)
+    lit_data_review.add_argument("--decision", required=True, choices=sorted(REVIEW_DECISIONS | {"not-comparable"}))
+    lit_data_review.add_argument("--note", action="append", default=[])
+    lit_data_review.add_argument("--reported-value", type=float)
+    lit_data_review.add_argument("--reported-unit")
+    lit_data_review.add_argument("--normalized-value", type=float)
+    lit_data_review.add_argument("--normalized-unit")
+    lit_data_review.add_argument("--condition", action="append", default=[], help="reviewed condition as name=value")
+    lit_data_review.add_argument("--yes", action="store_true")
+    lit_data_validate = literature_sub.add_parser("data-validate", help="validate beta evidence anchors, review state, units, and comparability")
+    lit_data_validate.add_argument("workspace", type=Path)
+    lit_data_validate.add_argument("--dataset", required=True)
+    lit_data_validate.add_argument("--no-write", action="store_true")
+    lit_data_plot = literature_sub.add_parser("data-plot", help="plot reviewed comparable literature records only")
+    lit_data_plot.add_argument("workspace", type=Path)
+    lit_data_plot.add_argument("--dataset", required=True)
+    lit_data_plot.add_argument("--yes", action="store_true")
+    lit_data_export = literature_sub.add_parser("data-export", help="export a reviewed beta evidence dataset bundle")
+    lit_data_export.add_argument("workspace", type=Path)
+    lit_data_export.add_argument("--dataset", required=True)
+    lit_data_export.add_argument("--yes", action="store_true")
 
     image_data = sub.add_parser("image-data", help="image characterization helpers for SEM, TEM, and microscopy data")
     image_sub = image_data.add_subparsers(dest="image_command", required=True)
@@ -950,6 +1155,9 @@ def build_parser() -> argparse.ArgumentParser:
             "literature_search",
             "literature_acquisition",
             "literature_source_candidates",
+            "literature_data_extraction",
+            "literature_ocr",
+            "literature_digitization",
             "analysis_report",
             "multi_method_report_bundle",
             "project_handoff",
@@ -1142,6 +1350,64 @@ def _trace_full_result(result: dict) -> dict:
     return result
 
 
+def _compact_zotero_import(result: dict) -> dict:
+    imported = result.get("status_import") or result.get("status_update") or {}
+    external = result.get("external_acquisition_state") or {}
+    return {
+        "status": imported.get("status"),
+        "handoff_schema_version": imported.get("handoff_schema_version"),
+        "target_count": imported.get("target_count", 0),
+        "ready_count": (external.get("summary") or {}).get("ready_count", imported.get("success_count", 0)),
+        "needs_user_login_count": imported.get("needs_user_login_count", 0),
+        "blocked_count": imported.get("blocked_count", 0),
+        "current_task_blocker_count": len(imported.get("current_task_blockers") or []),
+        "stale_global_state_count": len(imported.get("stale_global_state") or []),
+        "artifacts": {
+            "external_state": imported.get("external_acquisition_state_ref"),
+            "compact_status": imported.get("acquisition_status_compact_ref"),
+            "compatibility_import": "literature/zotero_codex_status_import.yml",
+        },
+        "sync_status": (result.get("sync") or {}).get("status") if isinstance(result.get("sync"), dict) else None,
+        "next_action": "Review current-task blockers or continue with verified cache evidence.",
+    }
+
+
+def _compact_zotero_readiness(result: dict) -> dict:
+    readiness = result.get("readiness") or {}
+    summary = readiness.get("summary") or {}
+    return {
+        "status": readiness.get("status"),
+        "maturity": "experimental/companion",
+        "target_count": summary.get("target_count", 0),
+        "external_cache_used": summary.get("external_cache_used", False),
+        "external_ready_count": summary.get("external_ready_count", 0),
+        "current_task_blocker_count": len(readiness.get("current_task_blockers") or []),
+        "optional_capability_count": len(readiness.get("optional_capabilities") or []),
+        "stale_global_state_count": len(readiness.get("stale_global_state") or []),
+        "next_actions": readiness.get("next_actions") or [],
+        "artifacts": readiness.get("output_refs") or {},
+    }
+
+
+def _compact_reconciliation(result: dict) -> dict:
+    reconciliation = result.get("reconciliation") or {}
+    summary = reconciliation.get("summary") or {}
+    return {
+        "status": reconciliation.get("status"),
+        "error_count": summary.get("error_count", 0),
+        "warning_count": summary.get("warning_count", 0),
+        "external_cache_used": summary.get("external_cache_used", False),
+        "external_ready_count": summary.get("external_ready_count", 0),
+        "repair_action_count": len(reconciliation.get("repair_actions") or []),
+        "question_count": len(reconciliation.get("questions_for_user") or []),
+        "artifacts": {
+            "yaml": reconciliation.get("yaml_ref"),
+            "markdown": reconciliation.get("markdown_ref"),
+        },
+        "next_action": "Open the reconciliation artifact for findings and advisory repair actions." if reconciliation.get("findings") else "Continue the reviewed literature workflow.",
+    }
+
+
 def _project_id_from_workspace(workspace: Path) -> str:
     project_path = workspace / "EA_PROJECT.md"
     if not project_path.exists():
@@ -1152,6 +1418,78 @@ def _project_id_from_workspace(workspace: Path) -> str:
 
 def _project_path(workspace: Path, path: Path) -> Path:
     return path if path.is_absolute() else workspace / path
+
+
+def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
+    if args.command in {"version", "capabilities", "mode", "status", "analyze", "doctor", "install-check", "onboarding", "healthcheck", "lookup-figure"}:
+        return True
+    if args.command == "diagnostics":
+        return args.output is None and not args.debug_json
+    if args.command == "import":
+        return args.import_command == "preview"
+    if args.command == "migrate":
+        return args.migrate_command in {"status", "plan"}
+    if args.command == "brief":
+        return bool(args.no_write)
+    if args.command == "eval":
+        return bool(args.no_write)
+    if args.command == "estimate":
+        return args.estimate_command == "workflow" or (
+            args.estimate_command == "reminders" and not args.disable and not args.enable
+        )
+    if args.command == "memory":
+        return args.memory_command == "show-project"
+    if args.command == "literature":
+        return (
+            (args.literature_command == "setup-preflight" and args.no_write)
+            or (args.literature_command == "zotero-readiness" and args.no_write)
+            or (args.literature_command == "data-validate" and args.no_write)
+        )
+    if args.command == "draft":
+        return args.draft_command == "status"
+    return False
+
+
+def _mode_allows(args: argparse.Namespace) -> bool:
+    if args.interaction_mode == "execute" or args.command == "mode":
+        return True
+    if args.interaction_mode in {"consult", "audit"}:
+        return _is_explicitly_read_only(args)
+    if args.interaction_mode == "record":
+        if args.command in {
+            "setup",
+            "update",
+            "rollback",
+            "uninstall",
+            "codex",
+            "report",
+            "export",
+            "batch",
+            "raman",
+            "pl",
+            "xrd",
+            "ftir",
+            "uv-vis",
+            "xps",
+            "electrochemistry",
+            "thermal",
+            "image-data",
+            "trace",
+        }:
+            return False
+        if args.command == "literature" and args.literature_command in {
+            "search-public",
+            "acquisition-request",
+            "import-acquisition",
+            "import-zotero-status",
+            "reconcile-acquisition",
+            "data-extract",
+            "data-plot",
+            "data-export",
+        }:
+            return False
+        return True
+    return False
 
 
 def _processing_parameters(args: argparse.Namespace, workspace: Path) -> dict:
@@ -1228,6 +1566,11 @@ def _thermal_processing_parameters(args: argparse.Namespace, workspace: Path) ->
 
 def _main_impl(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not _mode_allows(args):
+        raise PermissionError(
+            f"Interaction mode '{args.interaction_mode}' blocks this command before any project write. "
+            "Use a read-only command or choose record/execute mode explicitly."
+        )
     if args.command == "version":
         identity = identity_record()
         if args.json:
@@ -1235,12 +1578,143 @@ def _main_impl(argv: list[str] | None = None) -> int:
         else:
             print(
                 f"{identity['product']} ({identity['public_version']})\n"
-                f"Package compatibility name: {identity['package_compatibility_name']} {identity['package_version']}\n"
+                f"Distribution: {identity['distribution_name']} {identity['package_version']}\n"
                 f"Release label: {identity['release_label']}\n"
                 f"Codex skill invocation: {identity['skill_invocation']}"
             )
         return 0
-    if args.command == "install-check":
+    if args.command == "capabilities":
+        matrix = {args.maturity: CAPABILITY_MATURITY[args.maturity]} if args.maturity else CAPABILITY_MATURITY
+        result = {
+            "schema_version": "1.0",
+            "release": RELEASE_LABEL,
+            "capabilities": {key: list(values) for key, values in matrix.items()},
+            "promotion_rule": "Beta or experimental capabilities do not inherit stable guarantees; scientific promotion requires benchmark and external review evidence.",
+        }
+        if args.json:
+            _print_json(result)
+        else:
+            for maturity, names in result["capabilities"].items():
+                print(f"{maturity}:")
+                for name in names:
+                    print(f"- {name}")
+        return 0
+    if args.command == "mode":
+        result = {
+            "schema_version": "1.0",
+            "active_mode": args.interaction_mode,
+            "modes": {
+                "consult": {"writes": False, "purpose": "orientation, preview, discussion, and next-decision guidance"},
+                "record": {"writes": True, "purpose": "structured records, review, references, and staging without analysis execution"},
+                "execute": {"writes": True, "purpose": "confirmed processing, plotting, reports, exports, migration, and integrations"},
+                "audit": {"writes": False, "purpose": "health, evaluation, diagnostics preview, and release evidence inspection"},
+            },
+            "selection": "Use global --mode or the EA_MODE environment variable; mode selection itself writes no project files.",
+        }
+        if args.json:
+            _print_json(result)
+        else:
+            print(f"active mode: {args.interaction_mode}")
+            for name, details in result["modes"].items():
+                print(f"- {name}: writes={str(details['writes']).lower()}; {details['purpose']}")
+        return 0
+    if args.command == "diagnostics":
+        result = collect_diagnostics(
+            args.workspace,
+            selected_logs=args.log,
+            output_path=args.output,
+            debug_json=args.debug_json,
+        )
+        _print_json(result)
+        return 0 if result["status"] in {"ready", "attention"} else 2
+    if args.command == "draft":
+        if args.draft_command == "stage":
+            result = stage_draft_artifact(
+                args.workspace,
+                source_path=args.source,
+                target_ref=args.target,
+                draft_id=args.draft_id,
+                confirmed=args.yes,
+            )
+        elif args.draft_command == "status":
+            result = draft_artifact_status(args.workspace, draft_id=args.draft_id)
+        else:
+            result = promote_draft_artifact(
+                args.workspace,
+                draft_id=args.draft_id,
+                review_ref=args.review_ref,
+                confirmed=args.yes,
+            )
+        _print_json(result)
+        return 0
+    if args.command == "setup":
+        result = setup_installation(
+            source=args.source,
+            codex_home_path=args.codex_home,
+            validator=args.quick_validate,
+            release_ref=args.release_ref,
+            lang=args.lang,
+        )
+        if args.json:
+            _print_json(result)
+        else:
+            print(render_install_skill_summary(result["skill_install"]))
+            print()
+            print(render_onboarding_post_install(result["onboarding"]))
+        return 0 if result["status"] == "pass" else 2
+    if args.command == "start":
+        result = start_project(
+            args.workspace,
+            project_name=args.name,
+            research_direction=args.direction,
+            material_system=args.material,
+            experiment_type=args.experiment_type,
+            report_language=args.report_language,
+            confirmed=args.yes,
+        )
+        _print_json(result)
+        return 0
+    if args.command == "analyze":
+        source = args.source if args.source.is_absolute() else args.workspace / args.source
+        _print_json(inspect_analysis_source(args.method, source))
+        return 0
+    if args.command == "report":
+        result = generate_user_report(
+            args.workspace,
+            method=args.method,
+            metadata_path=args.metadata,
+            sample_refs=args.sample_ref,
+            experiment_refs=args.experiment_ref,
+            reference_ids=args.reference_id,
+            confirmed=args.yes,
+        )
+        _print_json(result)
+        return 0
+    if args.command == "import":
+        if args.import_command == "preview":
+            result = preview_import(
+                args.source,
+                encoding=args.encoding,
+                delimiter=args.delimiter,
+                allow_symlink=args.allow_symlink,
+                max_rows=args.max_rows,
+            )
+        else:
+            result = apply_import(
+                args.workspace,
+                args.source,
+                characterization_type=args.characterization_type,
+                sample_refs=args.sample_ref,
+                experiment_refs=args.experiment_ref,
+                encoding=args.encoding,
+                delimiter=args.delimiter,
+                allow_symlink=args.allow_symlink,
+                preview_hash=args.preview_hash,
+                confirmed=args.yes,
+            )
+        _print_json(result)
+        return 0 if result["status"] in {"ready", "needs_confirmation", "completed", "duplicate_alias"} else 2
+    if args.command in {"doctor", "install-check"}:
         result = install_check(
             codex_home_path=args.codex_home,
             skill_path=args.skill_path,
@@ -1254,6 +1728,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
         else:
             print(render_install_summary(result))
         return 0 if result["status"] != "fail" else 2
+    if args.command == "update":
+        result = update_installation(release_ref=args.release_ref, confirmed=args.yes)
+        _print_json(result) if args.json else print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] in {"completed", "needs_confirmation"} else 2
+    if args.command == "rollback":
+        result = rollback_installation(release_ref=args.release_ref, confirmed=args.yes)
+        _print_json(result) if args.json else print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] in {"completed", "needs_confirmation"} else 2
+    if args.command == "uninstall":
+        result = uninstall_installation(codex_home_path=args.codex_home, confirmed=args.yes)
+        _print_json(result) if args.json else print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] in {"completed", "needs_confirmation"} else 2
     if args.command == "codex":
         if args.codex_command == "install-skill":
             result = install_codex_skill(
@@ -1269,6 +1755,18 @@ def _main_impl(argv: list[str] | None = None) -> int:
             else:
                 print(render_install_skill_summary(result))
             return 0 if result["status"] != "fail" else 2
+        if args.codex_command == "rollback-skill":
+            result = rollback_codex_skills(
+                codex_home_path=args.codex_home,
+                validator=args.quick_validate,
+                confirmed=args.yes,
+            )
+            _print_json(result)
+            return 0 if result["status"] in {"completed", "needs_confirmation"} else 2
+        if args.codex_command == "uninstall-skills":
+            result = uninstall_codex_skills(codex_home_path=args.codex_home, confirmed=args.yes)
+            _print_json(result)
+            return 0 if result["status"] in {"completed", "needs_confirmation"} else 2
     if args.command == "onboarding":
         if args.onboarding_command == "post-install":
             record = onboarding_post_install_record(event=args.event, lang=args.lang)
@@ -1307,15 +1805,31 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         _print_json({key: str(value) for key, value in outputs.items()})
         return 0
+    if args.command == "migrate":
+        if args.migrate_command == "status":
+            _print_json(project_format_status(args.workspace))
+            return 0
+        if args.migrate_command == "plan":
+            _print_json(plan_project_migration(args.workspace, target_version=args.target_version))
+            return 0
+        if args.migrate_command == "apply":
+            result = apply_project_migration(
+                args.workspace,
+                target_version=args.target_version,
+                confirmed=args.yes,
+            )
+            _print_json(result)
+            return 0
+        if args.migrate_command == "rollback":
+            result = rollback_project_migration(
+                args.workspace,
+                migration_id=args.migration_id,
+                confirmed=args.yes,
+            )
+            _print_json(result)
+            return 0
     if args.command == "status":
-        _print_json(
-            {
-                "workspace": str(args.workspace),
-                "project_id": _project_id_from_workspace(args.workspace),
-                "has_project_config": (args.workspace / ".ea" / "project_config.yml").exists(),
-                "has_literature_status": (args.workspace / "literature" / "deployment_status.yml").exists(),
-            }
-        )
+        _print_json(build_project_dashboard(args.workspace))
         return 0
     if args.command == "brief":
         if args.brief_command == "project":
@@ -2283,32 +2797,31 @@ def _main_impl(argv: list[str] | None = None) -> int:
             markdown_path = args.markdown_output
             if markdown_path and not markdown_path.is_absolute():
                 markdown_path = args.workspace / markdown_path
-            _print_json(
-                summarize_zotero_codex_readiness(
+            result = summarize_zotero_codex_readiness(
                     args.workspace,
                     output_path=output_path,
                     markdown_path=markdown_path,
                     write_report=not args.no_write,
                 )
-            )
+            _print_json(result if args.full else _compact_zotero_readiness(result))
             return 0
         if args.literature_command == "import-acquisition":
             manifest_path = args.manifest if args.manifest.is_absolute() else args.workspace / args.manifest
             _print_json(import_literature_acquisition_manifest(args.workspace, manifest_path=manifest_path))
             return 0
         if args.literature_command == "import-zotero-status":
-            _print_json(
-                import_zotero_codex_batch_status(
+            result = import_zotero_codex_batch_status(
                     args.workspace,
                     batch_status_path=args.batch_status,
                     sidecar_verification_path=args.sidecar_verification,
                     status_markdown_path=args.status_markdown,
                     sync=not args.no_sync,
                 )
-            )
+            _print_json(result if args.full else _compact_zotero_import(result))
             return 0
         if args.literature_command == "reconcile-acquisition":
-            _print_json(reconcile_literature_acquisition(args.workspace))
+            result = reconcile_literature_acquisition(args.workspace)
+            _print_json(result if args.full else _compact_reconciliation(result))
             return 0
         if args.literature_command == "render-reconciliation":
             reconciliation_path = args.reconciliation
@@ -2380,6 +2893,63 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     output_path=output_path,
                 )
             )
+            return 0
+        if args.literature_command == "data-plan":
+            _print_json(
+                plan_literature_data_extraction(
+                    args.workspace,
+                    property_name=args.property,
+                    property_kind=args.kind,
+                    material_name=args.material,
+                    sources=args.source,
+                    required_conditions=args.required_condition,
+                    comparability_rules=args.comparability_rule,
+                    dataset_id=args.dataset_id,
+                    confirmed=args.yes,
+                )
+            )
+            return 0
+        if args.literature_command == "data-extract":
+            _print_json(
+                extract_literature_data(
+                    args.workspace,
+                    dataset_id=args.dataset,
+                    max_sources=args.max_sources,
+                    confirmed=args.yes,
+                )
+            )
+            return 0
+        if args.literature_command == "data-review":
+            conditions: dict[str, str] = {}
+            for value in args.condition:
+                if "=" not in value:
+                    raise ValueError("--condition must use name=value")
+                key, condition_value = value.split("=", 1)
+                conditions[key.strip()] = condition_value.strip()
+            _print_json(
+                review_literature_data(
+                    args.workspace,
+                    dataset_id=args.dataset,
+                    record_id=args.record,
+                    decision=args.decision,
+                    notes=args.note,
+                    reported_value=args.reported_value,
+                    reported_unit=args.reported_unit,
+                    normalized_value=args.normalized_value,
+                    normalized_unit=args.normalized_unit,
+                    conditions=conditions,
+                    confirmed=args.yes,
+                )
+            )
+            return 0
+        if args.literature_command == "data-validate":
+            _print_json(validate_literature_data(args.workspace, dataset_id=args.dataset, write_report=not args.no_write))
+            return 0
+        if args.literature_command == "data-plot":
+            _print_json(plot_literature_data(args.workspace, dataset_id=args.dataset, confirmed=args.yes))
+            return 0
+        if args.literature_command == "data-export":
+            _print_json(export_literature_data(args.workspace, dataset_id=args.dataset, confirmed=args.yes))
             return 0
     if args.command == "image-data":
         project_id = args.project_id or _project_id_from_workspace(args.workspace)
@@ -2685,11 +3255,5 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _main_impl(argv)
     except (RuntimeError, ValueError, FileNotFoundError, KeyError, OSError) as exc:
-        _print_json(
-            {
-                "status": "error",
-                "error_type": type(exc).__name__,
-                "message": str(exc),
-            }
-        )
+        _print_json(error_record(exc))
         return 2

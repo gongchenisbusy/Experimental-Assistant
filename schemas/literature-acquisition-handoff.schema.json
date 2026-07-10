@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gongchenisbusy/Experimental-Assistant/schemas/literature-acquisition-handoff.schema.json",
+  "title": "Experimental Assistant literature acquisition handoff",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "targets",
+    "attempts",
+    "status",
+    "cache_dir",
+    "zotero_item_key",
+    "blocked_reason",
+    "retry_command",
+    "source_hash",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "targets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/target"}
+    },
+    "attempts": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["complete", "partial", "blocked", "not_started"]},
+    "cache_dir": {"type": ["string", "null"]},
+    "zotero_item_key": {"type": ["string", "null"]},
+    "blocked_reason": {"type": ["string", "null"]},
+    "retry_command": {"type": ["string", "null"]},
+    "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "updated_at": {"type": "string", "minLength": 1},
+    "summary": {"type": "object"},
+    "current_task_blockers": {"type": "array"},
+    "optional_capabilities": {"type": "array"},
+    "stale_global_state": {"type": "array"}
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "required": [
+        "title",
+        "attempts",
+        "status",
+        "cache_dir",
+        "zotero_item_key",
+        "blocked_reason",
+        "retry_command",
+        "source_hash",
+        "updated_at",
+        "next_action"
+      ],
+      "properties": {
+        "target_id": {"type": ["string", "integer", "null"]},
+        "rank": {"type": ["string", "integer", "number", "null"]},
+        "title": {"type": "string"},
+        "doi": {"type": ["string", "null"]},
+        "url": {"type": ["string", "null"]},
+        "attempts": {"type": "array", "maxItems": 5},
+        "status": {
+          "enum": [
+            "acquired",
+            "cache_verified",
+            "needs_login",
+            "needs_subscription",
+            "blocked",
+            "manual_pdf_handoff_ready",
+            "invalid_pdf",
+            "retryable_error",
+            "not_attempted"
+          ]
+        },
+        "cache_dir": {"type": ["string", "null"]},
+        "zotero_item_key": {"type": ["string", "null"]},
+        "blocked_reason": {"type": ["string", "null"]},
+        "retry_command": {"type": ["string", "null"]},
+        "source_hash": {"type": ["string", "null"]},
+        "updated_at": {"type": "string"},
+        "next_action": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

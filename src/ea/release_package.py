@@ -10,11 +10,15 @@ from typing import Any, Iterable
 
 import yaml
 
-from ea.release_manifest import DEFAULT_INCLUDE_ROOTS, build_release_manifest, iter_release_files
+from ea.release_manifest import (
+    DEFAULT_INCLUDE_ROOTS,
+    build_release_manifest,
+    iter_release_files,
+)
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-MANIFEST_ARCHIVE_NAME = "ea-v0.9.6-release-manifest.yml"
+MANIFEST_ARCHIVE_NAME = "experimental-assistant-v0.9.7-release-manifest.yml"
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -36,15 +40,15 @@ def _short_commit(manifest: dict[str, Any]) -> str:
 
 def _default_archive_path(root: Path, manifest: dict[str, Any]) -> Path:
     package = manifest["package"]
-    name = str(package.get("name") or "ea-v0-2")
-    version = str(package.get("version") or "0.9.6")
+    name = str(package.get("name") or "experimental-assistant")
+    version = str(package.get("version") or "0.9.7")
     return root / "dist" / f"{name}-{version}-{_short_commit(manifest)}-release.zip"
 
 
 def _default_archive_root(manifest: dict[str, Any]) -> str:
     package = manifest["package"]
-    name = str(package.get("name") or "ea-v0-2")
-    version = str(package.get("version") or "0.9.6")
+    name = str(package.get("name") or "experimental-assistant")
+    version = str(package.get("version") or "0.9.7")
     return f"{name}-{version}"
 
 
@@ -76,26 +80,34 @@ def write_release_package(
     output_path = output or _default_archive_path(root, manifest)
     if not output_path.is_absolute():
         output_path = root / output_path
-    archive_root_name = (archive_root or _default_archive_root(manifest)).strip().strip("/") or "ea-v0-2-release"
+    archive_root_name = (archive_root or _default_archive_root(manifest)).strip().strip(
+        "/"
+    ) or "experimental-assistant-release"
     files = iter_release_files(root, include_roots)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists():
         output_path.unlink()
 
-    manifest_bytes = yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False).encode("utf-8")
+    manifest_bytes = yaml.safe_dump(
+        manifest, allow_unicode=True, sort_keys=False
+    ).encode("utf-8")
     with zipfile.ZipFile(output_path, "w") as archive:
-        _write_zip_bytes(archive, f"{archive_root_name}/{MANIFEST_ARCHIVE_NAME}", manifest_bytes)
+        _write_zip_bytes(
+            archive, f"{archive_root_name}/{MANIFEST_ARCHIVE_NAME}", manifest_bytes
+        )
         for source in files:
             rel = source.relative_to(root).as_posix()
             _write_zip_bytes(archive, f"{archive_root_name}/{rel}", source.read_bytes())
 
     checksum_path = _checksum_sidecar_path(output_path)
     archive_sha256 = _sha256_file(output_path)
-    checksum_path.write_text(f"{archive_sha256}  {output_path.name}\n", encoding="utf-8")
+    checksum_path.write_text(
+        f"{archive_sha256}  {output_path.name}\n", encoding="utf-8"
+    )
 
     return {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "status": "complete",
         "archive_path": str(output_path),
         "archive_checksum_path": str(checksum_path),
@@ -113,11 +125,13 @@ def write_release_package(
     }
 
 
-def verify_release_package(archive_path: Path, *, checksum_path: Path | None = None) -> dict[str, Any]:
+def verify_release_package(
+    archive_path: Path, *, checksum_path: Path | None = None
+) -> dict[str, Any]:
     archive_path = archive_path.resolve()
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "check_type": "ea_v0_9_6_release_package",
         "status": "pass",
         "archive_path": str(archive_path),
@@ -132,16 +146,22 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
     }
     if not archive_path.exists():
         result["status"] = "fail"
-        result["failures"].append({"path": str(archive_path), "reason": "missing_archive"})
+        result["failures"].append(
+            {"path": str(archive_path), "reason": "missing_archive"}
+        )
         return result
     if not checksum_path.exists():
         result["status"] = "fail"
-        result["failures"].append({"path": str(checksum_path), "reason": "missing_checksum_sidecar"})
+        result["failures"].append(
+            {"path": str(checksum_path), "reason": "missing_checksum_sidecar"}
+        )
     else:
         sidecar = checksum_path.read_text(encoding="utf-8").strip().split()
         if not sidecar:
             result["status"] = "fail"
-            result["failures"].append({"path": str(checksum_path), "reason": "empty_checksum_sidecar"})
+            result["failures"].append(
+                {"path": str(checksum_path), "reason": "empty_checksum_sidecar"}
+            )
         else:
             expected_sha = sidecar[0]
             actual_sha = _sha256_file(archive_path)
@@ -160,18 +180,38 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
 
     try:
         with zipfile.ZipFile(archive_path) as archive:
-            manifest_names = [name for name in archive.namelist() if name.endswith(f"/{MANIFEST_ARCHIVE_NAME}") or name == MANIFEST_ARCHIVE_NAME]
+            manifest_names = [
+                name
+                for name in archive.namelist()
+                if name.endswith(f"/{MANIFEST_ARCHIVE_NAME}")
+                or name == MANIFEST_ARCHIVE_NAME
+            ]
             if not manifest_names:
                 result["status"] = "fail"
-                result["failures"].append({"path": MANIFEST_ARCHIVE_NAME, "reason": "missing_embedded_manifest"})
+                result["failures"].append(
+                    {
+                        "path": MANIFEST_ARCHIVE_NAME,
+                        "reason": "missing_embedded_manifest",
+                    }
+                )
                 return result
             if len(manifest_names) > 1:
                 result["status"] = "fail"
-                result["failures"].append({"path": MANIFEST_ARCHIVE_NAME, "reason": "multiple_embedded_manifests", "matches": sorted(manifest_names)})
+                result["failures"].append(
+                    {
+                        "path": MANIFEST_ARCHIVE_NAME,
+                        "reason": "multiple_embedded_manifests",
+                        "matches": sorted(manifest_names),
+                    }
+                )
                 return result
             manifest_ref = manifest_names[0]
             result["manifest_archive_ref"] = manifest_ref
-            archive_root = manifest_ref[: -len(f"/{MANIFEST_ARCHIVE_NAME}")] if "/" in manifest_ref else ""
+            archive_root = (
+                manifest_ref[: -len(f"/{MANIFEST_ARCHIVE_NAME}")]
+                if "/" in manifest_ref
+                else ""
+            )
             result["archive_root"] = archive_root
             manifest = yaml.safe_load(archive.read(manifest_ref)) or {}
             infos = {info.filename: info for info in archive.infolist()}
@@ -179,13 +219,17 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
                 rel = str(entry.get("path") or "")
                 if not rel:
                     result["status"] = "fail"
-                    result["failures"].append({"path": rel, "reason": "empty_manifest_path"})
+                    result["failures"].append(
+                        {"path": rel, "reason": "empty_manifest_path"}
+                    )
                     continue
                 archive_ref = f"{archive_root}/{rel}" if archive_root else rel
                 info = infos.get(archive_ref)
                 if info is None:
                     result["status"] = "fail"
-                    result["failures"].append({"path": archive_ref, "reason": "missing_release_input"})
+                    result["failures"].append(
+                        {"path": archive_ref, "reason": "missing_release_input"}
+                    )
                     continue
                 expected_size = entry.get("size_bytes")
                 expected_sha = str(entry.get("sha256") or "")
@@ -220,7 +264,9 @@ def verify_release_package(archive_path: Path, *, checksum_path: Path | None = N
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build an Experimental Assistant v0.9.6 repository zip archive.")
+    parser = argparse.ArgumentParser(
+        description="Build an Experimental Assistant v0.9.7 repository zip archive."
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
     parser.add_argument("--include-root", action="append", default=[])
@@ -229,7 +275,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_verify_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Verify an Experimental Assistant v0.9.6 repository zip archive.")
+    parser = argparse.ArgumentParser(
+        description="Verify an Experimental Assistant v0.9.7 repository zip archive."
+    )
     parser.add_argument("archive", type=Path)
     parser.add_argument("--checksum", type=Path)
     return parser

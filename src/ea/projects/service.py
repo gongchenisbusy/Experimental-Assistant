@@ -5,6 +5,7 @@ from pathlib import Path
 from ea.config import build_project_config, write_project_config
 from ea.literature import ensure_literature_status
 from ea.memory import write_open_item, write_project_working_memory_skeleton
+from ea.migrations import initialize_project_format
 from ea.schema import Project, ProjectRuleCard
 from ea.schema.models import EARecord
 from ea.standards import slugify, standard_project_id
@@ -116,6 +117,7 @@ def initialize_project(
         institution_access=institution_access,
     )
     config_path = write_project_config(root, config)
+    project_format_path = initialize_project_format(root, created_at=created_at)
     literature_status_path: Path | None = None
     literature_decision_path: Path | None = None
     if enable_literature:
@@ -144,7 +146,12 @@ def initialize_project(
         rule_card.model_dump(exclude_none=True),
         "# Project Rule Card\n\nKey rules require item-by-item user confirmation.",
     )
-    output_records = ["EA_PROJECT.md", "PROJECT_RULE_CARD.md", str(config_path.relative_to(root))]
+    output_records = [
+        "EA_PROJECT.md",
+        "PROJECT_RULE_CARD.md",
+        str(config_path.relative_to(root)),
+        str(project_format_path.relative_to(root)),
+    ]
     if literature_status_path:
         output_records.append(str(literature_status_path.relative_to(root)))
     if literature_decision_path:
@@ -179,7 +186,13 @@ def initialize_project(
         project_frontmatter,
         "# EA Project\n\nThis project record is review-gated.",
     )
-    outputs = {"project": project_path, "rule_card": rule_card_path, "config": config_path, "project_working_memory": working_memory_path}
+    outputs = {
+        "project": project_path,
+        "rule_card": rule_card_path,
+        "config": config_path,
+        "project_format": project_format_path,
+        "project_working_memory": working_memory_path,
+    }
     if literature_status_path:
         outputs["literature_status"] = literature_status_path
     if literature_decision_path:

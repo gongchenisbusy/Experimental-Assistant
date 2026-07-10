@@ -1,55 +1,38 @@
-# Experimental Assistant v0.9.6 Agent Handoff
-
-This file is the handoff anchor for future agents continuing from Experimental Assistant v0.9.6.
+# Experimental Assistant v0.9.7 Agent Handoff
 
 ## Current State
 
-- Release label: `v0.9.6`
-- Package version: `0.9.6`
-- Working branch: `codex/eav0.9`
-- Skill folder: `skills/ea-v0-2`
-- Public install guide: `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`
-- Acceptance matrix: `docs/PUBLIC_ACCEPTANCE_MATRIX.md`
-- Release notes: `docs/V0_9_RELEASE_NOTES.md`
-- Known limitations: `docs/V0_9_KNOWN_LIMITATIONS.md`
-- Manual checklist: `docs/V0_9_MANUAL_TEST_CHECKLIST.md`
+- Release line: `v0.9.7`, package `experimental-assistant 0.9.7`
+- Development branch: `codex/eav0.9.7`
+- Primary skill: `skills/ea` / `$ea`
+- Compatibility wrapper: `skills/ea-v0-2` / `$ea-v0-2` through v1.0.x
+- Capability matrix: `docs/CAPABILITY_MATRIX.md`
+- Acceptance and manual evidence: `docs/PUBLIC_ACCEPTANCE_MATRIX.md`, `docs/V0_9_MANUAL_TEST_CHECKLIST.md`
 
-## Read First
-
-1. `README.md`
-2. `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`
-3. `docs/PUBLIC_ACCEPTANCE_MATRIX.md`
-4. `docs/V0_9_RELEASE_NOTES.md`
-5. `docs/V0_9_KNOWN_LIMITATIONS.md`
-6. `docs/PUBLIC_ONBOARDING.md`
-7. `skills/ea-v0-2/SKILL.md`
-
-## Required Gates Before Promotion
+## Required Gates
 
 ```bash
 python3 -m pytest -q
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/ea-v0-2
+python3 scripts/validate_skill_packages.py
+python3 scripts/check_version_identity.py
+python3 scripts/check_downloaded_skill_instructions.py
 python3 scripts/public_release_smoke.py
-python3 scripts/build_release_manifest.py
-python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/ea-v0-2-0.9.6-COMMIT-release.zip
-python3 scripts/build_distribution_checklist.py
+python3 -m build
+ea-release-supply-chain
+ea-release-manifest
+ea-release-package
+ea-verify-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip
+ea-release-checklist
 ```
 
-Also run at least one project handoff bundle check:
+Also require clean wheel/sdist installs, native CI, reproducibility evidence, public asset download verification, and the project-bundle checks in `docs/PROJECT_BUNDLE_VERIFICATION.md`.
 
-```bash
-ea export report-bundle examples/public-ftir-assignment-project \
-  --report-id rpt-public-ftir-assignment-example-20260604-001 \
-  --include-trace \
-  --zip
-ea export verify-bundle examples/public-ftir-assignment-project/exports/report-bundles/rpt-public-ftir-assignment-example-20260604-001
-ea export verify-archive examples/public-ftir-assignment-project/exports/report-bundles/rpt-public-ftir-assignment-example-20260604-001.zip
-```
+## Evidence Honesty
 
-## Do Not Assume
+Do not mark independent novice/platform trials or external scientific review as passed without an actual tester/reviewer record. v0.9.7 may be published as a controlled candidate with these items pending; v1.0 promotion may not.
 
-- Do not assume Zotero, browser sessions, institution access, private caches, signing keys, or local test fixtures.
-- Do not treat source-backed suggestions or screening calculations as final claims.
-- Do not mutate raw data or commit memory without the review-gated workflow.
-- Do not publish v1.0 until the acceptance matrix and manual checklist pass or all failures are documented as accepted limitations.
+## Boundaries
+
+- Do not assume Zotero, browser sessions, institution access, private caches, signing keys, or developer paths.
+- Do not mutate raw data, bypass access controls, commit memory without review, or turn screening evidence into a definitive claim.
+- Do not duplicate full instructions in `skills/ea-v0-2`; it is only a compatibility router.

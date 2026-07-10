@@ -24,10 +24,14 @@ def _key_paths(tmp_path: Path, name: str = "release") -> tuple[Path, Path]:
 
 def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
     root = _minimal_release_root(tmp_path / "repo")
-    package = write_release_package(root, output=Path("dist/release.zip"), archive_root="ea-release")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
     private_key, public_key = _key_paths(tmp_path)
 
-    keygen = generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
+    keygen = generate_release_keypair(
+        private_key_path=private_key, public_key_path=public_key
+    )
     signed = sign_release_package(
         Path(package["archive_path"]),
         private_key_path=private_key,
@@ -35,7 +39,9 @@ def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
         key_id="test-key",
         signed_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
     )
-    verified = verify_release_signature(Path(package["archive_path"]), public_key_path=public_key)
+    verified = verify_release_signature(
+        Path(package["archive_path"]), public_key_path=public_key
+    )
 
     assert keygen["status"] == "complete"
     assert signed["status"] == "complete"
@@ -52,60 +58,124 @@ def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
 
 def test_release_signature_verifier_reports_tampered_archive(tmp_path: Path) -> None:
     root = _minimal_release_root(tmp_path / "repo")
-    package = write_release_package(root, output=Path("dist/release.zip"), archive_root="ea-release")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
     private_key, public_key = _key_paths(tmp_path)
     generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
-    sign_release_package(Path(package["archive_path"]), private_key_path=private_key, public_key_path=public_key)
-    Path(package["archive_path"]).write_bytes(Path(package["archive_path"]).read_bytes() + b"tampered")
+    sign_release_package(
+        Path(package["archive_path"]),
+        private_key_path=private_key,
+        public_key_path=public_key,
+    )
+    Path(package["archive_path"]).write_bytes(
+        Path(package["archive_path"]).read_bytes() + b"tampered"
+    )
 
-    verified = verify_release_signature(Path(package["archive_path"]), public_key_path=public_key)
+    verified = verify_release_signature(
+        Path(package["archive_path"]), public_key_path=public_key
+    )
 
     assert verified["status"] == "fail"
-    assert {"path": package["archive_path"], "reason": "package_verification_failed"} in verified["failures"]
-    assert any(failure["reason"] == "archive_size_mismatch" for failure in verified["failures"])
-    assert any(failure["reason"] == "archive_sha256_mismatch" for failure in verified["failures"])
+    assert {
+        "path": package["archive_path"],
+        "reason": "package_verification_failed",
+    } in verified["failures"]
+    assert any(
+        failure["reason"] == "archive_size_mismatch" for failure in verified["failures"]
+    )
+    assert any(
+        failure["reason"] == "archive_sha256_mismatch"
+        for failure in verified["failures"]
+    )
 
 
-def test_release_signature_verifier_reports_changed_checksum_sidecar(tmp_path: Path) -> None:
+def test_release_signature_verifier_reports_changed_checksum_sidecar(
+    tmp_path: Path,
+) -> None:
     root = _minimal_release_root(tmp_path / "repo")
-    package = write_release_package(root, output=Path("dist/release.zip"), archive_root="ea-release")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
     private_key, public_key = _key_paths(tmp_path)
     generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
-    sign_release_package(Path(package["archive_path"]), private_key_path=private_key, public_key_path=public_key)
-    Path(package["archive_checksum_path"]).write_text(Path(package["archive_checksum_path"]).read_text(encoding="utf-8") + "# comment\n", encoding="utf-8")
+    sign_release_package(
+        Path(package["archive_path"]),
+        private_key_path=private_key,
+        public_key_path=public_key,
+    )
+    Path(package["archive_checksum_path"]).write_text(
+        Path(package["archive_checksum_path"]).read_text(encoding="utf-8")
+        + "# comment\n",
+        encoding="utf-8",
+    )
 
-    verified = verify_release_signature(Path(package["archive_path"]), public_key_path=public_key)
+    verified = verify_release_signature(
+        Path(package["archive_path"]), public_key_path=public_key
+    )
 
     assert verified["status"] == "fail"
-    assert any(failure["reason"] == "checksum_sidecar_sha256_mismatch" for failure in verified["failures"])
+    assert any(
+        failure["reason"] == "checksum_sidecar_sha256_mismatch"
+        for failure in verified["failures"]
+    )
 
 
 def test_release_signature_verifier_reports_wrong_public_key(tmp_path: Path) -> None:
     root = _minimal_release_root(tmp_path / "repo")
-    package = write_release_package(root, output=Path("dist/release.zip"), archive_root="ea-release")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
     private_key, public_key = _key_paths(tmp_path, "release")
     wrong_private_key, wrong_public_key = _key_paths(tmp_path, "wrong")
     generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
-    generate_release_keypair(private_key_path=wrong_private_key, public_key_path=wrong_public_key)
-    sign_release_package(Path(package["archive_path"]), private_key_path=private_key, public_key_path=public_key)
+    generate_release_keypair(
+        private_key_path=wrong_private_key, public_key_path=wrong_public_key
+    )
+    sign_release_package(
+        Path(package["archive_path"]),
+        private_key_path=private_key,
+        public_key_path=public_key,
+    )
 
-    verified = verify_release_signature(Path(package["archive_path"]), public_key_path=wrong_public_key)
+    verified = verify_release_signature(
+        Path(package["archive_path"]), public_key_path=wrong_public_key
+    )
 
     assert verified["status"] == "fail"
-    assert any(failure["reason"] == "public_key_fingerprint_mismatch" for failure in verified["failures"])
-    assert any(failure["reason"] == "invalid_signature" for failure in verified["failures"])
+    assert any(
+        failure["reason"] == "public_key_fingerprint_mismatch"
+        for failure in verified["failures"]
+    )
+    assert any(
+        failure["reason"] == "invalid_signature" for failure in verified["failures"]
+    )
 
 
 def test_release_signature_cli_round_trip(tmp_path: Path, capsys) -> None:
     root = _minimal_release_root(tmp_path / "repo")
-    package = write_release_package(root, output=Path("dist/release.zip"), archive_root="ea-release")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
     private_key, public_key = _key_paths(tmp_path)
 
-    keygen_code = keygen_main(["--private-key", str(private_key), "--public-key", str(public_key)])
+    keygen_code = keygen_main(
+        ["--private-key", str(private_key), "--public-key", str(public_key)]
+    )
     keygen_summary = json.loads(capsys.readouterr().out)
-    sign_code = sign_main([package["archive_path"], "--private-key", str(private_key), "--public-key", str(public_key)])
+    sign_code = sign_main(
+        [
+            package["archive_path"],
+            "--private-key",
+            str(private_key),
+            "--public-key",
+            str(public_key),
+        ]
+    )
     sign_summary = json.loads(capsys.readouterr().out)
-    verify_code = verify_main([package["archive_path"], "--public-key", str(public_key)])
+    verify_code = verify_main(
+        [package["archive_path"], "--public-key", str(public_key)]
+    )
     verify_summary = json.loads(capsys.readouterr().out)
 
     assert keygen_code == 0
@@ -116,11 +186,15 @@ def test_release_signature_cli_round_trip(tmp_path: Path, capsys) -> None:
     assert verify_summary["status"] == "pass"
 
 
-def test_release_signature_keygen_refuses_overwrite_without_flag(tmp_path: Path) -> None:
+def test_release_signature_keygen_refuses_overwrite_without_flag(
+    tmp_path: Path,
+) -> None:
     private_key, public_key = _key_paths(tmp_path)
     generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
 
-    result = generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
+    result = generate_release_keypair(
+        private_key_path=private_key, public_key_path=public_key
+    )
 
     assert result["status"] == "fail"
     assert {failure["reason"] for failure in result["failures"]} == {"path_exists"}

@@ -8,31 +8,56 @@ from pathlib import Path
 import yaml
 
 
-def test_ea_v0_2_skill_defaults_to_public_user_workflow() -> None:
-    skill_doc = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
+def test_ea_skill_defaults_to_public_user_workflow() -> None:
+    skill_doc = Path("skills/ea/SKILL.md").read_text(encoding="utf-8")
 
-    assert "Do not assume developer-machine Zotero, browser, institution, cache, or test paths." in skill_doc
-    assert "# Experimental Assistant v0.9.6" in skill_doc
-    assert "Internal compatibility id" in skill_doc
-    assert "$ea-v0-2" in skill_doc
-    assert "ea codex install-skill" in skill_doc
-    assert "ea install-check" in skill_doc
+    assert (
+        "without assuming developer-machine accounts, paths, or credentials"
+        in skill_doc
+    )
+    assert "# Experimental Assistant v0.9.7" in skill_doc
+    assert "$ea-v0-2` only as a temporary compatibility entry point" in skill_doc
+    assert "ea start" in skill_doc
+    assert "ea status" in skill_doc
     assert "Core Workflow" in skill_doc
-    assert "Setup And Onboarding" in skill_doc
     assert "references/routing-index.yml" in skill_doc
-    assert "References" in skill_doc
+    assert "需要你补充：" in skill_doc
+    assert "ea-feedback" in skill_doc
+    assert (
+        "Do not install it, collect diagnostics, or submit feedback without confirmation"
+        in skill_doc
+    )
     assert "tests/fixtures/public/" not in skill_doc
 
-    routing_index = yaml.safe_load(Path("skills/ea-v0-2/references/routing-index.yml").read_text(encoding="utf-8"))
-    assert routing_index["schema_version"] == "0.9.6"
+    routing_index = yaml.safe_load(
+        Path("skills/ea/references/routing-index.yml").read_text(encoding="utf-8")
+    )
+    assert routing_index["schema_version"] == "0.9.7"
     assert "method_analysis" in routing_index["routes"]
-    assert routing_index["routes"]["method_analysis"]["choose_one_method_ref"]["xps"] == "references/xps-workflow.md"
-    assert "ea trace focus" in routing_index["routes"]["traceability"]["preferred_commands"]
+    assert (
+        routing_index["routes"]["method_analysis"]["choose_one_method_ref"]["xps"]
+        == "references/xps-workflow.md"
+    )
+    assert (
+        "ea trace focus"
+        in routing_index["routes"]["traceability"]["preferred_commands"]
+    )
 
 
-def test_ea_v0_2_skill_public_demo_command_runs(tmp_path: Path) -> None:
+def test_ea_v0_2_is_a_thin_compatibility_wrapper() -> None:
+    wrapper = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
+
+    assert "temporary compatibility invocation" in wrapper
+    assert "sibling `ea/SKILL.md`" in wrapper
+    assert "stable public invocation is `$ea`" in wrapper
+    assert "v1.0.x release line" in wrapper
+    assert "references/raman-workflow.md" not in wrapper
+    assert len(wrapper.encode("utf-8")) < 1500
+
+
+def test_ea_skill_public_demo_command_runs(tmp_path: Path) -> None:
     workspace = tmp_path / "public-demo"
-    script = Path("skills/ea-v0-2/scripts/run_public_demo.py")
+    script = Path("skills/ea/scripts/run_public_demo.py")
 
     result = subprocess.run(
         [

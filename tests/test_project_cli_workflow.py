@@ -229,6 +229,6 @@ def test_cli_boundary_errors_are_json_without_traceback(tmp_path: Path, capsys) 
 
     assert result == 2
     assert output["status"] == "error"
-    assert output["error_type"] == "ReviewRequiredErrorForRef"
-    assert "missing-review" in output["message"]
+    assert output["cause"]["type"] == "ReviewRequiredErrorForRef"
+    assert "missing-review" in output["cause"]["message"]
     assert "Traceback" not in output_text

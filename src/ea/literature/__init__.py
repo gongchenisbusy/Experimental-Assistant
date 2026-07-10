@@ -22,6 +22,16 @@ from ea.literature.service import (
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
+from ea.literature.data_extraction import (
+    PROPERTY_KINDS,
+    REVIEW_DECISIONS,
+    export_literature_data,
+    extract_literature_data,
+    plan_literature_data_extraction,
+    plot_literature_data,
+    review_literature_data,
+    validate_literature_data,
+)
 
 __all__ = [
     "build_search_queries",
@@ -46,4 +56,12 @@ __all__ = [
     "setup_literature_preflight",
     "summarize_zotero_codex_readiness",
     "sync_literature_acquisition_status",
+    "PROPERTY_KINDS",
+    "REVIEW_DECISIONS",
+    "export_literature_data",
+    "extract_literature_data",
+    "plan_literature_data_extraction",
+    "plot_literature_data",
+    "review_literature_data",
+    "validate_literature_data",
 ]

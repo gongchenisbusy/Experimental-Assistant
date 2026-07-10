@@ -18,7 +18,16 @@ FORBIDDEN_PORTABILITY_PATTERNS = [
     "Chrome Profile",
     "institution password",
 ]
-DEFAULT_SCAN_ROOTS = ["README.md", "pyproject.toml", "src", "docs", "skills/ea-v0-2", "skill-registry", "examples"]
+DEFAULT_SCAN_ROOTS = [
+    "README.md",
+    "pyproject.toml",
+    "src",
+    "docs",
+    "skills/ea",
+    "skills/ea-v0-2/SKILL.md",
+    "skill-registry",
+    "examples",
+]
 DEFAULT_EXCLUDED_SCAN_PATHS = {
     "src/ea/config/service.py",
     "src/ea/release_smoke.py",
@@ -61,7 +70,12 @@ TOKEN_LITERAL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")),
     ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
     ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("jwt_token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
+    (
+        "jwt_token",
+        re.compile(
+            r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
+        ),
+    ),
 ]
 PLACEHOLDER_VALUE_FRAGMENTS = {
     "<",
@@ -96,7 +110,9 @@ PLACEHOLDER_VALUES = {
     "value",
     "env",
 }
-VARIABLE_REFERENCE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?(?:\))?$")
+VARIABLE_REFERENCE_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?(?:\))?$"
+)
 
 
 @dataclass(frozen=True)
@@ -111,7 +127,14 @@ def _repo_root(path: Path | None = None) -> Path:
 
 def _default_quick_validate_path() -> Path:
     codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
-    return codex_home / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py"
+    return (
+        codex_home
+        / "skills"
+        / ".system"
+        / "skill-creator"
+        / "scripts"
+        / "quick_validate.py"
+    )
 
 
 def _cli_snippet(argv: list[str]) -> str:
@@ -132,36 +155,134 @@ def build_command_steps(
     if not skip_tests:
         steps.append(SmokeStep("pytest", [python, "-m", "pytest"]))
     if not skip_skill_validation:
-        steps.append(SmokeStep("skill_validation", [python, str(quick_validate), "skills/ea-v0-2"]))
+        steps.extend(
+            [
+                SmokeStep(
+                    "primary_skill_validation",
+                    [python, str(quick_validate), "skills/ea"],
+                ),
+                SmokeStep(
+                    "compatibility_skill_validation",
+                    [python, str(quick_validate), "skills/ea-v0-2"],
+                ),
+            ]
+        )
     if not skip_cli_sanity:
         steps.extend(
             [
                 SmokeStep("cli_help", [python, "-c", _cli_snippet(["--help"])]),
-                SmokeStep("cli_global_version", [python, "-c", _cli_snippet(["--version"])]),
-                SmokeStep("cli_version_help", [python, "-c", _cli_snippet(["version", "--help"])]),
-                SmokeStep("cli_install_check_help", [python, "-c", _cli_snippet(["install-check", "--help"])]),
-                SmokeStep("cli_codex_install_skill_help", [python, "-c", _cli_snippet(["codex", "install-skill", "--help"])]),
-                SmokeStep("version_identity_check", [python, "scripts/check_version_identity.py"]),
-                SmokeStep("downloaded_skill_instruction_check", [python, "scripts/check_downloaded_skill_instructions.py"]),
-                SmokeStep("cli_export_help", [python, "-c", _cli_snippet(["export", "--help"])]),
-                SmokeStep("cli_eval_help", [python, "-c", _cli_snippet(["eval", "--help"])]),
-                SmokeStep("install_check_console_help", [python, "-m", "ea.install_experience", "--help"]),
-                SmokeStep("release_manifest_help", [python, "-m", "ea.release_manifest", "--help"]),
-                SmokeStep("release_package_help", [python, "-m", "ea.release_package", "--help"]),
-                SmokeStep("release_package_verify_help", [python, "-c", "from ea.release_package import verify_main; verify_main(['--help'])"]),
-                SmokeStep("release_signature_keygen_help", [python, "-c", "from ea.release_signature import keygen_main; keygen_main(['--help'])"]),
-                SmokeStep("release_signature_sign_help", [python, "-c", "from ea.release_signature import sign_main; sign_main(['--help'])"]),
-                SmokeStep("release_signature_verify_help", [python, "-c", "from ea.release_signature import verify_main; verify_main(['--help'])"]),
-                SmokeStep("release_distribution_checklist_help", [python, "-c", "from ea.release_distribution import main; main(['--help'])"]),
+                SmokeStep(
+                    "cli_global_version", [python, "-c", _cli_snippet(["--version"])]
+                ),
+                SmokeStep(
+                    "cli_version_help",
+                    [python, "-c", _cli_snippet(["version", "--help"])],
+                ),
+                SmokeStep(
+                    "cli_install_check_help",
+                    [python, "-c", _cli_snippet(["install-check", "--help"])],
+                ),
+                SmokeStep(
+                    "cli_codex_install_skill_help",
+                    [python, "-c", _cli_snippet(["codex", "install-skill", "--help"])],
+                ),
+                SmokeStep(
+                    "version_identity_check",
+                    [python, "scripts/check_version_identity.py"],
+                ),
+                SmokeStep(
+                    "downloaded_skill_instruction_check",
+                    [python, "scripts/check_downloaded_skill_instructions.py"],
+                ),
+                SmokeStep(
+                    "cli_export_help",
+                    [python, "-c", _cli_snippet(["export", "--help"])],
+                ),
+                SmokeStep(
+                    "cli_eval_help", [python, "-c", _cli_snippet(["eval", "--help"])]
+                ),
+                SmokeStep(
+                    "install_check_console_help",
+                    [python, "-m", "ea.install_experience", "--help"],
+                ),
+                SmokeStep(
+                    "release_manifest_help",
+                    [python, "-m", "ea.release_manifest", "--help"],
+                ),
+                SmokeStep(
+                    "release_package_help",
+                    [python, "-m", "ea.release_package", "--help"],
+                ),
+                SmokeStep(
+                    "release_package_verify_help",
+                    [
+                        python,
+                        "-c",
+                        "from ea.release_package import verify_main; verify_main(['--help'])",
+                    ],
+                ),
+                SmokeStep(
+                    "release_signature_keygen_help",
+                    [
+                        python,
+                        "-c",
+                        "from ea.release_signature import keygen_main; keygen_main(['--help'])",
+                    ],
+                ),
+                SmokeStep(
+                    "release_signature_sign_help",
+                    [
+                        python,
+                        "-c",
+                        "from ea.release_signature import sign_main; sign_main(['--help'])",
+                    ],
+                ),
+                SmokeStep(
+                    "release_signature_verify_help",
+                    [
+                        python,
+                        "-c",
+                        "from ea.release_signature import verify_main; verify_main(['--help'])",
+                    ],
+                ),
+                SmokeStep(
+                    "release_artifact_smoke_help",
+                    [python, "-m", "ea.release_artifacts", "--help"],
+                ),
+                SmokeStep(
+                    "release_reproducibility_help",
+                    [python, "-m", "ea.release_reproducibility", "--help"],
+                ),
+                SmokeStep(
+                    "release_supply_chain_help",
+                    [python, "-m", "ea.release_supply_chain", "--help"],
+                ),
+                SmokeStep(
+                    "release_distribution_checklist_help",
+                    [
+                        python,
+                        "-c",
+                        "from ea.release_distribution import main; main(['--help'])",
+                    ],
+                ),
             ]
         )
     if not skip_public_examples:
         for prefix, project in PUBLIC_EXAMPLE_PROJECTS:
-            steps.append(SmokeStep(f"{prefix}_healthcheck", [python, "-c", _cli_snippet(["healthcheck", project])]))
+            steps.append(
+                SmokeStep(
+                    f"{prefix}_healthcheck",
+                    [python, "-c", _cli_snippet(["healthcheck", project])],
+                )
+            )
             steps.append(
                 SmokeStep(
                     f"{prefix}_eval",
-                    [python, "-c", _cli_snippet(["eval", "project", project, "--no-write"])],
+                    [
+                        python,
+                        "-c",
+                        _cli_snippet(["eval", "project", project, "--no-write"]),
+                    ],
                 )
             )
     return steps
@@ -170,7 +291,9 @@ def build_command_steps(
 def smoke_env(root: Path) -> dict[str, str]:
     env = os.environ.copy()
     src = str(root / "src")
-    env["PYTHONPATH"] = src if not env.get("PYTHONPATH") else f"{src}{os.pathsep}{env['PYTHONPATH']}"
+    env["PYTHONPATH"] = (
+        src if not env.get("PYTHONPATH") else f"{src}{os.pathsep}{env['PYTHONPATH']}"
+    )
     env["EA_PUBLIC_RELEASE_SMOKE"] = "1"
     return env
 
@@ -181,7 +304,9 @@ def _tail(text: str, limit: int = 4000) -> str:
     return text[-limit:]
 
 
-def run_command_step(step: SmokeStep, *, root: Path, env: dict[str, str]) -> dict[str, Any]:
+def run_command_step(
+    step: SmokeStep, *, root: Path, env: dict[str, str]
+) -> dict[str, Any]:
     completed = subprocess.run(
         step.command,
         cwd=root,
@@ -201,7 +326,9 @@ def run_command_step(step: SmokeStep, *, root: Path, env: dict[str, str]) -> dic
     }
 
 
-def _iter_scan_files(root: Path, scan_roots: Iterable[str], excluded_paths: set[str]) -> Iterable[Path]:
+def _iter_scan_files(
+    root: Path, scan_roots: Iterable[str], excluded_paths: set[str]
+) -> Iterable[Path]:
     for rel in scan_roots:
         path = root / rel
         if not path.exists():
@@ -214,7 +341,10 @@ def _iter_scan_files(root: Path, scan_roots: Iterable[str], excluded_paths: set[
             rel_path = candidate.relative_to(root).as_posix()
             if rel_path in excluded_paths:
                 continue
-            if any(part in {".git", ".venv", "__pycache__", ".pytest_cache"} for part in candidate.parts):
+            if any(
+                part in {".git", ".venv", "__pycache__", ".pytest_cache"}
+                for part in candidate.parts
+            ):
                 continue
             yield candidate
 
@@ -288,7 +418,9 @@ def _is_probable_secret_assignment(match: re.Match[str]) -> bool:
     return not _looks_like_variable_reference(value) and len(value) >= 6
 
 
-def _secret_assignment_findings(root: Path, path: Path, text: str) -> list[dict[str, Any]]:
+def _secret_assignment_findings(
+    root: Path, path: Path, text: str
+) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         for match in SECRET_KEY_RE.finditer(line):
@@ -300,7 +432,9 @@ def _secret_assignment_findings(root: Path, path: Path, text: str) -> list[dict[
                     "line": line_number,
                     "detector": "secret_assignment",
                     "key": match.group("key"),
-                    "preview": _line_preview_with_redaction(line, match.start("value"), match.end("value")),
+                    "preview": _line_preview_with_redaction(
+                        line, match.start("value"), match.end("value")
+                    ),
                     "remediation": "Remove the value from public artifacts; use a placeholder or user-supplied local config path instead.",
                 }
             )
@@ -319,7 +453,9 @@ def _token_literal_findings(root: Path, path: Path, text: str) -> list[dict[str,
                         "path": path.relative_to(root).as_posix(),
                         "line": line_number,
                         "detector": detector,
-                        "preview": _line_preview_with_redaction(line, match.start(), match.end()),
+                        "preview": _line_preview_with_redaction(
+                            line, match.start(), match.end()
+                        ),
                         "remediation": "Remove the token from public artifacts and rotate it if it was real.",
                     }
                 )
@@ -345,7 +481,10 @@ def run_sensitive_value_scan(
         "status": "pass" if not findings else "fail",
         "scan_roots": list(scan_roots),
         "excluded_paths": sorted(excluded),
-        "detectors": ["secret_assignment", *[name for name, _ in TOKEN_LITERAL_PATTERNS]],
+        "detectors": [
+            "secret_assignment",
+            *[name for name, _ in TOKEN_LITERAL_PATTERNS],
+        ],
         "findings": findings,
     }
 
@@ -364,10 +503,12 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
     )
     if args.dry_run:
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "status": "dry_run",
             "root": str(root),
-            "commands": [{"name": step.name, "command": step.command} for step in command_steps],
+            "commands": [
+                {"name": step.name, "command": step.command} for step in command_steps
+            ],
             "portability_scan": not args.skip_portability_scan,
             "sensitive_value_scan": not args.skip_sensitive_value_scan,
         }
@@ -380,7 +521,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         results.append(run_sensitive_value_scan(root))
     status = "pass" if all(result["status"] == "pass" for result in results) else "fail"
     return {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "status": status,
         "root": str(root),
         "results": results,
@@ -388,7 +529,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Experimental Assistant v0.9.6 public-release smoke checks.")
+    parser = argparse.ArgumentParser(
+        description="Run Experimental Assistant v0.9.7 public-release smoke checks."
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--quick-validate", type=Path)

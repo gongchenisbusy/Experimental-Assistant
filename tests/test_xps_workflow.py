@@ -2509,9 +2509,9 @@ def test_xps_docs_and_skill_references_are_discoverable() -> None:
     root = Path.cwd()
 
     readme = (root / "README.md").read_text(encoding="utf-8")
-    skill = (root / "skills" / "ea-v0-2" / "SKILL.md").read_text(encoding="utf-8")
-    cli_index = (root / "skills" / "ea-v0-2" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
-    xps_reference = root / "skills" / "ea-v0-2" / "references" / "xps-workflow.md"
+    skill = (root / "skills" / "ea" / "SKILL.md").read_text(encoding="utf-8")
+    cli_index = (root / "skills" / "ea" / "references" / "cli-command-index.md").read_text(encoding="utf-8")
+    xps_reference = root / "skills" / "ea" / "references" / "xps-workflow.md"
     registry = read_yaml(root / "skill-registry" / "index.yml")
 
     assert "ea xps inspect" in readme

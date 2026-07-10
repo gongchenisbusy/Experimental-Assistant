@@ -1,0 +1,154 @@
+schema_version: "0.9.7"
+source: "experimental_assistant.routing_index:v0.9.7"
+purpose: >
+  Route EA tasks to the smallest useful reference set. Read this file when the
+  user request is non-trivial and the next workflow route is not obvious from
+  the top-level SKILL.md.
+principles:
+  - Keep the top-level skill as a router, not a command manual.
+  - Load method-specific references only for the method being used.
+  - Prefer compact project state and indices before opening large reports, trace graphs, or generated artifacts.
+  - Full reports, full trace exports, detailed release checklists, and long command catalogues remain available by explicit request.
+routes:
+  project_start_or_continue:
+    triggers:
+      - initialize a new EA project
+      - continue or resume an existing EA project
+      - inspect project status before choosing work
+    required_refs:
+      - references/project-workflow.md
+      - references/public-initialization.md
+      - references/project-working-memory.md
+    optional_refs:
+      - references/interaction-modes.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - full reports
+      - full trace exports
+      - raw data files
+  experiment_log_or_review:
+    triggers:
+      - create or update experiment/sample/progress records
+      - add, promote, or inspect ReviewRecords
+      - clarify confirmation state
+    required_refs:
+      - references/project-workflow.md
+      - references/interaction-modes.md
+    optional_refs:
+      - references/memory-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - method-specific processing references unless a method is named
+      - full project trace graphs
+  method_analysis:
+    triggers:
+      - process or report a specific characterization method
+      - inspect raw characterization files
+      - build method source packets or review packages
+    required_refs:
+      - references/report-figure-reference-standard.md
+    choose_one_method_ref:
+      raman: references/raman-workflow.md
+      pl: references/pl-workflow.md
+      xrd: references/xrd-workflow.md
+      ftir: references/ftir-workflow.md
+      uv_vis: references/uv-vis-workflow.md
+      xps: references/xps-workflow.md
+      electrochemistry: references/electrochemistry-workflow.md
+      thermal: references/thermal-workflow.md
+      image_data: references/image-data-workflow.md
+    optional_refs:
+      - references/material-assignment-library.md
+      - references/scientific-figure-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - unrelated method workflow references
+      - full historical reports
+  literature_state:
+    triggers:
+      - set up, preflight, rank, import, or reconcile the existing literature library workflow
+      - check Zotero-Codex handoff/readiness
+    required_refs:
+      - references/local-literature-library.md
+    optional_refs:
+      - references/token-economy-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - credentials
+      - browser profiles
+      - institution login material
+      - full-text content unless the user explicitly requests a confirmed acquisition/reading workflow
+  literature_data_extraction:
+    triggers:
+      - collect a material property from multiple papers
+      - extract values and measurement conditions from searchable full text
+      - review, validate, plot, or export a literature evidence dataset
+    required_refs:
+      - references/literature-data-extraction.md
+      - references/local-literature-library.md
+    optional_refs:
+      - references/token-economy-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - reading every full paper when indexed chunks are available
+      - OCR or figure digitization without separate scope and estimate
+      - plotting unreviewed, conflicting, or not-comparable records
+      - copying private full text into reports or exports
+  report_or_export:
+    triggers:
+      - generate a report
+      - export report HTML or project bundles
+      - validate report references or figure standards
+    required_refs:
+      - references/report-figure-reference-standard.md
+      - references/export-workflow.md
+    optional_refs:
+      - references/scientific-figure-workflow.md
+      - references/token-economy-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - printing full report bodies into chat/terminal unless requested
+      - full trace graph output unless requested
+  traceability:
+    triggers:
+      - build or inspect traceability
+      - locate connected reports, figures, reviews, references, memory, provenance, or source packets
+      - prepare audit/handoff trace views
+    required_refs:
+      - references/export-workflow.md
+      - references/cli-command-index.md
+    preferred_commands:
+      - ea trace index
+      - ea trace focus
+      - ea trace view
+      - ea trace lookup
+      - ea trace export --full
+    avoid_by_default:
+      - printing full trace graphs without --json-full or explicit user request
+  memory_and_handoff:
+    triggers:
+      - refresh project working memory
+      - propose/review/commit durable scientific memory
+      - prepare handoff or project brief
+    required_refs:
+      - references/project-working-memory.md
+      - references/memory-workflow.md
+    optional_refs:
+      - references/evaluator-workflow.md
+      - references/cli-command-index.md
+    avoid_by_default:
+      - copying full reports or full trace graphs into working memory
+  release_or_install:
+    triggers:
+      - install or update EA
+      - validate package, downloaded skill, release smoke, or public GitHub handoff
+      - prepare release assets
+    required_refs:
+      - references/onboarding-workflow.md
+      - references/release-workflow.md
+    optional_refs:
+      - references/cli-command-index.md
+    avoid_by_default:
+      - developer-machine paths
+      - private keys
+      - credentials

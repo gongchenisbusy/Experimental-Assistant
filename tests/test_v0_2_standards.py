@@ -117,9 +117,9 @@ def test_v0_2_literature_defaults_and_status(tmp_path: Path) -> None:
 def test_v0_2_source_backed_policy_is_not_user_provided_only() -> None:
     design = Path("docs/EA_PROJECT_DESIGN.md").read_text(encoding="utf-8")
     report_standard = Path("docs/EA_REPORT_AND_FIGURE_STANDARD.md").read_text(encoding="utf-8")
-    skill = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
-    xps_reference = Path("skills/ea-v0-2/references/xps-workflow.md").read_text(encoding="utf-8")
-    literature_reference = Path("skills/ea-v0-2/references/local-literature-library.md").read_text(encoding="utf-8")
+    skill = Path("skills/ea/SKILL.md").read_text(encoding="utf-8")
+    xps_reference = Path("skills/ea/references/xps-workflow.md").read_text(encoding="utf-8")
+    literature_reference = Path("skills/ea/references/local-literature-library.md").read_text(encoding="utf-8")
     combined = "\n".join([design, report_standard, skill, xps_reference, literature_reference])
 
     assert "只接受用户明确给出的能量差" not in combined

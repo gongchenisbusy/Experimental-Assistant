@@ -13,8 +13,13 @@ from typing import Any, Callable, Literal
 
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
-from ea.storage.files import read_markdown_record, read_yaml, write_yaml
+from ea.storage.files import atomic_write_text, read_markdown_record, read_yaml, write_yaml
 from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.literature.handoff import (
+    READY_STATUSES,
+    normalize_acquisition_handoff,
+    render_compact_status_markdown,
+)
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
@@ -49,6 +54,11 @@ RANKING_HEADERS = [
     "citation_or_influence",
     "fulltext_availability_and_usefulness",
     "score",
+    "relevance_gate_status",
+    "material_match",
+    "application_match",
+    "matched_required_terms",
+    "missing_required_groups",
     "notes",
 ]
 
@@ -69,6 +79,8 @@ STATUS_UPDATE_FIELDS = [
     "zotero_codex_status_markdown_ref",
     "zotero_codex_sidecar_verification_ref",
     "zotero_codex_status_import_ref",
+    "external_acquisition_state_ref",
+    "acquisition_status_compact_ref",
     "sidecar_verification",
 ]
 
@@ -334,6 +346,7 @@ def generate_literature_keywords(
     experiment_type: str,
     extra_keywords: list[str] | None = None,
 ) -> dict[str, list[str]]:
+    extra_phrases = _unique([str(value).strip() for value in (extra_keywords or []) if str(value).strip()])
     exact_terms = _unique(
         [
             material_system.strip(),
@@ -341,7 +354,7 @@ def generate_literature_keywords(
             research_direction.strip(),
             experiment_type.strip(),
         ]
-        + (extra_keywords or [])
+        + extra_phrases
     )
     text = " ".join(exact_terms)
     method_terms = []
@@ -352,6 +365,11 @@ def generate_literature_keywords(
     topic_tokens = _unique(_tokenize(f"{project_name} {research_direction} {experiment_type}"))
     return {
         "exact_terms": exact_terms,
+        "confirmed_phrases": _unique([material_system.strip(), *extra_phrases]),
+        "material_phrases": _unique([material_system.strip()]),
+        "application_phrases": _unique([research_direction.strip(), *extra_phrases]),
+        "research_direction_terms": _unique(_tokenize(research_direction)),
+        "experiment_terms": _unique(_tokenize(experiment_type)),
         "material_terms": material_tokens,
         "method_terms": _unique(method_terms),
         "topic_terms": topic_tokens[:20],
@@ -359,35 +377,55 @@ def generate_literature_keywords(
 
 
 def build_search_queries(keywords: dict[str, list[str]]) -> list[dict[str, Any]]:
-    material = keywords.get("material_terms") or keywords.get("exact_terms") or ["material"]
+    material_phrases = keywords.get("material_phrases") or keywords.get("material_terms") or ["material"]
+    confirmed_phrases = keywords.get("confirmed_phrases") or material_phrases
+    application_phrases = keywords.get("application_phrases") or []
     methods = keywords.get("method_terms") or ["characterization"]
     topics = keywords.get("topic_terms") or []
-    core_material = material[0]
-    queries = [
+    immutable_clauses = _unique([phrase.strip() for phrase in confirmed_phrases if phrase.strip()])
+    rendered_clauses = [f'"{phrase}"' if " " in phrase else phrase for phrase in immutable_clauses]
+    base_query = " ".join(rendered_clauses) or "material"
+    provenance = [
         {
-            "query_id": "q-core-review",
-            "query": f"{core_material} review synthesis characterization properties",
-            "purpose": "broad project background and review coverage",
-            "sources": SEARCH_SOURCES,
+            "phrase": phrase,
+            "source": "material_system" if phrase in material_phrases else "user_confirmed_extra_keyword",
+            "immutable": True,
         }
+        for phrase in immutable_clauses
+    ]
+
+    def record(query_id: str, suffix: str, purpose: str) -> dict[str, Any]:
+        return {
+            "query_id": query_id,
+            "query": " ".join([base_query, suffix]).strip(),
+            "purpose": purpose,
+            "sources": SEARCH_SOURCES,
+            "immutable_clauses": immutable_clauses,
+            "query_provenance": provenance,
+            "must_match": {
+                "material": material_phrases,
+                "application_or_property": application_phrases,
+            },
+        }
+
+    queries = [
+        record("q-core-review", "review synthesis characterization properties", "broad project background and review coverage")
     ]
     for method in methods[:6]:
         queries.append(
-            {
-                "query_id": f"q-method-{method.lower().replace(' ', '-')}",
-                "query": f"{core_material} {method} analysis peak assignment mechanism",
-                "purpose": f"method-specific literature for {method}",
-                "sources": SEARCH_SOURCES,
-            }
+            record(
+                f"q-method-{method.lower().replace(' ', '-')}",
+                f"{method} analysis peak assignment mechanism",
+                f"method-specific literature for {method}",
+            )
         )
     if topics:
         queries.append(
-            {
-                "query_id": "q-project-specific",
-                "query": " ".join(_unique([core_material] + topics[:8])),
-                "purpose": "project-specific synthesis, substrate, and performance context",
-                "sources": SEARCH_SOURCES,
-            }
+            record(
+                "q-project-specific",
+                " ".join(_unique(topics[:8])),
+                "project-specific synthesis, substrate, and performance context",
+            )
         )
     return queries
 
@@ -753,7 +791,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use Experimental Assistant v0.9.6 literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Use Experimental Assistant v0.9.7 literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -820,10 +858,49 @@ def _load_acquisition_candidates(root: Path, selected_top_n: int) -> tuple[str, 
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(_compact_dict(row), ensure_ascii=False, sort_keys=True) + "\n")
+    content = "".join(json.dumps(_compact_dict(row), ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    atomic_write_text(path, content)
+
+
+def _acquisition_identity(candidate: dict[str, Any]) -> str:
+    doi = _as_text(candidate.get("doi")).strip().lower()
+    doi = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", doi).rstrip("./")
+    if doi:
+        return f"doi:{doi}"
+    url = _as_text(candidate.get("url")).strip().lower()
+    if url:
+        parsed = urllib.parse.urlsplit(url)
+        return f"url:{urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip('/'), '', ''))}"
+    title = _normalized_title(candidate.get("title"))
+    return f"title:{title}" if title else ""
+
+
+def _deduplicate_acquisition_targets(candidates: list[dict[str, Any]], *, project_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    targets: list[dict[str, Any]] = []
+    duplicates: list[dict[str, Any]] = []
+    seen: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        identity = _acquisition_identity(candidate)
+        if identity and identity in seen:
+            parent = seen[identity]
+            duplicate_id = candidate.get("candidate_id") or candidate.get("id")
+            parent.setdefault("duplicate_source_candidate_ids", [])
+            if duplicate_id and duplicate_id not in parent["duplicate_source_candidate_ids"]:
+                parent["duplicate_source_candidate_ids"].append(duplicate_id)
+            duplicates.append(
+                {
+                    "identity": identity,
+                    "kept_source_candidate_id": parent.get("source_candidate_id"),
+                    "duplicate_source_candidate_id": duplicate_id,
+                    "reason": "same_normalized_acquisition_identity",
+                }
+            )
+            continue
+        target = _target_from_candidate(candidate, index=len(targets) + 1, project_id=project_id)
+        targets.append(target)
+        if identity:
+            seen[identity] = target
+    return targets, duplicates
 
 
 def _target_from_candidate(candidate: dict[str, Any], *, index: int, project_id: str) -> dict[str, Any]:
@@ -883,10 +960,7 @@ def prepare_literature_acquisition_request(
         )
 
     candidate_source, candidates = _load_acquisition_candidates(root, int(selected_top_n))
-    targets = [
-        _target_from_candidate(candidate, index=index, project_id=project_id)
-        for index, candidate in enumerate(candidates, start=1)
-    ]
+    targets, duplicate_targets = _deduplicate_acquisition_targets(candidates, project_id=project_id)
     request_path = literature_root / "acquisition_request.yml"
     query_manifest_path = literature_root / "zotero_codex_queries.jsonl"
     target_manifest_path = literature_root / "zotero_codex_targets.jsonl"
@@ -896,7 +970,7 @@ def prepare_literature_acquisition_request(
 
     target_status = "ready_for_batch_acquisition" if targets else "awaiting_search_results"
     request = {
-        "schema_version": "0.2",
+        "schema_version": "1.0",
         "request_id": request_id,
         "project_id": project_id,
         "created_at": created_at,
@@ -906,6 +980,9 @@ def prepare_literature_acquisition_request(
         "target_source": candidate_source,
         "query_count": len(query_rows),
         "target_count": len(targets),
+        "input_candidate_count": len(candidates),
+        "duplicate_target_count": len(duplicate_targets),
+        "duplicate_targets": duplicate_targets,
         "query_manifest_ref": _project_relative(root, query_manifest_path),
         "target_manifest_ref": _project_relative(root, target_manifest_path),
         "batch_status_ref": _project_relative(root, batch_status_path),
@@ -1601,41 +1678,23 @@ def import_zotero_codex_batch_status(
     sync: bool = True,
 ) -> dict[str, Any]:
     literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
     status_path = literature_root / "deployment_status.yml"
-    if not status_path.exists():
-        raise FileNotFoundError(status_path)
     imported_at = imported_at or EARecord.now_iso()
     batch_status_path = batch_status_path or Path("literature/zotero_codex_batch_status.json")
     resolved_batch_status = _resolve_project_path(root, batch_status_path)
     batch_payload = _load_manifest(resolved_batch_status)
     if not isinstance(batch_payload, dict):
         raise ValueError("Zotero-Codex batch status must be a JSON/YAML object")
-    items = _zotero_codex_items(batch_payload)
-    project_status = read_yaml(status_path)
+    project_status = read_yaml(status_path) if status_path.exists() else {}
     project_id = str(project_status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
-
-    success_items: list[dict[str, Any]] = []
-    login_items: list[dict[str, Any]] = []
-    blocked_items: list[dict[str, Any]] = []
-    downloaded_fulltext = 0
-    cached_fulltext = 0
-    for item in items:
-        status_key = _zotero_codex_item_status(item)
-        compact = _zotero_codex_item_ref(item)
-        has_pdf = any(item.get(key) for key in ("local_path", "pdf_path", "attachment_path", "pdf"))
-        has_cache = any(item.get(key) for key in ("cache_path", "cache_dir", "cached_path"))
-        if status_key in ZOTERO_CODEX_LOGIN_STATUSES:
-            login_items.append(compact)
-            continue
-        if status_key in ZOTERO_CODEX_BLOCKED_STATUSES:
-            blocked_items.append(compact)
-            continue
-        if status_key in ZOTERO_CODEX_SUCCESS_STATUSES or has_pdf or has_cache or item.get("zotero_item_key"):
-            success_items.append(compact)
-        if status_key in ZOTERO_CODEX_SUCCESS_STATUSES or has_pdf or has_cache:
-            downloaded_fulltext += 1
-        if status_key in ZOTERO_CODEX_CACHE_STATUSES or has_cache:
-            cached_fulltext += 1
+    handoff_state = normalize_acquisition_handoff(batch_payload, updated_at=imported_at)
+    handoff_targets = handoff_state["targets"]
+    success_items = [item for item in handoff_targets if item["status"] in READY_STATUSES]
+    login_items = [item for item in handoff_targets if item["status"] == "needs_login"]
+    blocked_items = [item for item in handoff_targets if item["status"] not in READY_STATUSES | {"needs_login"}]
+    downloaded_fulltext = len(success_items)
+    cached_fulltext = sum(item["status"] == "cache_verified" or bool(item.get("cache_dir")) for item in success_items)
 
     sidecar_payload: dict[str, Any] = {}
     sidecar_ref = None
@@ -1645,23 +1704,22 @@ def import_zotero_codex_batch_status(
         sidecar_ref = _project_relative(root, resolved_sidecar)
         sidecar_status = _as_text(sidecar_payload.get("status")).lower()
         if sidecar_status and sidecar_status not in {"pass", "ok", "success"}:
-            blocked_items.append(
-                _compact_dict(
-                    {
-                        "title": "Zotero-Codex sidecar verification",
-                        "status": sidecar_payload.get("status"),
-                        "reason": "sidecar_verification_failed",
-                        "source_ref": sidecar_ref,
-                    }
-                )
-            )
+            sidecar_blocker = {
+                "title": "Zotero-Codex sidecar verification",
+                "status": "blocked",
+                "blocked_reason": "sidecar_verification_failed",
+                "source_ref": sidecar_ref,
+                "next_action": "Repair or regenerate the sidecar, then import the status again.",
+            }
+            blocked_items.append(sidecar_blocker)
+            handoff_state["current_task_blockers"].append(sidecar_blocker)
 
     status_markdown_ref = None
     if status_markdown_path:
         resolved_markdown = _resolve_project_path(root, status_markdown_path)
         status_markdown_ref = _project_relative(root, resolved_markdown)
 
-    total = _safe_int(batch_payload.get("target_count") or batch_payload.get("item_count"), len(items))
+    total = _safe_int(batch_payload.get("target_count") or batch_payload.get("item_count"), len(handoff_targets))
     status_value = _status_from_zotero_counts(total, len(success_items), len(login_items), len(blocked_items))
     summary = (
         f"Zotero-Codex status import saw {total} target(s): "
@@ -1671,8 +1729,11 @@ def import_zotero_codex_batch_status(
     )
     status_import_path = literature_root / "zotero_codex_status_import.yml"
     update_path = literature_root / "acquisition_status_update.yml"
+    external_state_path = literature_root / "external_acquisition_state.yml"
+    compact_status_path = literature_root / "acquisition_status_compact.md"
     status_import = {
         "schema_version": "0.2",
+        "handoff_schema_version": handoff_state["schema_version"],
         "project_id": project_id,
         "imported_at": imported_at,
         "status": status_value,
@@ -1691,6 +1752,11 @@ def import_zotero_codex_batch_status(
             "needs_user_login": login_items,
             "blocked": blocked_items,
         },
+        "external_acquisition_state_ref": "literature/external_acquisition_state.yml",
+        "acquisition_status_compact_ref": "literature/acquisition_status_compact.md",
+        "current_task_blockers": handoff_state["current_task_blockers"],
+        "optional_capabilities": handoff_state["optional_capabilities"],
+        "stale_global_state": handoff_state["stale_global_state"],
         "boundaries": [
             "This import reads Zotero-Codex status artifacts only.",
             "No Zotero scripts, browser automation, DOI resolution, PDF download, credential handling, or full-text parsing is executed by EA.",
@@ -1710,19 +1776,33 @@ def import_zotero_codex_batch_status(
         "zotero_codex_status_markdown_ref": status_markdown_ref,
         "zotero_codex_sidecar_verification_ref": sidecar_ref,
         "zotero_codex_status_import_ref": "literature/zotero_codex_status_import.yml",
+        "external_acquisition_state_ref": "literature/external_acquisition_state.yml",
+        "acquisition_status_compact_ref": "literature/acquisition_status_compact.md",
         "sidecar_verification": status_import["sidecar_verification"],
     }
+    write_yaml(external_state_path, handoff_state)
+    atomic_write_text(compact_status_path, render_compact_status_markdown(handoff_state))
     write_yaml(status_import_path, status_import)
     write_yaml(update_path, update)
-    sync_result = (
-        sync_literature_acquisition_status(root, update_path=Path("literature/acquisition_status_update.yml"), synced_at=imported_at)
-        if sync
-        else None
-    )
+    sync_result = None
+    if sync and status_path.exists():
+        sync_result = sync_literature_acquisition_status(
+            root,
+            update_path=Path("literature/acquisition_status_update.yml"),
+            synced_at=imported_at,
+        )
+    elif sync:
+        sync_result = {
+            "status": "external_state_recorded_without_local_literature_deployment",
+            "external_acquisition_state_ref": "literature/external_acquisition_state.yml",
+        }
     return {
         "batch_status_path": str(resolved_batch_status),
         "status_import_path": str(status_import_path),
         "status_update_path": str(update_path),
+        "external_acquisition_state_path": str(external_state_path),
+        "compact_status_path": str(compact_status_path),
+        "external_acquisition_state": handoff_state,
         "status_import": status_import,
         "status_update": update,
         "sync": sync_result,
@@ -1744,6 +1824,8 @@ def _standard_literature_refs(root: Path) -> dict[str, Path]:
         "institution_access_guidance": literature_root / "institution_access_guidance.yml",
         "zotero_codex_bridge": literature_root / "zotero_codex_bridge.yml",
         "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
+        "external_acquisition_state": literature_root / "external_acquisition_state.yml",
+        "acquisition_status_compact": literature_root / "acquisition_status_compact.md",
         "acquisition_manifest": literature_root / "acquisition_manifest.yml",
         "library_manifest": literature_root / "library_manifest.yml",
         "cache_index": literature_root / "cache_index.yml",
@@ -2161,6 +2243,23 @@ def _zotero_readiness_markdown(readiness: dict[str, Any]) -> str:
         lines.append("- none")
     lines.extend(["", "## Next Actions", ""])
     lines.extend(_markdown_bullets(readiness.get("next_actions") or []))
+    for key, title in (
+        ("current_task_blockers", "Current Task Blockers"),
+        ("optional_capabilities", "Optional Capabilities"),
+        ("stale_global_state", "Stale Global State"),
+    ):
+        lines.extend(["", f"## {title}", ""])
+        values = readiness.get(key) or []
+        if not values:
+            lines.append("- none")
+        else:
+            for item in values:
+                if isinstance(item, dict):
+                    label = item.get("target_id") or item.get("code") or item.get("status") or "item"
+                    detail = item.get("blocked_reason") or item.get("summary") or item.get("next_action") or "see local state"
+                    lines.append(f"- `{label}`: {detail}")
+                else:
+                    lines.append(f"- {_markdown_value(item)}")
     degraded = readiness.get("no_zotero_degraded_mode") or {}
     lines.extend(
         [
@@ -2188,7 +2287,14 @@ def _zotero_readiness_status(
     status_import: dict[str, Any],
     acquisition_manifest: dict[str, Any],
     reconciliation: dict[str, Any],
+    external_state: dict[str, Any],
 ) -> str:
+    if external_state:
+        external_summary = external_state.get("summary") or {}
+        if _safe_int(external_summary.get("ready_count"), 0):
+            if external_state.get("current_task_blockers"):
+                return "external_cache_used_with_attention"
+            return "external_cache_used"
     if not deployment_status:
         return "needs_literature_status"
     if not request:
@@ -2245,6 +2351,7 @@ def summarize_zotero_codex_readiness(
     status_import = _local_yaml_or_json(paths["zotero_codex_status_import"])
     acquisition_manifest = _local_yaml_or_json(paths["acquisition_manifest"])
     reconciliation = _local_yaml_or_json(paths["acquisition_reconciliation"])
+    external_state = _local_yaml_or_json(paths["external_acquisition_state"])
     bridge_settings = bridge.get("settings") if isinstance(bridge.get("settings"), dict) else {}
     request_contract = request.get("zotero_codex_contract") if isinstance(request.get("zotero_codex_contract"), dict) else {}
     bridge_commands = bridge.get("commands") if isinstance(bridge.get("commands"), dict) else {}
@@ -2256,8 +2363,14 @@ def summarize_zotero_codex_readiness(
         status_import=status_import,
         acquisition_manifest=acquisition_manifest,
         reconciliation=reconciliation,
+        external_state=external_state,
     )
-    target_count = _safe_int(request.get("target_count") or bridge.get("target_count"), 0)
+    target_count = _safe_int(
+        request.get("target_count")
+        or bridge.get("target_count")
+        or (external_state.get("summary") or {}).get("target_count"),
+        0,
+    )
     next_actions_by_status = {
         "needs_literature_status": [
             "Run `ea literature status /path/to/ea-project` or initialize the project with `--enable-literature`.",
@@ -2298,6 +2411,14 @@ def summarize_zotero_codex_readiness(
         "zotero_codex_status_imported": [
             "If acquisition is complete, import the acquisition manifest or run reconciliation; otherwise continue the dedicated workflow.",
         ],
+        "external_cache_used": [
+            "Continue with evidence indexing or data extraction from the verified external cache.",
+            "Enable the EA local literature library only if project-local reference management is also needed.",
+        ],
+        "external_cache_used_with_attention": [
+            "Continue with already acquired targets and review only the current-task blockers in the compact acquisition table.",
+            "Use lawful login, subscription, or manual PDF handoff paths for the remaining targets.",
+        ],
     }
     next_actions = [item for item in next_actions_by_status.get(readiness_status, []) if item]
     evidence_refs = _existing_refs(
@@ -2308,6 +2429,8 @@ def summarize_zotero_codex_readiness(
             paths["zotero_codex_bridge"],
             literature_root / "zotero_codex_settings_request.yml",
             paths["zotero_codex_status_import"],
+            paths["external_acquisition_state"],
+            paths["acquisition_status_compact"],
             paths["acquisition_manifest"],
             paths["library_manifest"],
             paths["cache_index"],
@@ -2329,7 +2452,7 @@ def summarize_zotero_codex_readiness(
         ],
     }
     readiness = {
-        "schema_version": "0.2",
+        "schema_version": "1.0",
         "readiness_id": f"lit-zotero-readiness-{_timestamp_key(checked_at)}",
         "project_id": str(deployment_status.get("project_id") or request.get("project_id") or bridge.get("project_id") or project_id),
         "checked_at": checked_at,
@@ -2346,7 +2469,12 @@ def summarize_zotero_codex_readiness(
             "downloaded_fulltext": status_import.get("downloaded_fulltext", deployment_status.get("downloaded_fulltext", 0)),
             "cached_fulltext": status_import.get("cached_fulltext", deployment_status.get("cached_fulltext", 0)),
             "reconciliation_status": reconciliation.get("status"),
+            "external_cache_used": bool(_safe_int((external_state.get("summary") or {}).get("ready_count"), 0)),
+            "external_ready_count": (external_state.get("summary") or {}).get("ready_count", 0),
         },
+        "current_task_blockers": external_state.get("current_task_blockers") or status_import.get("current_task_blockers") or [],
+        "optional_capabilities": external_state.get("optional_capabilities") or [],
+        "stale_global_state": external_state.get("stale_global_state") or [],
         "evidence_refs": evidence_refs,
         "required_user_inputs": bridge.get("required_user_inputs") or [],
         "zotero_codex_contract": _compact_dict(
@@ -2386,7 +2514,7 @@ def summarize_zotero_codex_readiness(
     }
     if write_report:
         write_yaml(output_path, readiness)
-        markdown_path.write_text(_zotero_readiness_markdown(readiness), encoding="utf-8")
+        atomic_write_text(markdown_path, _zotero_readiness_markdown(readiness))
         status_path = paths["deployment_status"]
         if status_path.exists():
             deployment_status.update(
@@ -2851,7 +2979,7 @@ def render_literature_acquisition_reconciliation(
         write_yaml(reconciliation_path, updated_reconciliation)
 
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
-    markdown_path.write_text(_reconciliation_markdown(updated_reconciliation), encoding="utf-8")
+    atomic_write_text(markdown_path, _reconciliation_markdown(updated_reconciliation))
 
     status_path = literature_root / "deployment_status.yml"
     status: dict[str, Any] | None = None
@@ -2884,15 +3012,15 @@ def reconcile_literature_acquisition(
     reconciled_at: str | None = None,
 ) -> dict[str, Any]:
     literature_root = root / "literature"
+    literature_root.mkdir(parents=True, exist_ok=True)
     status_path = literature_root / "deployment_status.yml"
-    if not status_path.exists():
-        raise FileNotFoundError(status_path)
     reconciled_at = reconciled_at or EARecord.now_iso()
-    status = read_yaml(status_path)
+    status = read_yaml(status_path) if status_path.exists() else {}
     project_id = str(status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
     artifact_paths = {
         "acquisition_manifest": literature_root / "acquisition_manifest.yml",
         "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
+        "external_acquisition_state": literature_root / "external_acquisition_state.yml",
         "library_manifest": literature_root / "library_manifest.yml",
         "cache_index": literature_root / "cache_index.yml",
         "reference_index": literature_root / "references" / "index.yml",
@@ -2906,7 +3034,7 @@ def reconcile_literature_acquisition(
         if path.exists():
             artifacts[name] = _load_manifest(path)
             refs[name] = _project_relative(root, path)
-        elif name in {"acquisition_manifest", "zotero_codex_status_import", "library_manifest", "cache_index", "reference_index"}:
+        elif name in {"acquisition_manifest", "zotero_codex_status_import", "external_acquisition_state", "library_manifest", "cache_index", "reference_index"}:
             _reconciliation_finding(
                 findings,
                 severity="warning",
@@ -2915,12 +3043,12 @@ def reconcile_literature_acquisition(
                 details={"expected_ref": _project_relative(root, path)},
             )
 
-    if not any(name in artifacts for name in ("acquisition_manifest", "zotero_codex_status_import", "library_manifest")):
+    if not any(name in artifacts for name in ("acquisition_manifest", "zotero_codex_status_import", "external_acquisition_state", "library_manifest")):
         _reconciliation_finding(
             findings,
             severity="error",
             code="missing_reconciliation_sources",
-            message="No acquisition manifest, Zotero-Codex status import, or library manifest is available to reconcile.",
+            message="No acquisition manifest, external acquisition state, Zotero-Codex status import, or library manifest is available to reconcile.",
         )
 
     manifest_items = _manifest_items(artifacts.get("acquisition_manifest", {})) if "acquisition_manifest" in artifacts else []
@@ -2931,6 +3059,9 @@ def reconcile_literature_acquisition(
     references = (artifacts.get("reference_index", {}).get("references") or {}) if "reference_index" in artifacts else {}
     status_import = artifacts.get("zotero_codex_status_import", {})
     status_items = _status_import_items(status_import)
+    external_state = artifacts.get("external_acquisition_state", {})
+    if not status_items:
+        status_items = [item for item in external_state.get("targets") or [] if isinstance(item, dict)]
     origin_sync = artifacts.get("origin_thread_sync", {})
 
     declared_library_count = library.get("item_count")
@@ -3032,7 +3163,7 @@ def reconcile_literature_acquisition(
     repair_actions = _reconciliation_repair_actions(findings)
     questions_for_user = _reconciliation_questions_for_user(findings)
     reconciliation = {
-        "schema_version": "0.2",
+        "schema_version": "1.0",
         "project_id": project_id,
         "reconciled_at": reconciled_at,
         "status": reconciliation_status,
@@ -3047,6 +3178,8 @@ def reconcile_literature_acquisition(
             "cached_count": actual_cache_count,
             "reference_count": len(reference_ids),
             "zotero_status_items": len(status_items),
+            "external_cache_used": bool((external_state.get("summary") or {}).get("ready_count")),
+            "external_ready_count": (external_state.get("summary") or {}).get("ready_count", 0),
         },
         "source_refs": refs,
         "findings": findings,
@@ -3061,22 +3194,23 @@ def reconcile_literature_acquisition(
     reconciliation_path = literature_root / "acquisition_reconciliation.yml"
     markdown_path = literature_root / "acquisition_reconciliation.md"
     write_yaml(reconciliation_path, reconciliation)
-    markdown_path.write_text(_reconciliation_markdown(reconciliation), encoding="utf-8")
-    status.update(
-        {
-            "acquisition_reconciliation_ref": "literature/acquisition_reconciliation.yml",
-            "acquisition_reconciliation_markdown_ref": "literature/acquisition_reconciliation.md",
-            "acquisition_reconciliation_status": reconciliation_status,
-            "last_acquisition_reconciliation_at": reconciled_at,
-        }
-    )
-    write_yaml(status_path, status)
+    atomic_write_text(markdown_path, _reconciliation_markdown(reconciliation))
+    if status_path.exists():
+        status.update(
+            {
+                "acquisition_reconciliation_ref": "literature/acquisition_reconciliation.yml",
+                "acquisition_reconciliation_markdown_ref": "literature/acquisition_reconciliation.md",
+                "acquisition_reconciliation_status": reconciliation_status,
+                "last_acquisition_reconciliation_at": reconciled_at,
+            }
+        )
+        write_yaml(status_path, status)
     return {
         "reconciliation_path": str(reconciliation_path),
         "markdown_path": str(markdown_path),
-        "status_path": str(status_path),
+        "status_path": str(status_path) if status_path.exists() else None,
         "reconciliation": reconciliation,
-        "status": status,
+        "status": status or None,
     }
 
 
@@ -3666,6 +3800,127 @@ def _candidate_body(candidate: dict[str, Any]) -> str:
     return " ".join(_as_text(field) for field in fields).lower()
 
 
+RELEVANCE_STOP_TERMS = {
+    "a",
+    "an",
+    "and",
+    "for",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "analysis",
+    "candidate",
+    "characterization",
+    "literature",
+    "materials",
+    "metadata",
+    "project",
+    "properties",
+    "public",
+    "ranking",
+    "research",
+    "search",
+    "study",
+}
+
+MATERIAL_GENERIC_TERMS = {
+    "2d",
+    "composite",
+    "dimensional",
+    "layer",
+    "material",
+    "materials",
+    "single",
+    "system",
+    "two",
+}
+
+
+def _phrase_matches(body: str, phrase: str) -> bool:
+    normalized_body = _normalized_title(body)
+    normalized_phrase = _normalized_title(phrase)
+    if not normalized_phrase:
+        return False
+    if normalized_phrase in normalized_body:
+        return True
+    tokens = [token for token in _tokenize(normalized_phrase) if token not in RELEVANCE_STOP_TERMS]
+    body_tokens = set(_tokenize(normalized_body))
+    return bool(tokens) and all(token in body_tokens for token in tokens)
+
+
+def _material_phrase_matches(body: str, phrase: str) -> bool:
+    normalized_body = _normalized_title(body)
+    normalized_phrase = _normalized_title(phrase)
+    if normalized_phrase and normalized_phrase in normalized_body:
+        return True
+    tokens = [token for token in _tokenize(normalized_phrase) if token not in MATERIAL_GENERIC_TERMS]
+    if not tokens:
+        tokens = _tokenize(normalized_phrase)
+    matched = sum(1 for token in tokens if token in normalized_body)
+    required = max(1, (len(tokens) + 1) // 2)
+    return matched >= required
+
+
+def _relevance_requirements(root: Path, extra_keywords: list[str] | None) -> dict[str, list[str]]:
+    project = _project_context(root)
+    keywords = generate_literature_keywords(
+        project_name=str(project.get("project_name", "")),
+        research_direction=str(project.get("research_direction", "")),
+        material_system=str(project.get("material_system", "")),
+        experiment_type=str(project.get("experiment_type", "")),
+        extra_keywords=extra_keywords,
+    )
+    material = keywords.get("material_phrases") or keywords.get("material_terms") or []
+    if extra_keywords:
+        application = _unique([str(value).strip() for value in extra_keywords if str(value).strip()])
+    else:
+        material_tokens = set(_tokenize(" ".join(material)))
+        method_tokens = set(keywords.get("method_terms") or [])
+        application = [
+            token
+            for token in [*(keywords.get("research_direction_terms") or []), *(keywords.get("experiment_terms") or [])]
+            if token not in RELEVANCE_STOP_TERMS and token not in material_tokens and token not in method_tokens
+        ][:12]
+    return {
+        "material": _unique(material),
+        "application_or_property": _unique(application),
+        "exclusions": [],
+    }
+
+
+def _candidate_relevance_gate(candidate: dict[str, Any], requirements: dict[str, list[str]]) -> dict[str, Any]:
+    body = _candidate_body(candidate)
+    material_terms = requirements.get("material") or []
+    application_terms = requirements.get("application_or_property") or []
+    exclusion_terms = requirements.get("exclusions") or []
+    matched_material = [term for term in material_terms if _material_phrase_matches(body, term)]
+    matched_application = [term for term in application_terms if _phrase_matches(body, term)]
+    matched_exclusions = [term for term in exclusion_terms if _phrase_matches(body, term)]
+    material_match = not material_terms or bool(matched_material)
+    application_match = not application_terms or bool(matched_application)
+    exclusion_match = bool(matched_exclusions)
+    missing = []
+    if not material_match:
+        missing.append("material")
+    if not application_match:
+        missing.append("application_or_property")
+    if exclusion_match:
+        missing.append("exclusion_triggered")
+    passed = material_match and application_match and not exclusion_match
+    return {
+        "status": "pass" if passed else "fail",
+        "material_match": material_match,
+        "application_match": application_match,
+        "matched_required_terms": _unique([*matched_material, *matched_application]),
+        "matched_exclusion_terms": matched_exclusions,
+        "missing_required_groups": missing,
+        "requirements": requirements,
+    }
+
+
 def _score_relevance(candidate: dict[str, Any], project_terms: list[str]) -> float:
     supplied = _score_component(candidate.get("project_relevance") or candidate.get("relevance_score") or candidate.get("relevance"))
     if supplied is not None:
@@ -3792,7 +4047,14 @@ def _score_candidate(candidate: dict[str, Any], *, project_terms: list[str], ref
     }
 
 
-def _candidate_record(candidate: dict[str, Any], *, candidate_id: str, scores: dict[str, float], notes: str) -> dict[str, Any]:
+def _candidate_record(
+    candidate: dict[str, Any],
+    *,
+    candidate_id: str,
+    scores: dict[str, float],
+    relevance_gate: dict[str, Any],
+    notes: str,
+) -> dict[str, Any]:
     return {
         "candidate_id": candidate_id,
         "title": candidate.get("title"),
@@ -3807,6 +4069,11 @@ def _candidate_record(candidate: dict[str, Any], *, candidate_id: str, scores: d
         "citation_or_influence": scores["citation_or_influence"],
         "fulltext_availability_and_usefulness": scores["fulltext_availability_and_usefulness"],
         "score": scores["score"],
+        "relevance_gate_status": relevance_gate["status"],
+        "material_match": relevance_gate["material_match"],
+        "application_match": relevance_gate["application_match"],
+        "matched_required_terms": "; ".join(relevance_gate["matched_required_terms"]),
+        "missing_required_groups": "; ".join(relevance_gate["missing_required_groups"]),
         "notes": notes,
     }
 
@@ -3838,11 +4105,14 @@ def rank_literature_candidates(
 
     reference_year = _reference_year(reference_year)
     project_terms = _project_ranking_terms(root, extra_keywords=extra_keywords)
+    relevance_requirements = _relevance_requirements(root, extra_keywords)
     source_label = source_label or resolved_path.name
     ranked_at = ranked_at or EARecord.now_iso()
     candidate_rows: list[dict[str, Any]] = []
     best_by_key: dict[str, dict[str, Any]] = {}
     duplicate_count = 0
+    rejected_count = 0
+    seen_keys: set[str] = set()
 
     for raw_index, raw in enumerate(raw_candidates, start=1):
         candidate = dict(raw)
@@ -3853,6 +4123,7 @@ def rank_literature_candidates(
         if not (title or doi or url):
             continue
         scores = _score_candidate(candidate, project_terms=project_terms, reference_year=reference_year)
+        relevance_gate = _candidate_relevance_gate(candidate, relevance_requirements)
         notes = _as_text(candidate.get("notes"))
         source_id = candidate.get("candidate_id") or candidate.get("id")
         if source_id:
@@ -3862,7 +4133,13 @@ def rank_literature_candidates(
                 "Ranked from supplied or public-search candidate metadata; venue authority uses supplied/verified "
                 "fields or transparent proxy heuristics; impact factors are not invented."
             )
-        record = _candidate_record(candidate, candidate_id=f"cand-raw-{raw_index:03d}", scores=scores, notes=notes)
+        record = _candidate_record(
+            candidate,
+            candidate_id=f"cand-raw-{raw_index:03d}",
+            scores=scores,
+            relevance_gate=relevance_gate,
+            notes=notes,
+        )
         candidate_rows.append(
             {
                 "candidate_id": record["candidate_id"],
@@ -3875,16 +4152,23 @@ def rank_literature_candidates(
                 "source": candidate.get("source") or source_label,
                 "abstract": candidate.get("abstract"),
                 "keywords": _as_text(candidate.get("keywords")),
+                "relevance_gate_status": relevance_gate["status"],
+                "material_match": relevance_gate["material_match"],
+                "application_match": relevance_gate["application_match"],
+                "matched_required_terms": "; ".join(relevance_gate["matched_required_terms"]),
+                "missing_required_groups": "; ".join(relevance_gate["missing_required_groups"]),
             }
         )
         key = _candidate_dedup_key(candidate)
+        if key in seen_keys:
+            duplicate_count += 1
+        seen_keys.add(key)
+        if relevance_gate["status"] != "pass":
+            rejected_count += 1
+            continue
         existing = best_by_key.get(key)
         if existing is None or float(record["score"]) > float(existing["score"]):
-            if existing is not None:
-                duplicate_count += 1
             best_by_key[key] = record
-        else:
-            duplicate_count += 1
 
     ranked_rows = sorted(
         best_by_key.values(),
@@ -3930,7 +4214,12 @@ def rank_literature_candidates(
     ranking_path = literature_root / "ranking.csv"
     candidates_table_path = literature_root / "candidates.csv"
     selected_path = literature_root / "selected_items.yml"
-    _write_csv_rows(candidates_table_path, RANKING_HEADERS[:7] + ["source", "abstract", "keywords"], candidate_rows)
+    _write_csv_rows(
+        candidates_table_path,
+        RANKING_HEADERS[:7]
+        + ["source", "abstract", "keywords", "relevance_gate_status", "material_match", "application_match", "matched_required_terms", "missing_required_groups"],
+        candidate_rows,
+    )
     _write_csv_rows(ranking_path, RANKING_HEADERS, ranked_rows)
     write_yaml(selected_path, selected_items)
 
@@ -3940,6 +4229,7 @@ def rank_literature_candidates(
             "candidate_count": len(candidate_rows),
             "deduped_count": len(ranked_rows),
             "duplicate_candidate_count": duplicate_count,
+            "relevance_rejected_count": rejected_count,
             "ranking_ref": "literature/ranking.csv",
             "candidate_table_ref": "literature/candidates.csv",
             "selected_items_ref": "literature/selected_items.yml",
@@ -3957,6 +4247,8 @@ def rank_literature_candidates(
                     "citation_or_influence": 0.15,
                     "fulltext_availability_and_usefulness": 0.10,
                 },
+                "must_match_gate": relevance_requirements,
+                "gate_order": "must_match_before_weighted_ranking",
                 "boundaries": [
                     (
                         "Public metadata search was executed, but no Zotero call, browser automation, "
@@ -3969,6 +4261,7 @@ def rank_literature_candidates(
                         "heuristics; impact factors are used only when source-recorded and are not invented."
                     ),
                     "Scores support triage only and require user review before bulk acquisition.",
+                    "Candidates that fail required material/application terms remain in candidates.csv but cannot enter ranking, selection, or acquisition.",
                 ],
             },
             "summary_for_origin_thread": (
@@ -3992,6 +4285,7 @@ def rank_literature_candidates(
         "candidate_count": len(candidate_rows),
         "deduped_count": len(ranked_rows),
         "duplicate_candidate_count": duplicate_count,
+        "relevance_rejected_count": rejected_count,
         "selected_count": len(selected_rows),
         "selection_status": selection_status,
         "top_candidate": ranked_rows[0] if ranked_rows else None,
@@ -4003,7 +4297,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Experimental-Assistant-v0.9.6 public-metadata-search/0.9.6 (local-first research assistant)",
+            "User-Agent": "Experimental-Assistant-v0.9.7 public-metadata-search/0.9.7 (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )

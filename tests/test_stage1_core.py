@@ -22,12 +22,14 @@ def test_initialize_project_creates_required_local_workspace(tmp_path: Path) -> 
     project_frontmatter, _ = read_markdown_record(outputs["project"])
     rule_frontmatter, _ = read_markdown_record(outputs["rule_card"])
     literature_decision = read_yaml(outputs["literature_decision_open_item"])
+    project_format = read_yaml(outputs["project_format"])
 
     assert project_frontmatter["workspace_mode"] == "single_project"
     assert project_frontmatter["knowledge_global_dir"] == "knowledge/global/"
     assert project_frontmatter["provenance_refs"]
     assert rule_frontmatter["status"] == "draft"
     assert rule_frontmatter["raw_file_policy"] == "controlled_readonly_copy"
+    assert project_format["project_format_version"] == "1.0"
     project_date_id = project_frontmatter["created_at"][:10].replace("-", "")
     assert literature_decision["open_item_id"] == f"openitem-{project_date_id}-001"
     assert literature_decision["item_type"] == "literature_library_decision"

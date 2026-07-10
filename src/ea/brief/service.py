@@ -111,11 +111,27 @@ def _memory_review_items(root: Path) -> list[dict[str, Any]]:
 
 def _literature_summary(root: Path) -> dict[str, Any]:
     status = _safe_yaml(root / "literature" / "deployment_status.yml")
+    external_state = _safe_yaml(root / "literature" / "external_acquisition_state.yml")
+    external_summary = external_state.get("summary") or {}
+    external_ready = int(external_summary.get("ready_count") or 0)
+    external_blocked = int(external_summary.get("blocked_count") or 0)
     if status:
         return {
             "enabled": True,
             "status": status.get("status") or status.get("deployment_status") or "present",
             "path": "literature/deployment_status.yml",
+            "external_cache_used": bool(external_ready),
+            "external_ready_count": external_ready,
+            "external_blocked_count": external_blocked,
+        }
+    if external_ready:
+        return {
+            "enabled": False,
+            "status": "external_cache_used_with_attention" if external_blocked else "external_cache_used",
+            "path": "literature/external_acquisition_state.yml",
+            "external_cache_used": True,
+            "external_ready_count": external_ready,
+            "external_blocked_count": external_blocked,
         }
     has_decision = False
     for path in sorted((root / "open-items").glob("*.yml")):
@@ -127,6 +143,9 @@ def _literature_summary(root: Path) -> dict[str, Any]:
         "enabled": False,
         "status": "decision_needed" if has_decision else "not_configured",
         "path": None,
+        "external_cache_used": False,
+        "external_ready_count": 0,
+        "external_blocked_count": 0,
     }
 
 
