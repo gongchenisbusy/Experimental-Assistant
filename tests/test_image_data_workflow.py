@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import matplotlib
@@ -161,8 +162,8 @@ def test_image_data_cli_record_and_report(tmp_path: Path, capsys) -> None:
             "sample-cli-img",
         ]
     ) == 0
-    report_output = capsys.readouterr().out
-    assert "reports/rpt-image-data-demo" in report_output
+    report_output = json.loads(capsys.readouterr().out)
+    assert "/reports/rpt-image-data-demo" in Path(report_output["report"]).as_posix()
 
 
 def test_builtin_image_manifest_is_valid() -> None:

@@ -83,6 +83,6 @@ def test_ea_skill_public_demo_command_runs(tmp_path: Path) -> None:
     assert figure_path.exists()
     assert processed_csv_path.exists()
     assert peak_table_path.exists()
-    assert "/reports/" in summary["report_path"]
+    assert "/reports/" in report_path.as_posix()
     assert "hidden_truth" not in result.stdout
     assert "下一步建议" not in report_path.read_text(encoding="utf-8")

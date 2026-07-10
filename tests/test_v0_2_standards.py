@@ -202,8 +202,8 @@ def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
     )
     assert result == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["config"].endswith(".ea/project_config.yml")
-    assert out["literature_status"].endswith("literature/deployment_status.yml")
+    assert Path(out["config"]).as_posix().endswith(".ea/project_config.yml")
+    assert Path(out["literature_status"]).as_posix().endswith("literature/deployment_status.yml")
     status = read_yaml(Path(out["literature_status"]))
     assert status["decision_status"] == "enabled_at_initialization"
 

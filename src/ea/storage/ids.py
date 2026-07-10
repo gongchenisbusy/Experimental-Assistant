@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import threading
 import time
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ KIND_PREFIX = {
 LOCK_STALE_AFTER_SECONDS = 30.0
 LOCK_WAIT_ATTEMPTS = 400
 LOCK_WAIT_INTERVAL_SECONDS = 0.005
+_PROCESS_COUNTER_LOCK = threading.Lock()
 
 
 def today_key(value: date | str | None = None) -> str:
@@ -113,7 +115,7 @@ def recover_stale_counter_lock(root: Path, *, stale_after_seconds: float = LOCK_
 
 
 @contextmanager
-def _counter_lock(root: Path):
+def _file_counter_lock(root: Path):
     lock_path = root / ".ea" / "id_counters.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd: int | None = None
@@ -146,6 +148,15 @@ def _counter_lock(root: Path):
                 lock_path.unlink()
             except FileNotFoundError:
                 pass
+
+
+@contextmanager
+def _counter_lock(root: Path):
+    # File-lock inspection on Windows opens a transient read handle that can
+    # block deletion by another thread in the same process.
+    with _PROCESS_COUNTER_LOCK:
+        with _file_counter_lock(root):
+            yield
 
 
 def next_id(root: Path, kind: str, day: date | str | None = None) -> str:
