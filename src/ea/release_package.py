@@ -132,7 +132,7 @@ def verify_release_package(
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
         "schema_version": "1.0",
-        "check_type": "ea_v0_9_6_release_package",
+        "check_type": "ea_v0_9_7_release_package",
         "status": "pass",
         "archive_path": str(archive_path),
         "archive_checksum_path": str(checksum_path),

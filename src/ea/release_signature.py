@@ -25,7 +25,7 @@ from ea.release_package import (
 
 
 SIGNATURE_SIDECAR_SUFFIX = ".sig.yml"
-SIGNATURE_TYPE = "ea_v0_9_6_release_package_signature"
+SIGNATURE_TYPE = "ea_v0_9_7_release_package_signature"
 SIGNATURE_ALGORITHM = "ed25519"
 
 
@@ -284,7 +284,7 @@ def verify_release_signature(
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
         "schema_version": "0.9",
-        "check_type": "ea_v0_9_6_release_package_signature",
+        "check_type": "ea_v0_9_7_release_package_signature",
         "status": "pass",
         "archive_path": str(archive_path),
         "signature_path": str(signature_path),

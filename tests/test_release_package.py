@@ -135,6 +135,7 @@ def test_release_package_verifier_passes_for_valid_package(tmp_path: Path) -> No
     result = verify_release_package(Path(package["archive_path"]))
 
     assert result["status"] == "pass"
+    assert result["check_type"] == "ea_v0_9_7_release_package"
     assert (
         result["manifest_archive_ref"]
         == "ea-release/experimental-assistant-v0.9.7-release-manifest.yml"
