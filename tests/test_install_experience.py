@@ -227,6 +227,10 @@ def test_install_check_requires_exact_distribution_cli_and_both_skills(
         "ea.install_experience.inspect_ea_executable",
         lambda executable=None: _passing_cli_check(),
     )
+    monkeypatch.setattr(
+        "ea.install_experience.python_preflight_record",
+        lambda: {"name": "python_version", "status": "pass"},
+    )
 
     result = install_check(
         codex_home_path=codex_home, validator=_write_validator(tmp_path)

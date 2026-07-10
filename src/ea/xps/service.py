@@ -2432,6 +2432,12 @@ def _trapezoid_cumulative(y: np.ndarray, x: np.ndarray) -> np.ndarray:
     return np.concatenate([[0.0], np.cumsum(increments)])
 
 
+def _trapezoid_integral(y: np.ndarray, x: np.ndarray) -> float:
+    if len(y) < 2:
+        return 0.0
+    return float(np.sum((y[:-1] + y[1:]) * 0.5 * np.diff(x)))
+
+
 def _shirley_background_from_anchors(
     x: np.ndarray,
     y: np.ndarray,
@@ -2454,7 +2460,7 @@ def _shirley_background_from_anchors(
 
     for iteration in range(1, max_iterations + 1):
         residual = np.clip(y - background, a_min=0.0, a_max=None)
-        residual_area = float(np.trapezoid(residual, x))
+        residual_area = _trapezoid_integral(residual, x)
         if residual_area <= 1e-15:
             final_delta = 0.0
             iterations = iteration
@@ -2583,7 +2589,7 @@ def _tougaard_u2_background_from_anchors(
         if len(segment_x) < 2:
             continue
         kernel = delta / np.square(tougaard_C_eV2 + np.square(delta))
-        integrals[index] = float(np.trapezoid(segment_residual * kernel, segment_x))
+        integrals[index] = _trapezoid_integral(segment_residual * kernel, segment_x)
 
     background = linear_background + float(tougaard_B) * integrals
     return background, {
@@ -2595,7 +2601,7 @@ def _tougaard_u2_background_from_anchors(
         "tougaard_B": float(tougaard_B),
         "tougaard_C_eV2": float(tougaard_C_eV2),
         "integration_direction": integration_direction,
-        "residual_area_after_linear_endpoint_baseline": float(np.trapezoid(residual, x)),
+        "residual_area_after_linear_endpoint_baseline": _trapezoid_integral(residual, x),
         "tougaard_integral_max": float(np.nanmax(integrals)) if integrals.size else 0.0,
     }
 
@@ -3086,7 +3092,7 @@ def _apply_component_quantification(
         window_y = y[mask]
         local_y = window_y - float(np.nanmin(window_y)) if baseline_mode == "local_minimum" else window_y.copy()
         local_y = np.clip(local_y, a_min=0.0, a_max=None)
-        area = float(np.trapezoid(local_y, window_x))
+        area = _trapezoid_integral(local_y, window_x)
         if area <= 0:
             row["status"] = "nonpositive_area"
             rows.append(row)
@@ -4846,7 +4852,7 @@ def process_xps_result(
     components.to_csv(components_csv, index=False)
     background_ref: str | None = None
     if background_record is not None:
-        background_ref = str(background_yml.relative_to(root))
+        background_ref = background_yml.relative_to(root).as_posix()
         background_record["record_ref"] = background_ref
         write_yaml(background_yml, background_record)
         if peak_analysis.get("background_model"):
@@ -4857,7 +4863,7 @@ def process_xps_result(
                 item["evidence"] = [background_ref if value == "background_model" else value for value in evidence]
     background_subtraction_ref: str | None = None
     if background_subtraction_record is not None:
-        background_subtraction_ref = str(background_subtraction_yml.relative_to(root))
+        background_subtraction_ref = background_subtraction_yml.relative_to(root).as_posix()
         background_subtraction_record["record_ref"] = background_subtraction_ref
         write_yaml(background_subtraction_yml, background_subtraction_record)
         if peak_analysis.get("background_subtraction"):
@@ -4869,8 +4875,8 @@ def process_xps_result(
     component_fit_table_ref: str | None = None
     component_fit_ref: str | None = None
     if component_fit_record is not None:
-        component_fit_table_ref = str(component_fit_csv.relative_to(root))
-        component_fit_ref = str(component_fit_yml.relative_to(root))
+        component_fit_table_ref = component_fit_csv.relative_to(root).as_posix()
+        component_fit_ref = component_fit_yml.relative_to(root).as_posix()
         component_fit_record["record_ref"] = component_fit_ref
         component_fit_record["component_table_ref"] = component_fit_table_ref
         component_fit_table.to_csv(component_fit_csv, index=False)
@@ -4888,9 +4894,9 @@ def process_xps_result(
         processed,
         parameters,
         linked_outputs={
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "peak_table": str(peaks_csv.relative_to(root)),
-            "component_table": str(components_csv.relative_to(root)),
+            "processed_csv": processed_csv.relative_to(root).as_posix(),
+            "peak_table": peaks_csv.relative_to(root).as_posix(),
+            "component_table": components_csv.relative_to(root).as_posix(),
             "background_model": background_ref,
             "background_subtraction": background_subtraction_ref,
             "component_fit": component_fit_ref,
@@ -4898,8 +4904,8 @@ def process_xps_result(
         },
     )
     if region_records_record is not None:
-        region_records_table_ref = str(region_records_csv.relative_to(root))
-        region_records_ref = str(region_records_yml.relative_to(root))
+        region_records_table_ref = region_records_csv.relative_to(root).as_posix()
+        region_records_ref = region_records_yml.relative_to(root).as_posix()
         region_records_record["record_ref"] = region_records_ref
         region_records_record["region_table_ref"] = region_records_table_ref
         region_records_table.to_csv(region_records_csv, index=False)
@@ -4927,11 +4933,11 @@ def process_xps_result(
     warnings.extend(component_warnings)
     warnings.extend(background_warnings)
     outputs = {
-        "figure": str(figure.relative_to(root)),
-        "peak_table": str(peaks_csv.relative_to(root)),
-        "component_table": str(components_csv.relative_to(root)),
-        "processed_csv": str(processed_csv.relative_to(root)),
-        "metadata": str(result_metadata.relative_to(root)),
+        "figure": figure.relative_to(root).as_posix(),
+        "peak_table": peaks_csv.relative_to(root).as_posix(),
+        "component_table": components_csv.relative_to(root).as_posix(),
+        "processed_csv": processed_csv.relative_to(root).as_posix(),
+        "metadata": result_metadata.relative_to(root).as_posix(),
     }
     if background_ref:
         outputs["background_model"] = background_ref
@@ -4971,24 +4977,24 @@ def process_xps_result(
         root,
         workflow="xps_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": [
                 value
                 for value in [
-                    str(processed_csv.relative_to(root)),
-                    str(peaks_csv.relative_to(root)),
-                    str(components_csv.relative_to(root)),
+                    processed_csv.relative_to(root).as_posix(),
+                    peaks_csv.relative_to(root).as_posix(),
+                    components_csv.relative_to(root).as_posix(),
                     component_fit_table_ref,
                     component_fit_ref,
                     region_records_table_ref,
                     region_records_ref,
                     background_ref,
                     background_subtraction_ref,
-                    str(figure.relative_to(root)),
+                    figure.relative_to(root).as_posix(),
                 ]
                 if value
             ],
@@ -5013,7 +5019,7 @@ def process_xps_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -5037,9 +5043,9 @@ def process_xps_result(
             source_data_refs=[
                 value
                 for value in [
-                    str(processed_csv.relative_to(root)),
-                    str(peaks_csv.relative_to(root)),
-                    str(components_csv.relative_to(root)),
+                    processed_csv.relative_to(root).as_posix(),
+                    peaks_csv.relative_to(root).as_posix(),
+                    components_csv.relative_to(root).as_posix(),
                     component_fit_table_ref,
                     component_fit_ref,
                     region_records_table_ref,

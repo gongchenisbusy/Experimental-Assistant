@@ -149,13 +149,13 @@ def initialize_project(
     output_records = [
         "EA_PROJECT.md",
         "PROJECT_RULE_CARD.md",
-        str(config_path.relative_to(root)),
-        str(project_format_path.relative_to(root)),
+        config_path.relative_to(root).as_posix(),
+        project_format_path.relative_to(root).as_posix(),
     ]
     if literature_status_path:
-        output_records.append(str(literature_status_path.relative_to(root)))
+        output_records.append(literature_status_path.relative_to(root).as_posix())
     if literature_decision_path:
-        output_records.append(str(literature_decision_path.relative_to(root)))
+        output_records.append(literature_decision_path.relative_to(root).as_posix())
     working_memory_path = write_project_working_memory_skeleton(
         root,
         project_id=project_id,
@@ -164,7 +164,7 @@ def initialize_project(
         current_stage="initialized",
         created_at=created_at,
     )
-    output_records.append(str(working_memory_path.relative_to(root)))
+    output_records.append(working_memory_path.relative_to(root).as_posix())
     provenance_path = write_provenance_entry(
         root,
         workflow="project_initialization",

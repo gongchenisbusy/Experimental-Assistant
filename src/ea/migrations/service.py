@@ -119,7 +119,7 @@ def apply_project_migration(
     migration_id = f"migration-{plan['source_version']}-to-{target_version}-{stamp}"
     backup_root = root / ".ea" / "migrations" / "backups" / migration_id
     history_path = root / ".ea" / "migrations" / "history" / f"{migration_id}.yml"
-    expected = [str(FORMAT_PATH), str(history_path.relative_to(root))]
+    expected = [str(FORMAT_PATH), history_path.relative_to(root).as_posix()]
     artifacts: list[str] = []
 
     with OperationJournal(root, migration_id, "project_format_migration", expected_outputs=expected) as journal:
@@ -133,7 +133,7 @@ def apply_project_migration(
             manifest_files.append(
                 {
                     "path": str(relative),
-                    "backup_path": str(destination.relative_to(root)),
+                    "backup_path": destination.relative_to(root).as_posix(),
                     "sha256": _sha256(source),
                 }
             )
@@ -151,7 +151,7 @@ def apply_project_migration(
             },
         )
         journal.add_artifact(manifest_path.relative_to(root))
-        artifacts.append(str(manifest_path.relative_to(root)))
+        artifacts.append(manifest_path.relative_to(root).as_posix())
 
         format_path = initialize_project_format(root, created_at=created)
         format_record = read_yaml(format_path)
@@ -159,7 +159,7 @@ def apply_project_migration(
         format_record["migration_history"] = [migration_id]
         write_yaml(format_path, format_record)
         journal.add_artifact(format_path.relative_to(root))
-        artifacts.append(str(format_path.relative_to(root)))
+        artifacts.append(format_path.relative_to(root).as_posix())
 
         history = {
             "schema_version": "1.0",
@@ -167,19 +167,19 @@ def apply_project_migration(
             "status": "completed",
             "source_version": plan["source_version"],
             "target_version": target_version,
-            "backup_manifest": str(manifest_path.relative_to(root)),
+            "backup_manifest": manifest_path.relative_to(root).as_posix(),
             "created_at": created,
             "raw_data_copied": False,
         }
         write_yaml(history_path, history)
         journal.add_artifact(history_path.relative_to(root))
-        artifacts.append(str(history_path.relative_to(root)))
+        artifacts.append(history_path.relative_to(root).as_posix())
 
     return {
         **plan,
         "status": "completed",
         "migration_id": migration_id,
-        "backup_manifest": str(manifest_path.relative_to(root)),
+        "backup_manifest": manifest_path.relative_to(root).as_posix(),
         "artifacts_written": artifacts,
     }
 

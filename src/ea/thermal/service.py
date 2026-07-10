@@ -1387,8 +1387,8 @@ def process_thermal_result(
     transition_table_ref: str | None = None
     transition_record_ref: str | None = None
     if transition_record is not None:
-        transition_table_ref = str(transitions_csv.relative_to(root))
-        transition_record_ref = str(transitions_yml.relative_to(root))
+        transition_table_ref = transitions_csv.relative_to(root).as_posix()
+        transition_record_ref = transitions_yml.relative_to(root).as_posix()
         transitions.to_csv(transitions_csv, index=False)
         transition_record["table_ref"] = transition_table_ref
         transition_record["record_ref"] = transition_record_ref
@@ -1402,7 +1402,7 @@ def process_thermal_result(
                 item["evidence"] = [transition_table_ref if value == "transition_table" else value for value in evidence]
     transition_assignment_ref: str | None = None
     if transition_assignment_record is not None:
-        transition_assignment_ref = str(transition_assignments_yml.relative_to(root))
+        transition_assignment_ref = transition_assignments_yml.relative_to(root).as_posix()
         transition_assignment_record["record_ref"] = transition_assignment_ref
         write_yaml(transition_assignments_yml, transition_assignment_record)
         if analysis.get("transition_assignment"):
@@ -1413,14 +1413,14 @@ def process_thermal_result(
                 item["evidence"] = [transition_assignment_ref if value == "transition_assignment_record" else value for value in evidence]
     baseline_ref: str | None = None
     if baseline_record is not None:
-        baseline_ref = str(baseline_yml.relative_to(root))
+        baseline_ref = baseline_yml.relative_to(root).as_posix()
         baseline_record["record_ref"] = baseline_ref
         write_yaml(baseline_yml, baseline_record)
         if analysis.get("baseline_correction"):
             analysis["baseline_correction"]["record_ref"] = baseline_ref
     context_ref: str | None = None
     if context_record is not None:
-        context_ref = str(context_yml.relative_to(root))
+        context_ref = context_yml.relative_to(root).as_posix()
         context_record["record_ref"] = context_ref
         write_yaml(context_yml, context_record)
         if analysis.get("context_record"):
@@ -1439,11 +1439,11 @@ def process_thermal_result(
     warnings.extend(transition_assignment_warnings)
     warnings.extend(context_warnings)
     outputs = {
-        "figure": str(figure.relative_to(root)),
-        "feature_table": str(features_csv.relative_to(root)),
-        "peak_table": str(features_csv.relative_to(root)),
-        "processed_csv": str(processed_csv.relative_to(root)),
-        "metadata": str(result_metadata.relative_to(root)),
+        "figure": figure.relative_to(root).as_posix(),
+        "feature_table": features_csv.relative_to(root).as_posix(),
+        "peak_table": features_csv.relative_to(root).as_posix(),
+        "processed_csv": processed_csv.relative_to(root).as_posix(),
+        "metadata": result_metadata.relative_to(root).as_posix(),
     }
     if baseline_ref:
         outputs["baseline_correction"] = baseline_ref
@@ -1479,9 +1479,9 @@ def process_thermal_result(
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
     provenance_files = [
-        str(processed_csv.relative_to(root)),
-        str(features_csv.relative_to(root)),
-        str(figure.relative_to(root)),
+        processed_csv.relative_to(root).as_posix(),
+        features_csv.relative_to(root).as_posix(),
+        figure.relative_to(root).as_posix(),
     ]
     if context_ref:
         provenance_files.append(context_ref)
@@ -1497,11 +1497,11 @@ def process_thermal_result(
         root,
         workflow="thermal_analysis_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": provenance_files,
         },
         parameters={
@@ -1525,7 +1525,7 @@ def process_thermal_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -1550,8 +1550,8 @@ def process_thermal_result(
             source_data_refs=[
                 value
                 for value in [
-                    str(processed_csv.relative_to(root)),
-                    str(features_csv.relative_to(root)),
+                    processed_csv.relative_to(root).as_posix(),
+                    features_csv.relative_to(root).as_posix(),
                     baseline_ref,
                     transition_table_ref,
                     transition_record_ref,

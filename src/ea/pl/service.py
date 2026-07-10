@@ -363,10 +363,10 @@ def process_pl_result(
         x_unit=request.x_unit,  # type: ignore[arg-type]
         processing_parameters=parameters,
         outputs={
-            "figure": str(figure.relative_to(root)),
-            "peak_table": str(peaks_csv.relative_to(root)),
-            "processed_csv": str(processed_csv.relative_to(root)),
-            "metadata": str(result_metadata.relative_to(root)),
+            "figure": figure.relative_to(root).as_posix(),
+            "peak_table": peaks_csv.relative_to(root).as_posix(),
+            "processed_csv": processed_csv.relative_to(root).as_posix(),
+            "metadata": result_metadata.relative_to(root).as_posix(),
         },
         peak_analysis=peak_analysis,
         figure_id=figure_id,
@@ -380,15 +380,15 @@ def process_pl_result(
         root,
         workflow="pl_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": [
-                str(processed_csv.relative_to(root)),
-                str(peaks_csv.relative_to(root)),
-                str(figure.relative_to(root)),
+                processed_csv.relative_to(root).as_posix(),
+                peaks_csv.relative_to(root).as_posix(),
+                figure.relative_to(root).as_posix(),
             ],
         },
         parameters={
@@ -409,7 +409,7 @@ def process_pl_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -429,8 +429,8 @@ def process_pl_result(
             purpose="pl_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
-                str(processed_csv.relative_to(root)),
-                str(peaks_csv.relative_to(root)),
+                processed_csv.relative_to(root).as_posix(),
+                peaks_csv.relative_to(root).as_posix(),
             ],
         )
     return result_metadata

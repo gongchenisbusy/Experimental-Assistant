@@ -198,10 +198,10 @@ def generate_raman_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(raman_metadata_path.relative_to(root))],
+            "records": [raman_metadata_path.relative_to(root).as_posix()],
             "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
         review_refs=[],
         warnings=warnings,
@@ -216,7 +216,7 @@ def generate_raman_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["raman_result_id"]],
         figure_ids=figure_ids,
@@ -390,10 +390,10 @@ def generate_pl_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(pl_metadata_path.relative_to(root))],
+            "records": [pl_metadata_path.relative_to(root).as_posix()],
             "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
         review_refs=[],
         warnings=warnings,
@@ -408,7 +408,7 @@ def generate_pl_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["pl_result_id"]],
         figure_ids=figure_ids,
@@ -606,13 +606,13 @@ def generate_xrd_report(
         workflow="report_generation",
         inputs={
             "records": [
-                str(xrd_metadata_path.relative_to(root)),
+                xrd_metadata_path.relative_to(root).as_posix(),
                 *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
                 *[f"reviews/{review_ref}.yml" for review_ref in assignment_review_refs or []],
             ],
             "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
             "language": "zh",
@@ -632,7 +632,7 @@ def generate_xrd_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["xrd_result_id"]],
         figure_ids=figure_ids,
@@ -1476,10 +1476,10 @@ def generate_ftir_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(ftir_metadata_path.relative_to(root)), *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []]],
+            "records": [ftir_metadata_path.relative_to(root).as_posix(), *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []]],
             "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("context_record"), outputs["figure"]] if value],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
             "language": "zh",
@@ -1498,7 +1498,7 @@ def generate_ftir_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["ftir_result_id"]],
         figure_ids=figure_ids,
@@ -1889,7 +1889,7 @@ def generate_uv_vis_report(
         workflow="report_generation",
         inputs={
             "records": [
-                str(uv_vis_metadata_path.relative_to(root)),
+                uv_vis_metadata_path.relative_to(root).as_posix(),
                 *[_relative_to_root(root, path) for path in interpretation_suggestion_paths or []],
                 *[f"reviews/{review_ref}.yml" for review_ref in interpretation_review_refs or []],
             ],
@@ -1907,7 +1907,7 @@ def generate_uv_vis_report(
                 if value
             ],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
             "language": "zh",
@@ -1927,7 +1927,7 @@ def generate_uv_vis_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["uv_vis_result_id"]],
         figure_ids=figure_ids,
@@ -2475,7 +2475,7 @@ def generate_xps_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(xps_metadata_path.relative_to(root)), *[_relative_to_root(root, path) for path in parameter_suggestion_paths or []]],
+            "records": [xps_metadata_path.relative_to(root).as_posix(), *[_relative_to_root(root, path) for path in parameter_suggestion_paths or []]],
             "files": [
                 value
                 for value in [
@@ -2493,7 +2493,7 @@ def generate_xps_report(
                 if value
             ],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
             "language": "zh",
@@ -2512,7 +2512,7 @@ def generate_xps_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["xps_result_id"]],
         figure_ids=figure_ids,
@@ -3106,7 +3106,7 @@ def generate_electrochemistry_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(electrochemistry_metadata_path.relative_to(root))],
+            "records": [electrochemistry_metadata_path.relative_to(root).as_posix()],
             "files": [
                 value
                 for value in [
@@ -3123,7 +3123,7 @@ def generate_electrochemistry_report(
                 if value
             ],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
         review_refs=[],
         warnings=warnings,
@@ -3138,7 +3138,7 @@ def generate_electrochemistry_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["electrochemistry_result_id"]],
         figure_ids=figure_ids,
@@ -3565,7 +3565,7 @@ def generate_thermal_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [str(thermal_metadata_path.relative_to(root))],
+            "records": [thermal_metadata_path.relative_to(root).as_posix()],
             "files": [
                 value
                 for value in [
@@ -3581,7 +3581,7 @@ def generate_thermal_report(
                 if value
             ],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={"include_next_step_suggestions": False, "language": "zh"},
         review_refs=[],
         warnings=warnings,
@@ -3596,7 +3596,7 @@ def generate_thermal_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["thermal_result_id"]],
         figure_ids=figure_ids,

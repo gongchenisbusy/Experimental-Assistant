@@ -2115,7 +2115,7 @@ def process_ftir_result(
     bands.to_csv(bands_csv, index=False)
     context_ref: str | None = None
     if context_record is not None:
-        context_ref = str(context_yml.relative_to(root))
+        context_ref = context_yml.relative_to(root).as_posix()
         context_record["record_ref"] = context_ref
         write_yaml(context_yml, context_record)
         if band_analysis.get("context_record"):
@@ -2128,10 +2128,10 @@ def process_ftir_result(
     warnings.extend(processing_warnings)
     warnings.extend(context_warnings)
     outputs = {
-        "figure": str(figure.relative_to(root)),
-        "peak_table": str(bands_csv.relative_to(root)),
-        "processed_csv": str(processed_csv.relative_to(root)),
-        "metadata": str(result_metadata.relative_to(root)),
+        "figure": figure.relative_to(root).as_posix(),
+        "peak_table": bands_csv.relative_to(root).as_posix(),
+        "processed_csv": processed_csv.relative_to(root).as_posix(),
+        "metadata": result_metadata.relative_to(root).as_posix(),
     }
     if context_ref:
         outputs["context_record"] = context_ref
@@ -2157,9 +2157,9 @@ def process_ftir_result(
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
     provenance_files = [
-        str(processed_csv.relative_to(root)),
-        str(bands_csv.relative_to(root)),
-        str(figure.relative_to(root)),
+        processed_csv.relative_to(root).as_posix(),
+        bands_csv.relative_to(root).as_posix(),
+        figure.relative_to(root).as_posix(),
     ]
     if context_ref:
         provenance_files.append(context_ref)
@@ -2167,11 +2167,11 @@ def process_ftir_result(
         root,
         workflow="ftir_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": provenance_files,
         },
         parameters={
@@ -2193,7 +2193,7 @@ def process_ftir_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -2214,8 +2214,8 @@ def process_ftir_result(
             purpose="ftir_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
-                str(processed_csv.relative_to(root)),
-                str(bands_csv.relative_to(root)),
+                processed_csv.relative_to(root).as_posix(),
+                bands_csv.relative_to(root).as_posix(),
             ]
             + ([context_ref] if context_ref else []),
         )

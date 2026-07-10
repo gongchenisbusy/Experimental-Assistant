@@ -38,6 +38,15 @@ def _venv_executable(venv_root: Path, name: str) -> Path:
     return venv_root / folder / f"{name}{suffix}"
 
 
+def _install_env(constraints: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    if constraints.is_file():
+        env["PIP_CONSTRAINT"] = str(constraints.resolve())
+    else:
+        env.pop("PIP_CONSTRAINT", None)
+    return env
+
+
 def discover_distribution_artifacts(root: Path) -> list[Path]:
     dist = root / "dist"
     normalized = DISTRIBUTION_NAME.replace("-", "_")
@@ -78,7 +87,7 @@ def smoke_install_artifact(
         if constraints.is_file():
             install_args.extend(["-c", str(constraints)])
         install_args.append(str(artifact))
-        install = _run(install_args, cwd=temporary_root)
+        install = _run(install_args, cwd=temporary_root, env=_install_env(constraints))
         if install.returncode != 0:
             return {
                 "artifact": artifact.name,

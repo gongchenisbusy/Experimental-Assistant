@@ -445,6 +445,8 @@ def _read_csv_rows(path: Path) -> list[dict[str, str]]:
 
 
 def _project_relative(root: Path, path: Path) -> str:
+    if not path.is_absolute():
+        return path.as_posix().replace("\\", "/")
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -5109,7 +5111,7 @@ def sync_literature_acquisition_status(
         if field in update:
             status[field] = update[field]
     status["last_acquisition_sync_at"] = synced_at or EARecord.now_iso()
-    status["acquisition_status_update_ref"] = str(update_path.relative_to(root)) if update_path.is_relative_to(root) else str(update_path)
+    status["acquisition_status_update_ref"] = update_path.relative_to(root).as_posix() if update_path.is_relative_to(root) else str(update_path)
     if "status" not in update:
         status["status"] = "acquisition_in_progress"
     write_yaml(status_path, status)

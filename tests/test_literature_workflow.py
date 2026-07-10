@@ -29,6 +29,7 @@ from ea.literature import (
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
 )
+from ea.literature.handoff import privacy_safe_cache_ref
 from ea.literature.handoff import classify_blocked_reason, normalize_acquisition_handoff
 from ea.projects import initialize_project
 from ea.storage import read_yaml, write_yaml
@@ -1105,6 +1106,18 @@ def test_handoff_accepts_current_zotero_codex_batch_v1_fixture() -> None:
     assert "/Users/test" not in state["targets"][1]["retry_command"]
     assert {item["status"] for item in state["targets"]} <= set(
         schema["$defs"]["target"]["properties"]["status"]["enum"]
+    )
+
+
+def test_cache_refs_redact_posix_windows_and_unc_absolute_paths() -> None:
+    for value in (
+        "/Users/test/cache/paper.pdf",
+        r"C:\Users\test\cache\paper.pdf",
+        r"\\server\share\cache\paper.pdf",
+    ):
+        assert privacy_safe_cache_ref(value).startswith("external-cache://")
+    assert privacy_safe_cache_ref(r"knowledge\project\fulltext\paper") == (
+        "knowledge/project/fulltext/paper"
     )
 
 

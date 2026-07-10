@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -174,11 +174,14 @@ def privacy_safe_cache_ref(value: Any) -> str | None:
     text = _text(value)
     if not text:
         return None
-    path = Path(text).expanduser()
-    if not path.is_absolute() and ".." not in path.parts:
-        return path.as_posix()
+    posix_path = PurePosixPath(text)
+    windows_path = PureWindowsPath(text)
+    relative_path = PurePosixPath(text.replace("\\", "/"))
+    is_absolute = posix_path.is_absolute() or windows_path.is_absolute()
+    if not is_absolute and ".." not in relative_path.parts:
+        return relative_path.as_posix()
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-    name = path.name or "cache"
+    name = (windows_path.name if windows_path.is_absolute() else posix_path.name) or "cache"
     return f"external-cache://{digest}/{name}"
 
 

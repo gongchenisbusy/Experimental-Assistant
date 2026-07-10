@@ -14,20 +14,21 @@ from ea.release_smoke import (
 
 
 def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> None:
+    quick_validate = Path("/tools/quick_validate.py")
     steps = build_command_steps(
-        tmp_path, python="python", quick_validate=Path("/tools/quick_validate.py")
+        tmp_path, python="python", quick_validate=quick_validate
     )
     commands = {step.name: step.command for step in steps}
 
     assert commands["pytest"] == ["python", "-m", "pytest"]
     assert commands["primary_skill_validation"] == [
         "python",
-        "/tools/quick_validate.py",
+        str(quick_validate),
         "skills/ea",
     ]
     assert commands["compatibility_skill_validation"] == [
         "python",
-        "/tools/quick_validate.py",
+        str(quick_validate),
         "skills/ea-v0-2",
     ]
     assert "raise SystemExit(main(['--help']))" in commands["cli_help"][2]

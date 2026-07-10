@@ -249,7 +249,7 @@ def test_cli_registers_reference_and_validates_report(tmp_path: Path, capsys) ->
         ]
     ) == 0
     out = json.loads(capsys.readouterr().out)
-    assert "/literature/references/ref-" in out["reference"]
+    assert "/literature/references/ref-" in Path(out["reference"]).as_posix()
     ref_id = Path(out["reference"]).stem
     block = build_report_reference_block(tmp_path, [ref_id])
     report = tmp_path / "reports" / "rpt-reference-demo-20260630-001.md"

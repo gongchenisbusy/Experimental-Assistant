@@ -175,9 +175,9 @@ def create_image_analysis_record(
         scale_bar=scale_bar,
         imaging_conditions=imaging_conditions or {},
         outputs={
-            "figure": str(display_image.relative_to(root)),
+            "figure": display_image.relative_to(root).as_posix(),
             "raw_image": raw_metadata["project_raw_path"],
-            "metadata": str(result_metadata.relative_to(root)),
+            "metadata": result_metadata.relative_to(root).as_posix(),
         },
         figure_id=figure_id,
         warnings=warnings,
@@ -192,12 +192,12 @@ def create_image_analysis_record(
         root,
         workflow="image_characterization_analysis",
         inputs={
-            "records": [str(metadata_path.relative_to(root))],
+            "records": [metadata_path.relative_to(root).as_posix()],
             "files": [raw_metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
-            "files": [str(display_image.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
+            "files": [display_image.relative_to(root).as_posix()],
         },
         parameters={
             "method": method_slug,
@@ -219,7 +219,7 @@ def create_image_analysis_record(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(display_image.relative_to(root)),
+            path=display_image.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[raw_metadata["characterization_id"]],
@@ -346,10 +346,10 @@ def generate_image_analysis_report(
         root,
         workflow="image_report_generation",
         inputs={
-            "records": [str(metadata_path.relative_to(root))],
+            "records": [metadata_path.relative_to(root).as_posix()],
             "files": [outputs["figure"], outputs["raw_image"]],
         },
-        outputs={"records": [str(report_path.relative_to(root))], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={"language": "zh", "report_type": "image_analysis"},
         review_refs=metadata.get("review_refs", []),
         warnings=metadata.get("warnings", []),
@@ -365,7 +365,7 @@ def generate_image_analysis_report(
     register_report(
         root,
         report_id=report_id,
-        path=str(report_path.relative_to(root)),
+        path=report_path.relative_to(root).as_posix(),
         project_id=project_id,
         result_ids=[metadata["result_id"]],
         figure_ids=figure_ids,

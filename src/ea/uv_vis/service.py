@@ -3913,24 +3913,24 @@ def process_uv_vis_result(
     if tauc_analysis and "tauc_y" in processed.columns:
         tauc_columns = ["tauc_energy_eV", "tauc_alpha_proxy", "tauc_y", "tauc_fit_window"]
         processed[tauc_columns].to_csv(tauc_csv, index=False)
-        tauc_output_ref = str(tauc_csv.relative_to(root))
+        tauc_output_ref = tauc_csv.relative_to(root).as_posix()
         feature_analysis["tauc_analysis"]["table_ref"] = tauc_output_ref
     derivative_output_ref: str | None = None
     if derivative_table is not None:
         derivative_table.to_csv(derivative_csv, index=False)
-        derivative_output_ref = str(derivative_csv.relative_to(root))
+        derivative_output_ref = derivative_csv.relative_to(root).as_posix()
         if feature_analysis.get("derivative_analysis"):
             feature_analysis["derivative_analysis"]["table_ref"] = derivative_output_ref
     correction_context_ref: str | None = None
     if correction_context is not None:
-        correction_context_ref = str(correction_context_yml.relative_to(root))
+        correction_context_ref = correction_context_yml.relative_to(root).as_posix()
         correction_context["record_ref"] = correction_context_ref
         write_yaml(correction_context_yml, correction_context)
         if feature_analysis.get("correction_context"):
             feature_analysis["correction_context"]["record_ref"] = correction_context_ref
     numeric_correction_ref: str | None = None
     if numeric_correction is not None:
-        numeric_correction_ref = str(numeric_correction_yml.relative_to(root))
+        numeric_correction_ref = numeric_correction_yml.relative_to(root).as_posix()
         numeric_correction["record_ref"] = numeric_correction_ref
         write_yaml(numeric_correction_yml, numeric_correction)
         if feature_analysis.get("numeric_correction"):
@@ -3945,10 +3945,10 @@ def process_uv_vis_result(
     warnings.extend(derivative_warnings)
     warnings.extend(correction_warnings)
     outputs = {
-        "figure": str(figure.relative_to(root)),
-        "peak_table": str(features_csv.relative_to(root)),
-        "processed_csv": str(processed_csv.relative_to(root)),
-        "metadata": str(result_metadata.relative_to(root)),
+        "figure": figure.relative_to(root).as_posix(),
+        "peak_table": features_csv.relative_to(root).as_posix(),
+        "processed_csv": processed_csv.relative_to(root).as_posix(),
+        "metadata": result_metadata.relative_to(root).as_posix(),
     }
     if tauc_output_ref:
         outputs["tauc_table"] = tauc_output_ref
@@ -3959,9 +3959,9 @@ def process_uv_vis_result(
     if numeric_correction_ref:
         outputs["numeric_correction"] = numeric_correction_ref
     provenance_files = [
-        str(processed_csv.relative_to(root)),
-        str(features_csv.relative_to(root)),
-        str(figure.relative_to(root)),
+        processed_csv.relative_to(root).as_posix(),
+        features_csv.relative_to(root).as_posix(),
+        figure.relative_to(root).as_posix(),
     ]
     if tauc_output_ref:
         provenance_files.append(tauc_output_ref)
@@ -3996,11 +3996,11 @@ def process_uv_vis_result(
         root,
         workflow="uv_vis_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": provenance_files,
         },
         parameters={
@@ -4022,7 +4022,7 @@ def process_uv_vis_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -4043,8 +4043,8 @@ def process_uv_vis_result(
             purpose="uv_vis_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
-                str(processed_csv.relative_to(root)),
-                str(features_csv.relative_to(root)),
+                processed_csv.relative_to(root).as_posix(),
+                features_csv.relative_to(root).as_posix(),
             ]
             + ([tauc_output_ref] if tauc_output_ref else [])
             + ([derivative_output_ref] if derivative_output_ref else [])

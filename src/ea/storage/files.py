@@ -109,7 +109,8 @@ def atomic_copy_file(source: Path, destination: Path) -> Path:
     temp_path = Path(temp_name)
     try:
         shutil.copy2(source, temp_path)
-        with temp_path.open("rb") as handle:
+        # Windows requires a writable descriptor for fsync.
+        with temp_path.open("rb+") as handle:
             os.fsync(handle.fileno())
         os.replace(temp_path, destination)
         _fsync_directory(destination.parent)

@@ -69,7 +69,7 @@ def _records(root: Path, pattern: str) -> list[dict[str, Any]]:
             data = read_yaml(path)
         except (OSError, ValueError):
             continue
-        results.append({"path": str(path.relative_to(root)), **data})
+        results.append({"path": path.relative_to(root).as_posix(), **data})
     return results
 
 
@@ -125,7 +125,7 @@ def build_project_dashboard(root: Path) -> dict[str, Any]:
             "incomplete_count": len(incomplete),
             "items": [{"path": record["path"], "operation": record.get("operation"), "status": record.get("status")} for record in incomplete[:5]],
         },
-        "latest_reports": [str(path.relative_to(root)) for path in reports[:3]],
+        "latest_reports": [path.relative_to(root).as_posix() for path in reports[:3]],
         "literature": {"status": literature_state, "enabled": bool(literature_config.get("enabled"))},
         "next_actions": next_actions[:3],
     }

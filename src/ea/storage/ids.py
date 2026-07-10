@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import socket
 import time
+from uuid import uuid4
 
 from ea.storage.files import read_yaml, write_yaml
 from ea.standards import format_standard_id
@@ -54,6 +55,8 @@ def format_id(kind: str, day: date | str | None = None, sequence: int = 1) -> st
 def _pid_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if pid == os.getpid():
+        return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -114,6 +117,7 @@ def _counter_lock(root: Path):
     lock_path = root / ".ea" / "id_counters.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd: int | None = None
+    owner_token = uuid4().hex
     for _ in range(LOCK_WAIT_ATTEMPTS):
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -121,6 +125,7 @@ def _counter_lock(root: Path):
                 "pid": os.getpid(),
                 "hostname": socket.gethostname(),
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "owner_token": owner_token,
             }
             os.write(fd, json.dumps(record, sort_keys=True).encode("utf-8"))
             os.fsync(fd)
@@ -136,10 +141,11 @@ def _counter_lock(root: Path):
         yield
     finally:
         os.close(fd)
-        try:
-            lock_path.unlink()
-        except FileNotFoundError:
-            pass
+        if _read_lock_record(lock_path).get("owner_token") == owner_token:
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def next_id(root: Path, kind: str, day: date | str | None = None) -> str:

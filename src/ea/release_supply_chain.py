@@ -18,6 +18,20 @@ DEFAULT_VULNERABILITY_OUTPUT = (
     Path("dist") / "experimental-assistant-0.9.7-vulnerability-report.json"
 )
 
+_INSTALLED_DISTRIBUTIONS_SCRIPT = """
+import importlib.metadata as metadata
+import json
+
+packages = {}
+for distribution in metadata.distributions():
+    name = distribution.metadata.get("Name")
+    if not name:
+        continue
+    key = name.lower().replace("_", "-")
+    packages[key] = {"name": name, "version": distribution.version}
+print(json.dumps(list(packages.values()), sort_keys=True))
+""".strip()
+
 
 def _run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -41,7 +55,7 @@ def _commit_timestamp(root: Path) -> str:
 
 def installed_components(root: Path, *, python_executable: str) -> list[dict[str, Any]]:
     completed = _run(
-        [python_executable, "-m", "pip", "list", "--format=json"], cwd=root
+        [python_executable, "-c", _INSTALLED_DISTRIBUTIONS_SCRIPT], cwd=root
     )
     if completed.returncode != 0:
         raise RuntimeError(

@@ -2950,42 +2950,42 @@ def process_electrochemistry_result(
     features.to_csv(features_csv, index=False)
     correction_ref: str | None = None
     if correction_record is not None:
-        correction_ref = str(correction_yml.relative_to(root))
+        correction_ref = correction_yml.relative_to(root).as_posix()
         correction_record["record_ref"] = correction_ref
         write_yaml(correction_yml, correction_record)
         if analysis.get("correction_record"):
             analysis["correction_record"]["record_ref"] = correction_ref
     potential_conversion_ref: str | None = None
     if potential_conversion_record is not None:
-        potential_conversion_ref = str(potential_conversion_yml.relative_to(root))
+        potential_conversion_ref = potential_conversion_yml.relative_to(root).as_posix()
         potential_conversion_record["record_ref"] = potential_conversion_ref
         write_yaml(potential_conversion_yml, potential_conversion_record)
         if analysis.get("potential_conversion"):
             analysis["potential_conversion"]["record_ref"] = potential_conversion_ref
     ir_drop_correction_ref: str | None = None
     if ir_drop_correction_record is not None:
-        ir_drop_correction_ref = str(ir_drop_correction_yml.relative_to(root))
+        ir_drop_correction_ref = ir_drop_correction_yml.relative_to(root).as_posix()
         ir_drop_correction_record["record_ref"] = ir_drop_correction_ref
         write_yaml(ir_drop_correction_yml, ir_drop_correction_record)
         if analysis.get("ir_drop_correction"):
             analysis["ir_drop_correction"]["record_ref"] = ir_drop_correction_ref
     tafel_analysis_ref: str | None = None
     if tafel_analysis_record is not None:
-        tafel_analysis_ref = str(tafel_analysis_yml.relative_to(root))
+        tafel_analysis_ref = tafel_analysis_yml.relative_to(root).as_posix()
         tafel_analysis_record["record_ref"] = tafel_analysis_ref
         write_yaml(tafel_analysis_yml, tafel_analysis_record)
         if analysis.get("tafel_analysis"):
             analysis["tafel_analysis"]["record_ref"] = tafel_analysis_ref
     gcd_analysis_ref: str | None = None
     if gcd_analysis_record is not None:
-        gcd_analysis_ref = str(gcd_analysis_yml.relative_to(root))
+        gcd_analysis_ref = gcd_analysis_yml.relative_to(root).as_posix()
         gcd_analysis_record["record_ref"] = gcd_analysis_ref
         write_yaml(gcd_analysis_yml, gcd_analysis_record)
         if analysis.get("gcd_analysis"):
             analysis["gcd_analysis"]["record_ref"] = gcd_analysis_ref
     eis_circuit_fit_ref: str | None = None
     if eis_circuit_fit_record is not None:
-        eis_circuit_fit_ref = str(eis_circuit_fit_yml.relative_to(root))
+        eis_circuit_fit_ref = eis_circuit_fit_yml.relative_to(root).as_posix()
         eis_circuit_fit_record["record_ref"] = eis_circuit_fit_ref
         write_yaml(eis_circuit_fit_yml, eis_circuit_fit_record)
         if analysis.get("eis_circuit_fit"):
@@ -3018,11 +3018,11 @@ def process_electrochemistry_result(
     warnings.extend(gcd_analysis_warnings)
     warnings.extend(eis_circuit_fit_warnings)
     outputs = {
-        "figure": str(figure.relative_to(root)),
-        "feature_table": str(features_csv.relative_to(root)),
-        "peak_table": str(features_csv.relative_to(root)),
-        "processed_csv": str(processed_csv.relative_to(root)),
-        "metadata": str(result_metadata.relative_to(root)),
+        "figure": figure.relative_to(root).as_posix(),
+        "feature_table": features_csv.relative_to(root).as_posix(),
+        "peak_table": features_csv.relative_to(root).as_posix(),
+        "processed_csv": processed_csv.relative_to(root).as_posix(),
+        "metadata": result_metadata.relative_to(root).as_posix(),
     }
     if correction_ref:
         outputs["correction_record"] = correction_ref
@@ -3061,9 +3061,9 @@ def process_electrochemistry_result(
     )
     write_yaml(result_metadata, result.model_dump(exclude_none=True))
     provenance_files = [
-        str(processed_csv.relative_to(root)),
-        str(features_csv.relative_to(root)),
-        str(figure.relative_to(root)),
+        processed_csv.relative_to(root).as_posix(),
+        features_csv.relative_to(root).as_posix(),
+        figure.relative_to(root).as_posix(),
     ]
     if correction_ref:
         provenance_files.append(correction_ref)
@@ -3081,11 +3081,11 @@ def process_electrochemistry_result(
         root,
         workflow="electrochemistry_processing",
         inputs={
-            "records": [str(characterization_metadata_path.relative_to(root))],
+            "records": [characterization_metadata_path.relative_to(root).as_posix()],
             "files": [metadata["project_raw_path"]],
         },
         outputs={
-            "records": [str(result_metadata.relative_to(root))],
+            "records": [result_metadata.relative_to(root).as_posix()],
             "files": provenance_files,
         },
         parameters={
@@ -3115,7 +3115,7 @@ def process_electrochemistry_result(
         register_figure(
             root,
             figure_id=figure_id,
-            path=str(figure.relative_to(root)),
+            path=figure.relative_to(root).as_posix(),
             report_id=None,
             result_id=result_id,
             raw_data_ids=[metadata["characterization_id"]],
@@ -3139,8 +3139,8 @@ def process_electrochemistry_result(
             purpose="electrochemistry_analysis_report",
             style_profile=NATURE_LIKE_STYLE_PROFILE,
             source_data_refs=[
-                str(processed_csv.relative_to(root)),
-                str(features_csv.relative_to(root)),
+                processed_csv.relative_to(root).as_posix(),
+                features_csv.relative_to(root).as_posix(),
             ]
             + ([correction_ref] if correction_ref else [])
             + ([potential_conversion_ref] if potential_conversion_ref else [])
