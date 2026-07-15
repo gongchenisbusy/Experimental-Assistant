@@ -4,13 +4,33 @@ import json
 from pathlib import Path
 import shutil
 
-from ea.cli import main
+from ea.cli import _print_json, main
 from ea.user_surface import (
     build_project_dashboard,
     generate_user_report,
     inspect_analysis_source,
     start_project,
 )
+
+
+def test_json_output_falls_back_to_ascii_escapes_on_western_console(
+    monkeypatch,
+) -> None:
+    class AsciiOnly:
+        def __init__(self) -> None:
+            self.writes: list[str] = []
+
+        def write(self, value: str) -> int:
+            value.encode("ascii")
+            self.writes.append(value)
+            return len(value)
+
+    writer = AsciiOnly()
+    monkeypatch.setattr("ea.cli.sys.stdout", writer)
+
+    _print_json({"message": "确定配置"})
+
+    assert json.loads("".join(writer.writes)) == {"message": "确定配置"}
 
 
 def test_start_plans_before_writing_and_creates_with_safe_defaults(

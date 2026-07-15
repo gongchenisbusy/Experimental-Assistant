@@ -13,7 +13,7 @@
 
 | Area | Evidence |
 |---|---|
-| Local release smoke | pass on Python 3.12 with 394 tests, both skill validators, identity/instruction checks, four public examples, portability scan, and sensitive-value scan |
+| Local release smoke | pass on Python 3.12 with 395 tests, both skill validators, identity/instruction checks, four public examples, portability scan, and sensitive-value scan |
 | Complete installation | wheel/sdist package both skills; setup source priority is explicit, bundled distribution, verified compact release asset, then developer checkout |
 | Update recovery | CLI and two-skill before/after identities, failure stage, and restored state are written to transaction journals |
 | Windows portability | deep-path project lifecycle fixture and GBK validator-output decoding fixture; native confirmation is delegated to Windows CI |

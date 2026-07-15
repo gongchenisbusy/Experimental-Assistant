@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
@@ -1929,7 +1930,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_json(data: object) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    try:
+        sys.stdout.write(text + "\n")
+    except UnicodeEncodeError:
+        sys.stdout.write(json.dumps(data, ensure_ascii=True, indent=2) + "\n")
 
 
 def _compact_public_search_result(result: dict, *, workspace: Path) -> dict:
