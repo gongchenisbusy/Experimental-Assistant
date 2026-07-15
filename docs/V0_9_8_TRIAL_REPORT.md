@@ -8,12 +8,14 @@
 - Primary/compatibility skills: `$ea` / `$ea-v0-2`
 - Companion contract: `skill-registry/companion-compatibility.yml`; accepted `ea-feedback` commit `9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8`
 - Local development validation: macOS arm64, Python 3.12; native platform claims require the public CI record for the release commit
+- Public candidate CI: pass at `825f535` ([PR run 29430136013](https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29430136013)); the duplicate push run also passed
 
 ## Implemented Regression Evidence
 
 | Area | Evidence |
 |---|---|
 | Local release smoke | pass on Python 3.12 with 395 tests, both skill validators, identity/instruction checks, four public examples, portability scan, and sensitive-value scan |
+| Native public CI | pass on Windows, Ubuntu, and macOS with Python 3.11–3.13; Python 3.14 observation, minimum dependencies, clean wheel/sdist setup, and release engineering also passed |
 | Complete installation | wheel/sdist package both skills; setup source priority is explicit, bundled distribution, verified compact release asset, then developer checkout |
 | Update recovery | CLI and two-skill before/after identities, failure stage, and restored state are written to transaction journals |
 | Windows portability | deep-path project lifecycle fixture and GBK validator-output decoding fixture; native confirmation is delegated to Windows CI |
@@ -37,7 +39,7 @@ This single OA trial verifies one public route and cache-reuse behavior. It does
 
 ## Release Gates
 
-The final release commit must add its exact full-test count, native Windows/Ubuntu/macOS CI URL, clean wheel/sdist evidence, reproducibility hashes, SBOM/vulnerability result, release-asset download verification, and distribution-checklist result before issue closure. A failed or absent gate remains pending rather than inferred as passed.
+The candidate source records its exact full-test count and native CI URL above. The tagged release must still add clean wheel/sdist evidence, reproducibility hashes, SBOM/vulnerability result, release-asset download verification, and distribution-checklist result before issue closure. A failed or absent gate remains pending rather than inferred as passed.
 
 ## External Evidence Still Pending
 
