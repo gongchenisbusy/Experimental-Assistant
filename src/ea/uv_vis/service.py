@@ -30,6 +30,7 @@ from ea.literature.source_packet_manifest import (
 )
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -442,7 +443,7 @@ def _apply_numeric_correction(
         corrected = raw_signal - constant_offset
         operation_text = "raw_signal - constant_offset"
     elif method == "subtract_reference_column":
-        reference_column = _numeric_correction_reference_column(parameters)
+        _numeric_correction_reference_column(parameters)
         if "reference_signal" not in processed.columns:
             raise UVVisProcessingError(
                 "UV-Vis subtract_reference_column correction requires a numeric reference_signal column"
@@ -5018,7 +5019,9 @@ def process_uv_vis_result(
         signal_mode=request.signal_mode,  # type: ignore[arg-type]
         processing_parameters=parameters,
         outputs=outputs,
-        peak_analysis=feature_analysis,
+        peak_analysis=ensure_interpretation_message_contract(
+            feature_analysis, "uv_vis"
+        ),
         figure_id=figure_id,
         warnings=warnings,
         review_refs=[request.column_review_ref, request.parameter_review_ref],

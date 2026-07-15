@@ -26,6 +26,7 @@ from ea.figures import (
     styled_subplots,
 )
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -1014,7 +1015,7 @@ def _apply_potential_conversion(
         warnings.append(
             _warning(
                 "electrochemistry_potential_conversion_method_unsupported",
-                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.8 workflow.",
+                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1284,7 +1285,7 @@ def _apply_ir_drop_correction(
         warnings.append(
             _warning(
                 "electrochemistry_ir_drop_correction_method_unsupported",
-                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.8 workflow.",
+                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1678,7 +1679,7 @@ def _apply_tafel_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_tafel_analysis_method_unsupported",
-                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.8 workflow.",
+                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2099,7 +2100,7 @@ def _apply_gcd_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_gcd_analysis_method_unsupported",
-                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.8 workflow.",
+                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2732,7 +2733,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_method_unsupported",
-                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.8 workflow.",
+                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2744,7 +2745,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_model_unsupported",
-                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.8 workflow.",
+                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.9 workflow.",
                 severity="medium",
                 circuit_model=circuit_model,
             )
@@ -3743,7 +3744,9 @@ def process_electrochemistry_result(
         electrode_area_cm2=request.electrode_area_cm2,
         processing_parameters=parameters,
         outputs=outputs,
-        peak_analysis=analysis,
+        peak_analysis=ensure_interpretation_message_contract(
+            analysis, "electrochemistry"
+        ),
         figure_id=figure_id,
         warnings=warnings,
         review_refs=[

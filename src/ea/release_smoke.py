@@ -527,7 +527,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run Experimental Assistant v0.9.8 public-release smoke checks."
+        description="Run the current Experimental Assistant public-release smoke checks."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--python", default=sys.executable)

@@ -235,8 +235,10 @@ def test_cli_runs_synthetic_uv_vis_workflow_end_to_end(tmp_path: Path, capsys) -
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "uv_vis_analysis"
     assert "## UV-Vis feature 参数" in report_body
-    assert "![UV-Vis spectrum]" in report_body
-    assert "processed CSV" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{uv_vis['figure_id']}`" in report_body
+    assert Path(uv_vis["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)
@@ -400,7 +402,7 @@ def test_uv_vis_tauc_screening_records_reviewed_fit_window(tmp_path: Path, capsy
     _, report_body = read_markdown_record(Path(report_output["report"]))
     assert "## Tauc/Kubelka-Munk screening" in report_body
     assert "只作为筛查记录" in report_body
-    assert "Tauc/Kubelka-Munk table" in report_body
+    assert Path(uv_vis["outputs"]["tauc_table"]).name in report_body
 
 
 def test_uv_vis_derivative_screening_records_gradient_table(tmp_path: Path, capsys) -> None:
@@ -551,7 +553,7 @@ def test_uv_vis_derivative_screening_records_gradient_table(tmp_path: Path, caps
     report_output = _json_output(capsys)
     _, report_body = read_markdown_record(Path(report_output["report"]))
     assert "## Derivative screening" in report_body
-    assert "derivative table" in report_body
+    assert Path(uv_vis["outputs"]["derivative_table"]).name in report_body
     assert "谱肩、边缘或拐点候选区域" in report_body
 
 

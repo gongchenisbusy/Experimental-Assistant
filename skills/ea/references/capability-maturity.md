@@ -1,6 +1,6 @@
 # Capability Maturity
 
-Use this reference when describing support, selecting a workflow, or deciding whether an output may be presented as production-ready.
+Use this maintainer-only reference for release governance or when the user explicitly asks for the internal capability contract. Do not reproduce these maturity labels in ordinary user answers or routine command output; state concrete supported inputs, review requirements, limits, and next actions instead.
 
 ## Stable Core
 
@@ -10,15 +10,15 @@ Use this reference when describing support, selecting a workflow, or deciding wh
 - Review, provenance, references, health, evaluation, brief, and traceability.
 - HTML reports and checksum-verified exports.
 
-Raman is stable only after the release's independent benchmark and reviewer record pass.
+Raman is stable only after its public benchmark, numeric tolerances, simulated release-candidate scientific review, and artifact inspection pass with no unresolved blocking finding.
 
 ## Beta
 
-- Raman pending sign-off, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, and batch workflows.
+- Raman pending release-candidate review, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, and batch workflows.
 - Public literature metadata search/ranking.
 - Literature evidence datasets and review-gated plotting.
 
-Treat beta outputs as candidates or screening results. State inputs, units, assumptions, evidence, uncertainty, and unsupported uses.
+Treat these outputs as candidates or screening results. State inputs, units, assumptions, evidence, uncertainty, and unsupported uses.
 
 ## Experimental Or Companion
 

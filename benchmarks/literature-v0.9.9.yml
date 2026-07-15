@@ -1,0 +1,55 @@
+schema_version: "2.0"
+benchmark_id: literature-pipeline-v0.9.9
+evidence_type: public_benchmark
+ranking:
+  query: MoS2 Raman strain
+  expected_relevant_dois: [10.1000/main, 10.1000/second]
+  recall_at_3_min: 1.0
+  precision_at_3_min: 0.66
+  supplement_above_parent_max: 0
+retrieval:
+  known_evidence_query: Raman strain coefficient
+  expected_page: 7
+  minimum_evidence: 1
+universal_schema:
+  required_types:
+    - number
+    - range
+    - uncertain_number
+    - text
+    - enum
+    - boolean
+    - date
+    - datetime
+    - list
+    - nested
+  required_workflow:
+    - schema_validate
+    - plan
+    - extract
+    - item_review
+    - validate
+    - plot_when_semantically_valid
+    - export
+  required_properties:
+    - semantic_schema_hash
+    - reported_and_normalized_values_separated
+    - source_anchor_per_candidate
+    - accepted_or_edited_only_downstream
+    - changed_schema_requires_migration
+  compatibility_presets:
+    - conductivity
+    - resistivity
+    - sheet_resistance
+    - sheet_conductance
+    - contact_resistance
+    - mobility
+resource_gates:
+  default_stdout_bytes_max: 4096
+  five_item_search_stdout_bytes_max: 2048
+  initial_chunk_limit: 3
+boundaries:
+  - A resource reduction fails when ranking recall, PDF integrity, or evidence retrieval regresses.
+  - No match in the initial chunks is never equivalent to absence from the full document.
+  - A schema makes arbitrary categories representable; it does not make every PDF automatically extractable or every reported value comparable.
+  - Simulated review and mock integration evidence are never represented as real-user or independent-expert validation.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "experimental-assistant"
-version = "0.9.8"
+version = "0.9.9"
 description = "Local-first materials research assistant with review-gated evidence and provenance"
 readme = "README.md"
 requires-python = ">=3.11"

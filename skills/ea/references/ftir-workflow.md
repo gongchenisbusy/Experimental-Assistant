@@ -1,6 +1,6 @@
 # FTIR Workflow
 
-Use this reference when processing Fourier-transform infrared spectra in the Experimental Assistant v0.9.8 skill.
+Use this reference when processing Fourier-transform infrared spectra in the Experimental Assistant v0.9.9 skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Treat broad FTIR band-family matches, context records, and source-backed assignment suggestions as screening/provenance hints. Use project chemistry, references, and user review before writing durable conclusions.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.8 FTIR compatibility support:
+Current Experimental Assistant v0.9.9 FTIR compatibility support:
 
 - Raw import uses `ea raw import --characterization-type ftir`.
 - Inspection identifies common FTIR files by path/name, wavenumber-like ranges, and axis metadata.
@@ -31,7 +31,7 @@ Current Experimental Assistant v0.9.8 FTIR compatibility support:
 - Built-in band-family windows cover broad regions only, including O-H/N-H stretching, adsorbed-water bending, C-H stretching, carbonyl/amide/carboxylate regions, triple-bond and aromatic regions, C-O/C-N fingerprint bands, Si-O/silanol bands, common carbonate/phosphate/sulfate/nitrate inorganic-ion regions, and low-wavenumber metal-oxygen regions. They do not identify compounds by themselves.
 - Public release packages include `examples/public-ftir-assignment-project/`, a public-safe runnable example of the built-in `generic_materials` FTIR assignment path from source packet and reference registration through suggestion review package, report display, traceable citations, and draft interpretation memory candidates.
 - Reports include an embedded FTIR figure, original figure path, band tables, optional context record summary/link, optional source-backed assignment suggestion sections, confidence-labeled possible interpretations, file links, References, and provenance.
-- `context_record` is disabled by default. Enable it only after the user reviews instrument/accessory, atmosphere, sample preparation, background/reference, and correction-note metadata. This record is metadata/provenance only; Experimental Assistant v0.9.8 does not apply automatic background/reference/ATR/atmosphere correction from it.
+- `context_record` is disabled by default. Enable it only after the user reviews instrument/accessory, atmosphere, sample preparation, background/reference, and correction-note metadata. This record is metadata/provenance only; Experimental Assistant v0.9.9 does not apply automatic background/reference/ATR/atmosphere correction from it.
 - FTIR assignment suggestions are advisory. They require source summary, applicability notes, reference IDs, confidence, caveats, and user review before report or memory use. Built-in and confirmed-literature packets may include `reference_seeds`; use `ea references register-seeds` or manual replacement to register those sources in the project reference index before treating seed-backed candidates as report evidence. `ea ftir report --assignment-suggestion` can display these records and merge registered references into the report bibliography. The `suggest-assignments` command does not perform unconfirmed live lookup, auto-apply assignments, or prove composition/functional groups from a band match alone; EA may still prepare source-backed candidates from built-in libraries, project literature, user-provided sources, or user-confirmed search workflows before that command.
 
 CLI path:

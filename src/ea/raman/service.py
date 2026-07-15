@@ -29,6 +29,7 @@ from ea.figures import (
 )
 from ea.materials import infer_material_from_project, match_raman_peaks
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
 from ea.schema import RamanProcessingResult
@@ -839,7 +840,7 @@ def _plot_raman(
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    processed_line = ax.plot(
+    ax.plot(
         processed["raman_shift"],
         processed["processed_intensity"],
         color=NATURE_LIKE_COLORS["orange"],
@@ -847,7 +848,7 @@ def _plot_raman(
         label="Processed intensity (normalized)",
     )
     raw_ax = ax.twinx()
-    raw_line = raw_ax.plot(
+    raw_ax.plot(
         processed["raman_shift"],
         processed["raw_intensity"],
         color=NATURE_LIKE_COLORS["gray"],
@@ -916,7 +917,9 @@ def process_raman_result(
         _confirmed_frame(raw_path, request), parameters
     )
     peaks = _detect_peaks(processed, parameters)
-    peak_analysis = _analyze_peak_assignments(peaks, root, project_id)
+    peak_analysis = ensure_interpretation_message_contract(
+        _analyze_peak_assignments(peaks, root, project_id), "raman"
+    )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):

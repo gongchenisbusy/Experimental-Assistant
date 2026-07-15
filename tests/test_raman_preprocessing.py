@@ -206,6 +206,7 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(
 
     assert "## 拟合峰参数" in body
     assert "## 可能结论与可信度" in body
-    assert "MoS2-like Raman pair" in body
+    assert "MoS₂-like Raman 峰对" in body
+    assert "Detected E2g-like and A1g-like" not in body
     assert "可信度： `medium`" in body
     assert "confidence:" not in body

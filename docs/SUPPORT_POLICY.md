@@ -2,7 +2,7 @@
 
 ## Supported Runtime Target
 
-v0.9.8 targets Python 3.11, 3.12, and 3.13 on native Windows, Ubuntu, and macOS CI runners. Python 3.14 is observation-only until the complete release gate passes.
+v0.9.9 targets Python 3.11, 3.12, and 3.13 on native Windows, Ubuntu, and macOS CI runners. Python 3.14 is observation-only until the complete release gate passes.
 
 Only platform and Python combinations shown as passing in the release checklist are advertised as supported.
 

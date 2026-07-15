@@ -183,11 +183,11 @@ def run_raman_golden_benchmark(
         "benchmark_type": benchmark["benchmark_type"],
         "machine_status": machine_status,
         "scientific_review_status": reviewer.get("review_status"),
-        "promotion_status": "eligible_for_stable" if machine_status == "pass" and reviewer.get("review_status") == "approved" else "remain_beta",
+        "promotion_status": "eligible_for_release" if machine_status == "pass" and reviewer.get("review_status") == "approved" else "review_required",
         "checks": checks,
         "limitations": [
-            "This is an internal software reproducibility golden, not an independent external scientific validation.",
-            "Raman remains beta until an independent reviewer approves the declared scientific review scope.",
+            "This is a software reproducibility golden, not independent external scientific validation.",
+            "Release acceptance requires the declared simulated scientific review and manual artifact inspection.",
         ],
     }
     if output_path:

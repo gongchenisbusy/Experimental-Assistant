@@ -1,22 +1,22 @@
-# Experimental Assistant v0.9.8 Release Verification
+# Experimental Assistant v0.9.9 Release Verification
 
-This guide defines the maintainer and recipient checks for Experimental Assistant v0.9.8. Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>. Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8>.
+This guide defines the maintainer and recipient checks for Experimental Assistant v0.9.9. Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>. Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9>.
 
 The checks do not require Zotero, browser profiles, institution login, private literature caches, or developer-machine key paths.
 
 ## Expected Artifacts
 
-- `experimental_assistant-0.9.8-py3-none-any.whl`
-- `experimental_assistant-0.9.8.tar.gz`
-- `experimental-assistant-0.9.8-skills.zip`
-- `experimental-assistant-0.9.8-skills.zip.sha256`
-- `experimental-assistant-v0.9.8-release-manifest.yml`
-- `experimental-assistant-0.9.8-COMMIT-release.zip`
-- `experimental-assistant-0.9.8-COMMIT-release.zip.sha256`
-- `experimental-assistant-0.9.8-sbom.json`
-- `experimental-assistant-0.9.8-vulnerability-report.json`
-- `experimental-assistant-v0.9.8-distribution-checklist.json`
-- `experimental-assistant-v0.9.8-distribution-checklist.md`
+- `experimental_assistant-0.9.9-py3-none-any.whl`
+- `experimental_assistant-0.9.9.tar.gz`
+- `experimental-assistant-0.9.9-skills.zip`
+- `experimental-assistant-0.9.9-skills.zip.sha256`
+- `experimental-assistant-v0.9.9-release-manifest.yml`
+- `experimental-assistant-0.9.9-COMMIT-release.zip`
+- `experimental-assistant-0.9.9-COMMIT-release.zip.sha256`
+- `experimental-assistant-0.9.9-sbom.json`
+- `experimental-assistant-0.9.9-vulnerability-report.json`
+- `experimental-assistant-v0.9.9-distribution-checklist.json`
+- `experimental-assistant-v0.9.9-distribution-checklist.md`
 - optional detached signature sidecar and independently trusted public key
 
 ## Maintainer Order
@@ -34,7 +34,7 @@ ea-release-supply-chain
 ea-release-skill-bundle
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -52,7 +52,7 @@ Repeat clean builds with the same commit and `SOURCE_DATE_EPOCH`; the wheel and 
 
 ## Supply Chain Gate
 
-`ea-release-supply-chain` generates a CycloneDX 1.5 SBOM and `pip-audit` report from the clean release environment. Scanner unavailability, scanner error, or any unallowlisted known vulnerability is release-blocking. The v0.9.8 allowlist is empty. See `docs/RELEASE_SECURITY_POLICY.md` and `requirements/release.txt`.
+`ea-release-supply-chain` generates a CycloneDX 1.5 SBOM and `pip-audit` report from the clean release environment. Scanner unavailability, scanner error, or any unallowlisted known vulnerability is release-blocking. The v0.9.9 allowlist is empty. See `docs/RELEASE_SECURITY_POLICY.md` and `requirements/release.txt`.
 
 ## What Each Check Proves
 
@@ -78,16 +78,16 @@ Repeat clean builds with the same commit and `SOURCE_DATE_EPOCH`; the wheel and 
 - missing archive/checksum/embedded manifest or any size/SHA-256 mismatch;
 - unexpected developer paths, credentials, tokens, cookies, signed URLs, browser/session identifiers, raw project data, or private full text in release artifacts.
 
-Independent novice/platform trial and external scientific-review evidence are promotion gates for v1.0. They may remain honestly marked pending for a controlled v0.9.8 release candidate, but must never be recorded as passed without real evidence.
+The release dossier must include candidate-bound simulated novice journeys, simulated scientific review, deterministic mock integration evidence, and manual artifact inspection. Each record must state its evidence type and limits. Real-user trials, external expert sign-off, and live-account Zotero tests are not release or v1.0 promotion gates.
 
 ## Optional Signing
 
 ```bash
 ea-release-keygen --private-key /path/to/release-private.pem --public-key /path/to/release-public.pem
-ea-sign-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip \
+ea-sign-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip \
   --private-key /path/to/release-private.pem \
   --public-key /path/to/release-public.pem
-ea-verify-release-signature dist/experimental-assistant-0.9.8-COMMIT-release.zip \
+ea-verify-release-signature dist/experimental-assistant-0.9.9-COMMIT-release.zip \
   --public-key /path/to/release-public.pem
 ```
 

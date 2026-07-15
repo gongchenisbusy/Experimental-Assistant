@@ -24,7 +24,7 @@ def _pdf_bytes() -> bytes:
 
 
 def test_literature_pipeline_non_regression_benchmark(tmp_path: Path) -> None:
-    fixture = read_yaml(Path("benchmarks/literature-v0.9.8.yml"))
+    fixture = read_yaml(Path("benchmarks/literature-v0.9.9.yml"))
     initialize_project(
         tmp_path,
         project_name="MoS2 Raman strain",

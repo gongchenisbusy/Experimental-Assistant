@@ -1,0 +1,37 @@
+schema_version: "1.0"
+release_candidate: v0.9.9
+status: rc0_evidence_pending
+candidate_commit: null
+v1_promotion_ready: false
+feature_freeze_after_v0_9_9: true
+gates:
+  identity_and_compatibility: pending_final_candidate
+  universal_literature_data: pass_local
+  report_and_figure_contract: pass_local_artifact_review_pending
+  guided_first_journey: pass_local_simulated_persona_pending
+  mock_companion_integration: pass
+  simulated_scientific_review: pending
+  full_regression: pending_final_candidate
+  native_ci: pending_public_commit
+  supply_chain_and_release_artifacts: pending
+  issue_disposition: pending
+evidence_refs:
+  - docs/V0_9_9_ACCEPTANCE_MAPPING.md
+  - docs/V0_9_9_TRIAL_REPORT.md
+  - docs/V0_9_9_ISSUE_DISPOSITION.yml
+  - docs/simulated-evidence/persona-scenarios.yml
+  - docs/simulated-evidence/scientific-reviews.yml
+  - docs/simulated-evidence/mock-companion-validation.yml
+  - benchmarks/raman-v1/benchmark.yml
+  - benchmarks/literature-v0.9.9.yml
+evidence_policy:
+  allowed_types:
+    - automated_test
+    - simulated_agent
+    - mock_fixture
+    - public_benchmark
+    - manual_artifact_review
+  real_user_trial_required: false
+  external_expert_signoff_required: false
+  live_zotero_required: false
+  simulated_evidence_must_not_be_relabelled_as_external: true

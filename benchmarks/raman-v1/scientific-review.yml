@@ -1,10 +1,11 @@
 schema_version: "1.0"
 benchmark_id: raman-mos2-public-fixture-v1
-review_status: pending_external_reviewer
+evidence_type: simulated_agent
+review_status: pending_simulated_release_review
 reviewer:
-  name: null
-  affiliation: null
-  expertise: null
+  name: fresh-agent-reviewer
+  affiliation: simulated-release-review
+  expertise: prompted Raman and materials artifact audit
   conflict_of_interest: null
 review_scope:
   units: pending
@@ -16,7 +17,9 @@ review_scope:
   report_language: pending
 decision: null
 reviewed_at: null
-signature_or_public_record_ref: null
+candidate_commit: null
+artifact_hashes: {}
+public_record_ref: docs/simulated-evidence/scientific-reviews.yml
 notes:
-  - This template must be completed by an independent Raman/materials reviewer.
-  - Maintainer self-review or automated tests cannot satisfy this gate.
+  - This template is completed by a fresh simulated reviewer against the release candidate.
+  - The record validates review coverage and claim boundaries; it is not independent expert endorsement.

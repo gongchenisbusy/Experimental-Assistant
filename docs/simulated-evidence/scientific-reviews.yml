@@ -1,0 +1,30 @@
+schema_version: "1.0"
+release: v0.9.9
+status: awaiting_rc0_execution
+evidence_type: simulated_agent
+candidate_commit: null
+review_contract:
+  public_artifacts_only: true
+  fixed_inputs_and_hashes_required: true
+  numeric_tolerances_required_where_applicable: true
+  claim_boundaries_required: true
+  real_expert_signoff: false
+reviews:
+  - review_id: raman-benchmark-and-report
+    scope:
+      - units and preprocessing
+      - peak detection and fitting
+      - assignment windows and mode separation
+      - uncertainty, invalid uses, and report language
+    status: pending
+    findings: []
+  - review_id: universal-literature-data-fidelity
+    scope:
+      - schema semantics and typed values
+      - reported versus normalized values
+      - source anchors, conflicts, comparability, and review gates
+      - plot/export and privacy boundaries
+    status: pending
+    findings: []
+limitations:
+  - Simulated scientific review audits the software and evidence contract; it is not independent domain-expert endorsement.

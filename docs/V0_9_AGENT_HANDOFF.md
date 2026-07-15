@@ -1,9 +1,9 @@
-# Experimental Assistant v0.9.8 Agent Handoff
+# Experimental Assistant v0.9.9 Agent Handoff
 
 ## Current State
 
-- Release line: `v0.9.8`, package `experimental-assistant 0.9.8`
-- Development branch: post-v0.9.8 pre-v1 development
+- Release line: `v0.9.9`, package `experimental-assistant 0.9.9`
+- Development branch: post-v0.9.9 pre-v1 development
 - Primary skill: `skills/ea` / `$ea`
 - Compatibility skill: retired before v1.0; source, package, release bundle, and installed target must be absent
 - Capability matrix: `docs/CAPABILITY_MATRIX.md`
@@ -22,7 +22,7 @@ ea-release-supply-chain
 ea-release-skill-bundle
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -30,7 +30,7 @@ Also require clean wheel/sdist installs that run bundled-skill setup without net
 
 ## Evidence Honesty
 
-Do not mark independent novice/platform trials or external scientific review as passed without an actual tester/reviewer record. v0.9.8 may be published as a controlled candidate with these items pending; v1.0 promotion may not.
+Require automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection bound to the release candidate. Record their exact evidence types and limitations. Real-user trials, independent expert sign-off, and live-account Zotero tests are optional post-v1 improvement inputs, not v0.9.9 or v1.0 promotion gates.
 
 ## Boundaries
 

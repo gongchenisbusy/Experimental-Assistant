@@ -291,9 +291,11 @@ def test_cli_runs_synthetic_electrochemistry_workflow_end_to_end(tmp_path: Path,
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "electrochemistry_analysis"
     assert "## Electrochemistry feature 参数" in report_body
-    assert "![Electrochemistry trace]" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{electrochemistry['figure_id']}`" in report_body
     assert "performance or mechanism" not in report_body
-    assert "processed CSV" in report_body
+    assert Path(electrochemistry["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)
@@ -1386,7 +1388,8 @@ def test_cli_runs_eis_nyquist_screening_workflow(tmp_path: Path, capsys) -> None
     assert "## EIS Nyquist screening 摘要" in report_body
     assert "EIS Nyquist screening" in report_body
     assert "不能仅凭本次自动处理直接确认等效电路" in report_body
-    assert "![Electrochemistry trace]" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{electrochemistry['figure_id']}`" in report_body
 
 
 def test_electrochemistry_docs_and_skill_references_are_discoverable() -> None:

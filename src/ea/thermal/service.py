@@ -24,6 +24,7 @@ from ea.figures import (
     styled_subplots,
 )
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -448,7 +449,7 @@ def _apply_baseline_correction(
     if method != "linear_two_point":
         warning = _warning(
             "thermal_baseline_method_unsupported",
-            "Thermal baseline correction method is not supported by Experimental Assistant v0.9.8.",
+            "Thermal baseline correction method is not supported by Experimental Assistant v0.9.9.",
             severity="medium",
             method=method,
         )
@@ -1030,7 +1031,7 @@ def _analyze_transitions(
     if method != "reviewed_window_screening":
         warning = _warning(
             "thermal_transition_method_unsupported",
-            "Thermal transition analysis method is not supported by Experimental Assistant v0.9.8.",
+            "Thermal transition analysis method is not supported by Experimental Assistant v0.9.9.",
             severity="medium",
             method=method,
         )
@@ -1280,7 +1281,7 @@ def _record_transition_assignments(
     if method != "user_confirmed_transition_assignments":
         warning = _warning(
             "thermal_transition_assignment_method_unsupported",
-            "Thermal transition assignment method is not supported by Experimental Assistant v0.9.8.",
+            "Thermal transition assignment method is not supported by Experimental Assistant v0.9.9.",
             severity="medium",
             method=method,
         )
@@ -1918,7 +1919,7 @@ def process_thermal_result(
         context_summary=request.context_summary,
         processing_parameters=parameters,
         outputs=outputs,
-        peak_analysis=analysis,
+        peak_analysis=ensure_interpretation_message_contract(analysis, "thermal"),
         figure_id=figure_id,
         warnings=warnings,
         review_refs=[

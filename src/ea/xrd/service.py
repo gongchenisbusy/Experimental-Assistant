@@ -34,6 +34,7 @@ from ea.materials import (
     summarize_xrd_assignment_libraries,
 )
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
 from ea.review import require_confirmed_review
@@ -1911,7 +1912,9 @@ def process_xrd_result(
     wavelength, wavelength_warnings = _wavelength(parameters)
     _add_d_spacing(processed, request.x_unit, wavelength)
     peaks = _detect_peaks(processed, parameters)
-    peak_analysis = _analyze_xrd_peaks(peaks, root, project_id)
+    peak_analysis = ensure_interpretation_message_contract(
+        _analyze_xrd_peaks(peaks, root, project_id), "xrd"
+    )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):

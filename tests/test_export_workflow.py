@@ -269,14 +269,20 @@ def test_cli_exports_user_readable_report_html_with_embedded_figure(
     assert html_path.exists()
     assert metadata_path.exists()
     assert '<img src="data:image/png;base64,' in html
-    assert "Canonical Markdown report" in html
+    assert "规范 Markdown 报告" in html
     assert built["report_id"] in html
     assert built["figure_id"] in html
-    assert "Raman spectrum with processed intensity and detected peaks" in html
-    assert "Figure source data" in html
-    assert "primary_plotting_dataset" in html
+    assert "Raman 光谱：已处理强度与候选峰" in html
+    assert "Raman spectrum with processed intensity and detected peaks" not in html
+    assert "图源数据" in html
+    assert html.count("图源数据") == 1
     assert "raman_processed.csv" in html
-    assert "Provenance Summary" in html
+    assert html.count(">raman_processed.csv</a>") == 1
+    assert "图下数据" not in html
+    assert "Figure Source Data" not in html
+    assert "Detected E2g-like and A1g-like" not in html
+    assert "可能结论与可信度" in html
+    assert "溯源摘要" in html
     assert output["canonical_report_ref"].startswith("reports/")
     assert metadata["canonical_report_ref"] == output["canonical_report_ref"]
     assert metadata["figures"][0]["figure_id"] == built["figure_id"]
@@ -305,11 +311,13 @@ def test_cli_exports_source_backed_report_html_with_references_and_provenance(
     assert output["status"] == "complete"
     assert '<img src="data:image/png;base64,' in html
     assert "fig-public-ftir-assignment-example-ftir-20260604-001" in html
-    assert "FTIR spectrum with processed signal" in html
+    assert "FTIR 光谱：已处理信号、候选谱带与谱带族筛查提示" in html
+    assert "FTIR spectrum with processed signal" not in html
     assert "[1]" in html and "Colthup" in html
     assert "[2]" in html and "Socrates" in html
-    assert "Provenance Summary" in html
-    assert "sha256:" in html
+    assert "溯源摘要" in html
+    assert "审计附录" not in html
+    assert "sha256:" not in html
     assert output["citation_check"] == {
         "status": "pass",
         "body_numbers": [1, 2],
@@ -320,6 +328,93 @@ def test_cli_exports_source_backed_report_html_with_references_and_provenance(
     assert metadata["provenance"]
     assert metadata["provenance"][0]["workflow"] == "report_generation"
     assert metadata["figures"][0]["source_data_refs"]
+
+
+def test_report_html_audit_appendix_is_explicit_opt_in(
+    tmp_path: Path, capsys
+) -> None:
+    built = _build_report_project(tmp_path)
+
+    assert (
+        main(
+            [
+                "export",
+                "report-html",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--include-audit",
+            ]
+        )
+        == 0
+    )
+    output = _json_output(capsys)
+    html = Path(output["html_path"]).read_text(encoding="utf-8")
+
+    assert output["include_audit"] is True
+    assert "审计附录" in html
+    assert "sha256:" in html
+
+
+def test_guided_journey_reaches_verified_export_with_one_action_per_stage(
+    tmp_path: Path, capsys
+) -> None:
+    built = _build_report_project(tmp_path)
+
+    assert main(["journey", str(tmp_path), "--method", "raman"]) == 0
+    html_stage = _json_output(capsys)
+    assert html_stage["code"] == "html_export_required"
+    assert html_stage["progress"]["report"] is True
+    assert html_stage["progress"]["html"] is False
+
+    assert (
+        main(
+            [
+                "export",
+                "report-html",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 0
+    )
+    _json_output(capsys)
+    assert main(["journey", str(tmp_path), "--method", "raman"]) == 0
+    bundle_stage = _json_output(capsys)
+    assert bundle_stage["code"] == "verified_bundle_required"
+    assert bundle_stage["progress"]["html"] is True
+
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--zip",
+            ]
+        )
+        == 0
+    )
+    _json_output(capsys)
+    assert main(["journey", str(tmp_path), "--method", "raman"]) == 0
+    completed_raw = capsys.readouterr().out
+    completed = json.loads(completed_raw)
+    assert completed["status"] == "completed"
+    assert completed["code"] == "journey_complete"
+    assert completed["next_action"] is None
+    assert completed["progress"] == {
+        "project": True,
+        "import": True,
+        "review": True,
+        "analysis": True,
+        "report": True,
+        "html": True,
+        "verified_bundle": True,
+    }
+    assert len(completed_raw.encode("utf-8")) < 4096
 
 
 def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:

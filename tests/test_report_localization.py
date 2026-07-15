@@ -5,7 +5,19 @@ from pathlib import Path
 
 import pytest
 
-from ea.reports.service import _prepare_localized_report
+from ea.reports.service import (
+    _electrochemistry_interpretation_text,
+    _ftir_interpretation_text,
+    _interpretation_text,
+    _localized_dynamic_interpretation,
+    _pl_interpretation_text,
+    _prepare_localized_report,
+    _thermal_interpretation_text,
+    _uv_vis_interpretation_text,
+    _xps_interpretation_text,
+    _xrd_interpretation_text,
+    lint_report_locale,
+)
 from ea.schema import ReportRecord
 from ea.storage.files import write_yaml
 
@@ -81,3 +93,61 @@ def test_all_method_reports_share_zh_en_semantic_contract(
     assert zh_semantic["confidence_enums"] == ["low"]
     assert zh_semantic["warning_codes"] == ["quality-review-required"]
     assert zh_semantic["reference_ids"] == ["ref-001"]
+    assert zh_semantic["locale_lint"] == {"status": "pass", "violations": []}
+
+
+@pytest.mark.parametrize(
+    ("method", "renderer"),
+    [
+        ("raman", _interpretation_text),
+        ("pl", _pl_interpretation_text),
+        ("xrd", _xrd_interpretation_text),
+        ("ftir", _ftir_interpretation_text),
+        ("uv_vis", _uv_vis_interpretation_text),
+        ("xps", _xps_interpretation_text),
+        ("electrochemistry", _electrochemistry_interpretation_text),
+        ("thermal", _thermal_interpretation_text),
+    ],
+)
+def test_all_methods_degrade_unkeyed_english_dynamic_text_without_leak(
+    method: str, renderer
+) -> None:
+    metadata = {
+        "peak_analysis": {
+            "possible_interpretations": [
+                {
+                    "text": "This deliberately unknown generated interpretation remains an English sentence that must not leak into a Chinese report.",
+                    "confidence": "low",
+                    "evidence": ["evidence-001"],
+                }
+            ]
+        }
+    }
+    rendered = renderer(metadata, "[1]")
+    assert "deliberately unknown" not in rendered
+    assert "候选解释" in rendered
+    assert "evidence-001" in rendered
+    assert method
+
+
+def test_stable_message_key_renders_both_locales_and_locale_lint_flags_raw_leak() -> None:
+    item = {
+        "message_key": "raman.mos2_pair_thin_layer",
+        "message_args": {"separation": 19.76},
+        "confidence": "medium",
+        "evidence": ["peak-005", "peak-006"],
+        "mode_separation_cm-1": 19.76,
+    }
+    zh = _localized_dynamic_interpretation(item, "raman", language="zh")
+    en = _localized_dynamic_interpretation(item, "raman", language="en")
+    assert "19.76 cm^-1" in zh
+    assert "薄层" in zh
+    assert "19.76 cm^-1" in en
+    assert "thin-layer" in en
+
+    lint = lint_report_locale(
+        "# 报告\n\n## 可能结论与可信度\n\nThis unknown generated sentence must be localized before release.\n",
+        "zh",
+    )
+    assert lint["status"] == "fail"
+    assert lint["violations"][0]["code"] == "unlocalized_dynamic_sentence"

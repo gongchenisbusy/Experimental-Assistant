@@ -14,6 +14,7 @@ from typing import Any, Iterable
 import yaml
 
 from ea.figures import figure_path_for_report
+from ea.report_messages import localized_figure_caption, localized_source_data_purpose
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.traceability import build_project_trace_view
@@ -482,14 +483,14 @@ def _expand_provenance_refs(root: Path, provenance_refs: Iterable[str]) -> list[
 def _language_labels(language: str | None) -> dict[str, str]:
     if language == "zh":
         return {
-            "title": "EA 友好报告导出",
-            "canonical": "规范 Markdown 报告 / Canonical Markdown report",
-            "report_meta": "报告元数据 / Report Metadata",
-            "figures": "图件 / Figures",
-            "source_data": "图下数据 / Figure source data",
-            "references": "参考文献记录 / Reference Records",
-            "provenance": "溯源摘要 / Provenance Summary",
-            "audit": "审计附录 / Audit Appendix",
+            "title": "EA 报告导出",
+            "canonical": "规范 Markdown 报告",
+            "report_meta": "报告元数据",
+            "figures": "图件",
+            "source_data": "图源数据",
+            "references": "参考文献记录",
+            "provenance": "溯源摘要",
+            "audit": "审计附录",
             "no_references": "本报告未登记外部参考文献。",
         }
     return {
@@ -524,29 +525,59 @@ def _normalized_figure_source_data(figure: dict[str, Any]) -> list[dict[str, Any
     ]
 
 
-def _render_figure_source_data_html(figure: dict[str, Any], label: str) -> str:
+def _source_data_purpose_html(item: dict[str, Any], language: str) -> str:
+    return localized_source_data_purpose(item, language)
+
+
+def _render_figure_source_data_html(
+    figure: dict[str, Any], label: str, language: str
+) -> str:
     items = []
     for item in figure.get("source_data") or []:
         ref = str(item.get("ref") or "")
-        role = str(item.get("role") or "unspecified")
-        purpose = str(item.get("purpose") or "")
-        columns = ", ".join(str(value) for value in item.get("columns") or []) or "n/a"
+        purpose = _source_data_purpose_html(item, language)
         href = item.get("href")
+        if item.get("protected_raw"):
+            protected_label = (
+                "受保护原始数据（未链接）"
+                if language == "zh"
+                else "Protected raw data (not linked)"
+            )
+            items.append(
+                f"<li><span class=\"missing\">{html.escape(protected_label)}</span>"
+                f" — {html.escape(purpose)}</li>"
+            )
+            continue
+        display_name = Path(ref).name or ("缺失文件" if language == "zh" else "missing file")
         if href:
-            ref_html = f'<a href="{html.escape(str(href), quote=True)}"><code>{html.escape(ref)}</code></a>'
+            ref_html = f'<a href="{html.escape(str(href), quote=True)}">{html.escape(display_name)}</a>'
         else:
-            ref_html = f'<code>{html.escape(ref or "missing")}</code> <span class="missing">(not linked)</span>'
+            missing = "（链接不可用）" if language == "zh" else " (not linked)"
+            ref_html = f'{html.escape(display_name)} <span class="missing">{missing}</span>'
         items.append(
             "<li>"
             + ref_html
-            + f" — <code>{html.escape(role)}</code>; {html.escape(purpose)}; columns: <code>{html.escape(columns)}</code>"
+            + f" — {html.escape(purpose)}"
             + "</li>"
         )
     if not items:
-        items.append(
-            '<li><span class="missing">No public-safe processed source data registered.</span></li>'
+        missing = (
+            "未登记可公开链接的处理数据。"
+            if language == "zh"
+            else "No public-safe processed source data is registered."
         )
-    return f"<details><summary>{html.escape(label)}</summary><ul>{''.join(items)}</ul></details>"
+        items.append(
+            f'<li><span class="missing">{html.escape(missing)}</span></li>'
+        )
+    return f'<div class="figure-source-data"><strong>{html.escape(label)}</strong><ul>{"".join(items)}</ul></div>'
+
+
+def _without_standard_figure_section(body: str) -> str:
+    return re.sub(
+        r"(?ms)^##\s+(?:图件|Figures)\s*$.*?(?=^##\s+|\Z)",
+        "",
+        body,
+    ).strip()
 
 
 def _render_report_html_document(
@@ -562,30 +593,42 @@ def _render_report_html_document(
     embed_images: bool,
 ) -> str:
     labels = _language_labels(str(frontmatter.get("language") or ""))
+    language = str(frontmatter.get("language") or "en")
     report_id = str(frontmatter.get("report_id") or manifest["report_id"])
     canonical_ref = manifest["canonical_report_ref"]
     body_html = _markdown_body_to_html(
-        root, report_path, body, embed_images=embed_images
+        root,
+        report_path,
+        _without_standard_figure_section(body),
+        embed_images=embed_images,
     )
 
     figure_parts = []
     for figure in figures:
-        caption = figure.get("caption") or figure["figure_id"]
+        caption = localized_figure_caption(figure, language)
         image_src = figure.get("html_src")
         if image_src:
             image_html = f'<img src="{html.escape(image_src, quote=True)}" alt="{html.escape(str(caption), quote=True)}">'
         else:
             image_html = (
-                '<p class="missing">Figure file was not found during export.</p>'
+                '<p class="missing">'
+                + (
+                    "导出时未找到图件文件。"
+                    if language == "zh"
+                    else "Figure file was not found during export."
+                )
+                + "</p>"
             )
+        report_id_label = "报告 ID" if language == "zh" else "Report ID"
         figure_parts.append(
             '<figure class="report-figure">'
             + image_html
             + "<figcaption>"
             + f"<strong>{html.escape(str(figure['figure_id']))}</strong>: {_html_inline(str(caption))}"
-            + f"<br><span>Original path: <code>{html.escape(str(figure.get('original_path') or ''))}</code></span>"
-            + f"<br><span>Report ID: <code>{html.escape(str(figure.get('report_id') or report_id))}</code></span>"
-            + _render_figure_source_data_html(figure, labels["source_data"])
+            + f"<br><span>{report_id_label}: <code>{html.escape(str(figure.get('report_id') or report_id))}</code></span>"
+            + _render_figure_source_data_html(
+                figure, labels["source_data"], language
+            )
             + "</figcaption></figure>"
         )
 
@@ -688,8 +731,22 @@ dl { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16
 dt { font-weight: 700; color: #3c4043; }
 details { margin: 12px 0; }
 """
+    document_language = "zh-CN" if language == "zh" else "en"
+    citation_check_label = "引用校验" if language == "zh" else "Citation check"
+    audit_html = (
+        f"<section><h2>{html.escape(labels['audit'])}</h2>"
+        f"<p>{html.escape(audit_intro)}</p>{''.join(provenance_details)}</section>\n"
+        if any(record.get("record") for record in provenance_records)
+        else ""
+    )
+    figures_html = (
+        f"<section><h2>{html.escape(labels['figures'])}</h2>"
+        f"{''.join(figure_parts)}</section>\n"
+        if figure_parts
+        else ""
+    )
     return (
-        '<!doctype html>\n<html lang="zh-CN">\n<head>\n'
+        f'<!doctype html>\n<html lang="{document_language}">\n<head>\n'
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<meta name="ea-report-id" content="{html.escape(report_id, quote=True)}">\n'
@@ -699,10 +756,10 @@ details { margin: 12px 0; }
         f'<header><h1>{html.escape(report_id)}</h1><p class="note">{html.escape(labels["canonical"])}: <code>{html.escape(str(canonical_ref))}</code></p></header>\n'
         f"<section><h2>{html.escape(labels['report_meta'])}</h2>{metadata_html}</section>\n"
         f"<main>{body_html}</main>\n"
-        f"<section><h2>{html.escape(labels['figures'])}</h2>{''.join(figure_parts)}</section>\n"
-        f'<section><h2>{html.escape(labels["references"])}</h2>{references_html}<p class="note">Citation check: <code>{html.escape(manifest["citation_check"]["status"])}</code></p></section>\n'
+        f"{figures_html}"
+        f'<section><h2>{html.escape(labels["references"])}</h2>{references_html}<p class="note">{citation_check_label}: <code>{html.escape(manifest["citation_check"]["status"])}</code></p></section>\n'
         f"<section><h2>{html.escape(labels['provenance'])}</h2>{provenance_html}</section>\n"
-        f"<section><h2>{html.escape(labels['audit'])}</h2><p>{html.escape(audit_intro)}</p>{''.join(provenance_details)}</section>\n"
+        f"{audit_html}"
         "</body>\n</html>\n"
     )
 
@@ -714,7 +771,7 @@ def export_report_html(
     output_path: Path | None = None,
     created_at: str | None = None,
     embed_images: bool = True,
-    include_audit: bool = True,
+    include_audit: bool = False,
 ) -> dict[str, Any]:
     root = root.resolve()
     reports = _reports_index(root)
@@ -817,6 +874,8 @@ def export_report_html(
                 "report_id": report_id,
                 "result_id": figure.get("result_id"),
                 "caption": figure.get("caption"),
+                "caption_key": figure.get("caption_key"),
+                "purpose": figure.get("purpose"),
                 "source_data_refs": figure.get("source_data_refs") or [],
                 "source_data": source_data,
                 "generation": figure.get("generation") or {},

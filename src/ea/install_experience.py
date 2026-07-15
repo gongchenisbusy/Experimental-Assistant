@@ -126,9 +126,9 @@ def python_preflight_record() -> dict[str, Any]:
             for major, minor_version in SUPPORTED_PYTHON_MINORS
         ],
         "message": (
-            "Python version is in the supported v0.9.8 matrix."
+            f"Python version is in the supported {RELEASE_LABEL} matrix."
             if ok
-            else "EA v0.9.8 supports Python 3.11, 3.12, and 3.13."
+            else f"EA {RELEASE_LABEL} supports Python 3.11, 3.12, and 3.13."
         ),
         "next_steps": []
         if ok

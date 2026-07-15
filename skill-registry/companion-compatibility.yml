@@ -1,9 +1,9 @@
 schema_version: "1.0"
-ea_release: v0.9.8
+ea_release: v0.9.9
 companions:
   ea-feedback:
     repository: https://github.com/gongchenisbusy/ea-feedback
-    accepted_commit: 9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8
+    accepted_commit: e1397a84fe39bed9c054cd746f25c9d81643ad0d
     required_context_schema: ea-feedback-context-v2
     required_execution_event_schema: ea-feedback-execution-events-v1
     acceptance_evidence:

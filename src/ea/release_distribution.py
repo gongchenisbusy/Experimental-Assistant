@@ -23,10 +23,11 @@ from ea.release_supply_chain import DEFAULT_SBOM_OUTPUT, DEFAULT_VULNERABILITY_O
 
 
 DEFAULT_JSON_OUTPUT = (
-    Path("dist") / "experimental-assistant-v0.9.8-distribution-checklist.json"
+    Path("dist")
+    / f"experimental-assistant-v{__version__}-distribution-checklist.json"
 )
 DEFAULT_MARKDOWN_OUTPUT = (
-    Path("dist") / "experimental-assistant-v0.9.8-distribution-checklist.md"
+    Path("dist") / f"experimental-assistant-v{__version__}-distribution-checklist.md"
 )
 
 
@@ -425,7 +426,7 @@ def build_distribution_checklist(
 
 def render_distribution_markdown(checklist: dict[str, Any]) -> str:
     lines = [
-        "# Experimental Assistant v0.9.8 Distribution Checklist",
+        f"# Experimental Assistant v{__version__} Distribution Checklist",
         "",
         f"- Status: `{checklist['status']}`",
         f"- Package: `{checklist['package']['name']} {checklist['package']['version']}`",
@@ -525,7 +526,7 @@ def write_distribution_checklist(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate an Experimental Assistant v0.9.8 package distribution checklist."
+        description=f"Generate an Experimental Assistant v{__version__} package distribution checklist."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))

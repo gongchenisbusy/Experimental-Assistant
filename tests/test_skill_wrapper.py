@@ -15,7 +15,7 @@ def test_ea_skill_defaults_to_public_user_workflow() -> None:
         "without assuming developer-machine accounts, paths, or credentials"
         in skill_doc
     )
-    assert "# Experimental Assistant v0.9.8" in skill_doc
+    assert "# Experimental Assistant v0.9.9" in skill_doc
     assert "invocation `$ea` as the only public identity" in skill_doc
     assert "former Compatibility skill has been retired before v1.0" in skill_doc
     assert "ea start" in skill_doc
@@ -33,7 +33,7 @@ def test_ea_skill_defaults_to_public_user_workflow() -> None:
     routing_index = yaml.safe_load(
         Path("skills/ea/references/routing-index.yml").read_text(encoding="utf-8")
     )
-    assert routing_index["schema_version"] == "0.9.8"
+    assert routing_index["schema_version"] == "0.9.9"
     assert "method_analysis" in routing_index["routes"]
     assert (
         routing_index["routes"]["method_analysis"]["choose_one_method_ref"]["xps"]

@@ -197,8 +197,10 @@ def test_cli_runs_synthetic_ftir_workflow_end_to_end(tmp_path: Path, capsys) -> 
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "ftir_analysis"
     assert "## FTIR band 参数" in report_body
-    assert "![FTIR spectrum]" in report_body
-    assert "processed CSV" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{ftir['figure_id']}`" in report_body
+    assert Path(ftir["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)

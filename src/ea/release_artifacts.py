@@ -15,7 +15,9 @@ from ea.identity import DISTRIBUTION_NAME
 from ea.storage.files import atomic_write_text
 
 
-DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-0.9.8-install-smoke.json"
+DEFAULT_OUTPUT = (
+    Path("dist") / f"experimental-assistant-{__version__}-install-smoke.json"
+)
 
 
 def _run(

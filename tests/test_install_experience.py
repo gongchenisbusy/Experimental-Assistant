@@ -56,7 +56,7 @@ def _install_retired_skill(codex_home: Path) -> Path:
     target = codex_home / "skills" / "ea-v0-2"
     target.mkdir(parents=True, exist_ok=True)
     (target / "SKILL.md").write_text(
-        "---\nname: ea-v0-2\ndescription: Retired Experimental Assistant v0.9.8 entry.\n---\n",
+        "---\nname: ea-v0-2\ndescription: Retired Experimental Assistant v0.9.9 entry.\n---\n",
         encoding="utf-8",
     )
     return target
@@ -92,7 +92,7 @@ def test_identity_uses_public_distribution_and_ea_skill(monkeypatch) -> None:
 
     result = identity_record()
 
-    assert result["public_version"] == "Experimental Assistant v0.9.8"
+    assert result["public_version"] == "Experimental Assistant v0.9.9"
     assert result["distribution_name"] == "experimental-assistant"
     assert result["skill_folder"] == "ea"
     assert result["skill_invocation"] == "$ea"
@@ -110,21 +110,21 @@ def test_version_human_output_hides_legacy_compatibility_name(
     assert main(["version"]) == 0
     output = capsys.readouterr().out
 
-    assert "Distribution: experimental-assistant 0.9.8" in output
+    assert "Distribution: experimental-assistant 0.9.9" in output
     assert "Codex skill invocation: $ea" in output
     assert "ea-v0-2" not in output
 
 
 def test_capability_contract_is_queryable(capsys) -> None:
-    assert main(["capabilities", "--maturity", "beta", "--json"]) == 0
+    assert main(["capabilities", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
 
-    assert set(result["capabilities"]) == {"beta"}
-    assert (
-        "raman_analysis_pending_external_benchmark_signoff"
-        in result["capabilities"]["beta"]
-    )
-    assert "literature_evidence_datasets" in result["capabilities"]["beta"]
+    assert "maturity" not in json.dumps(result).lower()
+    assert "beta" not in json.dumps(result).lower()
+    assert "user_defined_literature_data_collection" in result["contract"][
+        "supported_workflows"
+    ]
+    assert "scientific_interpretations" in result["contract"]["review_required"]
 
 
 def test_codex_install_stages_primary_and_removes_retired_skill(
@@ -375,7 +375,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     with pytest.raises(SystemExit) as version_exit:
         main(["--version"])
     assert version_exit.value.code == 0
-    assert "v0.9.8" in capsys.readouterr().out
+    assert "v0.9.9" in capsys.readouterr().out
 
     assert main(["version", "--json"]) == 0
     identity = json.loads(capsys.readouterr().out)
@@ -405,7 +405,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     assert installed["identity"]["skill_invocation"] == "$ea"
 
     onboarding = onboarding_post_install_record(event="update", lang="zh")
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.8"
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.9"
     assert "compatibility" not in onboarding
 
 
@@ -419,7 +419,7 @@ def test_update_plan_is_read_only_until_confirmed(monkeypatch) -> None:
         },
     )
 
-    result = update_installation(release_ref="v0.9.8", confirmed=False)
+    result = update_installation(release_ref="v0.9.9", confirmed=False)
 
     assert result["status"] == "needs_confirmation"
     assert result["previous_release_ref"] == "v0.9.6"
@@ -453,7 +453,7 @@ def test_update_rolls_back_cli_when_new_skill_install_fails(
         return Result(0)
 
     result = update_installation(
-        release_ref="v0.9.8",
+        release_ref="v0.9.9",
         confirmed=True,
         uv_executable="/test/uv",
         command_runner=runner,

@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from ea.figures import lookup_figure, update_figure_report_ref
+from ea.figures import (
+    figure_path_for_report,
+    update_figure_report_ref,
+)
 from ea.provenance import write_provenance_entry
+from ea.report_messages import (
+    interpretation_message_key,
+    localized_figure_caption,
+    localized_source_data_purpose,
+)
 from ea.references import build_report_reference_block, format_inline_citation
 from ea.review import require_confirmed_review
 from ea.schema import ReportRecord
@@ -40,6 +49,87 @@ REPORT_MESSAGE_CATALOG = {
         "recommendation": "Recommendation",
     },
 }
+
+REPORT_DYNAMIC_MESSAGE_CATALOG = {
+    "zh": {
+        "analysis.review_candidate": "{method} 自动分析生成了一条候选解释；请结合结构化证据、限制和人工复核后使用。",
+        "analysis.no_interpretation": "当前 metadata 中没有可复用的 {method} 自动解释结果；请先复核输入、处理参数和样品背景。",
+        "raman.no_stable_peaks": "当前自动设置未检测到稳定 Raman 峰；需要复核信噪比、基线和检峰参数。",
+        "raman.no_material_rule": "已完成自动检峰和局部拟合，但当前项目未匹配到材料特异性 Raman 归属规则。",
+        "raman.mos2_pair_thin_layer": "检测到的 E2g-like 与 A1g-like 候选峰构成 MoS₂-like Raman 峰对；当前 {separation:.2f} cm^-1 模态间距更接近薄层 MoS₂ 候选信号，但仍需文献与人工复核。",
+    },
+    "en": {
+        "analysis.review_candidate": "The {method} analysis produced a candidate interpretation; use it only with the structured evidence, limitations, and review.",
+        "analysis.no_interpretation": "No reusable {method} interpretation is recorded; review the input, processing parameters, and sample context.",
+        "raman.no_stable_peaks": "The current settings found no stable Raman peak; review signal quality, baseline, and peak-detection parameters.",
+        "raman.no_material_rule": "Peak detection and local fitting completed, but no material-specific Raman assignment rule matched this project.",
+        "raman.mos2_pair_thin_layer": "The E2g-like and A1g-like candidate peaks form a MoS2-like Raman pair; the {separation:.2f} cm^-1 separation is closer to a thin-layer candidate signal and still requires literature and human review.",
+    },
+}
+
+METHOD_LABELS = {
+    "raman": {"zh": "Raman", "en": "Raman"},
+    "pl": {"zh": "PL", "en": "PL"},
+    "xrd": {"zh": "XRD", "en": "XRD"},
+    "ftir": {"zh": "FTIR", "en": "FTIR"},
+    "uv_vis": {"zh": "UV-Vis", "en": "UV-Vis"},
+    "xps": {"zh": "XPS", "en": "XPS"},
+    "electrochemistry": {"zh": "电化学", "en": "electrochemistry"},
+    "thermal": {"zh": "热分析", "en": "thermal"},
+}
+
+
+def _looks_like_english_sentence(text: str) -> bool:
+    without_code = re.sub(r"`[^`]*`|https?://\S+|\[[0-9]+\]", "", text)
+    words = re.findall(r"\b[A-Za-z]{3,}\b", without_code)
+    return len(words) >= 5 and not re.search(r"[\u4e00-\u9fff]", without_code)
+
+
+def _dynamic_message_key(item: dict[str, Any], method: str) -> str:
+    return interpretation_message_key(item, method)
+
+
+def _localized_dynamic_interpretation(
+    item: dict[str, Any], method: str, *, language: str = "zh"
+) -> str:
+    language = language if language in REPORT_DYNAMIC_MESSAGE_CATALOG else "zh"
+    text = str(item.get("text") or "")
+    explicit_key = str(item.get("message_key") or "")
+    if language == "zh" and text and not explicit_key and not _looks_like_english_sentence(text):
+        return text
+    key = _dynamic_message_key(item, method)
+    template = REPORT_DYNAMIC_MESSAGE_CATALOG[language].get(key)
+    if template is None:
+        template = REPORT_DYNAMIC_MESSAGE_CATALOG[language][
+            "analysis.review_candidate"
+        ]
+    args = dict(item.get("message_args") or {})
+    args.setdefault("method", METHOD_LABELS.get(method, {}).get(language, method))
+    separation = item.get("mode_separation_cm-1")
+    args.setdefault("separation", float(separation) if separation is not None else 0.0)
+    try:
+        return template.format(**args)
+    except (KeyError, TypeError, ValueError):
+        return REPORT_DYNAMIC_MESSAGE_CATALOG[language][
+            "analysis.review_candidate"
+        ].format(method=args["method"])
+
+
+def _english_dynamic_interpretations(metadata: dict[str, Any], method: str) -> str:
+    interpretations = (metadata.get("peak_analysis") or {}).get(
+        "possible_interpretations"
+    ) or []
+    if not interpretations:
+        return "- " + REPORT_DYNAMIC_MESSAGE_CATALOG["en"][
+            "analysis.no_interpretation"
+        ].format(method=METHOD_LABELS.get(method, {}).get("en", method))
+    return "\n".join(
+        f"- {_localized_dynamic_interpretation(item, method, language='en')}\n"
+        f"  - Confidence: `{item.get('confidence', 'insufficient')}`; evidence: `"
+        f"{', '.join(str(value) for value in item.get('evidence', [])) or 'not recorded'}`"
+        for item in interpretations
+        if isinstance(item, dict)
+    )
 
 
 def _report_language(root: Path) -> str:
@@ -128,6 +218,55 @@ def _localize_chinese_dynamic_labels(body: str) -> str:
     return body
 
 
+ZH_DYNAMIC_SECTION_HEADINGS = {"可能结论与可信度", "不确定性与限制"}
+
+
+def _sanitize_chinese_dynamic_sections(body: str) -> str:
+    lines: list[str] = []
+    in_dynamic_section = False
+    for line in body.splitlines():
+        heading = re.match(r"^##\s+(.+?)\s*$", line.strip())
+        if heading:
+            in_dynamic_section = heading.group(1) in ZH_DYNAMIC_SECTION_HEADINGS
+            lines.append(line)
+            continue
+        if in_dynamic_section and _looks_like_english_sentence(line):
+            prefix = "- " if line.lstrip().startswith("-") else ""
+            indent = line[: len(line) - len(line.lstrip())]
+            lines.append(
+                indent
+                + prefix
+                + "未识别的英文动态文本已隐藏；请查看本地结构化 metadata 并进行人工复核。"
+            )
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def lint_report_locale(body: str, language: str) -> dict[str, Any]:
+    if language != "zh":
+        return {"status": "pass", "violations": []}
+    violations: list[dict[str, Any]] = []
+    in_dynamic_section = False
+    for line_number, line in enumerate(body.splitlines(), start=1):
+        heading = re.match(r"^##\s+(.+?)\s*$", line.strip())
+        if heading:
+            in_dynamic_section = heading.group(1) in ZH_DYNAMIC_SECTION_HEADINGS
+            continue
+        if in_dynamic_section and _looks_like_english_sentence(line):
+            violations.append(
+                {
+                    "code": "unlocalized_dynamic_sentence",
+                    "line": line_number,
+                    "text": line[:240],
+                }
+            )
+    return {
+        "status": "pass" if not violations else "fail",
+        "violations": violations,
+    }
+
+
 def _render_english_report(
     *,
     report: ReportRecord,
@@ -138,6 +277,12 @@ def _render_english_report(
 ) -> str:
     record = report.model_dump(exclude_none=True)
     method = str(record.get("report_type") or "analysis").replace("_", " ").title()
+    method_key = str(record.get("report_type") or "analysis").removesuffix(
+        "_analysis"
+    )
+    dynamic_interpretations = _english_dynamic_interpretations(
+        metadata, method_key
+    )
     numeric_rows = ["| Field | Value |", "|---|---:|"]
     numeric_rows.extend(
         f"| `{item['path']}` | `{item['value']}` |"
@@ -194,6 +339,10 @@ This draft reports review-gated processed evidence. It does not independently pr
 - Confidence enums: {confidences}
 - Warning codes: {warning_codes}
 
+## Possible Interpretations and Confidence
+
+{dynamic_interpretations}
+
 ## Output Files
 
 {chr(10).join(output_rows) if output_rows else "- No output file recorded."}
@@ -229,22 +378,74 @@ def _prepare_localized_report(
         )
     else:
         body = _localize_chinese_dynamic_labels(body)
-    source_data_block = _figure_source_data_markdown(root, report, language)
-    if source_data_block:
-        body = f"{body.rstrip()}\n\n{source_data_block}\n"
+        body = _sanitize_chinese_dynamic_sections(body)
+    figure_block, known_figure_refs = _figure_components_markdown(
+        root, report, language
+    )
+    if figure_block:
+        body = _strip_registered_figure_markdown(body, known_figure_refs)
+        body = _strip_report_output_files_section(body)
+        reference_heading = re.search(
+            r"(?m)^##\s+(?:References|参考文献)\s*$", body
+        )
+        if reference_heading:
+            body = (
+                body[: reference_heading.start()].rstrip()
+                + "\n\n"
+                + figure_block
+                + "\n\n"
+                + body[reference_heading.start() :].lstrip()
+            )
+        else:
+            body = f"{body.rstrip()}\n\n{figure_block}\n"
+    semantic["locale_lint"] = lint_report_locale(body, language)
     return language, body, semantic
 
 
-def _figure_source_data_markdown(
-    root: Path, report: ReportRecord, language: str
+def _localized_source_data_purpose(
+    item: dict[str, Any], language: str
 ) -> str:
+    return localized_source_data_purpose(item, language)
+
+
+def _strip_registered_figure_markdown(body: str, known_refs: set[str]) -> str:
+    if not known_refs:
+        return body
+    kept: list[str] = []
+    for line in body.splitlines():
+        image_match = re.match(r"^\s*!\[[^]]*\]\(([^)]+)\)\s*$", line)
+        if image_match:
+            target = image_match.group(1).split(" ", 1)[0].lstrip("./")
+            if any(target.endswith(ref.lstrip("./")) for ref in known_refs):
+                continue
+        if line.strip().startswith(("原图文件：", "Original figure:")) and any(
+            ref in line for ref in known_refs
+        ):
+            continue
+        kept.append(line)
+    return "\n".join(kept).rstrip() + "\n"
+
+
+def _strip_report_output_files_section(body: str) -> str:
+    """Keep figure source links figure-local; full output refs remain in provenance."""
+    return re.sub(
+        r"(?ms)^##\s+(?:输出文件|Output Files)\s*$.*?(?=^##\s+|\Z)",
+        "",
+        body,
+    ).strip()
+
+
+def _figure_components_markdown(
+    root: Path, report: ReportRecord, language: str
+) -> tuple[str, set[str]]:
     if not report.figure_ids:
-        return ""
-    heading = "## Figure Source Data" if language == "en" else "## 图下数据"
+        return "", set()
+    heading = "## Figures" if language == "en" else "## 图件"
     lines = [heading, ""]
+    known_refs: set[str] = set()
     for figure_id in report.figure_ids:
         try:
-            figure = lookup_figure(root, figure_id)
+            figure = update_figure_report_ref(root, figure_id, report.report_id)
         except KeyError:
             message = "figure record missing" if language == "en" else "图件登记缺失"
             lines.extend(
@@ -256,7 +457,31 @@ def _figure_source_data_markdown(
                 ]
             )
             continue
+        for ref_key in ("path", "base_path"):
+            if figure.get(ref_key):
+                known_refs.add(str(figure[ref_key]))
+        for rendering in (figure.get("renderings") or {}).values():
+            if isinstance(rendering, dict) and rendering.get("path"):
+                known_refs.add(str(rendering["path"]))
+        figure_ref = figure_path_for_report(figure, report.report_id)
+        caption = localized_figure_caption(figure, language)
         lines.extend([f"### `{figure_id}`", ""])
+        if figure_ref and (root / figure_ref).is_file():
+            lines.extend(
+                [
+                    f"![{caption}](../{figure_ref})",
+                    "",
+                    caption,
+                    "",
+                ]
+            )
+        else:
+            message = (
+                "Figure file was not found; the registered identity is preserved."
+                if language == "en"
+                else "图件文件缺失；已保留登记身份以便恢复。"
+            )
+            lines.extend([f"- WARNING `figure_file_missing`: {message}", ""])
         source_data = list(figure.get("source_data") or [])
         if not source_data:
             source_data = [
@@ -271,7 +496,7 @@ def _figure_source_data_markdown(
             ]
         if not source_data:
             message = (
-                "No public-safe processed source dataset was registered; protected raw data is not linked."
+                "No public-safe processed source dataset is registered; protected raw data is not linked."
                 if language == "en"
                 else "未登记可公开链接的 processed source data；受保护的 raw data 不在此处链接。"
             )
@@ -279,43 +504,33 @@ def _figure_source_data_markdown(
             continue
         for item in source_data:
             if item.get("protected_raw"):
-                lines.append(
-                    "- WARNING `protected_raw_source_omitted`: protected raw data link omitted."
+                message = (
+                    "Protected raw-data link omitted."
+                    if language == "en"
+                    else "受保护的原始数据链接已省略。"
                 )
+                lines.append(f"- WARNING `protected_raw_source_omitted`: {message}")
                 continue
             ref = str(item.get("ref") or "")
             source_path = root / ref
-            role = str(item.get("role") or "unspecified")
-            purpose = str(item.get("purpose") or "")
-            columns = (
-                ", ".join(f"`{value}`" for value in item.get("columns") or []) or "n/a"
-            )
             if not ref or not source_path.is_file():
+                message = (
+                    "Registered processed data file is missing."
+                    if language == "en"
+                    else "已登记的处理数据文件缺失。"
+                )
                 lines.append(
-                    f"- WARNING `figure_source_data_file_missing`: `{ref or 'empty-ref'}` ({role}); {purpose}"
+                    f"- WARNING `figure_source_data_file_missing`: {message}"
                 )
                 continue
             portable_ref = f"../{ref}"
+            label = Path(ref).name
+            purpose = _localized_source_data_purpose(item, language)
             lines.append(
-                f"- [{ref}]({portable_ref}) — role: `{role}`; purpose: {purpose}; columns: {columns}"
+                f"- [{label}]({portable_ref}) — {purpose}"
             )
         lines.append("")
-    return "\n".join(lines).rstrip()
-
-
-RAMAN_INTERPRETATION_TRANSLATIONS = {
-    "No stable Raman peaks were detected by the current automatic settings.": (
-        "当前自动设置未检测到稳定 Raman 峰；需要复核信噪比、基线和检峰参数。"
-    ),
-    "Automatic peaks were fitted, but no material-specific assignment rule was applied for this project_id.": (
-        "已完成自动检峰和局部拟合，但当前 project_id 未匹配到材料特异性 Raman 归属规则。"
-    ),
-    "No interpretation text recorded.": "未记录可复用的 Raman 自动解释文本。",
-}
-
-
-def _localize_raman_interpretation_text(text: str) -> str:
-    return RAMAN_INTERPRETATION_TRANSLATIONS.get(text, text)
+    return "\n".join(lines).rstrip(), known_refs
 
 
 def _peak_summary(root: Path, peak_table_ref: str) -> str:
@@ -365,9 +580,7 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = _localize_raman_interpretation_text(
-            str(item.get("text", "No interpretation text recorded."))
-        )
+        text = _localized_dynamic_interpretation(item, "raman")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -600,7 +813,7 @@ def _pl_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 PL 自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "pl")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -827,7 +1040,7 @@ def _xrd_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 XRD 自动解释结果；建议先复核检峰参数、仪器条件和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "xrd")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -1102,7 +1315,7 @@ def _ftir_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 FTIR 自动解释结果；建议先复核检峰参数、背景扣除和样品信息。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "ftir")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -2345,7 +2558,7 @@ def _uv_vis_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 UV-Vis 自动解释结果；建议先复核列选择、信号模式、样品背景和处理参数。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "uv_vis")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -3044,7 +3257,7 @@ def _xps_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 XPS 自动解释结果；建议先复核能量校准、背景模型、峰模型和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "xps")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -3510,7 +3723,7 @@ def _electrochemistry_interpretation_text(metadata: dict, citation_text: str) ->
         return "- 当前 metadata 中没有可复用的 electrochemistry 自动解释结果；建议先复核电极、电解液、参比电极、扫描/计时协议和归一化方式。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "electrochemistry")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
@@ -4142,7 +4355,7 @@ def _thermal_interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的 thermal 自动解释结果；建议先复核温度程序、气氛、基线、样品质量和重复性。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = str(item.get("text", "No interpretation text recorded."))
+        text = _localized_dynamic_interpretation(item, "thermal")
         confidence = str(item.get("confidence", "insufficient"))
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"

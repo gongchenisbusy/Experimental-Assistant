@@ -1,0 +1,46 @@
+schema_version: "1.0"
+release: v0.9.9
+status: awaiting_rc0_execution
+evidence_type: simulated_agent
+candidate_commit: null
+isolation_contract:
+  fresh_context: true
+  public_materials_only: true
+  private_user_project_access: false
+  implementation_intent_disclosed: false
+  real_user_trial: false
+scenarios:
+  - scenario_id: novice-zh-first-report
+    persona: Chinese-speaking first-time materials researcher
+    inputs:
+      - README.md
+      - docs/QUICKSTART_ZH.md
+      - public Raman fixture
+    tasks:
+      - identify the one public skill entry
+      - follow the guided journey
+      - inspect the Chinese report, figure-local data, and readable IDs
+      - verify the report bundle
+  - scenario_id: novice-offline-recovery
+    persona: first-time user without Zotero or network access
+    inputs:
+      - docs/PUBLIC_ONBOARDING.md
+      - five-target Mock fixture
+    tasks:
+      - identify the local degraded path
+      - distinguish current blockers from stale optional state
+      - resume without duplicate targets or cache objects
+  - scenario_id: novice-arbitrary-literature-schema
+    persona: researcher requesting a non-electrical mixed-type dataset
+    inputs:
+      - skills/ea/references/literature-data-extraction.md
+      - public mixed-domain fixtures
+    tasks:
+      - create and validate a schema without editing EA source
+      - complete plan, extraction, item review, validation, and export
+      - explain why unsupported plotting does not block reviewed export
+results: []
+findings: []
+limitations:
+  - These are fresh-agent simulations, not human usability measurements.
+  - Platform behavior is established by native CI and clean-install tests, not by persona prose.

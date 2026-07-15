@@ -4,8 +4,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ea.identity import RELEASE_LABEL
 
-EA_FEEDBACK_ACCEPTED_COMMIT = "9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8"
+EA_FEEDBACK_ACCEPTED_COMMIT = "e1397a84fe39bed9c054cd746f25c9d81643ad0d"
 
 
 def inspect_ea_feedback_companion(codex_home: Path) -> dict[str, Any]:
@@ -55,9 +56,9 @@ def inspect_ea_feedback_companion(codex_home: Path) -> dict[str, Any]:
         "detected_commit": detected,
         "code": None if matches else "EA-COMPANION-FEEDBACK-COMMIT-MISMATCH",
         "message": (
-            "ea-feedback commit matches the v0.9.8 compatibility manifest."
+            f"ea-feedback commit matches the {RELEASE_LABEL} compatibility manifest."
             if matches
-            else "ea-feedback is installed but does not match the v0.9.8 accepted commit."
+            else f"ea-feedback is installed but does not match the {RELEASE_LABEL} accepted commit."
         ),
         "next_steps": []
         if matches

@@ -8,6 +8,7 @@ from ea.cli import _print_json, main
 from ea.user_surface import (
     build_project_dashboard,
     generate_user_report,
+    guided_first_journey,
     inspect_analysis_source,
     start_project,
 )
@@ -48,6 +49,60 @@ def test_start_plans_before_writing_and_creates_with_safe_defaults(
     assert result["status"] == "completed"
     assert (workspace / "EA_PROJECT.md").is_file()
     assert (workspace / ".ea" / "project_format.yml").is_file()
+
+
+def test_guided_journey_is_zero_write_and_returns_one_import_action(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "First project"
+    missing = guided_first_journey(workspace)
+    assert missing["code"] == "project_not_created"
+    assert missing["read_only"] is True
+    assert not workspace.exists()
+
+    start_project(workspace, material_system="MoS2", confirmed=True)
+    source = tmp_path / "first-raman.csv"
+    source.write_text("raman_shift_cm_1,intensity\n380,10\n400,20\n", encoding="utf-8")
+    before = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    result = guided_first_journey(
+        workspace, source_path=source, method="raman"
+    )
+    after = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    assert result["code"] == "import_ready_for_confirmation"
+    assert result["status"] == "needs_confirmation"
+    assert result["read_only"] is True
+    assert result["details"]["columns"] == ["raman_shift_cm_1", "intensity"]
+    assert result["details"]["unit_proposals"] == {"raman_shift_cm_1": "cm^-1"}
+    assert "--preview-hash" in result["next_command"]
+    assert before == after
+
+    assert (
+        main(
+            [
+                "--mode",
+                "consult",
+                "journey",
+                str(workspace),
+                "--source",
+                str(source),
+                "--method",
+                "raman",
+            ]
+        )
+        == 0
+    )
+    cli_result = json.loads(capsys.readouterr().out)
+    assert cli_result["code"] == "import_ready_for_confirmation"
 
 
 def test_dashboard_is_read_only_and_uses_optional_literature_semantics(

@@ -25,6 +25,7 @@ from ea.figures import (
 )
 from ea.materials import infer_material_from_project, match_pl_peaks
 from ea.provenance import write_provenance_entry
+from ea.report_messages import ensure_interpretation_message_contract
 from ea.raman import SpectrumInspection, inspect_spectrum_file
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -399,7 +400,9 @@ def process_pl_result(
         _confirmed_frame(raw_path, request), parameters
     )
     peaks = _detect_peaks(processed, parameters, request.x_unit)
-    peak_analysis = _analyze_pl_peaks(peaks, root, project_id, request.x_unit)
+    peak_analysis = ensure_interpretation_message_contract(
+        _analyze_pl_peaks(peaks, root, project_id, request.x_unit), "pl"
+    )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):

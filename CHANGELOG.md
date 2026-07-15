@@ -2,6 +2,13 @@
 
 All notable public changes to Experimental Assistant are recorded here.
 
+## v0.9.9 - 2026-07-16
+
+- Generalize literature data collection from six electrical categories to arbitrary validated user schemas while retaining the old categories as templates and preserving reviewed-only downstream use.
+- Localize dynamic report conclusions across all eight methods, keep source data with each figure without report-level duplication, and make long report-bound figure IDs readable at normal HTML display size.
+- Add the read-only `ea journey` first-project router and remove the retired Compatibility skill from the public package surface.
+- Replace pre-v1 real-user/external-expert/live-Zotero gates with clearly labeled simulated-agent reviews, public benchmarks, deterministic five-target Mock integration, and manual artifact evidence.
+
 ## v0.9.8 - 2026-07-15
 
 - Bundle the version-matched `$ea` and `$ea-v0-2` skills in wheel/sdist artifacts and publish a compact checksummed skill archive; setup/update transactions now record CLI and skill before/after state.

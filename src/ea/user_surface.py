@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
+import shlex
 from typing import Any, Callable
 
+from ea.data_import import preview_import
 from ea.migrations import project_format_status
 from ea.project_state import aggregate_project_state
 from ea.projects import initialize_project
 from ea.storage.files import read_markdown_record
+from ea.storage.files import read_yaml
 
 
 def start_project(
@@ -44,9 +47,8 @@ def start_project(
             "values": values,
             "will_write": will_write,
             "literature": "not_used",
-            "next_steps": [
-                "Review the proposed values, edit any that matter now, then rerun with --yes."
-            ],
+            "next_action": "Review the proposed values, edit any that matter now, then rerun with --yes.",
+            "next_steps": ["Review the proposed values, edit any that matter now, then rerun with --yes."],
         }
     if (root / "EA_PROJECT.md").exists():
         raise FileExistsError(f"EA project already exists: {root}")
@@ -64,11 +66,239 @@ def start_project(
         "workspace": str(root),
         "values": values,
         "artifacts_written": {key: str(path) for key, path in outputs.items()},
-        "next_steps": [
-            "Run `ea status <workspace>`.",
-            "Preview the first source with `ea import preview <file>`.",
-        ],
+        "next_action": f"Run `ea journey {shlex.quote(str(root))}` to continue the guided first project.",
+        "next_steps": [f"Run `ea journey {shlex.quote(str(root))}` to continue the guided first project."],
     }
+
+
+def guided_first_journey(
+    root: Path,
+    *,
+    source_path: Path | None = None,
+    method: str | None = None,
+) -> dict[str, Any]:
+    """Inspect a first-project journey without mutating project or source files."""
+    root = root.expanduser().resolve()
+    source = source_path.expanduser().resolve() if source_path else None
+    selected_method = (method or "").lower().replace("-", "_")
+    progress = {
+        "project": False,
+        "import": False,
+        "review": False,
+        "analysis": False,
+        "report": False,
+        "html": False,
+        "verified_bundle": False,
+    }
+
+    def result(
+        stage: str,
+        code: str,
+        next_action: str | None,
+        *,
+        status: str = "ready",
+        next_command: str | None = None,
+        artifacts: dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": "1.0",
+            "status": status,
+            "read_only": True,
+            "journey": "first_project_to_verified_report",
+            "workspace": str(root),
+            "stage": stage,
+            "code": code,
+            "progress": progress,
+            "next_action": next_action,
+        }
+        if next_command:
+            payload["next_command"] = next_command
+        if artifacts:
+            payload["artifacts"] = artifacts
+        if details:
+            payload["details"] = details
+        return payload
+
+    project_path = root / "EA_PROJECT.md"
+    if not project_path.is_file():
+        command = f"ea start {shlex.quote(str(root))}"
+        return result(
+            "project",
+            "project_not_created",
+            "Preview the project identity and safe defaults, then confirm creation.",
+            status="needs_action",
+            next_command=command,
+        )
+    progress["project"] = True
+
+    raw_metadata = sorted(root.glob("raw/*/*/metadata.yml"))
+    if not raw_metadata:
+        if source is None:
+            return result(
+                "import",
+                "source_required",
+                "Choose the first local delimited-text source and rerun this journey with --source and --method.",
+                status="needs_input",
+            )
+        if not source.is_file():
+            return result(
+                "import",
+                "source_not_found",
+                "Correct the source path; no project file was changed.",
+                status="blocked",
+                details={"source": str(source)},
+            )
+        if not selected_method:
+            return result(
+                "import",
+                "method_required",
+                "Specify the characterization method for this source with --method.",
+                status="needs_input",
+            )
+        preview = preview_import(source)
+        command = (
+            f"ea import apply {shlex.quote(str(root))} {shlex.quote(str(source))} "
+            f"--characterization-type {shlex.quote(selected_method)} "
+            f"--preview-hash {preview['sha256']} --yes"
+        )
+        return result(
+            "import",
+            "import_ready_for_confirmation",
+            "Review the detected encoding, columns, units, warnings, and source hash; apply only if they match the source.",
+            status="needs_confirmation",
+            next_command=command,
+            details={
+                "source_sha256": preview["sha256"],
+                "encoding": preview["encoding"],
+                "delimiter": preview["delimiter_name"],
+                "columns": preview["columns"],
+                "unit_proposals": preview["unit_proposals"],
+                "warnings": preview["warnings"],
+            },
+        )
+    progress["import"] = True
+    if not selected_method:
+        selected_method = raw_metadata[-1].parents[1].name.lower().replace("-", "_")
+
+    reviews = sorted(root.glob("reviews/*.yml"))
+    if not reviews:
+        return result(
+            "review",
+            "review_required",
+            "Use $ea to review the detected columns, units, context, and processing parameters before analysis.",
+            status="needs_confirmation",
+            artifacts={
+                "raw_metadata": raw_metadata[-1].relative_to(root).as_posix()
+            },
+        )
+    progress["review"] = True
+
+    processed_metadata = sorted(root.glob(f"processed/**/{selected_method}_metadata.yml"))
+    if not processed_metadata:
+        return result(
+            "analysis",
+            "analysis_required",
+            f"Use $ea to process the reviewed {selected_method} source; the selected parameters remain confirmation-gated.",
+            status="needs_confirmation",
+            artifacts={
+                "raw_metadata": raw_metadata[-1].relative_to(root).as_posix(),
+                "review_count": len(reviews),
+            },
+        )
+    progress["analysis"] = True
+
+    reports_path = root / "reports" / "index.yml"
+    reports = (read_yaml(reports_path).get("reports") or {}) if reports_path.is_file() else {}
+    if not reports:
+        metadata_ref = processed_metadata[-1].relative_to(root).as_posix()
+        command = (
+            f"ea report {shlex.quote(str(root))} --method {shlex.quote(selected_method)} "
+            f"--metadata {shlex.quote(metadata_ref)} --yes"
+        )
+        return result(
+            "report",
+            "report_required",
+            "Generate a draft report from the reviewed processed metadata, then review its evidence and limitations.",
+            status="needs_confirmation",
+            next_command=command,
+            artifacts={"processed_metadata": metadata_ref},
+        )
+    progress["report"] = True
+    report_id = list(reports)[-1]
+    report_ref = str(reports[report_id].get("path") or "")
+    html_path = root / "exports" / "user-reports" / f"{report_id}.html"
+    if not html_path.is_file():
+        command = (
+            f"ea export report-html {shlex.quote(str(root))} "
+            f"--report-id {shlex.quote(report_id)}"
+        )
+        return result(
+            "html",
+            "html_export_required",
+            "Render the reviewed draft as a user-readable HTML report.",
+            status="needs_action",
+            next_command=command,
+            artifacts={"report": report_ref, "report_id": report_id},
+        )
+    progress["html"] = True
+
+    bundle_dir = root / "exports" / "report-bundles" / report_id
+    archive = root / "exports" / "report-bundles" / f"{report_id}.zip"
+    if not (bundle_dir / "bundle_checksums.yml").is_file() or not archive.is_file():
+        command = (
+            f"ea export report-bundle {shlex.quote(str(root))} "
+            f"--report-id {shlex.quote(report_id)} --zip"
+        )
+        return result(
+            "verified_export",
+            "verified_bundle_required",
+            "Create the deterministic report bundle and checksum-protected archive.",
+            status="needs_action",
+            next_command=command,
+            artifacts={
+                "report": report_ref,
+                "html": html_path.relative_to(root).as_posix(),
+            },
+        )
+
+    from ea.exports import verify_archive_checksum, verify_bundle_checksums
+
+    bundle_check = verify_bundle_checksums(bundle_dir)
+    archive_check = verify_archive_checksum(archive)
+    if bundle_check["status"] != "pass" or archive_check["status"] != "pass":
+        return result(
+            "verified_export",
+            "bundle_verification_failed",
+            "Inspect the reported checksum failures, restore the valid prior artifacts, then recreate the export.",
+            status="blocked",
+            artifacts={
+                "bundle": bundle_dir.relative_to(root).as_posix(),
+                "archive": archive.relative_to(root).as_posix(),
+            },
+            details={
+                "bundle_failures": bundle_check["failures"],
+                "archive_failures": archive_check["failures"],
+            },
+        )
+    progress["verified_bundle"] = True
+    return result(
+        "complete",
+        "journey_complete",
+        None,
+        status="completed",
+        artifacts={
+            "report": report_ref,
+            "html": html_path.relative_to(root).as_posix(),
+            "bundle": bundle_dir.relative_to(root).as_posix(),
+            "archive": archive.relative_to(root).as_posix(),
+            "archive_sha256": archive_check["actual_sha256"],
+        },
+        details={
+            "bundle_files_checked": bundle_check["checked_count"],
+            "archive_verification": "pass",
+        },
+    )
 
 
 def build_project_dashboard(root: Path) -> dict[str, Any]:

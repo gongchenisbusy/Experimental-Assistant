@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from ea.figures import (
@@ -99,3 +100,45 @@ def test_legacy_figure_is_not_automatically_rewritten(tmp_path: Path) -> None:
     assert record["upgrade_plan"]["status"] == "explicit_rerender_required"
     assert record["upgrade_plan"]["legacy_sha256"] == before
     assert lookup_figure(tmp_path, "fig-legacy")["path"] == "figures/legacy.png"
+
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [(320, 640), (640, 320), (932, 524), (1796, 1194), (2400, 1200)],
+)
+def test_footer_is_readable_unclipped_and_outside_plot_for_common_canvases(
+    tmp_path: Path, width: int, height: int
+) -> None:
+    base = tmp_path / "figures" / f"canvas-{width}x{height}.png"
+    base.parent.mkdir(parents=True)
+    Image.new("RGB", (width, height), "black").save(base)
+    figure_id = "fig-" + "very-long-figure-identity-segment-" * 4 + "001"
+    report_id = "rpt-" + "very-long-report-identity-segment-" * 4 + "001"
+    register_figure(
+        tmp_path,
+        figure_id=figure_id,
+        path=base.relative_to(tmp_path).as_posix(),
+        report_id=None,
+        result_id="res-footer-fixture",
+        raw_data_ids=[],
+        sample_ids=[],
+    )
+
+    record = update_figure_report_ref(tmp_path, figure_id, report_id)
+    rendering = record["renderings"][report_id]
+    final_path = tmp_path / rendering["path"]
+    x0, y0, x1, y1 = rendering["footer_text_bbox_px"]
+
+    assert rendering["footer_effective_css_px"] >= 12.0
+    assert rendering["footer_contrast_ratio"] >= 7.0
+    assert rendering["footer_clipped"] is False
+    assert 0 <= x0 < x1 <= width
+    assert height <= y0 < y1 <= height + rendering["footer_strip_height_px"]
+    assert rendering["footer_line_count"] >= 1
+    with Image.open(final_path) as final:
+        assert final.width == width
+        assert final.height > height
+        assert final.info["ea_footer"] == f"FigID: {figure_id} | Report: {report_id}"
+        assert final.info["ea_footer_clipped"] == "false"
+        assert float(final.info["ea_footer_effective_css_px"]) >= 12.0
+        assert int(final.info["ea_footer_line_count"]) == rendering["footer_line_count"]

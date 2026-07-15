@@ -1,0 +1,26 @@
+schema_version: "1.0"
+release: v0.9.9
+status: pass
+evidence_type: mock_fixture
+fixture_ref: tests/fixtures/v0_9_9/mock_zotero_five_target.yml
+test_ref: tests/test_v0_9_9_mock_companion.py
+coverage:
+  target_count: 5
+  parent_and_pdf_child: true
+  partial_failure_and_resume: true
+  deduplication: true
+  warm_cache_reuse: true
+  reconciliation: true
+  blocker_codes:
+    - http_401_unauthorized
+    - http_403_forbidden
+    - http_429_rate_limited
+    - timeout
+    - captcha_required
+    - permission_denied
+  secret_and_session_redaction: true
+boundaries:
+  live_zotero_account_used: false
+  browser_or_institution_login_used: false
+  real_user_trial: false
+  independent_expert_review: false
