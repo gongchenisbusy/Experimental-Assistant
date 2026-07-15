@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.8 Public FTIR Assignment Example
+# Experimental Assistant v0.9.9 Public FTIR Assignment Example
 
 This folder is a packaged, public-safe EA project example for the FTIR source-backed assignment workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an EA v0.9 release-candidate package.
 

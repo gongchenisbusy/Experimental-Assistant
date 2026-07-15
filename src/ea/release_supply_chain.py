@@ -13,9 +13,9 @@ from ea.identity import DISTRIBUTION_NAME, REPOSITORY_URL
 from ea.storage.files import atomic_write_text
 
 
-DEFAULT_SBOM_OUTPUT = Path("dist") / "experimental-assistant-0.9.8-sbom.json"
+DEFAULT_SBOM_OUTPUT = Path("dist") / f"experimental-assistant-{__version__}-sbom.json"
 DEFAULT_VULNERABILITY_OUTPUT = (
-    Path("dist") / "experimental-assistant-0.9.8-vulnerability-report.json"
+    Path("dist") / f"experimental-assistant-{__version__}-vulnerability-report.json"
 )
 
 _INSTALLED_DISTRIBUTIONS_SCRIPT = """

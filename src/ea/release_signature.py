@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from ea import __version__
 from ea.release_package import (
     _checksum_sidecar_path,
     _sha256_file,
@@ -25,8 +26,11 @@ from ea.release_package import (
 
 
 SIGNATURE_SIDECAR_SUFFIX = ".sig.yml"
-SIGNATURE_TYPE = "ea_v0_9_8_release_package_signature"
-LEGACY_SIGNATURE_TYPES = {"ea_v0_9_7_release_package_signature"}
+SIGNATURE_TYPE = "ea_v0_9_9_release_package_signature"
+LEGACY_SIGNATURE_TYPES = {
+    "ea_v0_9_8_release_package_signature",
+    "ea_v0_9_7_release_package_signature",
+}
 SIGNATURE_ALGORITHM = "ed25519"
 
 
@@ -450,7 +454,7 @@ def verify_release_signature(
 
 def build_keygen_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate an Ed25519 keypair for optional Experimental Assistant v0.9.8 signing."
+        description=f"Generate an Ed25519 keypair for optional Experimental Assistant v{__version__} signing."
     )
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
@@ -461,7 +465,7 @@ def build_keygen_parser() -> argparse.ArgumentParser:
 
 def build_sign_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Sign an Experimental Assistant v0.9.8 package with a user-managed Ed25519 private key."
+        description=f"Sign an Experimental Assistant v{__version__} package with a user-managed Ed25519 private key."
     )
     parser.add_argument("archive", type=Path)
     parser.add_argument("--private-key", type=Path, required=True)
@@ -475,7 +479,7 @@ def build_sign_parser() -> argparse.ArgumentParser:
 
 def build_verify_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Verify an Experimental Assistant v0.9.8 package detached signature."
+        description=f"Verify an Experimental Assistant v{__version__} package detached signature."
     )
     parser.add_argument("archive", type=Path)
     parser.add_argument("--public-key", type=Path, required=True)

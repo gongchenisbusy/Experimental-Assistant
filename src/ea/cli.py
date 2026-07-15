@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from ea import __version__
-from ea.identity import CAPABILITY_MATURITY
+from ea.identity import PUBLIC_CAPABILITY_CONTRACT
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.brief import build_project_brief, set_decision_summary
 from ea.config import doctor_project_config
@@ -59,7 +59,6 @@ from ea.install_experience import (
     identity_record,
     install_check,
     install_codex_skill,
-    lifecycle_update_plan,
     onboarding_post_install_record,
     rollback_codex_skills,
     rollback_installation,
@@ -78,6 +77,7 @@ from ea.estimates import (
     set_large_work_reminders,
 )
 from ea.literature import (
+    FIELD_TYPES,
     PROPERTY_KINDS,
     REVIEW_DECISIONS,
     confirm_literature_selection,
@@ -91,6 +91,7 @@ from ea.literature import (
     plan_literature_deployment,
     plan_literature_data_extraction,
     plot_literature_data,
+    prepare_literature_data_schema_template,
     preflight_literature_source_candidate_manifest,
     prepare_institution_access_guidance,
     prepare_literature_acceptance_checklist,
@@ -107,6 +108,7 @@ from ea.literature import (
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
     validate_literature_data,
+    validate_literature_data_schema,
     UnpaywallResolver,
 )
 from ea.materials import (
@@ -191,6 +193,7 @@ from ea.traceability import (
 from ea.user_surface import (
     build_project_dashboard,
     generate_user_report,
+    guided_first_journey,
     inspect_analysis_source,
     start_project,
 )
@@ -257,9 +260,8 @@ def build_parser() -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true")
     capabilities = sub.add_parser(
         "capabilities",
-        help="show the stable, beta, and experimental capability contract",
+        help="show supported workflows, review requirements, and concrete limits",
     )
-    capabilities.add_argument("--maturity", choices=["stable", "beta", "experimental"])
     capabilities.add_argument("--json", action="store_true")
     mode = sub.add_parser(
         "mode", help="show consult, record, execute, and audit semantics"
@@ -305,7 +307,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup = sub.add_parser(
         "setup",
-        help="install the $ea and compatibility skills and show first-run onboarding",
+        help="install the $ea skill and show first-run onboarding",
     )
     setup.add_argument(
         "--source", type=Path, help="repository root or primary skills/ea folder"
@@ -361,11 +363,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.add_argument("workspace", type=Path)
     start.add_argument("--name")
+    start.add_argument("--slug", help="portable ASCII slug used in stable prj/res/rpt/fig IDs")
     start.add_argument("--direction")
     start.add_argument("--material")
     start.add_argument("--experiment-type")
     start.add_argument("--report-language", choices=["zh", "en"], default="zh")
     start.add_argument("--yes", action="store_true")
+
+    journey = sub.add_parser(
+        "journey",
+        help="show the one next action in a resumable first-project-to-report journey",
+    )
+    journey.add_argument("workspace", type=Path)
+    journey.add_argument("--source", type=Path)
+    journey.add_argument(
+        "--method",
+        choices=[
+            "raman",
+            "pl",
+            "xrd",
+            "ftir",
+            "uv-vis",
+            "xps",
+            "electrochemistry",
+            "thermal",
+        ],
+    )
 
     analyze = sub.add_parser(
         "analyze", help="inspect a method input without writing or applying parameters"
@@ -406,7 +429,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     uninstall = sub.add_parser(
         "uninstall",
-        help="plan or remove the EA CLI and Codex skills with recoverable skill backups",
+        help="plan or remove the EA CLI and Codex skill with a recoverable backup",
     )
     uninstall.add_argument("--codex-home", type=Path)
     uninstall.add_argument(
@@ -431,7 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_sub = codex.add_subparsers(dest="codex_command", required=True)
     codex_install = codex_sub.add_parser(
         "install-skill",
-        help="transactionally install the $ea skill and compatibility wrapper into Codex",
+        help="transactionally install the $ea skill into Codex",
     )
     codex_install.add_argument(
         "--source",
@@ -443,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_install.add_argument(
         "--no-backup",
         action="store_true",
-        help="replace existing EA skills without making timestamped backups",
+        help="replace the existing EA skill without making a timestamped backup",
     )
     codex_install.add_argument(
         "--no-github-fetch",
@@ -454,14 +477,14 @@ def build_parser() -> argparse.ArgumentParser:
     codex_install.add_argument("--json", action="store_true")
     codex_rollback = codex_sub.add_parser(
         "rollback-skill",
-        help="restore the latest validated $ea and compatibility backups",
+        help="restore the latest validated $ea backup",
     )
     codex_rollback.add_argument("--codex-home", type=Path)
     codex_rollback.add_argument("--quick-validate", type=Path)
     codex_rollback.add_argument("--yes", action="store_true")
     codex_rollback.add_argument("--json", action="store_true")
     codex_uninstall = codex_sub.add_parser(
-        "uninstall-skills", help="remove EA skills into recoverable backups"
+        "uninstall-skills", help="remove the EA skill into a recoverable backup"
     )
     codex_uninstall.add_argument("--codex-home", type=Path)
     codex_uninstall.add_argument("--yes", action="store_true")
@@ -489,7 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_project = sub.add_parser(
         "init-project",
-        help="initialize a public-user Experimental Assistant v0.9.8 project workspace",
+        help=f"initialize a public-user Experimental Assistant v{__version__} project workspace",
     )
     init_project.add_argument("workspace", type=Path)
     init_project.add_argument("--name", required=True)
@@ -615,10 +638,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="preserve project-local image refs instead of embedding figure data",
     )
-    report_html.add_argument(
+    report_html_audit = report_html.add_mutually_exclusive_group()
+    report_html_audit.add_argument(
+        "--include-audit",
+        action="store_true",
+        help="include detailed provenance YAML in an explicit HTML audit appendix",
+    )
+    report_html_audit.add_argument(
         "--no-audit",
         action="store_true",
-        help="omit detailed provenance YAML from the HTML audit appendix",
+        help=argparse.SUPPRESS,
     )
     batch_bundle = export_sub.add_parser(
         "batch-bundle", help="bundle one batch run with nested report bundles"
@@ -1581,13 +1610,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lit_preflight_sources.add_argument("--manifest", required=True, type=Path)
     lit_preflight_sources.add_argument("--output", type=Path)
+    lit_data_template = literature_sub.add_parser(
+        "data-template",
+        help="preview or write a universal literature-data schema template",
+    )
+    lit_data_template.add_argument("--preset", choices=sorted(PROPERTY_KINDS))
+    lit_data_template.add_argument("--output", type=Path)
+    lit_data_template.add_argument("--yes", action="store_true")
+    lit_data_schema = literature_sub.add_parser(
+        "data-schema", help="validate a universal literature-data schema"
+    )
+    lit_data_schema_sub = lit_data_schema.add_subparsers(
+        dest="data_schema_command", required=True
+    )
+    lit_data_schema_validate = lit_data_schema_sub.add_parser(
+        "validate", help="validate schema fields, units, policies, and evidence rules"
+    )
+    lit_data_schema_validate.add_argument("schema", type=Path)
     lit_data_plan = literature_sub.add_parser(
-        "data-plan", help="define a beta cross-paper property evidence dataset"
+        "data-plan", help="preview or create a schema-driven evidence dataset"
     )
     lit_data_plan.add_argument("workspace", type=Path)
-    lit_data_plan.add_argument("--property", required=True)
-    lit_data_plan.add_argument("--kind", required=True, choices=sorted(PROPERTY_KINDS))
-    lit_data_plan.add_argument("--material", required=True)
+    lit_data_plan.add_argument("--property")
+    lit_data_plan.add_argument("--kind")
+    lit_data_plan.add_argument("--material")
+    lit_data_plan.add_argument("--schema", type=Path)
+    lit_data_plan.add_argument("--type", choices=sorted(FIELD_TYPES), default="number")
+    lit_data_plan.add_argument("--unit", action="append", default=[])
+    lit_data_plan.add_argument("--alias", action="append", default=[])
     lit_data_plan.add_argument("--dataset-id")
     lit_data_plan.add_argument("--source", action="append", type=Path, default=[])
     lit_data_plan.add_argument("--required-condition", action="append", default=[])
@@ -1595,7 +1645,7 @@ def build_parser() -> argparse.ArgumentParser:
     lit_data_plan.add_argument("--yes", action="store_true")
     lit_data_extract = literature_sub.add_parser(
         "data-extract",
-        help="extract resumable beta candidate values from searchable sources",
+        help="extract resumable candidate values from searchable sources",
     )
     lit_data_extract.add_argument("workspace", type=Path)
     lit_data_extract.add_argument("--dataset", required=True)
@@ -1626,7 +1676,7 @@ def build_parser() -> argparse.ArgumentParser:
     lit_data_review.add_argument("--yes", action="store_true")
     lit_data_validate = literature_sub.add_parser(
         "data-validate",
-        help="validate beta evidence anchors, review state, units, and comparability",
+        help="validate evidence anchors, review state, units, and comparability",
     )
     lit_data_validate.add_argument("workspace", type=Path)
     lit_data_validate.add_argument("--dataset", required=True)
@@ -1638,7 +1688,7 @@ def build_parser() -> argparse.ArgumentParser:
     lit_data_plot.add_argument("--dataset", required=True)
     lit_data_plot.add_argument("--yes", action="store_true")
     lit_data_export = literature_sub.add_parser(
-        "data-export", help="export a reviewed beta evidence dataset bundle"
+        "data-export", help="export a reviewed evidence dataset bundle"
     )
     lit_data_export.add_argument("workspace", type=Path)
     lit_data_export.add_argument("--dataset", required=True)
@@ -2214,7 +2264,6 @@ def _compact_zotero_readiness(result: dict) -> dict:
     summary = readiness.get("summary") or {}
     return {
         "status": readiness.get("status"),
-        "maturity": "experimental/companion",
         "target_count": summary.get("target_count", 0),
         "external_cache_used": summary.get("external_cache_used", False),
         "external_ready_count": summary.get("external_ready_count", 0),
@@ -2271,6 +2320,7 @@ def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
         "onboarding",
         "healthcheck",
         "lookup-figure",
+        "journey",
     }:
         return True
     if args.command == "diagnostics":
@@ -2296,6 +2346,10 @@ def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
             (args.literature_command == "setup-preflight" and args.no_write)
             or (args.literature_command == "zotero-readiness" and args.no_write)
             or (args.literature_command == "data-validate" and args.no_write)
+            or args.literature_command == "data-schema"
+            or (
+                args.literature_command == "data-template" and args.output is None
+            )
         )
     if args.command == "draft":
         return args.draft_command == "status"
@@ -2438,22 +2492,22 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
         return 0
     if args.command == "capabilities":
-        matrix = (
-            {args.maturity: CAPABILITY_MATURITY[args.maturity]}
-            if args.maturity
-            else CAPABILITY_MATURITY
-        )
         result = {
             "schema_version": "1.0",
             "release": RELEASE_LABEL,
-            "capabilities": {key: list(values) for key, values in matrix.items()},
-            "promotion_rule": "Beta or experimental capabilities do not inherit stable guarantees; scientific promotion requires benchmark and external review evidence.",
+            "contract": {
+                key: list(values) for key, values in PUBLIC_CAPABILITY_CONTRACT.items()
+            },
+            "release_evidence": (
+                "automated tests, public benchmarks, deterministic mock fixtures, "
+                "simulated-agent reviews, and manual artifact inspection"
+            ),
         }
         if args.json:
             _print_json(result)
         else:
-            for maturity, names in result["capabilities"].items():
-                print(f"{maturity}:")
+            for group, names in result["contract"].items():
+                print(f"{group}:")
                 for name in names:
                     print(f"- {name}")
         return 0
@@ -2541,16 +2595,29 @@ def _main_impl(argv: list[str] | None = None) -> int:
             research_direction=args.direction,
             material_system=args.material,
             experiment_type=args.experiment_type,
+            project_slug=args.slug,
             report_language=args.report_language,
             confirmed=args.yes,
         )
         _print_json(result)
         return 0
+    if args.command == "journey":
+        result = guided_first_journey(
+            args.workspace,
+            source_path=args.source,
+            method=args.method,
+        )
+        _print_json(result)
+        return 0 if result["status"] != "blocked" else 2
     if args.command == "analyze":
         source = (
             args.source if args.source.is_absolute() else args.workspace / args.source
         )
-        _print_json(inspect_analysis_source(args.method, source))
+        _print_json(
+            inspect_analysis_source(
+                args.method, source, project_root=args.workspace
+            )
+        )
         return 0
     if args.command == "report":
         result = generate_user_report(
@@ -2793,7 +2860,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                     report_id=args.report_id,
                     output_path=output_path,
                     embed_images=not args.no_embed_images,
-                    include_audit=not args.no_audit,
+                    include_audit=args.include_audit and not args.no_audit,
                 )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})
@@ -3984,31 +4051,46 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.literature_command == "data-template":
+            _print_json(
+                prepare_literature_data_schema_template(
+                    preset=args.preset,
+                    output=args.output,
+                    confirmed=args.yes,
+                )
+            )
+            return 0
+        if args.literature_command == "data-schema":
+            result = validate_literature_data_schema(args.schema)
+            _print_json(result)
+            return 0 if result["status"] == "pass" else 2
         if args.literature_command == "data-plan":
-            _print_json(
-                plan_literature_data_extraction(
-                    args.workspace,
-                    property_name=args.property,
-                    property_kind=args.kind,
-                    material_name=args.material,
-                    sources=args.source,
-                    required_conditions=args.required_condition,
-                    comparability_rules=args.comparability_rule,
-                    dataset_id=args.dataset_id,
-                    confirmed=args.yes,
-                )
+            result = plan_literature_data_extraction(
+                args.workspace,
+                property_name=args.property,
+                property_kind=args.kind,
+                material_name=args.material,
+                schema_path=args.schema,
+                field_type=args.type,
+                allowed_units=args.unit,
+                aliases=args.alias,
+                sources=args.source,
+                required_conditions=args.required_condition,
+                comparability_rules=args.comparability_rule,
+                dataset_id=args.dataset_id,
+                confirmed=args.yes,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "migration_required"} else 0
         if args.literature_command == "data-extract":
-            _print_json(
-                extract_literature_data(
-                    args.workspace,
-                    dataset_id=args.dataset,
-                    max_sources=args.max_sources,
-                    confirmed=args.yes,
-                )
+            result = extract_literature_data(
+                args.workspace,
+                dataset_id=args.dataset,
+                max_sources=args.max_sources,
+                confirmed=args.yes,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "migration_required"} else 0
         if args.literature_command == "data-review":
             conditions: dict[str, str] = {}
             for value in args.condition:
@@ -4033,14 +4115,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.literature_command == "data-validate":
-            _print_json(
-                validate_literature_data(
-                    args.workspace,
-                    dataset_id=args.dataset,
-                    write_report=not args.no_write,
-                )
+            result = validate_literature_data(
+                args.workspace,
+                dataset_id=args.dataset,
+                write_report=not args.no_write,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "review_required"} else 0
         if args.literature_command == "data-plot":
             _print_json(
                 plot_literature_data(

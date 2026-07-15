@@ -1,0 +1,41 @@
+schema_version: "1.0"
+release: v0.9.9
+status: pass
+evidence_type: manual_artifact_review
+candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
+reviewed_at: "2026-07-16T12:39:00+08:00"
+artifact_source: public_raman_fixture
+artifacts:
+  markdown_report:
+    sha256: abc3d65c2f8a4ba726085966589d84d6245b99ea6609a334405d39594ff4d5d1
+  html_report:
+    sha256: 7c7b0716194aad2c9027e6fbfbe228028df3282a6d9509c802ba9961fe31be7f
+  report_bound_png:
+    sha256: e598754f2b89173d3aa5f3d04a37112e6e8053fccc0ab14f09d429deeb15ad19
+    dimensions_px: [1793, 1244]
+  report_bundle_zip:
+    sha256: f008f655b71d107ce6ea133d7fc4d39a03ef22d27acebc1e8961e40e2af0c7da
+checks:
+  chinese_dynamic_conclusions: pass
+  chinese_html_standard_labels: pass
+  figure_count: 1
+  figure_local_source_data_blocks: 1
+  standalone_figure_data_heading: false
+  fit_center_standard_error_visible: true
+  mode_separation_standard_error_visible: true
+  fit_uncertainty_scope_disclosed: true
+  low_quality_fit_standard_error_suppressed: true
+  footer_effective_css_px: 13.514779698828779
+  footer_min_effective_css_px: 12.0
+  footer_contrast_ratio: 16.29
+  footer_clipped: false
+  bundle_files_verified: 14
+  archive_verification: pass
+inspection_methods:
+  - original-resolution local image inspection
+  - standard-library HTML parse and visible-label audit
+  - checksum and bundle-verifier replay
+limitations:
+  - The in-app browser rejected the local file URL under its security policy, so no browser bypass was attempted.
+  - Layout was instead checked through the original-resolution PNG, HTML structure, artifact metadata, and deterministic export tests.
+  - This is manual artifact inspection, not a real-user trial or external expert review.

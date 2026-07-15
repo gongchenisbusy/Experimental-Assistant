@@ -317,7 +317,10 @@ def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(
 
     assert report_frontmatter["report_id"] == "rpt-mos2-raman-v02-20260630-001"
     assert report_frontmatter["figure_ids"] == ["fig-mos2-raman-v02-raman-20260630-001"]
-    assert "## References" in report_body
+    assert "## 参考文献" in report_body
+    assert "Raman processing result" not in report_body
+    assert "processed result" not in report_body
+    assert "No baseline correction was applied." not in report_body
     assert (
         figures_index["figures"][result["figure_id"]]["report_id"]
         == report_frontmatter["report_id"]

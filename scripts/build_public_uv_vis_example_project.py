@@ -40,9 +40,9 @@ EXAMPLE_DIALOGUE = (
     "如何进入报告、图件和 provenance，不把筛查截距当作最终 band gap 或跃迁机制证明。"
 )
 
-README_TEXT = """# Experimental Assistant v0.9.8 Public UV-Vis Example
+README_TEXT = """# Experimental Assistant v0.9.9 Public UV-Vis Example
 
-This folder is a packaged, public-safe EA project example for the UV-Vis reviewed optical-screening workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.8 package.
+This folder is a packaged, public-safe EA project example for the UV-Vis reviewed optical-screening workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.9 package.
 
 The example contains a minimal review-gated UV-Vis workflow:
 
@@ -321,7 +321,7 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build the packaged Experimental Assistant v0.9.8 public UV-Vis example project.")
+    parser = argparse.ArgumentParser(description="Build the packaged Experimental Assistant v0.9.9 public UV-Vis example project.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)

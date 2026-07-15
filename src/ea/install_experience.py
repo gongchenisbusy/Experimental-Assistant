@@ -26,12 +26,11 @@ from ea.identity import (
     DISPLAY_VERSION,
     DISTRIBUTION_NAME,
     LEGACY_DISTRIBUTION_NAMES,
-    LEGACY_SKILL_INVOCATIONS,
-    LEGACY_SKILL_NAMES,
     PRODUCT_NAME,
     PUBLIC_VERSION,
     RELEASE_LABEL,
     REPOSITORY_URL,
+    RETIRED_SKILL_NAMES,
     SKILL_INVOCATION,
     SKILL_NAME,
     SUPPORTED_PYTHON_MINORS,
@@ -39,7 +38,6 @@ from ea.identity import (
 
 
 PACKAGE_NAME = DISTRIBUTION_NAME
-PACKAGE_COMPATIBILITY_NAME = LEGACY_DISTRIBUTION_NAMES[0]
 MIN_PYTHON = (3, 11)
 
 
@@ -91,16 +89,12 @@ def identity_record() -> dict[str, Any]:
         "public_version": PUBLIC_VERSION,
         "distribution_name": DISTRIBUTION_NAME,
         "package_name": DISTRIBUTION_NAME,
-        "package_compatibility_name": PACKAGE_COMPATIBILITY_NAME,
-        "compatibility_id": PACKAGE_COMPATIBILITY_NAME,
-        "legacy_distribution_names": list(LEGACY_DISTRIBUTION_NAMES),
+        "retired_distribution_names": list(LEGACY_DISTRIBUTION_NAMES),
         "package_version": _package_version(),
         "installed_distributions": installed,
         "release_label": RELEASE_LABEL,
         "skill_folder": SKILL_NAME,
         "skill_invocation": SKILL_INVOCATION,
-        "legacy_skill_folders": list(LEGACY_SKILL_NAMES),
-        "legacy_skill_invocations": list(LEGACY_SKILL_INVOCATIONS),
         "repository_url": REPOSITORY_URL,
     }
     warnings: list[str] = []
@@ -111,7 +105,7 @@ def identity_record() -> dict[str, Any]:
     for legacy_name in LEGACY_DISTRIBUTION_NAMES:
         if legacy_name in installed:
             warnings.append(
-                f"Legacy distribution {legacy_name} {installed[legacy_name]} is installed; remove it after the v0.9.8 migration is verified."
+                f"Retired distribution {legacy_name} {installed[legacy_name]} is installed; remove it before the v1.0 release."
             )
     if warnings:
         record["identity_warnings"] = warnings
@@ -132,9 +126,9 @@ def python_preflight_record() -> dict[str, Any]:
             for major, minor_version in SUPPORTED_PYTHON_MINORS
         ],
         "message": (
-            "Python version is in the supported v0.9.8 matrix."
+            f"Python version is in the supported {RELEASE_LABEL} matrix."
             if ok
-            else "EA v0.9.8 supports Python 3.11, 3.12, and 3.13."
+            else f"EA {RELEASE_LABEL} supports Python 3.11, 3.12, and 3.13."
         ),
         "next_steps": []
         if ok
@@ -325,7 +319,7 @@ def _fetch_compact_skill_bundle(
 
 def _installed_skill_snapshot(skills_dir: Path) -> dict[str, Any]:
     snapshot: dict[str, Any] = {}
-    for name in (SKILL_NAME, *LEGACY_SKILL_NAMES):
+    for name in (SKILL_NAME, *RETIRED_SKILL_NAMES):
         target = skills_dir / name
         snapshot[name] = {
             "exists": target.is_dir(),
@@ -372,21 +366,11 @@ def _normalize_primary_source(source: Path) -> Path:
     checkout_skill = resolved / "skills" / SKILL_NAME
     if (checkout_skill / "SKILL.md").is_file():
         return checkout_skill
-    if resolved.name in LEGACY_SKILL_NAMES:
-        sibling = resolved.parent / SKILL_NAME
-        if sibling.is_dir():
-            return sibling
     return resolved
 
 
 def _skill_sources(primary: Path) -> list[tuple[str, Path]]:
-    sources = [(SKILL_NAME, primary)]
-    for legacy_name in LEGACY_SKILL_NAMES:
-        legacy = primary.parent / legacy_name
-        if not (legacy / "SKILL.md").is_file():
-            raise FileNotFoundError(f"Compatibility skill source is missing: {legacy}")
-        sources.append((legacy_name, legacy))
-    return sources
+    return [(SKILL_NAME, primary)]
 
 
 def _backup_path(skills_dir: Path, name: str, stamp: str) -> Path:
@@ -439,6 +423,7 @@ def install_codex_skill(
     backups: dict[str, str | None] = {}
     replaced: list[str] = []
     installed: list[str] = []
+    retired_removed: list[str] = []
     touched: list[str] = []
     stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     transaction_id = f"ea-skill-install-{stamp}-{uuid.uuid4().hex[:8]}"
@@ -499,6 +484,22 @@ def install_codex_skill(
             os.replace(staged[name], target)
             installed.append(name)
 
+        for name in RETIRED_SKILL_NAMES:
+            target = skills_dir / name
+            if not target.exists():
+                continue
+            rollback = rollback_root / name
+            backup: Path | None = None
+            if backup_existing:
+                backup = _backup_path(skills_dir, name, stamp)
+                shutil.move(str(target), str(backup))
+            else:
+                rollback.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(target), str(rollback))
+            touched.append(name)
+            backups[name] = str(backup) if backup else None
+            retired_removed.append(name)
+
         for name in installed:
             target = skills_dir / name
             post_validation = validate_skill(target, validator=validator)
@@ -529,6 +530,7 @@ def install_codex_skill(
             "backups": backups,
             "replaced_existing": bool(replaced),
             "replaced_skills": replaced,
+            "retired_skills_removed": retired_removed,
             "validation": validations[SKILL_NAME]["post_install"],
             "validations": validations,
             "restored_previous": False,
@@ -586,8 +588,7 @@ def rollback_codex_skills(
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
     selected = {
-        name: _latest_backup(skills_dir, name)
-        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)
+        SKILL_NAME: _latest_backup(skills_dir, SKILL_NAME)
     }
     missing = [name for name, backup in selected.items() if backup is None]
     if missing:
@@ -648,7 +649,7 @@ def uninstall_codex_skills(
     skills_dir = codex_skills_dir(home)
     targets = [
         skills_dir / name
-        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)
+        for name in (SKILL_NAME, *RETIRED_SKILL_NAMES)
         if (skills_dir / name).exists()
     ]
     if not confirmed:
@@ -852,20 +853,31 @@ def install_check(
     checks.append(inspect_ea_feedback_companion(home))
 
     if not skip_codex_skill:
-        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES):
-            path = target if name == SKILL_NAME else target.parent / name
-            exists = path.is_dir()
+        exists = target.is_dir()
+        checks.append(
+            {
+                "name": f"codex_skill_path:{SKILL_NAME}",
+                "status": "pass" if exists else "fail",
+                "path": str(target),
+                "next_steps": [] if exists else ["Run `ea codex install-skill`."],
+            }
+        )
+        if exists:
+            checks.append(inspect_skill_identity(target, expected_name=SKILL_NAME))
+            checks.append(validate_skill(target, validator=validator))
+        for retired_name in RETIRED_SKILL_NAMES:
+            retired_path = target.parent / retired_name
+            retired_exists = retired_path.exists()
             checks.append(
                 {
-                    "name": f"codex_skill_path:{name}",
-                    "status": "pass" if exists else "fail",
-                    "path": str(path),
-                    "next_steps": [] if exists else ["Run `ea codex install-skill`."],
+                    "name": f"retired_codex_skill:{retired_name}",
+                    "status": "fail" if retired_exists else "pass",
+                    "path": str(retired_path),
+                    "next_steps": ["Run `ea codex install-skill` to remove the retired compatibility skill."]
+                    if retired_exists
+                    else [],
                 }
             )
-            if exists:
-                checks.append(inspect_skill_identity(path, expected_name=name))
-                checks.append(validate_skill(path, validator=validator))
     if run_example:
         checks.append(run_public_example_check(example_workspace))
 
@@ -921,7 +933,7 @@ def lifecycle_update_plan(*, release_ref: str = RELEASE_LABEL) -> dict[str, Any]
         "will_write": [
             "installed CLI environment",
             "Codex skills/ea",
-            "Codex skills/ea-v0-2",
+            "remove retired Codex skills/ea-v0-2 if present",
         ],
         "cli_command": [
             "uv",
@@ -1158,7 +1170,7 @@ def uninstall_installation(
         }
     if not uv:
         raise FileNotFoundError(
-            "uv was not found; uninstall the CLI manually after removing the Codex skills."
+            "uv was not found; uninstall the CLI manually after removing the Codex skill."
         )
     skills_result = uninstall_codex_skills(
         codex_home_path=codex_home_path, confirmed=True
@@ -1217,11 +1229,6 @@ def onboarding_post_install_record(
             "Zotero, browser, institution access, and full-text acquisition remain opt-in.",
             "Scientific decisions and durable memory remain review-gated.",
         ],
-        "compatibility": {
-            "legacy_distribution_names": list(LEGACY_DISTRIBUTION_NAMES),
-            "legacy_skill_invocations": list(LEGACY_SKILL_INVOCATIONS),
-            "note": "Use $ea for new work; historical compatibility identifiers remain readable.",
-        },
     }
 
 
@@ -1232,7 +1239,7 @@ def render_onboarding_post_install(record: dict[str, Any]) -> str:
             [
                 f"{identity['public_version']} is ready.",
                 "Use $ea for new work. Consult mode writes no project files.",
-                "Run `ea doctor` to verify CLI, distribution, and both skill identities.",
+                "Run `ea doctor` to verify the CLI, distribution, and $ea skill identity.",
                 "Run `ea start` when you want a guided first project.",
                 "Literature acquisition requires explicit permission; scientific evidence remains review-gated.",
             ]
@@ -1241,7 +1248,7 @@ def render_onboarding_post_install(record: dict[str, Any]) -> str:
         [
             f"{identity['public_version']} 已就绪。",
             "新任务请使用 `$ea`；咨询模式不会写入项目文件。",
-            "运行 `ea doctor` 检查 CLI、distribution 和两个 skill 身份。",
+            "运行 `ea doctor` 检查 CLI、distribution 和 `$ea` skill 身份。",
             "准备创建首个项目时运行 `ea start`。",
             "文献获取需要明确授权；科学证据仍需人工复核。",
         ]
@@ -1269,7 +1276,7 @@ def render_install_summary(result: dict[str, Any]) -> str:
 
 def render_install_skill_summary(result: dict[str, Any]) -> str:
     lines = [
-        f"Installed {result['identity']['public_version']} Codex skills.",
+        f"Installed {result['identity']['public_version']} Codex skill.",
         f"Primary invocation: {SKILL_INVOCATION}",
         f"Primary target: {result['target']}",
         f"Validation: {result['validation']['status']}",

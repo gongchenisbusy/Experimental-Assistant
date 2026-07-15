@@ -1,8 +1,8 @@
-# Experimental Assistant v0.9.8 Public Onboarding
+# Experimental Assistant v0.9.9 Public Onboarding
 
-This guide is for a new public user or a fresh agent starting from an Experimental Assistant v0.9.8 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
+This guide is for a new public user or a fresh agent starting from an Experimental Assistant v0.9.9 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
-Naming note: the distribution is `experimental-assistant`, the CLI is `ea`, and the primary Codex skill is `$ea`. `$ea-v0-2` is a deprecated compatibility identifier retained through v1.0.x; new work should use `$ea`.
+The distribution is `experimental-assistant`, the CLI is `ea`, and `$ea` is the only public Codex skill.
 
 ## 1. Install
 
@@ -15,14 +15,14 @@ Requirements:
 Recommended public install:
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.8
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.9
 ea setup
 ea doctor
 ```
 
 For repository checkouts or extracted release packages, run `python3 scripts/check_install_env.py` before creating a venv. The `python3` used for `python3 -m pip install -e .` must be Python 3.11 or newer. Use `python3 -m pip install -e ".[dev]"` only for developers or maintainers who need pytest, release smoke checks, and package verification.
 
-`ea setup` installs the primary `$ea` skill and thin `$ea-v0-2` compatibility wrapper as one validated transaction. Restart Codex after setup and invoke `$ea` in a new task. `ea doctor` verifies the exact PATH executable, distribution identity, version, both skill paths, and skill validation; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for update, rollback, uninstall, and troubleshooting commands.
+`ea setup` installs the `$ea` skill as one validated transaction and removes the retired Compatibility skill if present. Restart Codex after setup and invoke `$ea` in a new task. `ea doctor` verifies the exact PATH executable, distribution identity, version, `$ea` path, retired-skill absence, and skill validation; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for update, rollback, uninstall, and troubleshooting commands.
 
 The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; `examples/public-uv-vis-project/`, a public-safe UV-Vis reviewed optical-screening artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
 
@@ -72,7 +72,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. Experimental Assistant v0.9.8 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. Experimental Assistant v0.9.9 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
 
 Minimal Raman path:
 
@@ -157,6 +157,23 @@ ea literature confirm /path/to/ea-project \
   --selected-top-n 50 \
   --user-response "confirmed"
 ```
+
+### Collect Any User-Requested Data Category
+
+Describe the requested fields in a schema rather than choosing from a fixed property allowlist. The included electrical-property schemas are optional templates; optical, synthesis, structural, biological, categorical, date, list, and nested records use the same review-gated engine.
+
+```bash
+ea literature data-template --output /path/to/data-schema.yml
+ea literature data-schema validate /path/to/data-schema.yml
+ea literature data-plan /path/to/ea-project --schema /path/to/data-schema.yml
+ea literature data-extract /path/to/ea-project --dataset DATASET_ID
+ea literature data-review /path/to/ea-project --dataset DATASET_ID --record RECORD_ID --decision accept
+ea literature data-validate /path/to/ea-project --dataset DATASET_ID
+ea literature data-plot /path/to/ea-project --dataset DATASET_ID
+ea literature data-export /path/to/ea-project --dataset DATASET_ID
+```
+
+The schema records types, units, aliases, evidence anchors, missing-value policy, comparability, deduplication, conflicts, and plotting intent. Commands that write first return a preview; rerun the exact reviewed action with `--yes`. Repeat `data-review` for each candidate using its record ID. Only accepted or edited candidates can enter downstream statistics, plots, reports, or exports. If a field combination cannot be plotted meaningfully, validated reviewed records can still be exported with an actionable explanation.
 
 If a dedicated literature workflow or the user has exported candidate metadata, rank it locally before generating acquisition targets:
 
@@ -271,7 +288,7 @@ ea literature render-reconciliation /path/to/ea-project \
 ea literature acceptance-checklist /path/to/ea-project
 ```
 
-`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it can use supplied or source-verified venue metrics, but does not itself look up or invent impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `prepare-source-candidates` turns selected local literature items into editable FTIR/UV-Vis/XPS source-candidate manifests, with disabled candidate stubs and source-derived `reference_seeds`; with explicit confirmation it writes `literature/confirmed_ftir_source_candidates.yml`, `literature/confirmed_uv_vis_source_candidates.yml`, or `literature/confirmed_xps_source_candidates.yml`. `preflight-source-candidates` checks confirmation, included candidates, required method metadata, and reference seed coverage before the user passes the manifest into FTIR, UV-Vis, or XPS source-packet builders. `ea uv-vis build-source-packet` copies confirmed/local/template UV-Vis optical-transition, optical-gap, optical-feature, and correction-context candidates into traceable staging packets with reference seeds and provenance; `ea uv-vis suggest-interpretations` can then match those source-backed candidates against processed UV-Vis metadata and write advisory `interpretation_suggestions` records; `ea uv-vis prepare-review` groups those candidates into YAML/Markdown review packages; `ea uv-vis report --interpretation-suggestion ... --interpretation-review-ref ...` can include reviewed candidates with registered references while unresolved/no-match/invalid candidates stay visible as warnings or context; `ea uv-vis propose-memory --suggestion ... --review-ref ...` can create draft interpretation memory candidates from ready reviewed suggestions; `ea uv-vis compare-replicates --metadata ... --metadata ...` can summarize two or more processed UV-Vis metadata records into comparison YAML/CSV under `processed/comparisons/uv_vis/`. Default comparison keeps feature positions ungrouped; reviewed feature matching requires `--feature-match-tolerance-ev` and/or `--feature-match-tolerance-nm` plus a confirmed `uv_vis_feature_matching` ReviewRecord via `--feature-match-review-ref`, then records candidate groups with member feature IDs, sample/result/metadata refs, statistics, duplicate-record warnings, and low-confidence boundaries. These helpers read local YAML only: source-packet/suggestion/review-package steps do not search, download or parse full text, register references, inject report citations, create ReviewRecords, apply optical models/corrections, write memory, or prove band gaps/transition models; report and memory proposal steps only read an existing confirmed ReviewRecord and registered references, memory proposal still does not commit confirmed memory, and replicate comparison does not reprocess raw data, infer hidden replicate groups, silently match features, prove optical assignments, or rank samples. `institution-access-guide` writes a public-safe guidance packet for user-managed institution access; it records user-supplied route/browser/profile status but does not open browsers, store credentials, probe URLs, or fetch papers. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `zotero-readiness` summarizes local handoff/import readiness for the `zotero-codex-literature` companion skill, missing user settings, login/blocker counts, and no-Zotero degraded-mode commands; it does not run Zotero-Codex scripts, operate Zotero, open browsers, inspect credentials, download PDFs, parse full text, import references, or repair records. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes YAML plus Markdown audit reports with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. `render-reconciliation` regenerates the Markdown audit view from an existing reconciliation YAML without repairing records. `acceptance-checklist` writes YAML/Markdown readiness records for the full literature path and missing user actions; it does not run search, operate Zotero, open browsers, inspect credentials, download PDFs, parse full text, repair records, register references, or prove exhaustive literature coverage. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
+`search-public` queries public metadata APIs only when explicitly run, writes `literature/public_search_candidates.yml`, `literature/search_coverage.yml`, and `literature/public_search_state.yml`, then ranks candidates. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF downloads, and it must not be described as exhaustive web coverage. `rank-candidates` only scores supplied metadata and writes `literature/ranking.csv` plus `literature/selected_items.yml`; it can use supplied or source-verified venue metrics, but does not itself look up or invent impact factors, open Zotero, use browser profiles, log into institutions, or download PDFs. `prepare-source-candidates` turns selected local literature items into editable FTIR/UV-Vis/XPS source-candidate manifests, with disabled candidate stubs and source-derived `reference_seeds`; with explicit confirmation it writes `literature/confirmed_ftir_source_candidates.yml`, `literature/confirmed_uv_vis_source_candidates.yml`, or `literature/confirmed_xps_source_candidates.yml`. `preflight-source-candidates` checks confirmation, included candidates, required method metadata, and reference seed coverage before the user passes the manifest into FTIR, UV-Vis, or XPS source-packet builders. `ea uv-vis build-source-packet` copies confirmed/local/template UV-Vis optical-transition, optical-gap, optical-feature, and correction-context candidates into traceable staging packets with reference seeds and provenance; `ea uv-vis suggest-interpretations` can then match those source-backed candidates against processed UV-Vis metadata and write advisory `interpretation_suggestions` records; `ea uv-vis prepare-review` groups those candidates into YAML/Markdown review packages; `ea uv-vis report --interpretation-suggestion ... --interpretation-review-ref ...` can include reviewed candidates with registered references while unresolved/no-match/invalid candidates stay visible as warnings or context; `ea uv-vis propose-memory --suggestion ... --review-ref ...` can create draft interpretation memory candidates from ready reviewed suggestions; `ea uv-vis compare-replicates --metadata ... --metadata ...` can summarize two or more processed UV-Vis metadata records into comparison YAML/CSV under `processed/comparisons/uv_vis/`. Default comparison keeps feature positions ungrouped; reviewed feature matching requires `--feature-match-tolerance-ev` and/or `--feature-match-tolerance-nm` plus a confirmed `uv_vis_feature_matching` ReviewRecord via `--feature-match-review-ref`, then records candidate groups with member feature IDs, sample/result/metadata refs, statistics, duplicate-record warnings, and low-confidence boundaries. These helpers read local YAML only: source-packet/suggestion/review-package steps do not search, download or parse full text, register references, inject report citations, create ReviewRecords, apply optical models/corrections, write memory, or prove band gaps/transition models; report and memory proposal steps only read an existing confirmed ReviewRecord and registered references, memory proposal still does not commit confirmed memory, and replicate comparison does not reprocess raw data, infer hidden replicate groups, silently match features, prove optical assignments, or rank samples. `institution-access-guide` writes a public-safe guidance packet for user-managed institution access; it records user-supplied route/browser/profile status but does not open browsers, store credentials, probe URLs, or fetch papers. `zotero-bridge` writes a Zotero-Codex runbook and settings request for a dedicated literature workflow; it emits commands but does not run Zotero, open browsers, resolve DOI pages, download PDFs, or assume local accounts. `zotero-readiness` summarizes local handoff/import readiness for the optional `zotero-codex-literature` integration, missing user settings, login/blocker counts, and no-Zotero degraded-mode commands; it does not run Zotero-Codex scripts, operate Zotero, open browsers, inspect credentials, download PDFs, parse full text, import references, or repair records. `import-zotero-status` reads dedicated-workflow batch status artifacts and writes EA sync records; it does not run Zotero-Codex scripts or fetch papers. `reconcile-acquisition` checks local acquisition/status/library/cache/reference records and writes YAML plus Markdown audit reports with advisory `repair_actions` and `questions_for_user`, but it does not auto-repair records or read full text. `render-reconciliation` regenerates the Markdown audit view from an existing reconciliation YAML without repairing records. `acceptance-checklist` writes YAML/Markdown readiness records for the full literature path and missing user actions; it does not run search, operate Zotero, open browsers, inspect credentials, download PDFs, parse full text, repair records, register references, or prove exhaustive literature coverage. Only after confirmation should a dedicated literature workflow create acquisition requests, use Zotero or browser assistance, or import acquisition manifests. EA must not store credentials or bypass access controls. If institution access is needed, the user handles login manually in their own environment.
 
 ## 6. Traceability And Handoff Checks
 
@@ -313,13 +330,13 @@ For project-bundle provenance audit, checksum interpretation, and the boundary b
 
 ## 7. Repository Release Checks
 
-Before sharing an Experimental Assistant v0.9.8 repository package:
+Before sharing an Experimental Assistant v0.9.9 repository package:
 
 ```bash
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -334,11 +351,11 @@ ea-release-keygen \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-sign-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip \
+ea-sign-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-verify-release-signature dist/experimental-assistant-0.9.8-COMMIT-release.zip \
+ea-verify-release-signature dist/experimental-assistant-0.9.9-COMMIT-release.zip \
   --public-key /path/to/user-release-public.pem
 ```
 

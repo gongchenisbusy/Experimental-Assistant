@@ -1,40 +1,35 @@
-# Experimental Assistant v0.9.8 Release Notes
+# Experimental Assistant v0.9.9 Release Notes
 
-v0.9.8 is an integration and non-regression release on the v1.0-candidate line. It closes the version gap between the Python CLI and Codex skills, turns literature discovery/acquisition/cache reading into a compact recoverable pipeline, and makes briefs, report language, figures, and feedback evidence consistent while preserving v0.9.7 project and protocol readers.
+v0.9.9 is the final planned feature release before v1.0. It makes literature data collection schema-driven, closes the Chinese-report and figure-delivery issues found in the test1 run, provides a single guided first-project journey, and removes the retired Compatibility skill while preserving historical project readers.
 
 ## Version
 
-- Package version: `0.9.8`
-- Release label: `v0.9.8`
+- Package version: `0.9.9`
+- Release label: `v0.9.9`
 - Distribution: `experimental-assistant`
 - CLI: `ea`
-- Primary Codex skill: `$ea`
-- Compatibility: `$ea-v0-2` thin wrapper through v1.0.x
+- Public Codex skill: `$ea` only
 - License: Apache-2.0
 
-## Major Changes Since v0.9.7
+## Major Changes Since v0.9.8
 
-- Wheel and sdist artifacts now carry the exact `$ea` and `$ea-v0-2` skill payloads. Release pages also carry a compact deterministic skill ZIP and SHA-256 sidecar. Setup prefers explicit or bundled sources and no longer requires an ordinary user to clone the repository.
-- Skill replacement and CLI update flows record before/after identity and restoration state. Validator and lifecycle subprocess output is decoded safely under UTF-8 and common Windows GBK code pages; native CI covers deep paths and clean bundled-skill setup.
-- Literature commands use a short stage router and compact default output, with full audit state retained on disk or exposed explicitly. Acquisition handoff v2 adds per-stage attempts, canonical targets, Zotero parent/attachment identity, PDF/cache hashes, blockers, transactions, and recovery while retaining the v1 reader.
-- Crossref, OpenAlex, and arXiv run through a shared discovery adapter; Unpaywall resolution, bounded retrieval, PDF validation, SHA-256 content-addressed storage, SQLite FTS5/BM25 retrieval, auto-widening evidence reads, and a versioned non-regression benchmark are available without claiming exhaustive coverage.
-- Project dashboard and brief now share one read-only state aggregator. An optional decision summary puts the current question, evidence gates, top action, project home, and latest reports on the first screen.
-- Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, and thermal reports use the configured Chinese or English catalog while preserving identical numeric values, units, evidence refs, confidence enums, citations, and warning codes.
-- New figures keep a footer-free base and produce immutable report-bound renderings with exactly one final `FigID`/`Report` footer. Structured processed source-data roles, purposes, columns, and portable links are verified during export; historical figures are not silently rewritten.
-- The optional `ea-feedback` compatibility manifest pins a tested companion commit with UTF-8 I/O, execution-event reconciliation, project `.venv` CLI discovery, and distinct prepared/verified draft states.
+- Literature data collection now accepts any user-requested category through a validated schema. Numeric, range, uncertainty, text, enum, boolean, date/time, list, and nested fields share one plan → extract → review → validate → plot/export engine. The six electrical-property presets remain convenient templates, not an allowlist.
+- Schema semantic hashes, evidence requirements, comparison/conflict policies, and explicit migration states prevent silent reinterpretation. Only accepted or edited records can reach downstream statistics, figures, reports, or exports.
+- All eight characterization report paths use keyed Chinese/English dynamic messages. Unknown generated English sentences degrade to a localized review-bound candidate instead of leaking into a Chinese report.
+- Figure source data is rendered with its figure and no longer repeated as a report-level “图下数据” block. Friendly HTML omits the audit appendix by default; audit details are opt-in.
+- Report-bound PNG footers use scalable fonts, minimum display-size checks, wrapping, contrast and clipping metadata so long `FigID`/`Report` values remain readable.
+- `ea journey` provides one read-only next action at a time from project creation through verified export, while preserving expert commands and interaction-mode boundaries.
+- The former `Experimental Assistant (Compatibility)` skill is absent from source, packages, setup targets, and release artifacts. Historical project/protocol identifiers remain readable.
+- Release acceptance uses automated tests, public benchmarks, deterministic mock integration, fresh simulated-agent journeys/scientific reviews, and manual artifact inspection. Evidence types are explicit and cannot be represented as real-user or independent-expert validation.
 
 ## Relationship To v1.0
 
-The v0.9.8 code remains a controlled v1.0 candidate. Promotion still requires real independent novice trials on supported platforms and independent scientific review of beta evidence surfaces. Internal automation and the public OA trial do not substitute for that evidence.
+Real-user trials, external expert sign-off, and a live Zotero account are no longer pre-v1 promotion gates. v1.0 promotion instead requires the current-candidate automated/platform/package gates, public benchmarks, five-target Mock integration, candidate-bound simulated reviews, issue disposition, and a truthful readiness dossier with no unresolved blocker. External trials may be collected after v1.0 as improvement evidence.
 
-## Maturity
+## Concrete Limits
 
-- Stable: project lifecycle, protected import, implemented characterization methods, review/provenance, health/eval, trace, reports and bundle exports.
-- Beta: Raman benchmarked analysis and literature evidence datasets.
-- Experimental/companion: browser-assisted lawful acquisition and external Zotero coordination.
-
-See `docs/CAPABILITY_MATRIX.md`, `docs/V0_9_KNOWN_LIMITATIONS.md`, and `docs/PUBLIC_ACCEPTANCE_MATRIX.md`.
+EA organizes reviewable evidence; it does not independently prove material identity, phase, composition, mechanism, performance, or literature completeness. Arbitrary schemas make data categories representable but do not guarantee that every PDF is extractable or every reported value is comparable. Zotero/browser/institution operations remain optional, user-authorized integrations and never bypass access controls.
 
 ## Migration
 
-Run `ea migrate status` and `ea migrate plan` before changing an existing project. Use `$ea` for new Codex tasks. Existing `$ea-v0-2` invocation and historical records remain supported during v1.0.x and are not rewritten merely for naming.
+Run `ea migrate status` and `ea migrate plan` before changing an existing project. Use `$ea` for every new Codex task. Old project records are not rewritten merely to change version or product naming.

@@ -94,6 +94,25 @@ def test_confirmed_public_raman_processing_writes_outputs(tmp_path: Path) -> Non
     assert "peak_id,position_cm-1,intensity,height,prominence,width,method,notes" in peaks
     assert "scipy_find_peaks" in peaks
 
+    with pytest.raises(
+        RamanProcessingError,
+        match=r"requires x_unit to be user-confirmed as cm\^-1",
+    ):
+        process_raman_result(
+            project,
+            characterization_metadata_path=raw.metadata_path,
+            project_id="project-20260602-mos2",
+            sample_refs=["20260516-run1-sub1"],
+            request=RamanProcessingRequest(
+                x_column="col_0",
+                y_column="col_1",
+                x_unit="unknown",
+                processing_parameters=default_processing_parameters(),
+                column_review_ref=column_review.stem,
+                parameter_review_ref=parameter_review.stem,
+            ),
+        )
+
 
 def test_pl_file_is_rejected_by_raman_processing(tmp_path: Path) -> None:
     project = tmp_path / "project"

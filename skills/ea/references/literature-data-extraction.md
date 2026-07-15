@@ -1,6 +1,6 @@
 # Literature Evidence Dataset Workflow
 
-Use this reference for cross-paper collection of a user-defined property and measurement context.
+Use this reference for cross-paper collection of any user-requested literature data. The six electrical presets are reusable starting points, not a boundary on supported data categories.
 
 ## Boundary
 
@@ -8,7 +8,7 @@ Accept user-provided PDFs or verified lawful caches. Do not bypass publisher or 
 
 ## Workflow
 
-1. Define the property, required condition fields, accepted units, and comparability rules.
+1. Translate the user's collection request into an explicit schema: fields, types, units, aliases, missing-value policy, evidence requirements, deduplication, conflicts, comparability, and output/plot rules.
 2. Select sources with DOI/reference and verified cache identity.
 3. Search metadata and chunk/page/table indexes before reading text.
 4. Extract reported values, units, conditions, and precise evidence anchors.
@@ -17,7 +17,64 @@ Accept user-provided PDFs or verified lawful caches. Do not bypass publisher or 
 7. Validate duplicates, units, required context, evidence anchors, and plot eligibility.
 8. Plot or export reviewed records only, with source-data and provenance references.
 
-## Commands
+## Start from the user's request
+
+Do not map an unfamiliar request to the nearest built-in property. If the user asks for optical band gaps, synthesis conditions, catalyst rates, device geometry, compositions, dates, categories, or another domain-specific value, preserve that semantic identity in a project schema.
+
+Supported field types are `number`, `range`, `uncertain_number`, `text`, `enum`, `boolean`, `date`, `datetime`, `list`, and `nested`. A schema may mix multiple field types. Plotting is optional; review, validation, and export remain available when a field is not plottable.
+
+Preview the editable universal template without writing:
+
+```bash
+ea literature data-template
+```
+
+Write it only after confirming the destination, edit the placeholders, then validate it:
+
+```bash
+ea literature data-template --output /path/to/project/optical-gap.schema.yml --yes
+ea literature data-schema validate /path/to/project/optical-gap.schema.yml
+```
+
+The schema validator returns stable error codes, paths, and next actions. A dataset stores the confirmed schema and semantic SHA-256. Later semantic edits require restoring the confirmed schema or planning a new dataset ID with the revised schema; EA does not reinterpret reviewed records in place. In YAML, write the missing-value policy as `"null"` when that policy is intended—bare `null` is a YAML null value, not the policy string.
+
+## Schema-driven commands
+
+Use `--schema` for arbitrary or multi-field requests:
+
+```bash
+ea literature data-plan /path/to/ea-project \
+  --schema /path/to/project/optical-gap.schema.yml \
+  --source /path/to/verified-cache-or-searchable.pdf \
+  --dataset-id optical-gap-review \
+  --yes
+
+ea literature data-extract /path/to/ea-project --dataset optical-gap-review --yes
+ea literature data-review /path/to/ea-project --dataset optical-gap-review --record rec-source-001-001 --decision accept --note "Verified against page and table." --yes
+ea literature data-validate /path/to/ea-project --dataset optical-gap-review
+ea literature data-plot /path/to/ea-project --dataset optical-gap-review --yes
+ea literature data-export /path/to/ea-project --dataset optical-gap-review --yes
+```
+
+For a simple one-field request, EA can create a schema preview directly from the requested name, type, units, and aliases. This is still a schema-driven workflow and is not limited to a built-in allowlist:
+
+```bash
+ea literature data-plan /path/to/ea-project \
+  --property "photocatalytic hydrogen evolution rate" \
+  --kind hydrogen_evolution_rate \
+  --material "photocatalysts" \
+  --type number \
+  --unit "umol/g/h" \
+  --alias "hydrogen evolution rate" \
+  --source /path/to/verified-cache \
+  --dataset-id hydrogen-evolution-review
+```
+
+Review the zero-write preview, then repeat with `--yes` to create the dataset.
+
+## Built-in electrical presets
+
+The compatibility presets remain available for conductivity, resistivity, sheet resistance, sheet conductance, contact resistance, and mobility:
 
 ```bash
 ea literature data-plan /path/to/ea-project \
@@ -43,8 +100,6 @@ Run `data-plan` without `--yes` for a zero-write preview. `data-extract`, `data-
 ## Artifacts
 
 Each dataset lives under `literature/data-extractions/<dataset-id>/` and contains `extraction_spec.yml`, `source_manifest.yml`, compact checkpoint state, candidate YAML/CSV, per-source short evidence anchors, review YAML/Markdown, reviewed YAML/CSV, validation, plots/source data, and a report. Reviewed exports intentionally exclude raw PDFs, private full text, absolute source paths, credentials, and unreviewed candidates.
-
-## Electrical Pilot
 
 Keep conductivity, resistivity, sheet resistance, sheet conductance, contact resistance, and mobility distinct. Record probe geometry, direction, temperature, thickness, substrate, doping, and contact/device context when reported. Use `not_reported`; never infer a missing condition.
 

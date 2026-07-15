@@ -16,8 +16,9 @@ CLI_NAME = "ea"
 
 SKILL_NAME = "ea"
 SKILL_INVOCATION = "$ea"
-LEGACY_SKILL_NAMES = ("ea-v0-2",)
-LEGACY_SKILL_INVOCATIONS = ("$ea-v0-2",)
+# Retained only so setup/doctor can remove stale pre-v1 compatibility installs.
+# It is not a supported public skill or invocation.
+RETIRED_SKILL_NAMES = ("ea-v0-2",)
 
 PROJECT_FORMAT_VERSION = "1.0"
 SUPPORTED_PYTHON_MINORS = ((3, 11), (3, 12), (3, 13))
@@ -35,7 +36,7 @@ CAPABILITY_MATURITY = {
         "html_reports_and_verified_exports",
     ),
     "beta": (
-        "raman_analysis_pending_external_benchmark_signoff",
+        "raman_analysis_pending_release_candidate_review",
         "pl_analysis",
         "xrd_analysis",
         "ftir_source_backed_assignments",
@@ -51,5 +52,31 @@ CAPABILITY_MATURITY = {
         "zotero_browser_and_institution_acquisition_orchestration",
         "broad_full_text_acquisition",
         "advanced_image_interpretation",
+    ),
+}
+
+
+PUBLIC_CAPABILITY_CONTRACT = {
+    "supported_workflows": (
+        "project_lifecycle_and_migration",
+        "protected_raw_import_and_duplicate_detection",
+        "review_records_provenance_and_references",
+        "characterization_inspect_process_report_workflows",
+        "user_defined_literature_data_collection",
+        "health_evaluation_trace_and_verified_exports",
+    ),
+    "review_required": (
+        "scientific_interpretations",
+        "literature_extraction_candidates",
+        "parameters_and_durable_memory",
+    ),
+    "optional_integrations": (
+        "public_literature_metadata_search",
+        "zotero_browser_and_institution_access_handoff",
+    ),
+    "boundaries": (
+        "no_autonomous_scientific_proof",
+        "no_exhaustive_literature_coverage_claim",
+        "no_access_control_bypass_or_credential_storage",
     ),
 }

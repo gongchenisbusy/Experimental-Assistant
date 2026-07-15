@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.8 Manual Test Checklist
+# Experimental Assistant v0.9.9 Manual Test Checklist
 
 Record tester, operating system, Python version, commit/tag, date, commands, artifact paths, and each failure. Do not convert an unchecked item into inferred evidence.
 
@@ -9,7 +9,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Run `ea setup`, restart Codex, and invoke `$ea` in a fresh task.
 - [ ] Confirm wheel/sdist setup uses their bundled skills without a repository clone; separately verify the release skill ZIP and SHA-256 sidecar.
 - [ ] On native Windows, repeat setup under a path longer than 260 characters and validate Chinese GBK console output without mojibake or `UnicodeDecodeError`.
-- [ ] Confirm `$ea-v0-2` routes to `$ea` without loading a second full instruction set.
+- [ ] Confirm only `$ea` is installed and the retired Compatibility skill is absent after setup/update.
 - [ ] Preview update, rollback, and uninstall; perform them only in a disposable test environment.
 
 ## First Project
@@ -26,7 +26,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Complete one reviewed inspect/process/report path from imported raw data.
 - [ ] Export HTML and a traced report bundle; run `ea export verify-bundle` and `ea export verify-archive`.
 - [ ] Record the exact `ea export report-bundle ... --include-trace --zip` command used for the handoff artifact.
-- [ ] Run Raman golden benchmark and inspect the external-review status without marking it complete.
+- [ ] Run the Raman golden benchmark, simulated scientific review, and manual report/figure inspection; record evidence type and candidate commit.
 
 ## Literature
 
@@ -40,7 +40,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 
 ## Release Engineering
 
-- [ ] Full tests and both skill validations pass.
+- [ ] Full tests and the `$ea` skill validation pass; the retired Compatibility skill is absent.
 - [ ] Native CI passes on Windows, Ubuntu, macOS with Python 3.11-3.13; Python 3.14 result is recorded separately.
 - [ ] Clean wheel/sdist builds are reproducible under the documented conditions.
 - [ ] SBOM exists and vulnerability report status is `pass`.
@@ -48,9 +48,10 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Compact skill ZIP and its SHA-256 sidecar pass `skill_distribution.bundle` in the distribution checklist.
 - [ ] Public release assets can be downloaded and independently verified/installed.
 
-## v1.0 Promotion
+## v1.0 Promotion Rehearsal
 
-- [ ] Independent novice trials pass on each supported OS family.
-- [ ] Independent scientific reviewer signs off Raman benchmark interpretation and literature-dataset evidence fidelity.
-- [ ] Public issue #1-#7 disposition is recorded with no unresolved blocker.
+- [ ] Candidate-bound simulated novice journeys pass on deterministic fixtures and every finding is fixed or dispositioned.
+- [ ] Candidate-bound simulated scientific reviews pass Raman and universal literature-data artifacts with concrete limits intact.
+- [ ] Five-target mock acquisition/integration evidence covers success, partial failure, resume, deduplication, cache reuse, reconciliation, and blocker states.
+- [ ] Public issue #1, #2, #7, #9, #11, and #14 dispositions are recorded with no unresolved blocker.
 - [ ] Known limitations and support policy match observed behavior.

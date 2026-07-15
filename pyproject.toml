@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "experimental-assistant"
-version = "0.9.8"
+version = "0.9.9"
 description = "Local-first materials research assistant with review-gated evidence and provenance"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -85,9 +85,6 @@ where = ["src"]
 "share/experimental-assistant/skills/ea/agents" = ["skills/ea/agents/*.yaml"]
 "share/experimental-assistant/skills/ea/references" = ["skills/ea/references/*.md", "skills/ea/references/*.yml"]
 "share/experimental-assistant/skills/ea/scripts" = ["skills/ea/scripts/*.py"]
-"share/experimental-assistant/skills/ea-v0-2" = ["skills/ea-v0-2/SKILL.md"]
-"share/experimental-assistant/skills/ea-v0-2/agents" = ["skills/ea-v0-2/agents/*.yaml"]
-"share/experimental-assistant/skills/ea-v0-2/scripts" = ["skills/ea-v0-2/scripts/*.py"]
 "share/experimental-assistant/skill-registry" = ["skill-registry/companion-compatibility.yml"]
 
 [tool.pytest.ini_options]

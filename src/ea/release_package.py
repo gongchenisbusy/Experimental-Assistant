@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 import yaml
 
+from ea import __version__
 from ea.release_manifest import (
     DEFAULT_INCLUDE_ROOTS,
     build_release_manifest,
@@ -18,7 +19,7 @@ from ea.release_manifest import (
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-MANIFEST_ARCHIVE_NAME = "experimental-assistant-v0.9.8-release-manifest.yml"
+MANIFEST_ARCHIVE_NAME = f"experimental-assistant-v{__version__}-release-manifest.yml"
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -41,14 +42,14 @@ def _short_commit(manifest: dict[str, Any]) -> str:
 def _default_archive_path(root: Path, manifest: dict[str, Any]) -> Path:
     package = manifest["package"]
     name = str(package.get("name") or "experimental-assistant")
-    version = str(package.get("version") or "0.9.8")
+    version = str(package.get("version") or __version__)
     return root / "dist" / f"{name}-{version}-{_short_commit(manifest)}-release.zip"
 
 
 def _default_archive_root(manifest: dict[str, Any]) -> str:
     package = manifest["package"]
     name = str(package.get("name") or "experimental-assistant")
-    version = str(package.get("version") or "0.9.8")
+    version = str(package.get("version") or __version__)
     return f"{name}-{version}"
 
 
@@ -265,7 +266,7 @@ def verify_release_package(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build an Experimental Assistant v0.9.8 repository zip archive."
+        description=f"Build an Experimental Assistant v{__version__} repository zip archive."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
@@ -276,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_verify_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Verify an Experimental Assistant v0.9.8 repository zip archive."
+        description=f"Verify an Experimental Assistant v{__version__} repository zip archive."
     )
     parser.add_argument("archive", type=Path)
     parser.add_argument("--checksum", type=Path)

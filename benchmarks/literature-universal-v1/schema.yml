@@ -1,0 +1,208 @@
+schema_version: '2.0'
+schema_id: public-universal-ten-types-v1
+source:
+  kind: public_synthetic_benchmark
+  version: '1.0'
+material_scope: synthetic mixed-domain material records
+primary_field_id: catalytic_rate
+fields:
+  - field_id: catalytic_rate
+    name: {en: catalytic rate, zh: 催化速率}
+    aliases: [catalytic rate]
+    description: Synthetic scalar numeric field.
+    material_scope: synthetic mixed-domain material records
+    type: number
+    unit:
+      dimension: synthetic_rate
+      allowed: [u]
+      canonical: u
+      unknown_allowed: false
+      conversions:
+        u: {canonical: u, factor: 1.0, formula: reported_value * 1}
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, require_same_unit: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: true, kind: point}
+  - field_id: activity_range
+    name: {en: activity range, zh: 活性范围}
+    aliases: [activity range]
+    description: Synthetic numeric range.
+    material_scope: synthetic mixed-domain material records
+    type: range
+    unit:
+      dimension: synthetic_rate
+      allowed: [u]
+      canonical: u
+      unknown_allowed: false
+      conversions:
+        u: {canonical: u, factor: 1.0, formula: reported_value * 1}
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, require_same_unit: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: true, kind: point}
+  - field_id: measured_rate
+    name: {en: measured rate, zh: 测量速率}
+    aliases: [measured rate]
+    description: Synthetic value with uncertainty.
+    material_scope: synthetic mixed-domain material records
+    type: uncertain_number
+    unit:
+      dimension: synthetic_rate
+      allowed: [u]
+      canonical: u
+      unknown_allowed: false
+      conversions:
+        u: {canonical: u, factor: 1.0, formula: reported_value * 1}
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, require_same_unit: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: true, kind: point}
+  - field_id: synthesis_route
+    name: {en: synthesis route, zh: 合成路线}
+    aliases: [synthesis route]
+    description: Synthetic text field.
+    material_scope: synthetic mixed-domain material records
+    type: text
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: phase_class
+    name: {en: phase class, zh: 相类别}
+    aliases: [phase class]
+    description: Synthetic enum field.
+    material_scope: synthetic mixed-domain material records
+    type: enum
+    choices: [alpha, beta]
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: reusable
+    name: {en: reusable, zh: 可重复使用}
+    aliases: [reusable]
+    description: Synthetic boolean field.
+    material_scope: synthetic mixed-domain material records
+    type: boolean
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: publication_date
+    name: {en: publication date, zh: 发布日期}
+    aliases: [publication date]
+    description: Synthetic date field.
+    material_scope: synthetic mixed-domain material records
+    type: date
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: measured_at
+    name: {en: measured at, zh: 测量时间}
+    aliases: [measured at]
+    description: Synthetic datetime field.
+    material_scope: synthetic mixed-domain material records
+    type: datetime
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: precursors
+    name: {en: precursors, zh: 前驱体}
+    aliases: [precursors]
+    description: Synthetic list field.
+    material_scope: synthetic mixed-domain material records
+    type: list
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+  - field_id: reactor_record
+    name: {en: reactor record, zh: 反应器记录}
+    aliases: [reactor record]
+    description: Synthetic nested field.
+    material_scope: synthetic mixed-domain material records
+    type: nested
+    children:
+      - field_id: reactor_mode
+        name: {en: reactor mode, zh: 反应器模式}
+        aliases: [reactor mode]
+        description: Nested synthetic text value.
+        material_scope: synthetic mixed-domain material records
+        type: text
+        required_conditions: []
+        optional_conditions: []
+        missing_value_policy: not_reported
+        comparability: {enabled: true, rules: []}
+        dedup_policy: source_field_value
+        conflict_policy: preserve
+        search_hints: []
+        evidence: {minimum_anchors: [page_or_chunk]}
+        output: {include: true, group_by: [], sort_by: []}
+        plot: {enabled: false, kind: none}
+    required_conditions: []
+    optional_conditions: []
+    missing_value_policy: not_reported
+    comparability: {enabled: true, rules: []}
+    dedup_policy: source_field_value
+    conflict_policy: preserve
+    search_hints: []
+    evidence: {minimum_anchors: [page_or_chunk]}
+    output: {include: true, group_by: [], sort_by: []}
+    plot: {enabled: false, kind: none}
+

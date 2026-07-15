@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,43 @@ def _safe_report_slug(report_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", report_id).strip("-") or "report"
 
 
+FOOTER_HTML_CONTENT_WIDTH_CSS_PX = 932
+FOOTER_MIN_EFFECTIVE_CSS_PX = 12.0
+FOOTER_TARGET_EFFECTIVE_CSS_PX = 13.0
+
+
+def _wrap_footer_text(draw, text: str, font, max_width: int) -> str:
+    tokens = text.split(" ")
+    lines: list[str] = []
+    current = ""
+    for token in tokens:
+        candidate = token if not current else f"{current} {token}"
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        token_bbox = draw.textbbox((0, 0), token, font=font)
+        if token_bbox[2] - token_bbox[0] <= max_width:
+            current = token
+            continue
+        chunk = ""
+        for character in token:
+            candidate_chunk = chunk + character
+            chunk_bbox = draw.textbbox((0, 0), candidate_chunk, font=font)
+            if chunk and chunk_bbox[2] - chunk_bbox[0] > max_width:
+                lines.append(chunk)
+                chunk = character
+            else:
+                chunk = candidate_chunk
+        current = chunk
+    if current:
+        lines.append(current)
+    return "\n".join(lines)
+
+
 def _render_report_bound_png(
     root: Path, record: dict[str, Any], report_id: str
 ) -> dict[str, Any] | None:
@@ -73,6 +111,7 @@ def _render_report_bound_png(
         return None
     try:
         from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
+        from matplotlib import font_manager
     except Exception:  # pragma: no cover - Pillow is normally available via matplotlib
         return None
 
@@ -82,30 +121,73 @@ def _render_report_bound_png(
     )
     with Image.open(base_path) as source:
         base = source.convert("RGB")
-        font = ImageFont.load_default()
+        display_scale = min(1.0, FOOTER_HTML_CONTENT_WIDTH_CSS_PX / base.width)
+        font_px = max(
+            16,
+            math.ceil(FOOTER_TARGET_EFFECTIVE_CSS_PX / display_scale),
+        )
+        font_path = Path(font_manager.findfont("DejaVu Sans", fallback_to_default=True))
+        font = ImageFont.truetype(str(font_path), size=font_px)
         measure = ImageDraw.Draw(base)
-        bbox = measure.textbbox((0, 0), footer, font=font)
+        padding_x = max(12, math.ceil(base.width * 0.012))
+        padding_y = max(8, math.ceil(font_px * 0.45))
+        wrapped_footer = _wrap_footer_text(
+            measure, footer, font, max(1, base.width - padding_x * 2)
+        )
+        line_spacing = max(3, math.ceil(font_px * 0.22))
+        bbox = measure.multiline_textbbox(
+            (0, 0), wrapped_footer, font=font, spacing=line_spacing
+        )
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
-        padding_x = 8
-        padding_y = 6
-        strip_height = max(24, text_height + padding_y * 2)
+        strip_height = text_height + padding_y * 2
         canvas = Image.new("RGB", (base.width, base.height + strip_height), "white")
         canvas.paste(base, (0, 0))
         draw = ImageDraw.Draw(canvas)
-        draw.text(
-            (
-                canvas.width - text_width - padding_x,
-                canvas.height - text_height - padding_y,
-            ),
-            footer,
-            font=font,
-            fill=(102, 102, 102),
+        text_x = canvas.width - text_width - padding_x
+        text_y = canvas.height - text_height - padding_y
+        footer_clipped = not (
+            0 <= text_x
+            and text_x + text_width <= canvas.width
+            and base.height <= text_y
+            and text_y + text_height <= canvas.height
         )
+        draw.multiline_text(
+            (text_x, text_y),
+            wrapped_footer,
+            font=font,
+            fill=(32, 32, 32),
+            spacing=line_spacing,
+            align="right",
+        )
+        effective_css_px = font_px * display_scale
         pnginfo = PngImagePlugin.PngInfo()
         pnginfo.add_text("ea_footer", footer)
         pnginfo.add_text("ea_figure_id", str(record["figure_id"]))
         pnginfo.add_text("ea_report_id", report_id)
+        pnginfo.add_text("ea_footer_font_px", str(font_px))
+        pnginfo.add_text("ea_footer_effective_css_px", f"{effective_css_px:.3f}")
+        pnginfo.add_text(
+            "ea_footer_min_effective_css_px",
+            f"{FOOTER_MIN_EFFECTIVE_CSS_PX:.1f}",
+        )
+        pnginfo.add_text(
+            "ea_footer_html_content_width_css_px",
+            str(FOOTER_HTML_CONTENT_WIDTH_CSS_PX),
+        )
+        pnginfo.add_text("ea_footer_font", font_path.name)
+        pnginfo.add_text("ea_footer_font_sha256", _sha256(font_path))
+        pnginfo.add_text("ea_footer_contrast", "#202020-on-#ffffff")
+        pnginfo.add_text("ea_footer_contrast_ratio", "16.29")
+        pnginfo.add_text("ea_footer_line_count", str(len(wrapped_footer.splitlines())))
+        pnginfo.add_text("ea_footer_base_width_px", str(base.width))
+        pnginfo.add_text("ea_footer_base_height_px", str(base.height))
+        pnginfo.add_text("ea_footer_strip_height_px", str(strip_height))
+        pnginfo.add_text(
+            "ea_footer_text_bbox_px",
+            f"{text_x},{text_y},{text_x + text_width},{text_y + text_height}",
+        )
+        pnginfo.add_text("ea_footer_clipped", str(footer_clipped).lower())
         final_path.parent.mkdir(parents=True, exist_ok=True)
         canvas.save(
             final_path, format="PNG", pnginfo=pnginfo, compress_level=9, optimize=False
@@ -118,6 +200,23 @@ def _render_report_bound_png(
         "base_path": base_ref,
         "base_sha256": record.get("base_sha256"),
         "render_policy": "footer_free_base_to_report_bound_final_v1",
+        "footer_contract_version": "2.0",
+        "footer_font_px": font_px,
+        "footer_effective_css_px": effective_css_px,
+        "footer_min_effective_css_px": FOOTER_MIN_EFFECTIVE_CSS_PX,
+        "footer_html_content_width_css_px": FOOTER_HTML_CONTENT_WIDTH_CSS_PX,
+        "footer_font": font_path.name,
+        "footer_font_sha256": _sha256(font_path),
+        "footer_line_count": len(wrapped_footer.splitlines()),
+        "footer_text_bbox_px": [
+            text_x,
+            text_y,
+            text_x + text_width,
+            text_y + text_height,
+        ],
+        "footer_strip_height_px": strip_height,
+        "footer_contrast_ratio": 16.29,
+        "footer_clipped": footer_clipped,
     }
 
 
@@ -217,7 +316,7 @@ def update_figure_report_ref(
             "requested_report_id": report_id,
             "legacy_path": str(record.get("path") or ""),
             "legacy_sha256": _sha256(legacy_path) if legacy_path.is_file() else None,
-            "next_action": "Re-run the originating analysis to create a footer-free v0.9.8 base figure.",
+            "next_action": "Re-run the originating analysis to create a footer-free current-format base figure.",
         }
         write_yaml(index_path, index)
         return record

@@ -10,7 +10,7 @@ from ea import __version__
 
 
 FIXED_ZIP_TIME = (2020, 1, 1, 0, 0, 0)
-SKILL_NAMES = ("ea", "ea-v0-2")
+SKILL_NAMES = ("ea",)
 
 
 def _repository_root(start: Path | None = None) -> Path:

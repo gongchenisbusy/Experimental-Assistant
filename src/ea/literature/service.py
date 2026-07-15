@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Callable, Literal
 
+from ea import __version__
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
 from ea.storage.files import (
@@ -895,7 +896,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use Experimental Assistant v0.9.8 literature workflow references. Work only from the files listed in the handoff YAML.",
+            f"Use Experimental Assistant v{__version__} literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -5213,7 +5214,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Experimental-Assistant-v0.9.8 public-metadata-search/0.9.8 (local-first research assistant)",
+            "User-Agent": f"Experimental-Assistant-v{__version__} public-metadata-search/{__version__} (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )

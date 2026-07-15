@@ -23,7 +23,6 @@ from ea.literature.service import (
     sync_literature_acquisition_status,
 )
 from ea.literature.data_extraction import (
-    PROPERTY_KINDS,
     REVIEW_DECISIONS,
     export_literature_data,
     extract_literature_data,
@@ -31,6 +30,16 @@ from ea.literature.data_extraction import (
     plot_literature_data,
     review_literature_data,
     validate_literature_data,
+)
+from ea.literature.data_schema import (
+    ELECTRICAL_PRESETS,
+    FIELD_TYPES,
+    LITERATURE_DATA_SCHEMA_VERSION,
+    PROPERTY_KINDS,
+    LiteratureDataSchemaError,
+    prepare_literature_data_schema_template,
+    validate_literature_data_schema,
+    validate_literature_data_schema_payload,
 )
 from ea.literature.pipeline import (
     AccessResolver,
@@ -46,6 +55,7 @@ from ea.literature.pipeline import (
     canonical_doi,
     validate_pdf_payload,
 )
+from ea.literature.handoff import normalize_acquisition_handoff
 
 __all__ = [
     "build_search_queries",
@@ -78,6 +88,14 @@ __all__ = [
     "plot_literature_data",
     "review_literature_data",
     "validate_literature_data",
+    "FIELD_TYPES",
+    "ELECTRICAL_PRESETS",
+    "LITERATURE_DATA_SCHEMA_VERSION",
+    "LiteratureDataSchemaError",
+    "prepare_literature_data_schema_template",
+    "validate_literature_data_schema",
+    "validate_literature_data_schema_payload",
+    "normalize_acquisition_handoff",
     "AccessResolver",
     "ContentAddressedPdfStore",
     "DiscoveryAdapter",

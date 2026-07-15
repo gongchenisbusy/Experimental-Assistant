@@ -1,0 +1,87 @@
+schema_version: zotero-codex-batch/v1
+request_id: v0.9.9-five-target-mock
+target_count: 5
+transaction_counts:
+  created: 2
+  reused: 1
+  rolled_back: 0
+  partial: 1
+targets:
+  - target_id: target-001
+    title: Created parent and verified PDF child
+    doi: 10.9999/mock.001
+    status: acquired-and-cached
+    zotero_parent_key: PARENT001
+    zotero_attachment_key: ATTACH001
+    source_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    cache_path: knowledge/project/fulltext/aa/mock001
+    attempts:
+      - attempt: 1
+        stage: resolve
+        status: failed
+        error: HTTP 401 unauthorized
+      - attempt: 2
+        stage: cache
+        status: completed
+        artifact_count: 1
+  - target_id: target-002
+    title: Deduplicated warm-cache reuse
+    doi: 10.9999/mock.002
+    status: cached
+    zotero_parent_key: PARENT002
+    zotero_attachment_key: ATTACH002
+    source_hash: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    cache_path: knowledge/project/fulltext/bb/mock002
+    attempts:
+      - attempt: 1
+        stage: retrieve
+        status: failed
+        error: HTTP 429 rate limited
+      - attempt: 2
+        stage: cache
+        status: reused-cache
+  - target_id: target-003
+    title: Parent preserved for attachment resume
+    doi: 10.9999/mock.003
+    status: partial
+    zotero_parent_key: PARENT003
+    error: missing attachment file after request timeout
+    attempts:
+      - attempt: 1
+        stage: retrieve
+        status: failed
+        error: request timeout
+      - attempt: 2
+        stage: import
+        status: partial
+        error: missing attachment file
+  - target_id: target-004
+    title: Visible authorization pause
+    doi: 10.9999/mock.004
+    status: needs-login
+    reason: CAPTCHA human verification required
+    attempts:
+      - attempt: 1
+        stage: resolve
+        status: failed
+        error: CAPTCHA required
+  - target_id: target-005
+    title: Permission and forbidden blocker
+    doi: 10.9999/mock.005
+    status: blocked
+    error: EPERM permission denied after HTTP 403 forbidden
+    attempts:
+      - attempt: 1
+        stage: retrieve
+        status: failed
+        error: HTTP 403 forbidden
+      - attempt: 2
+        stage: cache
+        status: failed
+        error: EPERM permission denied
+boundaries:
+  evidence_type: mock_fixture
+  live_zotero_account_used: false
+  real_user_trial: false
+  independent_expert_review: false
+  credentials_or_sessions_included: false

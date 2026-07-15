@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
-import shutil
 from typing import Any
 
+from ea import __version__
 from ea.identity import PROJECT_FORMAT_VERSION
 from ea.storage.files import atomic_copy_file, read_yaml, write_yaml
 from ea.storage.transactions import OperationJournal
@@ -68,7 +68,7 @@ def initialize_project_format(root: Path, *, created_at: str | None = None) -> P
         {
             "schema_version": "1.0",
             "project_format_version": CURRENT_PROJECT_FORMAT_VERSION,
-            "created_with_ea": "0.9.8",
+            "created_with_ea": __version__,
             "created_at": created,
             "updated_at": created,
             "migration_history": [],

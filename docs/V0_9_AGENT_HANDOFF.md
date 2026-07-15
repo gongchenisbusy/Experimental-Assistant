@@ -1,11 +1,11 @@
-# Experimental Assistant v0.9.8 Agent Handoff
+# Experimental Assistant v0.9.9 Agent Handoff
 
 ## Current State
 
-- Release line: `v0.9.8`, package `experimental-assistant 0.9.8`
-- Development branch: `codex/eav0.9.8`
+- Release line: `v0.9.9`, package `experimental-assistant 0.9.9`
+- Development branch: post-v0.9.9 pre-v1 development
 - Primary skill: `skills/ea` / `$ea`
-- Compatibility wrapper: `skills/ea-v0-2` / `$ea-v0-2` through v1.0.x
+- Compatibility skill: retired before v1.0; source, package, release bundle, and installed target must be absent
 - Capability matrix: `docs/CAPABILITY_MATRIX.md`
 - Acceptance and manual evidence: `docs/PUBLIC_ACCEPTANCE_MATRIX.md`, `docs/V0_9_MANUAL_TEST_CHECKLIST.md`
 
@@ -22,7 +22,7 @@ ea-release-supply-chain
 ea-release-skill-bundle
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -30,10 +30,10 @@ Also require clean wheel/sdist installs that run bundled-skill setup without net
 
 ## Evidence Honesty
 
-Do not mark independent novice/platform trials or external scientific review as passed without an actual tester/reviewer record. v0.9.8 may be published as a controlled candidate with these items pending; v1.0 promotion may not.
+Require automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection bound to the release candidate. Record their exact evidence types and limitations. Real-user trials, independent expert sign-off, and live-account Zotero tests are optional post-v1 improvement inputs, not v0.9.9 or v1.0 promotion gates.
 
 ## Boundaries
 
 - Do not assume Zotero, browser sessions, institution access, private caches, signing keys, or developer paths.
 - Do not mutate raw data, bypass access controls, commit memory without review, or turn screening evidence into a definitive claim.
-- Do not duplicate full instructions in `skills/ea-v0-2`; it is only a compatibility router.
+- Do not restore or republish the retired Compatibility skill. Preserve old project identifiers only as read-only provenance where needed.

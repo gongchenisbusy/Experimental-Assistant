@@ -8,16 +8,14 @@ import tomllib
 import yaml
 
 
-EXPECTED_VERSION = "v0.9.8"
-EXPECTED_PACKAGE_VERSION = "0.9.8"
+EXPECTED_VERSION = "v0.9.9"
+EXPECTED_PACKAGE_VERSION = "0.9.9"
 EXPECTED_DISTRIBUTION = "experimental-assistant"
 EXPECTED_PRIMARY_SKILL = "ea"
-EXPECTED_COMPATIBILITY_SKILL = "ea-v0-2"
 SCAN_ROOTS = [
     "README.md",
     "docs",
     "skills/ea",
-    "skills/ea-v0-2/SKILL.md",
     "src/ea",
     "scripts",
     "examples",
@@ -36,9 +34,9 @@ FORBIDDEN_STRINGS = [
     "EAv0-2",
     "eav0-2",
     "EA v0.2 Public",
-    "ea-v0-2-0.9.8",
-    "ea-v0.9.8-release-manifest",
-    "ea-v0.9.8-distribution-checklist",
+    "ea-v0-2-0.9.9",
+    "ea-v0.9.9-release-manifest",
+    "ea-v0.9.9-distribution-checklist",
 ]
 
 
@@ -102,10 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         "pyproject_license": pyproject.get("license") == "Apache-2.0",
         "primary_skill_name": _skill_name(root / "skills" / "ea" / "SKILL.md")
         == EXPECTED_PRIMARY_SKILL,
-        "compatibility_skill_name": _skill_name(
-            root / "skills" / "ea-v0-2" / "SKILL.md"
-        )
-        == EXPECTED_COMPATIBILITY_SKILL,
+        "compatibility_skill_removed": not (root / "skills" / "ea-v0-2").exists(),
         "source_version": f'__version__ = "{EXPECTED_PACKAGE_VERSION}"'
         in (root / "src" / "ea" / "__init__.py").read_text(encoding="utf-8"),
         "identity_distribution": f'DISTRIBUTION_NAME = "{EXPECTED_DISTRIBUTION}"'

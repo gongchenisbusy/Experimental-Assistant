@@ -8,6 +8,7 @@ from ea.cli import _print_json, main
 from ea.user_surface import (
     build_project_dashboard,
     generate_user_report,
+    guided_first_journey,
     inspect_analysis_source,
     start_project,
 )
@@ -50,11 +51,77 @@ def test_start_plans_before_writing_and_creates_with_safe_defaults(
     assert (workspace / ".ea" / "project_format.yml").is_file()
 
 
+def test_guided_journey_is_zero_write_and_returns_one_import_action(
+    tmp_path: Path, capsys
+) -> None:
+    workspace = tmp_path / "First project"
+    missing = guided_first_journey(workspace)
+    assert missing["code"] == "project_not_created"
+    assert missing["read_only"] is True
+    assert not workspace.exists()
+
+    start_project(workspace, material_system="MoS2", confirmed=True)
+    source = tmp_path / "first-raman.csv"
+    source.write_text("raman_shift_cm_1,intensity\n380,10\n400,20\n", encoding="utf-8")
+    before = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    result = guided_first_journey(
+        workspace, source_path=source, method="raman"
+    )
+    after = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    assert result["code"] == "import_ready_for_confirmation"
+    assert result["status"] == "needs_confirmation"
+    assert result["read_only"] is True
+    assert result["details"]["columns"] == ["raman_shift_cm_1", "intensity"]
+    assert result["details"]["unit_proposals"] == {"raman_shift_cm_1": "cm^-1"}
+    assert "--preview-hash" in result["next_command"]
+    assert before == after
+
+    assert (
+        main(
+            [
+                "--mode",
+                "consult",
+                "journey",
+                str(workspace),
+                "--source",
+                str(source),
+                "--method",
+                "raman",
+            ]
+        )
+        == 0
+    )
+    cli_result = json.loads(capsys.readouterr().out)
+    assert cli_result["code"] == "import_ready_for_confirmation"
+
+
 def test_dashboard_is_read_only_and_uses_optional_literature_semantics(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "project"
     start_project(workspace, confirmed=True)
+    (workspace / "open-items").mkdir(exist_ok=True)
+    from ea.storage import write_yaml
+
+    write_yaml(
+        workspace / "open-items" / "literature-review.yml",
+        {
+            "status": "open",
+            "item_type": "literature_review",
+            "priority": "high",
+            "description": "Review the pending literature evidence candidate.",
+        },
+    )
     before = {
         path.relative_to(workspace): path.stat().st_mtime_ns
         for path in workspace.rglob("*")
@@ -71,6 +138,10 @@ def test_dashboard_is_read_only_and_uses_optional_literature_semantics(
     assert result["read_only"] is True
     assert result["literature"]["status"] == "not_used"
     assert result["project_format"]["detected_project_format_version"] == "1.0"
+    assert result["next_actions"][0] == "请先复核优先级最高的待确认事项。"
+    assert result["pending_user_decisions"][0]["description"].startswith(
+        "请打开该待办记录"
+    )
     assert before == after
 
 
@@ -84,6 +155,21 @@ def test_analyze_is_a_read_only_method_inspection(tmp_path: Path) -> None:
     assert result["read_only"] is True
     assert "maturity" not in result
     assert "not a scientific conclusion" in result["review_boundary"]
+    assert isinstance(result["inspection"]["path"], str)
+
+
+def test_analyze_cli_serializes_imported_source_path(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "project"
+    start_project(workspace, material_system="MoS2", confirmed=True)
+    source = tmp_path / "raman.csv"
+    source.write_text("shift,intensity\n100,2\n200,5\n", encoding="utf-8")
+
+    assert main(["analyze", str(workspace), str(source), "--method", "raman"]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "ready_for_review"
+    assert result["inspection"]["path"] == str(source)
+    assert result["review_boundary"].startswith("处理前请复核")
 
 
 def test_report_plans_before_writing_and_dispatches_to_existing_generator(
@@ -104,6 +190,7 @@ def test_report_plans_before_writing_and_dispatches_to_existing_generator(
     )
     assert result["status"] == "completed"
     assert Path(result["report_path"]).is_file()
+    assert result["review_boundary"].startswith("导出或写入长期记忆前")
 
 
 def test_task_oriented_cli_paths_are_usable(tmp_path: Path, capsys) -> None:

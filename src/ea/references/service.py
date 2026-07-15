@@ -632,8 +632,10 @@ def build_report_reference_block(root: Path, reference_ids: list[str] | None) ->
 
 def validate_report_citations(report_path: Path) -> dict[str, Any]:
     frontmatter, body = read_markdown_record(report_path)
-    if "## References" in body:
-        main_text, references_text = body.split("## References", 1)
+    heading = re.search(r"(?m)^##\s+(?:References|参考文献)\s*$", body)
+    if heading:
+        main_text = body[: heading.start()]
+        references_text = body[heading.end() :]
     else:
         main_text, references_text = body, ""
     inline_numbers = sorted({int(match) for match in re.findall(r"\[(\d+)\]", main_text)})

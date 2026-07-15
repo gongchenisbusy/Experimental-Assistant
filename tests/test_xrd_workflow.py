@@ -356,7 +356,10 @@ def test_cli_runs_public_xrd_workflow_end_to_end(tmp_path: Path, capsys) -> None
     assert "report_use: `reviewed_assignment_context`" in report_body
     assert "matched_peak_ids" in report_body
     assert "不能单独证明相组成" in report_body
-    assert "processed CSV" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{xrd['figure_id']}`" in report_body
+    assert Path(xrd["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)

@@ -21,7 +21,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     text = ONBOARDING_PATH.read_text(encoding="utf-8")
 
-    assert "# Experimental Assistant v0.9.8 Public Onboarding" in text
+    assert "# Experimental Assistant v0.9.9 Public Onboarding" in text
     assert "ea start" in text
     assert "ea status" in text
     assert "docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md" in text
@@ -70,9 +70,9 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     text = INSTALL_SKILL_SETUP_PATH.read_text(encoding="utf-8")
 
     assert "# EA Public Install And Codex Skill Setup" in text
-    assert "Product identity: `Experimental Assistant v0.9.8`" in text
+    assert "Product identity: `Experimental Assistant v0.9.9`" in text
     assert (
-        "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.8"
+        "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.9"
         in text
     )
     assert "ea setup" in text
@@ -84,7 +84,7 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
         in text
     )
     assert (
-        "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8"
+        "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9"
         in text
     )
     assert "OWNER/REPOSITORY" not in text
@@ -93,7 +93,8 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     assert 'python3 -m pip install -e ".[dev,release]"' in text
     assert "CODEX_HOME" in text
     assert "cp -R skills/ea " in text
-    assert "cp -R skills/ea-v0-2" in text
+    assert "cp -R skills/ea-v0-2" not in text
+    assert "single Codex skill" in text
     assert "quick_validate.py" in text
     assert "Quick Start For Users" in text
     assert "Layer 1: EA CLI" in text
@@ -128,7 +129,13 @@ def test_chinese_quickstart_and_error_catalog_cover_first_user_path() -> None:
     assert "ea setup" in quickstart
     assert "ea start" in quickstart
     assert "ea import preview" in quickstart
-    assert "文献数据 beta" in quickstart
+    assert "ea journey" in quickstart
+    assert "ea export report-html" in quickstart
+    assert "ea export verify-bundle" in quickstart
+    assert "用户自定义文献数据收集" in quickstart
+    assert "任意数据类别" in quickstart
+    assert "能力成熟度" not in quickstart
+    assert "文献数据 beta" not in quickstart.lower()
     assert "EA-INPUT-INVALID" in errors
     assert "EA-INSTALL-CLI-IDENTITY-MISMATCH" in errors
     assert "ea diagnostics collect" in errors

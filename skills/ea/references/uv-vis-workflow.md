@@ -1,6 +1,6 @@
 # UV-Vis Workflow
 
-Use this reference when processing UV-Vis absorbance, transmittance, or reflectance spectra in the Experimental Assistant v0.9.8 compatibility skill.
+Use this reference when processing UV-Vis absorbance, transmittance, or reflectance spectra in the Experimental Assistant v0.9.9 skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Use `ea uv-vis compare-replicates` when two or more processed UV-Vis metadata records should be summarized together; require explicit metadata paths and do not infer replicate membership silently. Keep feature positions ungrouped by default; only run feature matching after the user confirms energy and/or wavelength tolerance in a `uv_vis_feature_matching` ReviewRecord.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.8 UV-Vis compatibility support:
+Current Experimental Assistant v0.9.9 UV-Vis compatibility support:
 
 - Raw import uses `ea raw import --characterization-type uv_vis`.
 - Inspection identifies common UV-Vis files by path/name, nm/eV-like ranges, and axis metadata.

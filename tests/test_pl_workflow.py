@@ -167,7 +167,10 @@ def test_cli_runs_public_pl_workflow_end_to_end(tmp_path: Path, capsys) -> None:
     report_frontmatter, report_body = read_markdown_record(Path(report_output["report"]))
     assert report_frontmatter["report_type"] == "pl_analysis"
     assert "## PL 峰参数" in report_body
-    assert "processed CSV" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{pl['figure_id']}`" in report_body
+    assert Path(pl["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)

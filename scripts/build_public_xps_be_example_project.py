@@ -49,9 +49,9 @@ EXAMPLE_DIALOGUE = (
     "不把任何候选峰位当作自动校准、扣电荷或化学态证明。"
 )
 
-README_TEXT = """# Experimental Assistant v0.9.8 Public XPS Binding-Energy Candidate Example
+README_TEXT = """# Experimental Assistant v0.9.9 Public XPS Binding-Energy Candidate Example
 
-This folder is a packaged, public-safe EA project example for the XPS source-backed binding-energy candidate workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.8 package.
+This folder is a packaged, public-safe EA project example for the XPS source-backed binding-energy candidate workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an Experimental Assistant v0.9.9 package.
 
 The example contains a minimal review-gated XPS workflow:
 
@@ -415,7 +415,7 @@ def build_example(output: Path, *, force: bool = False) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build the packaged Experimental Assistant v0.9.8 public XPS BE candidate example project.")
+    parser = argparse.ArgumentParser(description="Build the packaged Experimental Assistant v0.9.9 public XPS BE candidate example project.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)

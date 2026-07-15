@@ -1,6 +1,6 @@
 # Experimental Assistant Capability Matrix
 
-This matrix is the public maturity contract for v0.9.8. A product release may contain beta or experimental modules, but those modules do not inherit stable guarantees.
+This is a maintainer-facing release-governance contract for v0.9.9. Ordinary user responses and normal command results describe concrete limits and next actions instead of exposing maturity labels.
 
 Run `ea capabilities` for the installed machine-readable contract.
 
@@ -15,11 +15,11 @@ Run `ea capabilities` for the installed machine-readable contract.
 | Health, evaluation, brief, trace | compact status with full local audit records | read-only and output-budget tests |
 | Reports and exports | HTML reports and checksum-verified bundles | public examples and package verification |
 
-Raman moves into this table only after its independent golden benchmark, tolerance, walkthrough, and scientific reviewer record pass. The v0.9.8 internal reproducibility golden is machine-tested under `benchmarks/raman-v1/`, but its external reviewer record remains pending.
+Raman enters this table only after its public golden benchmark, numeric tolerances, walkthrough, regression tests, and a recorded simulated scientific review all pass with no unresolved blocking finding. The simulated review tests the release contract; it is not represented as independent expert validation.
 
 ## Beta
 
-- Raman until external benchmark sign-off is recorded.
+- Raman until its public benchmark, simulated scientific review, and artifact inspection are recorded for the release candidate.
 - PL and XRD analysis.
 - FTIR source-backed assignment support.
 - UV-Vis screening and replicate comparison.
@@ -36,7 +36,7 @@ Beta outputs remain review-gated and must state assumptions, units, limitations,
 - Zotero, browser, and institution-access acquisition orchestration.
 - Broad full-text acquisition and reusable cache management.
 - Advanced image interpretation beyond structured records.
-- Automatically generated interpretation candidates without independent benchmark evidence.
+- Automatically generated interpretation candidates without public benchmark evidence and explicit review boundaries.
 
 These integrations may be disabled without breaking the stable core. They must not bypass access controls or expose credentials, browser state, private full text, or raw research data.
 
@@ -45,8 +45,8 @@ These integrations may be disabled without breaking the stable core. They must n
 A capability becomes stable only when it has:
 
 1. declared supported inputs and invalid-use cases;
-2. an independent benchmark dataset and expected outputs;
+2. a public or redistributable benchmark dataset and expected outputs;
 3. numeric tolerances where applicable;
 4. an ordinary-user walkthrough;
-5. a recorded scientific reviewer approval;
+5. a recorded release-candidate scientific review, which may be a clearly labeled simulated-agent review;
 6. passing platform, privacy, and regression tests.

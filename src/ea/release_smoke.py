@@ -24,7 +24,6 @@ DEFAULT_SCAN_ROOTS = [
     "src",
     "docs",
     "skills/ea",
-    "skills/ea-v0-2/SKILL.md",
     "skill-registry",
     "examples",
 ]
@@ -155,17 +154,11 @@ def build_command_steps(
     if not skip_tests:
         steps.append(SmokeStep("pytest", [python, "-m", "pytest"]))
     if not skip_skill_validation:
-        steps.extend(
-            [
-                SmokeStep(
-                    "primary_skill_validation",
-                    [python, str(quick_validate), "skills/ea"],
-                ),
-                SmokeStep(
-                    "compatibility_skill_validation",
-                    [python, str(quick_validate), "skills/ea-v0-2"],
-                ),
-            ]
+        steps.append(
+            SmokeStep(
+                "primary_skill_validation",
+                [python, str(quick_validate), "skills/ea"],
+            )
         )
     if not skip_cli_sanity:
         steps.extend(
@@ -534,7 +527,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run Experimental Assistant v0.9.8 public-release smoke checks."
+        description="Run the current Experimental Assistant public-release smoke checks."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--python", default=sys.executable)

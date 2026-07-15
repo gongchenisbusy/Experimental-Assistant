@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -86,6 +86,10 @@ _STATUS_ALIASES = {
 }
 
 _ERROR_PATTERNS = [
+    (re.compile(r"\b(?:http\s*)?401\b", re.I), "http_401_unauthorized"),
+    (re.compile(r"\b(?:http\s*)?403\b", re.I), "http_403_forbidden"),
+    (re.compile(r"\b(?:http\s*)?429\b", re.I), "http_429_rate_limited"),
+    (re.compile(r"\b(captcha|human verification)\b", re.I), "captcha_required"),
     (
         re.compile(r"\b(eperm|permission denied|operation not permitted)\b", re.I),
         "permission_denied",
@@ -186,9 +190,14 @@ def normalize_target_status(item: dict[str, Any]) -> str:
         reason = classify_blocked_reason(
             item.get("reason") or item.get("error") or item.get("message")
         )
-        if reason in {"connection_refused", "timeout", "software_not_running"}:
+        if reason in {
+            "connection_refused",
+            "timeout",
+            "software_not_running",
+            "http_429_rate_limited",
+        }:
             normalized = "retryable_error"
-        elif reason == "user_login_required":
+        elif reason in {"user_login_required", "http_401_unauthorized", "captcha_required"}:
             normalized = "needs_login"
         elif reason == "subscription_required":
             normalized = "needs_subscription"
@@ -383,7 +392,6 @@ def normalize_handoff_target(
     blocked_reason = (
         classify_blocked_reason(reason_value) if status not in READY_STATUSES else None
     )
-    target_id = item.get("target_id") or item.get("id")
     doi = _canonical_doi(item.get("doi") or item.get("DOI") or result.get("doi"))
     parent_key = (
         item.get("zotero_parent_key")

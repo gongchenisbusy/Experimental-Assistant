@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Any, Literal
 
 from ea.config import doctor_project_config
@@ -330,7 +331,9 @@ def _check_reports(root: Path, findings: list[EvaluationFinding]) -> dict[str, A
                     ref=str(citation_result),
                 )
             )
-        if frontmatter.get("reference_ids") and "## References" not in body:
+        if frontmatter.get("reference_ids") and not re.search(
+            r"(?m)^##\s+(?:References|参考文献)\s*$", body
+        ):
             findings.append(
                 EvaluationFinding(
                     "error",

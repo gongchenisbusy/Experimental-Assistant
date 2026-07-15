@@ -1,5 +1,5 @@
-schema_version: "0.9.8"
-source: "experimental_assistant.routing_index:v0.9.8"
+schema_version: "0.9.9"
+source: "experimental_assistant.routing_index:v0.9.9"
 purpose: >
   Route EA tasks to the smallest useful reference set. Read this file when the
   user request is non-trivial and the next workflow route is not obvious from

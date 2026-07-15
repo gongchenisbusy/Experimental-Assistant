@@ -11,9 +11,9 @@ from typing import Any, Iterable
 
 import yaml
 
+from ea import __version__
 from ea.identity import (
     DISTRIBUTION_NAME,
-    LEGACY_SKILL_NAMES,
     PROJECT_FORMAT_VERSION,
     RELEASE_LABEL,
     SKILL_NAME,
@@ -34,7 +34,6 @@ DEFAULT_INCLUDE_ROOTS = [
     "pyproject.toml",
     "src/ea",
     "skills/ea",
-    "skills/ea-v0-2",
     "skill-registry",
     "docs",
     "schemas",
@@ -45,7 +44,9 @@ DEFAULT_INCLUDE_ROOTS = [
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-v0.9.8-release-manifest.yml"
+DEFAULT_OUTPUT = (
+    Path("dist") / f"experimental-assistant-v{__version__}-release-manifest.yml"
+)
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -68,7 +69,7 @@ PUBLIC_REPOSITORY = {
     "project_name": "Experimental Assistant (EA)",
     "repository_full_name": "gongchenisbusy/Experimental-Assistant",
     "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
-    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8",
+    "release_url": f"https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/{RELEASE_LABEL}",
 }
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
@@ -230,14 +231,14 @@ def build_release_manifest(
         "release": {
             "label": RELEASE_LABEL,
             "version": metadata.get("version"),
-            "relationship_to_v1": "Full v1.0 release candidate; promotion requires controlled novice/platform trials and external scientific review evidence.",
+            "relationship_to_v1": "Feature-frozen pre-v1 release; v1 promotion repeats the same automated, simulated, benchmark, security, and packaging gates without adding core features.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
-            "release_notes_ref": "docs/V0_9_RELEASE_NOTES.md",
+            "release_notes_ref": "docs/V0_9_9_RELEASE_NOTES.md",
             "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
-            "manual_test_checklist_ref": "docs/V0_9_MANUAL_TEST_CHECKLIST.md",
-            "agent_handoff_ref": "docs/V0_9_AGENT_HANDOFF.md",
-            "trial_report_ref": "docs/V0_9_8_TRIAL_REPORT.md",
-            "issue_disposition_ref": "docs/V0_9_8_ISSUE_DISPOSITION.md",
+            "manual_test_checklist_ref": "docs/V0_9_9_TRIAL_REPORT.md",
+            "agent_handoff_ref": "docs/V1_0_READINESS_DOSSIER.md",
+            "trial_report_ref": "docs/V0_9_9_TRIAL_REPORT.md",
+            "issue_disposition_ref": "docs/V0_9_9_ISSUE_DISPOSITION.md",
         },
         "git": git_state(root),
         "release_inputs": {
@@ -253,7 +254,6 @@ def build_release_manifest(
             "required_smoke_steps": [
                 "pytest",
                 "primary_skill_validation",
-                "compatibility_skill_validation",
                 "cli_help",
                 "cli_global_version",
                 "cli_version_help",
@@ -285,13 +285,12 @@ def build_release_manifest(
                 "release_skill_bundle_help",
                 "portability_scan",
             ],
-            "skill_validation_targets": ["skills/ea", "skills/ea-v0-2"],
+            "skill_validation_targets": ["skills/ea"],
             "portability_scan_scope": [
                 "README.md",
                 "pyproject.toml",
                 "src",
                 "skills/ea",
-                "skills/ea-v0-2/SKILL.md",
                 "skill-registry",
                 "examples",
             ],
@@ -299,23 +298,22 @@ def build_release_manifest(
         "identity_contract": {
             "distribution": DISTRIBUTION_NAME,
             "primary_skill": SKILL_NAME,
-            "compatibility_skills": list(LEGACY_SKILL_NAMES),
             "project_format_version": PROJECT_FORMAT_VERSION,
             "supported_python_minors": [
                 f"{major}.{minor}" for major, minor in SUPPORTED_PYTHON_MINORS
             ],
         },
         "supply_chain": {
-            "sbom_ref": "dist/experimental-assistant-0.9.8-sbom.json",
-            "vulnerability_report_ref": "dist/experimental-assistant-0.9.8-vulnerability-report.json",
-            "install_smoke_ref": "dist/experimental-assistant-0.9.8-install-smoke.json",
-            "reproducibility_ref": "dist/experimental-assistant-0.9.8-reproducibility.json",
+            "sbom_ref": f"dist/experimental-assistant-{__version__}-sbom.json",
+            "vulnerability_report_ref": f"dist/experimental-assistant-{__version__}-vulnerability-report.json",
+            "install_smoke_ref": f"dist/experimental-assistant-{__version__}-install-smoke.json",
+            "reproducibility_ref": f"dist/experimental-assistant-{__version__}-reproducibility.json",
             "vulnerability_policy_ref": "docs/RELEASE_SECURITY_POLICY.md",
             "release_constraints_ref": "requirements/release.txt",
         },
         "skill_distribution": {
-            "bundle_ref": "dist/experimental-assistant-0.9.8-skills.zip",
-            "checksum_ref": "dist/experimental-assistant-0.9.8-skills.zip.sha256",
+            "bundle_ref": f"dist/experimental-assistant-{__version__}-skills.zip",
+            "checksum_ref": f"dist/experimental-assistant-{__version__}-skills.zip.sha256",
             "companion_compatibility_ref": "skill-registry/companion-compatibility.yml",
             "installation_source_priority": [
                 "explicit_source",
@@ -327,9 +325,9 @@ def build_release_manifest(
         "scientific_evidence": {
             "raman_benchmark_ref": "benchmarks/raman-v1/benchmark.yml",
             "raman_review_ref": "benchmarks/raman-v1/scientific-review.yml",
-            "raman_status": "beta_pending_external_reviewer",
-            "literature_benchmark_ref": "benchmarks/literature-v0.9.8.yml",
-            "public_oa_trial_ref": "docs/V0_9_8_TRIAL_REPORT.md",
+            "raman_status": "benchmark_pass_with_simulated_review_limits",
+            "literature_benchmark_ref": "benchmarks/literature-v0.9.9.yml",
+            "simulated_review_ref": "docs/simulated-evidence/scientific-reviews.yml",
         },
         "public_boundaries": PUBLIC_BOUNDARY_NOTES,
         "signature": {
@@ -361,7 +359,7 @@ def write_release_manifest(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate an Experimental Assistant v0.9.8 repository manifest."
+        description=f"Generate an Experimental Assistant v{__version__} repository manifest."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

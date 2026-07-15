@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -45,13 +44,22 @@ def _write_validator(path: Path, *, fail_for: str | None = None) -> Path:
 
 def _install_sources(codex_home: Path) -> None:
     skills = codex_home / "skills"
-    for name in ("ea", "ea-v0-2"):
-        target = skills / name
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "SKILL.md").write_text(
-            (Path("skills") / name / "SKILL.md").read_text(encoding="utf-8"),
-            encoding="utf-8",
-        )
+    target = skills / "ea"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "SKILL.md").write_text(
+        Path("skills/ea/SKILL.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+
+def _install_retired_skill(codex_home: Path) -> Path:
+    target = codex_home / "skills" / "ea-v0-2"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "SKILL.md").write_text(
+        "---\nname: ea-v0-2\ndescription: Retired Experimental Assistant v0.9.9 entry.\n---\n",
+        encoding="utf-8",
+    )
+    return target
 
 
 def _passing_cli_check() -> dict:
@@ -84,12 +92,11 @@ def test_identity_uses_public_distribution_and_ea_skill(monkeypatch) -> None:
 
     result = identity_record()
 
-    assert result["public_version"] == "Experimental Assistant v0.9.8"
+    assert result["public_version"] == "Experimental Assistant v0.9.9"
     assert result["distribution_name"] == "experimental-assistant"
-    assert result["package_compatibility_name"] == "ea-v0-2"
     assert result["skill_folder"] == "ea"
     assert result["skill_invocation"] == "$ea"
-    assert result["legacy_skill_invocations"] == ["$ea-v0-2"]
+    assert "legacy_skill_invocations" not in result
 
 
 def test_version_human_output_hides_legacy_compatibility_name(
@@ -103,28 +110,29 @@ def test_version_human_output_hides_legacy_compatibility_name(
     assert main(["version"]) == 0
     output = capsys.readouterr().out
 
-    assert "Distribution: experimental-assistant 0.9.8" in output
+    assert "Distribution: experimental-assistant 0.9.9" in output
     assert "Codex skill invocation: $ea" in output
     assert "ea-v0-2" not in output
 
 
 def test_capability_contract_is_queryable(capsys) -> None:
-    assert main(["capabilities", "--maturity", "beta", "--json"]) == 0
+    assert main(["capabilities", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
 
-    assert set(result["capabilities"]) == {"beta"}
-    assert (
-        "raman_analysis_pending_external_benchmark_signoff"
-        in result["capabilities"]["beta"]
-    )
-    assert "literature_evidence_datasets" in result["capabilities"]["beta"]
+    assert "maturity" not in json.dumps(result).lower()
+    assert "beta" not in json.dumps(result).lower()
+    assert "user_defined_literature_data_collection" in result["contract"][
+        "supported_workflows"
+    ]
+    assert "scientific_interpretations" in result["contract"]["review_required"]
 
 
-def test_codex_install_stages_validates_and_backs_up_both_skills(
+def test_codex_install_stages_primary_and_removes_retired_skill(
     tmp_path: Path,
 ) -> None:
     codex_home = tmp_path / "codex"
     _install_sources(codex_home)
+    _install_retired_skill(codex_home)
     v0_1 = codex_home / "skills" / "ea-v0-1"
     v0_1.mkdir(parents=True)
     (v0_1 / "SKILL.md").write_text("legacy-v0-1\n", encoding="utf-8")
@@ -141,10 +149,11 @@ def test_codex_install_stages_validates_and_backs_up_both_skills(
 
     assert result["status"] == "pass"
     assert result["identity"]["skill_invocation"] == "$ea"
-    assert set(result["targets"]) == {"ea", "ea-v0-2"}
+    assert set(result["targets"]) == {"ea"}
     assert all(Path(path).exists() for path in result["backups"].values())
+    assert result["retired_skills_removed"] == ["ea-v0-2"]
     assert not (codex_home / "skills" / "ea" / "marker.txt").exists()
-    assert not (codex_home / "skills" / "ea-v0-2" / "marker.txt").exists()
+    assert not (codex_home / "skills" / "ea-v0-2").exists()
     assert (v0_1 / "SKILL.md").read_text(encoding="utf-8") == "legacy-v0-1\n"
 
 
@@ -157,7 +166,7 @@ def test_codex_install_accepts_repository_root_as_source(tmp_path: Path) -> None
 
     assert result["status"] == "pass"
     assert Path(result["targets"]["ea"], "SKILL.md").is_file()
-    assert Path(result["targets"]["ea-v0-2"], "SKILL.md").is_file()
+    assert not (tmp_path / "codex" / "skills" / "ea-v0-2").exists()
 
 
 def test_staged_validation_failure_leaves_previous_skills_untouched(
@@ -165,6 +174,7 @@ def test_staged_validation_failure_leaves_previous_skills_untouched(
 ) -> None:
     codex_home = tmp_path / "codex"
     _install_sources(codex_home)
+    _install_retired_skill(codex_home)
     for name in ("ea", "ea-v0-2"):
         (codex_home / "skills" / name / "marker.txt").write_text(
             "working\n", encoding="utf-8"
@@ -173,7 +183,7 @@ def test_staged_validation_failure_leaves_previous_skills_untouched(
     result = install_codex_skill(
         source=Path("skills/ea"),
         codex_home_path=codex_home,
-        validator=_write_validator(tmp_path, fail_for="ea-v0-2"),
+        validator=_write_validator(tmp_path, fail_for="ea"),
     )
 
     assert result["status"] == "fail"
@@ -239,20 +249,21 @@ def test_swap_failure_restores_every_previous_skill(
 ) -> None:
     codex_home = tmp_path / "codex"
     _install_sources(codex_home)
+    _install_retired_skill(codex_home)
     for name in ("ea", "ea-v0-2"):
         (codex_home / "skills" / name / "marker.txt").write_text(
             f"old-{name}\n", encoding="utf-8"
         )
-    real_replace = os.replace
+    real_move = __import__("shutil").move
 
-    def fail_legacy_swap(source, destination):
-        if Path(destination).name == "ea-v0-2":
-            raise OSError("injected second-swap failure")
-        return real_replace(source, destination)
+    def fail_retired_removal(source, destination):
+        if Path(source).name == "ea-v0-2":
+            raise OSError("injected retired-skill removal failure")
+        return real_move(source, destination)
 
-    monkeypatch.setattr("ea.install_experience.os.replace", fail_legacy_swap)
+    monkeypatch.setattr("ea.install_experience.shutil.move", fail_retired_removal)
 
-    with pytest.raises(OSError, match="injected second-swap failure"):
+    with pytest.raises(OSError, match="injected retired-skill removal failure"):
         install_codex_skill(
             source=Path("skills/ea"),
             codex_home_path=codex_home,
@@ -267,7 +278,7 @@ def test_swap_failure_restores_every_previous_skill(
     ) == "old-ea-v0-2\n"
 
 
-def test_install_check_requires_exact_distribution_cli_and_both_skills(
+def test_install_check_requires_exact_distribution_cli_and_only_primary_skill(
     tmp_path: Path, monkeypatch
 ) -> None:
     codex_home = tmp_path / "codex"
@@ -294,7 +305,35 @@ def test_install_check_requires_exact_distribution_cli_and_both_skills(
     assert statuses["ea_distribution"] == "pass"
     assert statuses["ea_cli"] == "pass"
     assert statuses["codex_skill_path:ea"] == "pass"
-    assert statuses["codex_skill_path:ea-v0-2"] == "pass"
+    assert statuses["retired_codex_skill:ea-v0-2"] == "pass"
+
+
+def test_install_check_rejects_retired_compatibility_skill(
+    tmp_path: Path, monkeypatch
+) -> None:
+    codex_home = tmp_path / "codex"
+    _install_sources(codex_home)
+    _install_retired_skill(codex_home)
+    monkeypatch.setattr(
+        "ea.install_experience._installed_distribution_versions",
+        lambda: {DISTRIBUTION_NAME: __version__},
+    )
+    monkeypatch.setattr(
+        "ea.install_experience.inspect_ea_executable",
+        lambda executable=None: _passing_cli_check(),
+    )
+    monkeypatch.setattr(
+        "ea.install_experience.python_preflight_record",
+        lambda: {"name": "python_version", "status": "pass"},
+    )
+
+    result = install_check(
+        codex_home_path=codex_home, validator=_write_validator(tmp_path)
+    )
+
+    assert result["status"] == "fail"
+    statuses = {check["name"]: check["status"] for check in result["checks"]}
+    assert statuses["retired_codex_skill:ea-v0-2"] == "fail"
 
 
 def test_missing_or_stale_path_cli_is_a_structured_failure(
@@ -325,9 +364,9 @@ def test_rollback_and_uninstall_are_confirmation_gated(tmp_path: Path) -> None:
     uninstall_plan = uninstall_codex_skills(codex_home_path=codex_home)
 
     assert rollback_plan["status"] == "needs_confirmation"
-    assert set(rollback_plan["will_restore"]) == {"ea", "ea-v0-2"}
+    assert set(rollback_plan["will_restore"]) == {"ea"}
     assert uninstall_plan["status"] == "needs_confirmation"
-    assert len(uninstall_plan["will_remove"]) == 2
+    assert len(uninstall_plan["will_remove"]) == 1
 
 
 def test_cli_version_install_and_onboarding_use_v097_identity(
@@ -336,7 +375,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     with pytest.raises(SystemExit) as version_exit:
         main(["--version"])
     assert version_exit.value.code == 0
-    assert "v0.9.8" in capsys.readouterr().out
+    assert "v0.9.9" in capsys.readouterr().out
 
     assert main(["version", "--json"]) == 0
     identity = json.loads(capsys.readouterr().out)
@@ -366,8 +405,8 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     assert installed["identity"]["skill_invocation"] == "$ea"
 
     onboarding = onboarding_post_install_record(event="update", lang="zh")
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.8"
-    assert onboarding["compatibility"]["legacy_skill_invocations"] == ["$ea-v0-2"]
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.9"
+    assert "compatibility" not in onboarding
 
 
 def test_update_plan_is_read_only_until_confirmed(monkeypatch) -> None:
@@ -380,7 +419,7 @@ def test_update_plan_is_read_only_until_confirmed(monkeypatch) -> None:
         },
     )
 
-    result = update_installation(release_ref="v0.9.8", confirmed=False)
+    result = update_installation(release_ref="v0.9.9", confirmed=False)
 
     assert result["status"] == "needs_confirmation"
     assert result["previous_release_ref"] == "v0.9.6"
@@ -414,7 +453,7 @@ def test_update_rolls_back_cli_when_new_skill_install_fails(
         return Result(0)
 
     result = update_installation(
-        release_ref="v0.9.8",
+        release_ref="v0.9.9",
         confirmed=True,
         uv_executable="/test/uv",
         command_runner=runner,

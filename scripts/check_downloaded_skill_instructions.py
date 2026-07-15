@@ -12,14 +12,11 @@ REQUIRED_FILES = [
     Path("skills/ea/references/routing-index.yml"),
     Path("skills/ea/references/capability-maturity.md"),
     Path("skills/ea/references/literature-data-extraction.md"),
-    Path("skills/ea-v0-2/SKILL.md"),
-    Path("skills/ea-v0-2/agents/openai.yaml"),
     Path("docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md"),
 ]
 REQUIRED_STRINGS = [
-    "Experimental Assistant v0.9.8",
+    "Experimental Assistant v0.9.9",
     "$ea",
-    "$ea-v0-2",
     "ea setup",
     "ea doctor",
     "ea update",

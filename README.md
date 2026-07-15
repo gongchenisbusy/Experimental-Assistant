@@ -1,14 +1,12 @@
-# Experimental Assistant v0.9.8
+# Experimental Assistant v0.9.9
 
 Experimental Assistant (EA) is a local-first materials-research assistant. It helps organize projects, protect imported raw data, run review-gated characterization workflows, trace reports back to evidence, and coordinate literature work without assuming developer-machine accounts or paths.
 
-Public identity: `Experimental Assistant`, CLI `ea`, Codex skill `$ea`, Python distribution `experimental-assistant`.
-
-Naming note: `$ea-v0-2` is a deprecated compatibility identifier retained through the v1.0.x line. New users and documentation use `$ea`.
+Public identity: `Experimental Assistant`, CLI `ea`, the single Codex skill `$ea`, and Python distribution `experimental-assistant`.
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
-Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8>
+Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9>
 
 中文用户可直接阅读 [docs/QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md)。稳定错误码与处理建议见 [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md)。
 
@@ -17,7 +15,7 @@ Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/
 Python 3.11, 3.12, or 3.13 is supported. Python 3.12 is recommended.
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.8
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.9
 ea setup
 ea doctor
 ```
@@ -38,7 +36,7 @@ ea start /path/to/project \
   --material "MoS2" \
   --direction "electrical and spectroscopic characterization" \
   --yes
-ea status /path/to/project
+ea journey /path/to/project
 ```
 
 Preview a data file without writing, then apply only the exact reviewed hash:
@@ -109,16 +107,18 @@ ea literature zotero-readiness /path/to/project
 ea literature acceptance-checklist /path/to/project
 ```
 
-The literature-library decision record, `public_search_state.yml`, `institution-access-guide`, and `zotero-bridge` describe local and companion boundaries. `import-zotero-status`, `reconcile-acquisition`, and `render-reconciliation` normalize current acquisition evidence and expose actionable `repair_actions`.
+The literature-library decision record, `public_search_state.yml`, `institution-access-guide`, and `zotero-bridge` describe what EA runs locally and what remains an optional external integration. `import-zotero-status`, `reconcile-acquisition`, and `render-reconciliation` normalize current acquisition evidence and expose actionable `repair_actions`.
 
 Confirmed source-candidate manifests such as `confirmed_ftir_source_candidates.yml`, `confirmed_uv_vis_source_candidates.yml`, and `confirmed_xps_source_candidates.yml` can feed method-specific packet builders after review.
 
-### Evidence Dataset Beta
+### User-Defined Literature Data Collection
 
-The v0.9.8 beta can extract narrowly defined values from lawfully available full text, keep reported and normalized values separate, review each candidate, validate the reviewed dataset, make a source-data-backed plot, and export a privacy-scoped bundle.
+v0.9.9 can collect any user-requested literature data category described by a validated schema. The six earlier electrical-property templates remain available as conveniences, not as an allowlist. A schema can declare numeric values, ranges, values with uncertainty, text, enums, booleans, dates, lists, and nested fields, together with units, aliases, evidence requirements, comparison rules, and conflict policy. EA keeps reported and normalized values separate, requires item-level review, validates the accepted dataset, plots compatible fields where meaningful, and exports a privacy-scoped bundle.
 
 ```bash
-ea literature data-plan /path/to/project --help
+ea literature data-template --help
+ea literature data-schema validate /path/to/schema.yml
+ea literature data-plan /path/to/project --schema /path/to/schema.yml
 ea literature data-extract /path/to/project --help
 ea literature data-review /path/to/project --help
 ea literature data-validate /path/to/project --help
@@ -126,7 +126,7 @@ ea literature data-plot /path/to/project --help
 ea literature data-export /path/to/project --help
 ```
 
-Conductivity, resistivity, sheet resistance, sheet conductance, contact resistance, and mobility remain distinct quantity types. Only accepted/edited review records can enter plots or exports. See [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md) and `skills/ea/references/literature-data-extraction.md` for maturity and scope.
+Only accepted or edited review records can enter downstream statistics, plots, reports, or exports. Numeric values are never converted or compared unless their schema and unit rules permit it. See `skills/ea/references/literature-data-extraction.md` for schema examples and concrete limits.
 
 ## Trace And Export
 
@@ -143,17 +143,13 @@ ea export verify-archive /path/to/report-bundle.zip
 
 Compact metadata is stored in `traceability/index.yml`; explicit full export writes `traceability/full_trace.yml`. The graph links reports to registered references, reference seeds, built-in/source-library refs, review records, provenance, and memory. Project-bundle verification is documented in [docs/PROJECT_BUNDLE_VERIFICATION.md](docs/PROJECT_BUNDLE_VERIFICATION.md).
 
-## Capability Maturity
+## Scientific And Integration Boundaries
 
-- Stable: project lifecycle, protected import, review/provenance, implemented characterization workflows, health/evaluation, trace, report and bundle export.
-- Beta: Raman reproducibility benchmark surface and literature evidence datasets.
-- Experimental/companion: browser-assisted lawful acquisition and external Zotero coordination.
+EA produces reviewable evidence and candidate interpretations; it does not independently prove material identity, mechanism, performance, or literature completeness. Browser, Zotero, and institution-login operations remain optional integrations and never bypass access controls. v0.9.9 release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection. These records are labeled by evidence type and are not represented as real-user or independent-expert validation.
 
-Machine tests do not replace scientific review. Raman remains beta until independent scientific sign-off is recorded. External novice and expert trial evidence is also required before promotion to v1.0.
+## Migration And Updates
 
-## Compatibility And Updates
-
-Existing `$ea-v0-2` installs continue to route to `$ea` during v1.0.x. Historical project records are not rewritten merely to change the product name.
+The former `Experimental Assistant (Compatibility)` skill was retired after v0.9.8 and is not part of the pre-v1 or v1.0 public surface. `ea setup` removes a stale compatibility-skill directory if one is present. Historical project records remain readable and are not rewritten merely to change the product name.
 
 ```bash
 ea migrate status /path/to/project
@@ -177,7 +173,7 @@ python3 scripts/public_release_smoke.py
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
 ea-release-checklist
 ```
 

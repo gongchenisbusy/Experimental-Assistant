@@ -1029,6 +1029,9 @@ def match_raman_peaks(material: str, peaks: Iterable[Mapping[str, Any]]) -> dict
         _, row, delta, peak_id = best
         observed = _peak_position(row, ["fit_center_cm-1", "position_cm-1", "position"])
         confidence = _confidence_from_delta(delta, medium_delta)
+        center_standard_error = _finite_float(
+            row.get("fit_center_standard_error_cm-1")
+        )
         feature = {
             "feature": rule["feature"],
             "label": rule["label"],
@@ -1039,6 +1042,8 @@ def match_raman_peaks(material: str, peaks: Iterable[Mapping[str, Any]]) -> dict
             "confidence": confidence,
             "assignment_source": method_profile.get("assignment_source"),
         }
+        if center_standard_error is not None:
+            feature["fit_center_standard_error_cm-1"] = center_standard_error
         analysis["assigned_features"].append(feature)
         analysis["peak_updates"].append(
             {
@@ -1072,12 +1077,22 @@ def match_raman_peaks(material: str, peaks: Iterable[Mapping[str, Any]]) -> dict
             confidence = "low"
             text = pair_rule.get("outside_text")
         analysis["mode_separation_cm-1"] = separation
+        first_error = _finite_float(first.get("fit_center_standard_error_cm-1"))
+        second_error = _finite_float(second.get("fit_center_standard_error_cm-1"))
+        separation_standard_error = (
+            math.sqrt(first_error**2 + second_error**2)
+            if first_error is not None and second_error is not None
+            else None
+        )
+        if separation_standard_error is not None:
+            analysis["mode_separation_standard_error_cm-1"] = separation_standard_error
         analysis["possible_interpretations"].append(
             {
                 "text": text,
                 "confidence": confidence,
                 "evidence": [first["peak_id"], second["peak_id"]],
                 "mode_separation_cm-1": separation,
+                "mode_separation_standard_error_cm-1": separation_standard_error,
                 "rule": pair_rule.get("rule"),
                 "assignment_source": method_profile.get("assignment_source"),
             }

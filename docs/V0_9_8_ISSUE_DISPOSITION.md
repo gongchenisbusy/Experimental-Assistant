@@ -7,7 +7,7 @@ This document is the human-readable companion to `docs/V0_9_8_ISSUE_DISPOSITION.
 - v0.9.7 projects must open successfully in read-only workflows.
 - Legacy `source_data_refs` remains readable while v0.9.8 adds structured `source_data`.
 - Acquisition protocol v1 remains readable and is normalized to a v2 in-memory view without modifying the source file.
-- `$ea-v0-2` remains a compatibility router to `$ea`.
+- The published v0.9.8 artifacts included the compatibility router. A post-release decision removes that visible skill before v1.0 while preserving historical identifiers read-only.
 - Historical provenance and version IDs are never rewritten automatically.
 
 ## Disposition summary

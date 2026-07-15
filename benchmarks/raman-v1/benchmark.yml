@@ -1,7 +1,7 @@
 schema_version: "1.0"
 benchmark_id: raman-mos2-public-fixture-v1
 benchmark_type: internal_reproducibility_golden
-maturity_effect: beta_until_external_review
+release_evidence_effect: reproducibility_and_simulated_review_gate
 source:
   path: examples/public-raman-project/source-inputs/raw/mos2-raman-public-fixture.txt
   sha256: 33d7f2c9a7712058f7b376c715ea730df278dde8984e7320728f7e0403fce998
@@ -29,12 +29,17 @@ expected:
 invalid_use_cases:
   - code: wrong_axis_unit
     expected: rejected_before_processing
+  - code: unknown_axis_unit
+    expected: rejected_before_processing
   - code: missing_review_record
     expected: rejected_before_processing
   - code: layer_number_claim_from_raman_alone
     expected: prohibited_by_report_boundary
-promotion_requirements:
-  - independent external fixture or blinded sample set
-  - external domain reviewer approval
+release_requirements:
+  - fresh simulated-agent scientific review, explicitly labeled as simulated evidence
+  - public fixture and deterministic benchmark replay
   - documented instrument/calibration applicability limits
   - invalid-use and uncertainty review
+optional_post_v1_evidence:
+  - independent external fixture or blinded sample set
+  - external domain reviewer feedback

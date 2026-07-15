@@ -670,8 +670,10 @@ def test_cli_runs_synthetic_xps_workflow_end_to_end(tmp_path: Path, capsys) -> N
     assert "## XPS component quantification screening" in report_body
     assert "xps-c1s-001" in report_body
     assert "atomic % screening" in report_body
-    assert "![XPS spectrum]" in report_body
-    assert "processed CSV" in report_body
+    assert "## 图件" in report_body
+    assert f"### `{xps['figure_id']}`" in report_body
+    assert Path(xps["outputs"]["processed_csv"]).name in report_body
+    assert "## 输出文件" not in report_body
 
     assert main(["healthcheck", str(workspace)]) == 0
     health = _json_output(capsys)

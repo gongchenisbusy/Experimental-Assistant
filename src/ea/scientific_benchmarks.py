@@ -147,6 +147,54 @@ def run_raman_golden_benchmark(
             expected=[expected["assignment_confidence"]],
             passed=confidence_values == {expected["assignment_confidence"]},
         )
+        resolved_detection = metadata["effective_processing_parameters"][
+            "peak_detection"
+        ]
+        _check(
+            checks,
+            code="resolved_peak_detection_parameters",
+            actual={
+                "prominence": resolved_detection.get("resolved_prominence"),
+                "distance_points": resolved_detection.get(
+                    "resolved_distance_points"
+                ),
+            },
+            expected="positive resolved thresholds",
+            passed=float(resolved_detection.get("resolved_prominence") or 0) > 0
+            and int(resolved_detection.get("resolved_distance_points") or 0) >= 1,
+        )
+        quality_gate = metadata["peak_analysis"].get("fit_quality_gate") or {}
+        assigned_peak_ids = {
+            str(item["peak_id"])
+            for item in metadata["peak_analysis"]["assigned_features"]
+        }
+        eligible_peak_ids = {
+            str(value) for value in quality_gate.get("eligible_peak_ids") or []
+        }
+        _check(
+            checks,
+            code="fit_quality_assignment_gate",
+            actual={
+                "minimum_r2": quality_gate.get("minimum_r2_for_assignment"),
+                "assigned_peak_ids": sorted(assigned_peak_ids),
+                "eligible_peak_ids": sorted(eligible_peak_ids),
+            },
+            expected="all assigned peaks satisfy the declared R2 gate",
+            passed=quality_gate.get("minimum_r2_for_assignment") == 0.8
+            and bool(assigned_peak_ids)
+            and assigned_peak_ids <= eligible_peak_ids,
+        )
+        separation_standard_error = metadata["peak_analysis"].get(
+            "mode_separation_standard_error_cm-1"
+        )
+        _check(
+            checks,
+            code="mode_separation_fit_standard_error",
+            actual=separation_standard_error,
+            expected="finite positive fit-derived standard error",
+            passed=separation_standard_error is not None
+            and float(separation_standard_error) > 0,
+        )
         wrong_unit_rejected = False
         try:
             process_raman_result(
@@ -173,6 +221,32 @@ def run_raman_golden_benchmark(
             expected="rejected",
             passed=wrong_unit_rejected,
         )
+        unknown_unit_rejected = False
+        try:
+            process_raman_result(
+                workspace,
+                characterization_metadata_path=raw.metadata_path,
+                project_id=project["project_id"],
+                sample_refs=["sample-benchmark-001"],
+                request=RamanProcessingRequest(
+                    x_column="col_0",
+                    y_column="col_1",
+                    x_unit="unknown",
+                    processing_parameters=default_processing_parameters(),
+                    column_review_ref=column_review.stem,
+                    parameter_review_ref=parameter_review.stem,
+                ),
+                created_at="2026-07-10T17:05:00",
+            )
+        except (RamanProcessingError, ValueError):
+            unknown_unit_rejected = True
+        _check(
+            checks,
+            code="invalid_unknown_axis_unit",
+            actual="rejected" if unknown_unit_rejected else "accepted",
+            expected="rejected",
+            passed=unknown_unit_rejected,
+        )
 
     reviewer_path = benchmark_path.parent / "scientific-review.yml"
     reviewer = read_yaml(reviewer_path)
@@ -183,11 +257,11 @@ def run_raman_golden_benchmark(
         "benchmark_type": benchmark["benchmark_type"],
         "machine_status": machine_status,
         "scientific_review_status": reviewer.get("review_status"),
-        "promotion_status": "eligible_for_stable" if machine_status == "pass" and reviewer.get("review_status") == "approved" else "remain_beta",
+        "promotion_status": "eligible_for_release" if machine_status == "pass" and reviewer.get("review_status") == "approved" else "review_required",
         "checks": checks,
         "limitations": [
-            "This is an internal software reproducibility golden, not an independent external scientific validation.",
-            "Raman remains beta until an independent reviewer approves the declared scientific review scope.",
+            "This is a software reproducibility golden, not independent external scientific validation.",
+            "Release acceptance requires the declared simulated scientific review and manual artifact inspection.",
         ],
     }
     if output_path:

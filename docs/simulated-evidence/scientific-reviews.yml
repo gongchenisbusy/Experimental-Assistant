@@ -1,0 +1,59 @@
+schema_version: "1.0"
+release: v0.9.9
+status: pass
+evidence_type: simulated_agent
+candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
+review_contract:
+  public_artifacts_only: true
+  fixed_inputs_and_hashes_required: true
+  numeric_tolerances_required_where_applicable: true
+  claim_boundaries_required: true
+  real_expert_signoff: false
+reviews:
+  - review_id: raman-benchmark-and-report
+    scope:
+      - units and preprocessing
+      - peak detection and fitting
+      - assignment windows and mode separation
+      - uncertainty, invalid uses, and report language
+    status: pass
+    final_round: RC3
+    focused_tests_passed: 14
+    benchmark_checks_passed: 11
+    findings:
+      - unknown and non-wavenumber axes reject before processing
+      - resolved automatic thresholds and the R2 assignment gate are recorded
+      - fit-derived standard error is scoped as covariance-only
+      - low-quality fit errors are suppressed in the user-facing table
+      - Chinese report, figure-local data, footer, and archive contracts pass
+    artifact_hashes:
+      benchmark_result: 11935d0a90b5603b8d6bfd57e6f2d0d93fc64f2d5181e6f3e05d40d73ec529f5
+      review_audit: cf269949fed3a9ab1addb42cf3960ae74387ac9d0ae896fa45db0eb159db90fa
+  - review_id: universal-literature-data-fidelity
+    scope:
+      - schema semantics and typed values
+      - reported versus normalized values
+      - source anchors, conflicts, comparability, and review gates
+      - plot/export and privacy boundaries
+    status: pass
+    final_round: RC3
+    focused_tests_passed: 4
+    findings:
+      - all ten types and exact nested/list/range/uncertainty values pass
+      - false substrate context is rejected and full review context is visible
+      - DOI spelling variants share duplicate/conflict identity
+      - review-required and schema-migration states return nonzero CLI status
+review_history:
+  - round: RC0
+    status: changes_required
+    summary: universal-value boundaries and unknown-unit Raman interpretation were incomplete
+  - round: RC2
+    status: changes_required
+    summary: context leakage, DOI identity, analyze serialization, and fit-uncertainty wording remained
+  - round: RC3
+    status: pass
+    unresolved_p0: 0
+    unresolved_p1: 0
+    unresolved_p2: 0
+limitations:
+  - Simulated scientific review audits the software and evidence contract; it is not independent domain-expert endorsement.

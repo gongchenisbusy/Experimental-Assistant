@@ -8,7 +8,7 @@ import sys
 import yaml
 
 
-SKILLS = {"ea": 10 * 1024, "ea-v0-2": 2 * 1024}
+SKILLS = {"ea": 10 * 1024}
 REFERENCE_RE = re.compile(r"`(references/[^`]+)`")
 
 
