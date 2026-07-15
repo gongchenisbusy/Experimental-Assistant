@@ -1,20 +1,24 @@
 schema_version: "1.0"
 release_candidate: v0.9.9
-status: rc3_evidence_complete_release_checks_pending
-candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
-v1_promotion_ready: false
+status: ready_for_v1_promotion
+candidate_commit: 37856e36e4e20d4cfc7583b9d1a53f34f373eb6f
+v1_promotion_ready: true
 feature_freeze_after_v0_9_9: true
 gates:
-  identity_and_compatibility: pass_local
+  identity_and_compatibility: pass_final_candidate
   universal_literature_data: pass_rc3_automated_benchmark_and_simulated_review
   report_and_figure_contract: pass_rc3_automated_and_manual_artifact_review
   guided_first_journey: pass_rc3_automated_and_simulated_persona
   mock_companion_integration: pass
   simulated_scientific_review: pass_rc3_no_unresolved_p0_p1_p2
-  full_regression: pass_rc3_446_tests
-  native_ci: pending_public_commit
-  supply_chain_and_release_artifacts: pending
-  issue_disposition: candidate_complete_release_checks_pending
+  full_regression: pass_final_candidate_447_tests
+  native_ci: pass_main_run_29450662740
+  supply_chain_and_release_artifacts: pass_clean_install_reproducibility_sbom_59_vulnerabilities_0_package_493
+  issue_disposition: pass_release_candidate_no_blockers
+release_delivery:
+  v0_9_9_publication: pending
+  downloaded_asset_verification: pending
+  v1_promotion_gate: false
 evidence_refs:
   - docs/V0_9_9_ACCEPTANCE_MAPPING.md
   - docs/V0_9_9_TRIAL_REPORT.md
@@ -25,6 +29,7 @@ evidence_refs:
   - docs/simulated-evidence/manual-artifact-review.yml
   - benchmarks/raman-v1/benchmark.yml
   - benchmarks/literature-v0.9.9.yml
+  - https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29450662740
 evidence_policy:
   allowed_types:
     - automated_test
