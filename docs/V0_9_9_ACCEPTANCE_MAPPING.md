@@ -14,7 +14,7 @@ This file maps the approved v0.9.9 plan to executable or inspectable evidence. A
 | Readable report-bound IDs | fixed `ImageFont.load_default()` footer | display-scale font metadata, bounding-box, contrast, long-ID and deterministic-render tests |
 | Guided first journey | commands exist but are not one resumable journey contract | install/start/import/review/analyze/report/export persona and automated journey evidence |
 | Compatibility | legacy readers exist | v0.9.7/v0.9.8 project, source-data, acquisition v1/v2, and historical-render tests |
-| Simulated release evidence | no v0.9.9 evidence ledger | RC-bound persona, reviewer, mock companion, issue ledger, and RC1 retest artifacts |
+| Simulated release evidence | no v0.9.9 evidence ledger | RC-bound persona, reviewer, mock companion, issue ledger, and RC3 retest artifacts |
 | Release identity | current package and artifacts identify v0.9.8 | commit/tag/Release/manifest/wheel/sdist/skill asset/download identity parity |
 
 ## Release blockers
@@ -24,4 +24,3 @@ This file maps the approved v0.9.9 plan to executable or inspectable evidence. A
 3. Native Windows, Ubuntu, and macOS CI passes for Python 3.11–3.13.
 4. The simulated issue ledger has no open P0/P1 findings.
 5. The readiness dossier records evidence types honestly and sets `v1_promotion_ready: true` only after every defined gate passes.
-

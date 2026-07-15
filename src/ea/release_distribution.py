@@ -23,8 +23,7 @@ from ea.release_supply_chain import DEFAULT_SBOM_OUTPUT, DEFAULT_VULNERABILITY_O
 
 
 DEFAULT_JSON_OUTPUT = (
-    Path("dist")
-    / f"experimental-assistant-v{__version__}-distribution-checklist.json"
+    Path("dist") / f"experimental-assistant-v{__version__}-distribution-checklist.json"
 )
 DEFAULT_MARKDOWN_OUTPUT = (
     Path("dist") / f"experimental-assistant-v{__version__}-distribution-checklist.md"

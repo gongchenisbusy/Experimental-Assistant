@@ -19,9 +19,7 @@ from ea.release_manifest import (
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
-MANIFEST_ARCHIVE_NAME = (
-    f"experimental-assistant-v{__version__}-release-manifest.yml"
-)
+MANIFEST_ARCHIVE_NAME = f"experimental-assistant-v{__version__}-release-manifest.yml"
 
 
 def _repo_root(path: Path | None = None) -> Path:

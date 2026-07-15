@@ -15,8 +15,7 @@ from ea.storage.files import atomic_write_text
 
 DEFAULT_SBOM_OUTPUT = Path("dist") / f"experimental-assistant-{__version__}-sbom.json"
 DEFAULT_VULNERABILITY_OUTPUT = (
-    Path("dist")
-    / f"experimental-assistant-{__version__}-vulnerability-report.json"
+    Path("dist") / f"experimental-assistant-{__version__}-vulnerability-report.json"
 )
 
 _INSTALLED_DISTRIBUTIONS_SCRIPT = """

@@ -1,24 +1,30 @@
 schema_version: "1.0"
 benchmark_id: raman-mos2-public-fixture-v1
 evidence_type: simulated_agent
-review_status: pending_simulated_release_review
+review_status: approved
 reviewer:
   name: fresh-agent-reviewer
   affiliation: simulated-release-review
   expertise: prompted Raman and materials artifact audit
   conflict_of_interest: null
 review_scope:
-  units: pending
-  preprocessing_defaults: pending
-  peak_detection_and_fitting: pending
-  assignment_windows: pending
-  uncertainty_and_tolerances: pending
-  invalid_use_cases: pending
-  report_language: pending
-decision: null
-reviewed_at: null
-candidate_commit: null
-artifact_hashes: {}
+  units: pass
+  preprocessing_defaults: pass
+  peak_detection_and_fitting: pass
+  assignment_windows: pass
+  uncertainty_and_tolerances: pass
+  invalid_use_cases: pass
+  report_language: pass
+decision: approve_for_release_with_simulated_evidence
+reviewed_at: "2026-07-16T12:43:00+08:00"
+candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
+artifact_hashes:
+  benchmark_result: 11935d0a90b5603b8d6bfd57e6f2d0d93fc64f2d5181e6f3e05d40d73ec529f5
+  review_audit: cf269949fed3a9ab1addb42cf3960ae74387ac9d0ae896fa45db0eb159db90fa
+  markdown_report: 3c3dfab18645d68dbd2fdda584173f63e92f8b95ee6b8681004838ff57a9046c
+  html_report: 8a996ebaa3aa41ccce67f51353c6c45ebe77c5d29e7a48654610bb89b5698e3a
+  report_bound_png: 967b306a1543a53a4d20b105fc168de07f8384d382c82fea33db8f76ff2ca26e
+  report_bundle_zip: d4538e5f5e7a580efb8997a4bf722db615895fe99c7f11a188abc6409385c538
 public_record_ref: docs/simulated-evidence/scientific-reviews.yml
 notes:
   - This template is completed by a fresh simulated reviewer against the release candidate.

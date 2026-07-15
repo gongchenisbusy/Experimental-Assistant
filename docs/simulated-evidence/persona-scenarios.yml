@@ -1,8 +1,8 @@
 schema_version: "1.0"
 release: v0.9.9
-status: awaiting_rc0_execution
+status: pass
 evidence_type: simulated_agent
-candidate_commit: null
+candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
 isolation_contract:
   fresh_context: true
   public_materials_only: true
@@ -39,8 +39,47 @@ scenarios:
       - create and validate a schema without editing EA source
       - complete plan, extraction, item review, validation, and export
       - explain why unsupported plotting does not block reviewed export
-results: []
-findings: []
+results:
+  - scenario_id: novice-zh-first-report
+    status: pass
+    final_round: RC3
+    focused_tests_passed: 6
+    checks:
+      - standard project/result/report/figure IDs
+      - JSON-safe and Chinese `ea analyze`
+      - Chinese status, report action, and HTML labels
+      - headerless preview and complete guided journey
+      - figure contract and deduplicated failure diagnostics
+  - scenario_id: novice-offline-recovery
+    status: pass
+    evidence_ref: docs/simulated-evidence/mock-companion-validation.yml
+    checks:
+      - no live Zotero or network dependency for the core project
+      - deterministic partial-failure resume and reconciliation
+      - no duplicate targets or cache objects
+  - scenario_id: novice-arbitrary-literature-schema
+    status: pass
+    final_round: RC3
+    focused_tests_passed: 4
+    checks:
+      - exact values across all ten field types
+      - full field/context visibility in the review package
+      - DOI-variant deduplication and conflict preservation
+      - review and schema-migration nonzero CLI gates
+findings:
+  - round: RC0
+    status: changes_required
+    resolved_in: 378fe0d3a402538357a8a3fbe12c5697b2c41fac
+    summary: standard IDs, headerless preview, guided figure contract, Chinese output, and quickstart gaps
+  - round: RC2
+    status: changes_required
+    resolved_in: 8b6d2c199821f8985c521254065c0b7a89a45ba9
+    summary: Path serialization, Chinese status/analyze text, literature context leakage, DOI identity, and CLI state codes
+  - round: RC3
+    status: pass
+    unresolved_p0: 0
+    unresolved_p1: 0
+    unresolved_p2: 0
 limitations:
   - These are fresh-agent simulations, not human usability measurements.
   - Platform behavior is established by native CI and clean-install tests, not by persona prose.

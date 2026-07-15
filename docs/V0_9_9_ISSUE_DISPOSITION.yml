@@ -1,9 +1,9 @@
 schema_version: "1.0"
 release: v0.9.9
-status: candidate_evidence_pending
+status: rc3_evidence_complete_release_checks_pending
 issues:
   - issue: 1
-    disposition: implemented_pending_rc_review
+    disposition: implemented_and_simulated_review_passed
     evidence:
       - src/ea/user_surface.py
       - tests/test_user_surface.py
@@ -28,16 +28,17 @@ issues:
       - tests/fixtures/v0_9_9/mock_zotero_five_target.yml
     residual: Native CI must pass on the final public commit.
   - issue: 11
-    disposition: implemented_pending_simulated_scientific_review
+    disposition: implemented_and_simulated_scientific_review_passed
     evidence:
       - benchmarks/raman-v1/benchmark.yml
       - benchmarks/literature-v0.9.9.yml
       - docs/simulated-evidence/scientific-reviews.yml
     residual: Simulated review is not independent expert endorsement.
   - issue: 14
-    disposition: implemented_pending_final_artifact_review
+    disposition: implemented_and_manual_artifact_review_passed
     evidence:
       - tests/test_report_localization.py
       - tests/test_export_workflow.py
       - tests/test_figure_delivery.py
-    residual: Final candidate HTML and PNG require recorded manual artifact inspection.
+      - docs/simulated-evidence/manual-artifact-review.yml
+    residual: Public release assets must reproduce the accepted report contract.

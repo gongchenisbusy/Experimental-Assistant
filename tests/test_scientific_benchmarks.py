@@ -4,13 +4,13 @@ from ea.scientific_benchmarks import run_raman_golden_benchmark
 from ea.storage import read_yaml
 
 
-def test_raman_golden_is_machine_reproducible_and_requires_simulated_review(tmp_path: Path) -> None:
+def test_raman_golden_is_machine_reproducible_and_has_approved_simulated_review(tmp_path: Path) -> None:
     output = tmp_path / "raman-result.yml"
     result = run_raman_golden_benchmark(Path.cwd(), output_path=output)
 
     assert result["machine_status"] == "pass"
-    assert result["scientific_review_status"] == "pending_simulated_release_review"
-    assert result["promotion_status"] == "review_required"
+    assert result["scientific_review_status"] == "approved"
+    assert result["promotion_status"] == "eligible_for_release"
     assert all(check["status"] == "pass" for check in result["checks"])
     assert {check["code"] for check in result["checks"]} >= {
         "source_hash",
@@ -20,4 +20,4 @@ def test_raman_golden_is_machine_reproducible_and_requires_simulated_review(tmp_
         "mode_separation",
         "invalid_wrong_axis_unit",
     }
-    assert read_yaml(output)["promotion_status"] == "review_required"
+    assert read_yaml(output)["promotion_status"] == "eligible_for_release"

@@ -1,20 +1,20 @@
 schema_version: "1.0"
 release_candidate: v0.9.9
-status: rc0_evidence_pending
-candidate_commit: null
+status: rc3_evidence_complete_release_checks_pending
+candidate_commit: 8b6d2c199821f8985c521254065c0b7a89a45ba9
 v1_promotion_ready: false
 feature_freeze_after_v0_9_9: true
 gates:
-  identity_and_compatibility: pending_final_candidate
-  universal_literature_data: pass_local
-  report_and_figure_contract: pass_local_artifact_review_pending
-  guided_first_journey: pass_local_simulated_persona_pending
+  identity_and_compatibility: pass_local
+  universal_literature_data: pass_rc3_automated_benchmark_and_simulated_review
+  report_and_figure_contract: pass_rc3_automated_and_manual_artifact_review
+  guided_first_journey: pass_rc3_automated_and_simulated_persona
   mock_companion_integration: pass
-  simulated_scientific_review: pending
-  full_regression: pending_final_candidate
+  simulated_scientific_review: pass_rc3_no_unresolved_p0_p1_p2
+  full_regression: pass_rc3_446_tests
   native_ci: pending_public_commit
   supply_chain_and_release_artifacts: pending
-  issue_disposition: pending
+  issue_disposition: candidate_complete_release_checks_pending
 evidence_refs:
   - docs/V0_9_9_ACCEPTANCE_MAPPING.md
   - docs/V0_9_9_TRIAL_REPORT.md
@@ -22,6 +22,7 @@ evidence_refs:
   - docs/simulated-evidence/persona-scenarios.yml
   - docs/simulated-evidence/scientific-reviews.yml
   - docs/simulated-evidence/mock-companion-validation.yml
+  - docs/simulated-evidence/manual-artifact-review.yml
   - benchmarks/raman-v1/benchmark.yml
   - benchmarks/literature-v0.9.9.yml
 evidence_policy:
