@@ -94,6 +94,12 @@ def main(argv: list[str] | None = None) -> int:
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
         "project"
     ]
+    release_package_text = (root / "src" / "ea" / "release_package.py").read_text(
+        encoding="utf-8"
+    )
+    release_signature_text = (root / "src" / "ea" / "release_signature.py").read_text(
+        encoding="utf-8"
+    )
     exact_checks = {
         "pyproject_distribution": pyproject.get("name") == EXPECTED_DISTRIBUTION,
         "pyproject_version": pyproject.get("version") == EXPECTED_PACKAGE_VERSION,
@@ -107,6 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         in (root / "src" / "ea" / "identity.py").read_text(encoding="utf-8"),
         "identity_primary_skill": f'SKILL_NAME = "{EXPECTED_PRIMARY_SKILL}"'
         in (root / "src" / "ea" / "identity.py").read_text(encoding="utf-8"),
+        "release_package_check_type": '"check_type": "ea_v0_9_9_release_package"'
+        in release_package_text,
+        "release_signature_type": 'SIGNATURE_TYPE = "ea_v0_9_9_release_package_signature"'
+        in release_signature_text,
+        "release_signature_check_type": '"check_type": SIGNATURE_TYPE'
+        in release_signature_text,
     }
     status = (
         "pass"

@@ -289,7 +289,7 @@ def verify_release_signature(
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
         "schema_version": "0.9",
-        "check_type": "ea_v0_9_8_release_package_signature",
+        "check_type": SIGNATURE_TYPE,
         "status": "pass",
         "archive_path": str(archive_path),
         "signature_path": str(signature_path),
