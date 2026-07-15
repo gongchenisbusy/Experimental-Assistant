@@ -45,7 +45,7 @@ MIN_PYTHON = (3, 11)
 
 def _decode_subprocess_output(value: bytes) -> str:
     """Decode CLI output emitted by UTF-8 or a common Windows console code page."""
-    encodings = ["utf-8", locale.getpreferredencoding(False), "gb18030", "cp1252"]
+    encodings = ["utf-8", "gb18030", locale.getpreferredencoding(False), "cp1252"]
     for encoding in dict.fromkeys(encodings):
         try:
             return value.decode(encoding)
