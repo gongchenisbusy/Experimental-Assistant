@@ -596,22 +596,29 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
     if peaks.empty:
         return "当前没有可展示的自动检峰/拟合结果。"
     rows = [
-        "| 峰 ID | 峰位 (cm^-1) | 拟合中心 (cm^-1) | 半高全宽 (cm^-1) | 显著度 | 候选归属 |",
-        "|---|---:|---:|---:|---:|---|",
+        "| 峰 ID | 峰位 (cm^-1) | 拟合中心 ± 标准误 (cm^-1) | 半高全宽 (cm^-1) | 拟合 R² | 显著度 | 候选归属 |",
+        "|---|---:|---:|---:|---:|---:|---|",
     ]
     sort_column = "prominence" if "prominence" in peaks.columns else "height"
     for _, peak in peaks.sort_values(sort_column, ascending=False).head(8).iterrows():
         fit_center = peak.get("fit_center_cm-1")
+        fit_center_error = peak.get("fit_center_standard_error_cm-1")
         fwhm = peak.get("fit_fwhm_cm-1")
+        fit_r2 = peak.get("fit_r2")
         assignment = peak.get("assignment") if pd.notna(peak.get("assignment")) else ""
         rows.append(
-            "| {peak_id} | {position:.1f} | {fit_center} | {fwhm} | {prominence:.3g} | {assignment} |".format(
+            "| {peak_id} | {position:.1f} | {fit_center} | {fwhm} | {fit_r2} | {prominence:.3g} | {assignment} |".format(
                 peak_id=peak["peak_id"],
                 position=float(peak["position_cm-1"]),
-                fit_center=f"{float(fit_center):.2f}"
-                if pd.notna(fit_center)
-                else "n/a",
+                fit_center=(
+                    f"{float(fit_center):.2f} ± {float(fit_center_error):.2f}"
+                    if pd.notna(fit_center) and pd.notna(fit_center_error)
+                    else f"{float(fit_center):.2f}"
+                    if pd.notna(fit_center)
+                    else "n/a"
+                ),
                 fwhm=f"{float(fwhm):.2f}" if pd.notna(fwhm) else "n/a",
+                fit_r2=f"{float(fit_r2):.3f}" if pd.notna(fit_r2) else "n/a",
                 prominence=float(peak.get("prominence", 0.0)),
                 assignment=assignment or "未归属",
             )
@@ -637,8 +644,15 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
         )
         separation = item.get("mode_separation_cm-1")
+        separation_error = item.get("mode_separation_standard_error_cm-1")
         suffix = (
-            f"；模态间距：`{float(separation):.2f} cm^-1`"
+            f"；模态间距：`{float(separation):.2f}"
+            + (
+                f" ± {float(separation_error):.2f}"
+                if separation_error is not None
+                else ""
+            )
+            + " cm^-1`"
             if separation is not None
             else ""
         )
@@ -699,6 +713,7 @@ def generate_raman_report(
         "x_unit_unknown": "Raman 横轴单位仍未确定。",
         "sample_mapping_missing": "本次处理尚未提供样品映射。",
         "sample_mapping_differs_from_raw_metadata": "本次样品映射与原始元数据记录不完全一致。",
+        "raman_fit_quality_gate_applied": "低于拟合质量阈值的峰未进入材料归属。",
     }
     warning_text = (
         "；".join(

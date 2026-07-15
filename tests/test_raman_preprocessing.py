@@ -174,12 +174,19 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(
 
     assert {
         "fit_center_cm-1",
+        "fit_center_standard_error_cm-1",
         "fit_fwhm_cm-1",
         "fit_r2",
         "assignment",
         "assignment_confidence",
     }.issubset(peaks.columns)
     assert (peaks["fit_status"] == "success").any()
+    assert metadata["effective_processing_parameters"]["peak_detection"][
+        "resolved_prominence"
+    ] > 0
+    assert metadata["effective_processing_parameters"]["peak_detection"][
+        "resolved_distance_points"
+    ] >= 1
     assert "peak_analysis" in metadata
     assert metadata["peak_analysis"]["peak_count"] >= 2
     assert (
@@ -193,6 +200,17 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(
     assert "MoS2 A1g-like" in assigned_labels
     assert "assignment_source" in peaks.columns
     assert 15.0 <= metadata["peak_analysis"]["mode_separation_cm-1"] <= 25.0
+    assert metadata["peak_analysis"]["mode_separation_standard_error_cm-1"] > 0
+    quality_gate = metadata["peak_analysis"]["fit_quality_gate"]
+    assert quality_gate["minimum_r2_for_assignment"] == 0.8
+    assigned_peak_ids = {
+        feature["peak_id"] for feature in metadata["peak_analysis"]["assigned_features"]
+    }
+    assert assigned_peak_ids <= set(quality_gate["eligible_peak_ids"])
+    assert all(
+        float(peaks.loc[peaks["peak_id"] == peak_id, "fit_r2"].iloc[0]) >= 0.8
+        for peak_id in assigned_peak_ids
+    )
 
     report_path = generate_raman_report(
         project,
@@ -209,4 +227,6 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(
     assert "MoS₂-like Raman 峰对" in body
     assert "Detected E2g-like and A1g-like" not in body
     assert "可信度：`中`" in body
+    assert "± 标准误" in body
+    assert "模态间距：`" in body and " ± " in body
     assert "confidence:" not in body

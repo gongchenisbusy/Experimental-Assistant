@@ -492,6 +492,22 @@ def _language_labels(language: str | None) -> dict[str, str]:
             "provenance": "溯源摘要",
             "audit": "审计附录",
             "no_references": "本报告未登记外部参考文献。",
+            "reference_id": "参考文献 ID",
+            "provenance_id": "溯源记录",
+            "workflow": "工作流",
+            "created": "创建时间",
+            "inputs": "输入",
+            "outputs": "输出",
+            "review_refs": "复核记录",
+            "records": "项记录",
+            "files": "个文件",
+            "no_provenance": "报告元数据和结果元数据均未关联溯源记录。",
+            "audit_intro": "此处保留详细溯源、原始文件哈希、处理参数、复核记录、来源记录、警告和脚本，供审计使用。本节复制自 EA 本地记录，不增加新的科学解释。",
+            "report_id": "报告 ID",
+            "project_id": "项目 ID",
+            "report_type": "报告类型",
+            "status": "状态",
+            "html_sidecar": "HTML 导出元数据",
         }
     return {
         "title": "EA Friendly Report Export",
@@ -503,6 +519,22 @@ def _language_labels(language: str | None) -> dict[str, str]:
         "provenance": "Provenance Summary",
         "audit": "Audit Appendix",
         "no_references": "No registered external references are linked to this report.",
+        "reference_id": "Reference ID",
+        "provenance_id": "Provenance",
+        "workflow": "Workflow",
+        "created": "Created",
+        "inputs": "Inputs",
+        "outputs": "Outputs",
+        "review_refs": "Review refs",
+        "records": "records",
+        "files": "files",
+        "no_provenance": "No provenance records were linked in the report frontmatter or result metadata.",
+        "audit_intro": "Detailed provenance, raw hashes, processing parameters, review refs, source refs, warnings, and scripts are preserved here for audit. This section is copied from local EA records and does not add new scientific interpretation.",
+        "report_id": "Report ID",
+        "project_id": "Project ID",
+        "report_type": "Report type",
+        "status": "Status",
+        "html_sidecar": "HTML export sidecar",
     }
 
 
@@ -655,7 +687,7 @@ def _render_report_html_document(
                     if extras
                     else ""
                 )
-                + f"<br><span>Reference ID: <code>{html.escape(str(reference['reference_id']))}</code></span>"
+                + f"<br><span>{html.escape(labels['reference_id'])}: <code>{html.escape(str(reference['reference_id']))}</code></span>"
                 + "</li>"
             )
         references_html = "<ol>" + "".join(reference_items) + "</ol>"
@@ -671,8 +703,8 @@ def _render_report_html_document(
             + f"<td><code>{html.escape(str(summary['provenance_id']))}</code></td>"
             + f"<td>{html.escape(str(summary.get('workflow') or ''))}</td>"
             + f"<td>{html.escape(str(summary.get('created_at') or ''))}</td>"
-            + f"<td>{summary['input_record_count']} records / {summary['input_file_count']} files</td>"
-            + f"<td>{summary['output_record_count']} records / {summary['output_file_count']} files</td>"
+            + f"<td>{summary['input_record_count']} {html.escape(labels['records'])} / {summary['input_file_count']} {html.escape(labels['files'])}</td>"
+            + f"<td>{summary['output_record_count']} {html.escape(labels['records'])} / {summary['output_file_count']} {html.escape(labels['files'])}</td>"
             + f"<td>{len(summary['review_refs'])}</td>"
             + "</tr>"
         )
@@ -683,25 +715,27 @@ def _render_report_html_document(
             + "</details>"
         )
     provenance_html = (
-        "<table><thead><tr><th>Provenance</th><th>Workflow</th><th>Created</th><th>Inputs</th><th>Outputs</th><th>Review refs</th></tr></thead>"
+        "<table><thead><tr>"
+        + "".join(
+            f"<th>{html.escape(labels[key])}</th>"
+            for key in ("provenance_id", "workflow", "created", "inputs", "outputs", "review_refs")
+        )
+        + "</tr></thead>"
         + "<tbody>"
         + "".join(provenance_rows)
         + "</tbody></table>"
         if provenance_rows
-        else "<p>No provenance records were linked in the report frontmatter or result metadata.</p>"
+        else f"<p>{html.escape(labels['no_provenance'])}</p>"
     )
 
-    audit_intro = (
-        "Detailed provenance, raw hashes, processing parameters, review refs, source refs, warnings, and scripts are preserved here for audit. "
-        "This section is copied from local EA records and does not add new scientific interpretation."
-    )
+    audit_intro = labels["audit_intro"]
     metadata_items = [
-        ("Report ID", report_id),
-        ("Project ID", frontmatter.get("project_id")),
-        ("Report type", frontmatter.get("report_type")),
-        ("Status", frontmatter.get("status")),
-        ("Created", frontmatter.get("created_at")),
-        ("HTML export sidecar", manifest["metadata_ref"]),
+        (labels["report_id"], report_id),
+        (labels["project_id"], frontmatter.get("project_id")),
+        (labels["report_type"], frontmatter.get("report_type")),
+        (labels["status"], frontmatter.get("status")),
+        (labels["created"], frontmatter.get("created_at")),
+        (labels["html_sidecar"], manifest["metadata_ref"]),
     ]
     metadata_html = (
         "<dl>"

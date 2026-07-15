@@ -99,6 +99,7 @@ def default_processing_parameters() -> dict[str, Any]:
             "method": "local_gaussian",
             "window_cm-1": "auto",
             "min_points": 7,
+            "minimum_r2_for_assignment": 0.8,
         },
     }
 
@@ -239,9 +240,9 @@ def _confirmed_frame(path: Path, request: RamanProcessingRequest) -> pd.DataFram
         raise RamanProcessingError(
             "Confirmed x/y columns are not present in the raw file"
         )
-    if request.x_unit not in {"cm^-1", "unknown"}:
+    if request.x_unit != "cm^-1":
         raise RamanProcessingError(
-            "Raman x_unit must be user-confirmed as cm^-1 or unknown"
+            "Raman processing requires x_unit to be user-confirmed as cm^-1"
         )
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["raman_shift", "raw_intensity"]
@@ -592,6 +593,7 @@ def _fit_peak(
             "fit_method": "none",
             "fit_status": "disabled",
             "fit_center_cm-1": np.nan,
+            "fit_center_standard_error_cm-1": np.nan,
             "fit_height": np.nan,
             "fit_sigma_cm-1": np.nan,
             "fit_fwhm_cm-1": np.nan,
@@ -625,6 +627,7 @@ def _fit_peak(
             "fit_method": "local_gaussian",
             "fit_status": "skipped_insufficient_points",
             "fit_center_cm-1": np.nan,
+            "fit_center_standard_error_cm-1": np.nan,
             "fit_height": np.nan,
             "fit_sigma_cm-1": np.nan,
             "fit_fwhm_cm-1": np.nan,
@@ -654,7 +657,7 @@ def _fit_peak(
         max(float(np.ptp(local_x)) * 2, step),
     ]
     try:
-        popt, _ = curve_fit(
+        popt, covariance = curve_fit(
             _gaussian_with_offset,
             local_x,
             local_y,
@@ -668,10 +671,17 @@ def _fit_peak(
         r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
         _, amplitude, center, sigma = [float(value) for value in popt]
         sigma = abs(sigma)
+        center_variance = float(covariance[2, 2])
+        center_standard_error = (
+            float(np.sqrt(center_variance))
+            if np.isfinite(center_variance) and center_variance >= 0
+            else np.nan
+        )
         return {
             "fit_method": "local_gaussian",
             "fit_status": "success",
             "fit_center_cm-1": center,
+            "fit_center_standard_error_cm-1": center_standard_error,
             "fit_height": amplitude,
             "fit_sigma_cm-1": sigma,
             "fit_fwhm_cm-1": 2.354820045 * sigma,
@@ -685,6 +695,7 @@ def _fit_peak(
             "fit_method": "local_gaussian",
             "fit_status": f"failed:{type(exc).__name__}",
             "fit_center_cm-1": np.nan,
+            "fit_center_standard_error_cm-1": np.nan,
             "fit_height": np.nan,
             "fit_sigma_cm-1": np.nan,
             "fit_fwhm_cm-1": np.nan,
@@ -703,6 +714,16 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
         prominence = max(float(np.ptp(y)) * 0.08, 0.02)
     if distance == "auto":
         distance = max(len(y) // 40, 1)
+    peak_params["resolved_prominence"] = float(prominence)
+    peak_params["resolved_distance_points"] = int(distance)
+    peak_params["resolution_basis"] = {
+        "prominence": "auto_from_processed_intensity_range"
+        if peak_params.get("prominence") == "auto"
+        else "user_confirmed",
+        "distance": "auto_from_spectrum_length"
+        if peak_params.get("distance") == "auto"
+        else "user_confirmed",
+    }
     peaks, properties = find_peaks(y, prominence=prominence, distance=distance)
     width_result = (
         peak_widths(y, peaks, rel_height=0.5) if len(peaks) else ([], [], [], [])
@@ -763,6 +784,7 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
         "fit_method",
         "fit_status",
         "fit_center_cm-1",
+        "fit_center_standard_error_cm-1",
         "fit_height",
         "fit_sigma_cm-1",
         "fit_fwhm_cm-1",
@@ -773,7 +795,10 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
 
 
 def _analyze_peak_assignments(
-    peaks: pd.DataFrame, root: Path, project_id: str
+    peaks: pd.DataFrame,
+    root: Path,
+    project_id: str,
+    parameters: dict[str, Any],
 ) -> dict[str, Any]:
     default_columns: dict[str, Any] = {
         "assignment": "",
@@ -812,7 +837,23 @@ def _analyze_peak_assignments(
         )
         return analysis
 
-    material_analysis = match_raman_peaks(material_id, peaks.to_dict("records"))
+    fitting = parameters.get("peak_fitting") or {}
+    minimum_r2, _ = _coerce_float(
+        fitting.get("minimum_r2_for_assignment"), 0.8, minimum=0.0
+    )
+    eligible_mask = (
+        peaks["fit_status"].astype(str).eq("success")
+        & pd.to_numeric(peaks["fit_r2"], errors="coerce").ge(minimum_r2)
+    )
+    eligible = peaks.loc[eligible_mask]
+    rejected_peak_ids = peaks.loc[~eligible_mask, "peak_id"].astype(str).tolist()
+    material_analysis = match_raman_peaks(material_id, eligible.to_dict("records"))
+    material_analysis["peak_count"] = int(len(peaks))
+    material_analysis["fit_quality_gate"] = {
+        "minimum_r2_for_assignment": minimum_r2,
+        "eligible_peak_ids": eligible["peak_id"].astype(str).tolist(),
+        "rejected_peak_ids": rejected_peak_ids,
+    }
     for update in material_analysis.pop("peak_updates", []):
         mask = peaks["peak_id"].astype(str) == str(update["peak_id"])
         for key, value in update.items():
@@ -915,12 +956,14 @@ def process_raman_result(
         raise RamanProcessingError(f"File is {inspection.file_kind}, not Raman")
 
     parameters = _merge_parameters(request.processing_parameters)
+    confirmed_parameters = deepcopy(parameters)
     processed, preprocessing_warnings = _apply_processing(
         _confirmed_frame(raw_path, request), parameters
     )
     peaks = _detect_peaks(processed, parameters)
+    effective_parameters = deepcopy(parameters)
     peak_analysis = ensure_interpretation_message_contract(
-        _analyze_peak_assignments(peaks, root, project_id), "raman"
+        _analyze_peak_assignments(peaks, root, project_id, parameters), "raman"
     )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
@@ -961,6 +1004,20 @@ def process_raman_result(
     )
 
     warnings: list[Any] = []
+    rejected_fit_peaks = (
+        peak_analysis.get("fit_quality_gate") or {}
+    ).get("rejected_peak_ids") or []
+    if rejected_fit_peaks:
+        warnings.append(
+            _warning(
+                "raman_fit_quality_gate_applied",
+                "低于拟合质量阈值的峰未进入材料归属。",
+                rejected_peak_ids=rejected_fit_peaks,
+                minimum_r2_for_assignment=(
+                    peak_analysis.get("fit_quality_gate") or {}
+                ).get("minimum_r2_for_assignment"),
+            )
+        )
     inspection_warning_set = set(inspection.warnings)
     if "instrument_metadata_missing" in inspection_warning_set:
         warnings.append(
@@ -1020,7 +1077,8 @@ def process_raman_result(
         x_column=request.x_column,
         y_column=request.y_column,
         x_unit=request.x_unit,  # type: ignore[arg-type]
-        processing_parameters=parameters,
+        processing_parameters=confirmed_parameters,
+        effective_processing_parameters=effective_parameters,
         outputs={
             "figure": figure.relative_to(root).as_posix(),
             "peak_table": peaks_csv.relative_to(root).as_posix(),
@@ -1055,7 +1113,8 @@ def process_raman_result(
             "x_column": request.x_column,
             "y_column": request.y_column,
             "x_unit": request.x_unit,
-            "processing_parameters": parameters,
+            "processing_parameters": confirmed_parameters,
+            "effective_processing_parameters": effective_parameters,
         },
         review_refs=[request.column_review_ref, request.parameter_review_ref],
         warnings=warnings,
@@ -1083,7 +1142,8 @@ def process_raman_result(
                     "y_column": request.y_column,
                     "x_unit": request.x_unit,
                     "plot_layout": "processed_main_raw_secondary_axis",
-                    "processing_parameters": parameters,
+                    "processing_parameters": confirmed_parameters,
+                    "effective_processing_parameters": effective_parameters,
                 },
             },
             caption="Raman spectrum with processed intensity and detected peaks.",

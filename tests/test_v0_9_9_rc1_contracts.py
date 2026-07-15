@@ -300,6 +300,17 @@ def test_public_universal_fixture_extracts_all_ten_types(tmp_path: Path) -> None
     assert {
         field_id: value["type"] for field_id, value in record["field_values"].items()
     } == expected["expected_field_types"]
+    assert {
+        field_id: value["reported_value"]
+        for field_id, value in record["field_values"].items()
+    } == expected["expected_reported_values"]
+    assert record["field_values"]["activity_range"]["range"] == {
+        "low": 10.0,
+        "high": 20.0,
+    }
+    assert record["field_values"]["measured_rate"]["uncertainty"] == expected[
+        "expected_uncertainties"
+    ]["measured_rate"]
 
 
 @pytest.mark.parametrize("conflict_policy", ["reject_conflict", "prefer_reviewed"])

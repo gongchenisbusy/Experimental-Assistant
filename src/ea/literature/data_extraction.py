@@ -286,7 +286,7 @@ def plan_literature_data_extraction(
                         "status": "migration_required",
                         "updated_at": created_at,
                         "pending_schema_hash": schema_hash,
-                        "next_action": "Create a migration plan or choose a new dataset_id; the existing dataset was not reinterpreted.",
+                        "next_action": "Restore the confirmed schema, or run data-plan with a new dataset ID and the revised schema; the existing dataset was not reinterpreted.",
                     }
                 )
                 write_yaml(state_path, state)
@@ -297,7 +297,7 @@ def plan_literature_data_extraction(
                 else "schema_change_requires_confirmation",
                 "requires_confirmation": not confirmed,
                 "existing_schema_hash": existing.get("schema_hash"),
-                "next_action": "Create a migration plan or choose a new dataset_id; do not reinterpret existing records in place.",
+                "next_action": "Restore the confirmed schema, or run data-plan with a new dataset ID and the revised schema; do not reinterpret existing records in place.",
             }
         if existing.get("material_name") != material_name:
             raise ValueError(f"Dataset already exists with a different scope: {dataset_id}")
@@ -597,7 +597,11 @@ def _field_aliases(field: dict[str, Any]) -> list[str]:
     )
 
 
-def _field_tail(sentence: str, field: dict[str, Any]) -> str:
+def _field_tail(
+    sentence: str,
+    field: dict[str, Any],
+    boundary_fields: Iterable[dict[str, Any]] = (),
+) -> str:
     lowered = sentence.lower()
     positions: list[tuple[int, int]] = []
     for alias in _field_aliases(field):
@@ -608,8 +612,21 @@ def _field_tail(sentence: str, field: dict[str, Any]) -> str:
             positions.append((index, index + len(alias)))
     if not positions:
         return sentence
-    _, end = min(positions)
-    return sentence[end:]
+    start = min(position[0] for position in positions)
+    end = max(position[1] for position in positions if position[0] == start)
+    boundary_positions: list[int] = []
+    current_field_id = str(field.get("field_id") or "")
+    for candidate in boundary_fields:
+        if str(candidate.get("field_id") or "") == current_field_id:
+            continue
+        for alias in _field_aliases(candidate):
+            if not alias:
+                continue
+            index = lowered.find(alias.lower(), end)
+            if index >= end:
+                boundary_positions.append(index)
+    boundary = min(boundary_positions) if boundary_positions else len(sentence)
+    return sentence[end:boundary]
 
 
 def _schema_unit_rule(
@@ -639,9 +656,11 @@ def _schema_unit_rule(
 
 
 def _schema_numeric_match(
-    sentence: str, field: dict[str, Any]
+    sentence: str,
+    field: dict[str, Any],
+    boundary_fields: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any] | None:
-    tail = _field_tail(sentence, field)
+    tail = _field_tail(sentence, field, boundary_fields)
     field_type = str(field.get("type"))
     unit = field.get("unit") or {}
     allowed = sorted((str(value) for value in unit.get("allowed") or []), key=len, reverse=True)
@@ -756,19 +775,21 @@ def _schema_numeric_match(
 
 
 def _schema_non_numeric_match(
-    sentence: str, field: dict[str, Any]
+    sentence: str,
+    field: dict[str, Any],
+    boundary_fields: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any] | None:
     field_type = str(field.get("type"))
     tail = re.sub(
         r"^\s*(?:was|were|is|are|of|=|:|为|是|包括|包含)\s*",
         "",
-        _field_tail(sentence, field),
+        _field_tail(sentence, field, boundary_fields),
         flags=re.I,
-    ).strip(" ;,:。")
+    ).strip(" ;,:。. ")
     value: Any = None
     if field_type == "enum":
         for choice in field.get("choices") or []:
-            if str(choice).lower() in sentence.lower():
+            if str(choice).lower() in tail.lower():
                 value = choice
                 break
     elif field_type == "boolean":
@@ -792,9 +813,11 @@ def _schema_non_numeric_match(
             if not isinstance(child, dict):
                 continue
             child_value = (
-                _schema_numeric_match(sentence, child)
+                _schema_numeric_match(sentence, child, field.get("children") or [])
                 if child.get("type") in NUMERIC_FIELD_TYPES
-                else _schema_non_numeric_match(sentence, child)
+                else _schema_non_numeric_match(
+                    sentence, child, field.get("children") or []
+                )
             )
             if child_value is not None:
                 nested[str(child.get("field_id"))] = child_value["reported_value"]
@@ -817,13 +840,15 @@ def _schema_non_numeric_match(
 
 
 def _extract_field_value(
-    sentence: str, field: dict[str, Any]
+    sentence: str,
+    field: dict[str, Any],
+    boundary_fields: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any] | None:
     if not any(alias.lower() in sentence.lower() for alias in _field_aliases(field) if alias):
         return None
     if field.get("type") in NUMERIC_FIELD_TYPES:
-        return _schema_numeric_match(sentence, field)
-    return _schema_non_numeric_match(sentence, field)
+        return _schema_numeric_match(sentence, field, boundary_fields)
+    return _schema_non_numeric_match(sentence, field, boundary_fields)
 
 
 def _extract_source_records(
@@ -841,7 +866,12 @@ def _extract_source_records(
             field_values = {
                 str(field["field_id"]): value
                 for field in schema["fields"]
-                if (value := _extract_field_value(sentence, field)) is not None
+                if (
+                    value := _extract_field_value(
+                        sentence, field, schema["fields"]
+                    )
+                )
+                is not None
             }
             if not field_values:
                 continue

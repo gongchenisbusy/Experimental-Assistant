@@ -15,6 +15,19 @@ expected_field_types:
   measured_at: datetime
   precursors: list
   reactor_record: nested
+expected_reported_values:
+  catalytic_rate: 12.5
+  activity_range: [10.0, 20.0]
+  measured_rate: 12.5
+  synthesis_route: hydrothermal
+  phase_class: alpha
+  reusable: true
+  publication_date: '2026-07-01'
+  measured_at: '2026-07-01T12:30:00Z'
+  precursors: [A, B, C]
+  reactor_record: {reactor_mode: batch}
+expected_uncertainties:
+  measured_rate: 0.5
 schema_file_sha256: b09e02f893012fe71c78f70723fbe261bc1214f84c89fc5f755570487afacd05
 source_chunks_sha256: 27d394bf73128b3cfb60162a35e6896bad072b0402255ec404d125f915b7063b
 source_metadata_sha256: 3daa4e85240898d948ac3916cf41ee67fc03b3c493fcd14e69ff9a334bb920af

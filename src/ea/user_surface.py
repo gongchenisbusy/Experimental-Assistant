@@ -81,7 +81,7 @@ def _report_figure_contract(root: Path, report_ref: str) -> list[str]:
             continue
         refs = [str(item.get("ref") or "") for item in source_data if isinstance(item, dict)]
         refs.extend(source_refs)
-        for ref in refs:
+        for ref in dict.fromkeys(refs):
             if not ref or not (root / ref).is_file():
                 failures.append(f"figure_source_data_file_missing:{figure_id}:{ref}")
     return failures
@@ -599,11 +599,22 @@ def generate_user_report(
         reference_ids=reference_ids or [],
         **{metadata_keyword: path},
     )
+    language = _journey_language(root)
+    review_boundary = _journey_text(
+        language,
+        "Review the draft report and its evidence, uncertainty, and provenance before export or durable memory use.",
+        "导出或写入长期记忆前，请复核报告草稿中的证据、不确定性和溯源信息。",
+    )
+    next_step = _journey_text(
+        language,
+        "Review the draft report before export or durable memory use.",
+        "导出或写入长期记忆前，请先复核报告草稿。",
+    )
     return {
         "schema_version": "1.0",
         "status": "completed",
         "method": normalized,
-        "review_boundary": "Review the draft report and its evidence, uncertainty, and provenance before export or durable memory use.",
+        "review_boundary": review_boundary,
         "report_path": str(report_path),
-        "next_steps": ["Review the draft report before export or durable memory use."],
+        "next_steps": [next_step],
     }

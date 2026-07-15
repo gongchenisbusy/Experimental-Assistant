@@ -10,7 +10,7 @@ simulated agents; it is not a real-user study or external expert validation.
 - `expected.yml` records the acceptance expectations and fixture hashes.
 
 The automated test creates a temporary EA project, runs plan and extraction, and
-checks typed values, evidence anchors, and source-failure count. Separate RC1 tests
+checks exact scalar, range, uncertainty, list, nested, date/time, enum, boolean,
+and text values together with evidence anchors and source-failure count. Separate tests
 cover reviewed-only gating, custom conditions, normalized deduplication, conflict
 policies, schema-change refusal, privacy-safe export, and unsupported plotting.
-

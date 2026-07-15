@@ -283,6 +283,15 @@ def test_cli_exports_user_readable_report_html_with_embedded_figure(
     assert "Detected E2g-like and A1g-like" not in html
     assert "可能结论与可信度" in html
     assert "溯源摘要" in html
+    assert "<dt>报告 ID</dt>" in html
+    assert "<dt>项目 ID</dt>" in html
+    assert "<dt>报告类型</dt>" in html
+    assert "<dt>状态</dt>" in html
+    assert "<th>溯源记录</th>" in html
+    assert "<th>工作流</th>" in html
+    assert "<th>复核记录</th>" in html
+    assert "<dt>Report ID</dt>" not in html
+    assert "<th>Provenance</th>" not in html
     assert output["canonical_report_ref"].startswith("reports/")
     assert metadata["canonical_report_ref"] == output["canonical_report_ref"]
     assert metadata["figures"][0]["figure_id"] == built["figure_id"]

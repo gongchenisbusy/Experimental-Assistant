@@ -159,6 +159,7 @@ def test_report_plans_before_writing_and_dispatches_to_existing_generator(
     )
     assert result["status"] == "completed"
     assert Path(result["report_path"]).is_file()
+    assert result["review_boundary"].startswith("导出或写入长期记忆前")
 
 
 def test_task_oriented_cli_paths_are_usable(tmp_path: Path, capsys) -> None:
