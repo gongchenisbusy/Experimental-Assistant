@@ -1,7 +1,7 @@
 schema_version: "1.0"
 release_candidate: v0.9.9
 status: ready_for_v1_promotion
-candidate_commit: 37856e36e4e20d4cfc7583b9d1a53f34f373eb6f
+candidate_commit: 3e9ddaadcd02169923755535b836f9f9b3d24c5e
 v1_promotion_ready: true
 feature_freeze_after_v0_9_9: true
 gates:
@@ -12,12 +12,14 @@ gates:
   mock_companion_integration: pass
   simulated_scientific_review: pass_rc3_no_unresolved_p0_p1_p2
   full_regression: pass_final_candidate_447_tests
-  native_ci: pass_main_run_29450662740
+  native_ci: pass_main_run_29451765095
   supply_chain_and_release_artifacts: pass_clean_install_reproducibility_sbom_59_vulnerabilities_0_package_493
   issue_disposition: pass_release_candidate_no_blockers
 release_delivery:
-  v0_9_9_publication: pending
-  downloaded_asset_verification: pending
+  v0_9_9_publication: pass
+  release_url: https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9
+  downloaded_asset_verification: pass_13_assets_byte_identical_checksums_package_and_clean_installs
+  verified_at: "2026-07-16T05:28:00+08:00"
   v1_promotion_gate: false
 evidence_refs:
   - docs/V0_9_9_ACCEPTANCE_MAPPING.md
@@ -29,7 +31,8 @@ evidence_refs:
   - docs/simulated-evidence/manual-artifact-review.yml
   - benchmarks/raman-v1/benchmark.yml
   - benchmarks/literature-v0.9.9.yml
-  - https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29450662740
+  - https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29451765095
+  - https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9
 evidence_policy:
   allowed_types:
     - automated_test
