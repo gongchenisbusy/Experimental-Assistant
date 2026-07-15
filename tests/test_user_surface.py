@@ -110,6 +110,18 @@ def test_dashboard_is_read_only_and_uses_optional_literature_semantics(
 ) -> None:
     workspace = tmp_path / "project"
     start_project(workspace, confirmed=True)
+    (workspace / "open-items").mkdir(exist_ok=True)
+    from ea.storage import write_yaml
+
+    write_yaml(
+        workspace / "open-items" / "literature-review.yml",
+        {
+            "status": "open",
+            "item_type": "literature_review",
+            "priority": "high",
+            "description": "Review the pending literature evidence candidate.",
+        },
+    )
     before = {
         path.relative_to(workspace): path.stat().st_mtime_ns
         for path in workspace.rglob("*")
@@ -126,6 +138,10 @@ def test_dashboard_is_read_only_and_uses_optional_literature_semantics(
     assert result["read_only"] is True
     assert result["literature"]["status"] == "not_used"
     assert result["project_format"]["detected_project_format_version"] == "1.0"
+    assert result["next_actions"][0] == "请先复核优先级最高的待确认事项。"
+    assert result["pending_user_decisions"][0]["description"].startswith(
+        "请打开该待办记录"
+    )
     assert before == after
 
 
@@ -139,6 +155,21 @@ def test_analyze_is_a_read_only_method_inspection(tmp_path: Path) -> None:
     assert result["read_only"] is True
     assert "maturity" not in result
     assert "not a scientific conclusion" in result["review_boundary"]
+    assert isinstance(result["inspection"]["path"], str)
+
+
+def test_analyze_cli_serializes_imported_source_path(tmp_path: Path, capsys) -> None:
+    workspace = tmp_path / "project"
+    start_project(workspace, material_system="MoS2", confirmed=True)
+    source = tmp_path / "raman.csv"
+    source.write_text("shift,intensity\n100,2\n200,5\n", encoding="utf-8")
+
+    assert main(["analyze", str(workspace), str(source), "--method", "raman"]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "ready_for_review"
+    assert result["inspection"]["path"] == str(source)
+    assert result["review_boundary"].startswith("处理前请复核")
 
 
 def test_report_plans_before_writing_and_dispatches_to_existing_generator(

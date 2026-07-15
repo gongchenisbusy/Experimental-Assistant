@@ -227,6 +227,8 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(
     assert "MoS₂-like Raman 峰对" in body
     assert "Detected E2g-like and A1g-like" not in body
     assert "可信度：`中`" in body
-    assert "± 标准误" in body
+    assert "拟合协方差标准误" in body
     assert "模态间距：`" in body and " ± " in body
+    assert "不包含波数校准、预处理、仪器或重复测量不确定度" in body
+    assert "（标准误不适用）" in body
     assert "confidence:" not in body

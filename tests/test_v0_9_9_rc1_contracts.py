@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from ea.cli import main
 from ea.data_import import preview_import
 from ea.errors import ReviewRequiredError
 from ea.literature import (
@@ -92,8 +93,14 @@ def _schema(field: dict, schema_id: str) -> dict:
     }
 
 
-def _source(root: Path, text: str, *, doi: str = "10.1000/rc1") -> Path:
-    source = root / "cache"
+def _source(
+    root: Path,
+    text: str,
+    *,
+    doi: str = "10.1000/rc1",
+    source_name: str = "cache",
+) -> Path:
+    source = root / source_name
     source.mkdir(exist_ok=True)
     (source / "metadata.json").write_text(
         json.dumps({"title": "RC1 public fixture", "doi": doi}),
@@ -258,6 +265,145 @@ def test_custom_review_conditions_and_canonical_dedup_are_persisted(tmp_path: Pa
         )
 
 
+def test_doi_variants_share_dedup_and_conflict_identity(tmp_path: Path) -> None:
+    _project(tmp_path)
+    field = _field(
+        "catalytic_rate",
+        "number",
+        aliases=["catalytic rate"],
+        units={"u": ("u", 1.0)},
+    )
+    schema_path = tmp_path / "schema.yml"
+    write_yaml(schema_path, _schema(field, "rc2-doi-canonicalization"))
+    sources = [
+        _source(
+            tmp_path,
+            "The catalytic rate was 10 u.",
+            doi="10.0000/ea.synthetic.dedup",
+            source_name="cache-a",
+        ),
+        _source(
+            tmp_path,
+            "The catalytic rate was 10 u.",
+            doi="https://doi.org/10.0000/EA.SYNTHETIC.DEDUP",
+            source_name="cache-b",
+        ),
+        _source(
+            tmp_path,
+            "The catalytic rate was 20 u.",
+            doi="doi:10.0000/ea.synthetic.dedup",
+            source_name="cache-c",
+        ),
+    ]
+    plan_literature_data_extraction(
+        tmp_path,
+        schema_path=schema_path,
+        sources=sources,
+        dataset_id="doi-variants",
+        confirmed=True,
+    )
+    extract_literature_data(tmp_path, dataset_id="doi-variants", confirmed=True)
+    records = read_yaml(
+        tmp_path
+        / "literature"
+        / "data-extractions"
+        / "doi-variants"
+        / "candidate_records.yml"
+    )["records"]
+
+    assert records[1]["record_id"] in records[0]["audit"]["duplicate_refs"]
+    assert records[0]["record_id"] in records[1]["audit"]["duplicate_refs"]
+    assert records[2]["record_id"] in records[0]["audit"]["conflict_refs"]
+    assert records[2]["record_id"] in records[1]["audit"]["conflict_refs"]
+
+
+def test_cli_returns_nonzero_for_review_and_schema_migration_states(
+    tmp_path: Path, capsys
+) -> None:
+    _project(tmp_path)
+    field = _field(
+        "catalytic_rate",
+        "number",
+        aliases=["catalytic rate"],
+        units={"u": ("u", 1.0)},
+    )
+    schema_path = tmp_path / "schema.yml"
+    schema = _schema(field, "rc2-cli-status")
+    write_yaml(schema_path, schema)
+    source = _source(tmp_path, "The catalytic rate was 10 u.")
+    plan_literature_data_extraction(
+        tmp_path,
+        schema_path=schema_path,
+        sources=[source],
+        dataset_id="cli-status",
+        confirmed=True,
+    )
+    extract_literature_data(tmp_path, dataset_id="cli-status", confirmed=True)
+
+    assert (
+        main(
+            [
+                "literature",
+                "data-validate",
+                str(tmp_path),
+                "--dataset",
+                "cli-status",
+                "--no-write",
+            ]
+        )
+        == 2
+    )
+    validation = json.loads(capsys.readouterr().out)
+    assert validation["status"] == "review_required"
+
+    revised_schema = json.loads(json.dumps(schema))
+    revised_schema["fields"][0]["description"] = "semantically revised"
+    write_yaml(schema_path, revised_schema)
+    assert (
+        main(
+            [
+                "literature",
+                "data-plan",
+                str(tmp_path),
+                "--schema",
+                str(schema_path),
+                "--source",
+                str(source),
+                "--dataset-id",
+                "cli-status",
+                "--yes",
+            ]
+        )
+        == 2
+    )
+    planned = json.loads(capsys.readouterr().out)
+    assert planned["status"] == "migration_required"
+
+    persisted_schema = (
+        tmp_path
+        / "literature"
+        / "data-extractions"
+        / "cli-status"
+        / "literature_data_schema.yml"
+    )
+    write_yaml(persisted_schema, revised_schema)
+    assert (
+        main(
+            [
+                "literature",
+                "data-extract",
+                str(tmp_path),
+                "--dataset",
+                "cli-status",
+                "--yes",
+            ]
+        )
+        == 2
+    )
+    extracted = json.loads(capsys.readouterr().out)
+    assert extracted["status"] == "migration_required"
+
+
 def test_public_universal_fixture_extracts_all_ten_types(tmp_path: Path) -> None:
     _project(tmp_path)
     fixture = Path("benchmarks/literature-universal-v1").resolve()
@@ -311,6 +457,21 @@ def test_public_universal_fixture_extracts_all_ten_types(tmp_path: Path) -> None
     assert record["field_values"]["measured_rate"]["uncertainty"] == expected[
         "expected_uncertainties"
     ]["measured_rate"]
+    assert record["context"]["substrate"] == expected["expected_context"][
+        "substrate"
+    ]
+    dataset_root = (
+        tmp_path / "literature" / "data-extractions" / "universal-ten-types"
+    )
+    review_package = read_yaml(dataset_root / "review_package.yml")
+    assert review_package["records"][0]["field_values"] == record["field_values"]
+    assert review_package["records"][0]["sample_context"] == record["context"]
+    assert review_package["records"][0]["measurement_conditions"] == record[
+        "conditions"
+    ]
+    review_markdown = (dataset_root / "review_package.md").read_text(encoding="utf-8")
+    assert '"synthesis_route"' in review_markdown
+    assert '"substrate": "not_reported"' in review_markdown
 
 
 @pytest.mark.parametrize("conflict_policy", ["reject_conflict", "prefer_reviewed"])

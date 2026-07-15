@@ -537,7 +537,9 @@ def _identity_context(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
     }
     context = {
         "preparation": NOT_REPORTED,
-        "substrate": _context_value(r"(?:on|substrate[: ]+)\s*([A-Za-z0-9_-]+)", text),
+        "substrate": _context_value(
+            r"\b(?:on\b|substrate[: ]+)\s*([A-Za-z0-9_-]+)", text
+        ),
         "contacts": _context_value(
             r"\b(Au|Ti/Au|Cr/Au|Pt|Ag|graphene)\s+contacts?\b", text
         ),
@@ -960,6 +962,13 @@ def _canonical_value_key(record: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def _canonical_doi_identity(value: Any) -> str:
+    doi = str(value or "").strip().lower()
+    doi = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", doi)
+    doi = re.sub(r"^doi:\s*", "", doi)
+    return doi.rstrip("./")
+
+
 def _mark_duplicates_and_conflicts(
     records: list[dict[str, Any]], primary_field: dict[str, Any]
 ) -> None:
@@ -967,7 +976,7 @@ def _mark_duplicates_and_conflicts(
     if str(primary_field.get("dedup_policy") or "source_field_value") == "none":
         return
     for record in records:
-        doi = str(record["source"].get("doi") or "").lower()
+        doi = _canonical_doi_identity(record["source"].get("doi"))
         source_identity = (
             doi
             if doi and doi != NOT_REPORTED
@@ -1120,8 +1129,22 @@ def _review_package(
                 "normalized": f"{record['normalized_value']} {record['normalized_unit']}",
                 "source": record["source"],
                 "evidence": record["evidence"],
+                "field_values": record.get("field_values") or {},
+                "identity_context": {
+                    key: record.get(key, NOT_REPORTED)
+                    for key in (
+                        "composition",
+                        "phase",
+                        "morphology",
+                        "layer_count",
+                        "thickness",
+                    )
+                },
+                "sample_context": record.get("context") or {},
+                "measurement_conditions": record.get("conditions") or {},
                 "warnings": record["audit"]["warnings"],
                 "review_state": record["audit"]["review_state"],
+                "comparison_status": record["comparison_status"],
             }
             for record in records
         ],
@@ -1157,6 +1180,34 @@ def _review_package(
                 str(value).replace("|", "\\|").replace("\n", " ") for value in values
             )
             + " |"
+        )
+    lines.extend(["", "## Record details", ""])
+    for record in records:
+        detail = {
+            "field_values": record.get("field_values") or {},
+            "identity_context": {
+                key: record.get(key, NOT_REPORTED)
+                for key in (
+                    "composition",
+                    "phase",
+                    "morphology",
+                    "layer_count",
+                    "thickness",
+                )
+            },
+            "sample_context": record.get("context") or {},
+            "measurement_conditions": record.get("conditions") or {},
+            "comparison_status": record["comparison_status"],
+        }
+        lines.extend(
+            [
+                f"### {record['record_id']}",
+                "",
+                "```json",
+                json.dumps(detail, ensure_ascii=False, indent=2, sort_keys=True),
+                "```",
+                "",
+            ]
         )
     lines.extend(
         [
@@ -1737,7 +1788,15 @@ def validate_literature_data(
         if plot_config.get("enabled") and plot_supported
         else 0
     )
-    status = "fail" if error_count else "warnings" if warning_count else "pass"
+    status = (
+        "fail"
+        if error_count
+        else "warnings"
+        if warning_count
+        else "review_required"
+        if candidates and not reviewed
+        else "pass"
+    )
     validation = {
         "schema_version": DATASET_SCHEMA_VERSION,
         "literature_data_schema_id": schema["schema_id"],
@@ -1754,6 +1813,10 @@ def validate_literature_data(
         "findings": findings,
         "reviewed_only_rule": "Only accepted/edited and comparable records are plot eligible.",
     }
+    if status == "review_required":
+        validation["next_action"] = (
+            "Review at least one candidate with data-review before treating validation as complete."
+        )
     if write_report:
         write_yaml(dataset_root / "validation.yml", validation)
     return validation

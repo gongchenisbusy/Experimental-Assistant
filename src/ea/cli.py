@@ -2613,7 +2613,11 @@ def _main_impl(argv: list[str] | None = None) -> int:
         source = (
             args.source if args.source.is_absolute() else args.workspace / args.source
         )
-        _print_json(inspect_analysis_source(args.method, source))
+        _print_json(
+            inspect_analysis_source(
+                args.method, source, project_root=args.workspace
+            )
+        )
         return 0
     if args.command == "report":
         result = generate_user_report(
@@ -4061,34 +4065,32 @@ def _main_impl(argv: list[str] | None = None) -> int:
             _print_json(result)
             return 0 if result["status"] == "pass" else 2
         if args.literature_command == "data-plan":
-            _print_json(
-                plan_literature_data_extraction(
-                    args.workspace,
-                    property_name=args.property,
-                    property_kind=args.kind,
-                    material_name=args.material,
-                    schema_path=args.schema,
-                    field_type=args.type,
-                    allowed_units=args.unit,
-                    aliases=args.alias,
-                    sources=args.source,
-                    required_conditions=args.required_condition,
-                    comparability_rules=args.comparability_rule,
-                    dataset_id=args.dataset_id,
-                    confirmed=args.yes,
-                )
+            result = plan_literature_data_extraction(
+                args.workspace,
+                property_name=args.property,
+                property_kind=args.kind,
+                material_name=args.material,
+                schema_path=args.schema,
+                field_type=args.type,
+                allowed_units=args.unit,
+                aliases=args.alias,
+                sources=args.source,
+                required_conditions=args.required_condition,
+                comparability_rules=args.comparability_rule,
+                dataset_id=args.dataset_id,
+                confirmed=args.yes,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "migration_required"} else 0
         if args.literature_command == "data-extract":
-            _print_json(
-                extract_literature_data(
-                    args.workspace,
-                    dataset_id=args.dataset,
-                    max_sources=args.max_sources,
-                    confirmed=args.yes,
-                )
+            result = extract_literature_data(
+                args.workspace,
+                dataset_id=args.dataset,
+                max_sources=args.max_sources,
+                confirmed=args.yes,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "migration_required"} else 0
         if args.literature_command == "data-review":
             conditions: dict[str, str] = {}
             for value in args.condition:
@@ -4113,14 +4115,13 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.literature_command == "data-validate":
-            _print_json(
-                validate_literature_data(
-                    args.workspace,
-                    dataset_id=args.dataset,
-                    write_report=not args.no_write,
-                )
+            result = validate_literature_data(
+                args.workspace,
+                dataset_id=args.dataset,
+                write_report=not args.no_write,
             )
-            return 0
+            _print_json(result)
+            return 2 if result.get("status") in {"fail", "review_required"} else 0
         if args.literature_command == "data-plot":
             _print_json(
                 plot_literature_data(

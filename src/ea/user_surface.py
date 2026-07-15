@@ -422,6 +422,7 @@ def build_project_dashboard(root: Path) -> dict[str, Any]:
     incomplete = state["incomplete_operations"]
     reports = state["reports"]
     literature_config = config.get("literature", {})
+    language = _journey_language(root)
     if state["literature_status"]:
         literature = state["literature_status"]
         literature_state = (
@@ -437,16 +438,44 @@ def build_project_dashboard(root: Path) -> dict[str, Any]:
     next_actions: list[str] = []
     if incomplete:
         next_actions.append(
-            "Inspect failed or incomplete operation journals before starting another mutating workflow."
+            _journey_text(
+                language,
+                "Inspect failed or incomplete operation journals before starting another mutating workflow.",
+                "开始新的写入操作前，请先检查失败或未完成的操作记录。",
+            )
         )
     if open_items:
-        next_actions.append("Review the highest-priority pending user decision.")
+        next_actions.append(
+            _journey_text(
+                language,
+                "Review the highest-priority pending user decision.",
+                "请先复核优先级最高的待确认事项。",
+            )
+        )
     if not reports:
         next_actions.append(
-            "Preview and import the first data source, then inspect it with `ea analyze`."
+            _journey_text(
+                language,
+                "Preview and import the first data source, then inspect it with `ea analyze`.",
+                "预览并导入第一个数据源，然后使用 `ea analyze` 检查。",
+            )
         )
     if not next_actions:
-        next_actions.append("Continue from the latest reviewed result or report.")
+        next_actions.append(
+            _journey_text(
+                language,
+                "Continue from the latest reviewed result or report.",
+                "从最近一次已复核结果或报告继续。",
+            )
+        )
+
+    def open_item_description(record: dict[str, Any]) -> Any:
+        description = record.get("description")
+        if language == "zh" and isinstance(description, str) and not any(
+            "\u4e00" <= char <= "\u9fff" for char in description
+        ):
+            return "请打开该待办记录，核对详细内容并完成复核。"
+        return description
     return {
         "schema_version": "1.0",
         "status": "attention" if incomplete else "ready",
@@ -466,7 +495,7 @@ def build_project_dashboard(root: Path) -> dict[str, Any]:
                 "path": record["path"],
                 "type": record.get("item_type"),
                 "priority": record.get("priority"),
-                "description": record.get("description"),
+                "description": open_item_description(record),
             }
             for record in open_items[:5]
         ],
@@ -490,7 +519,9 @@ def build_project_dashboard(root: Path) -> dict[str, Any]:
     }
 
 
-def inspect_analysis_source(method: str, source_path: Path) -> dict[str, Any]:
+def inspect_analysis_source(
+    method: str, source_path: Path, *, project_root: Path | None = None
+) -> dict[str, Any]:
     normalized = method.lower().replace("-", "_")
     inspectors: dict[str, Callable[[Path], Any]] = {}
     from ea.electrochemistry import inspect_electrochemistry_file
@@ -519,16 +550,36 @@ def inspect_analysis_source(method: str, source_path: Path) -> dict[str, Any]:
     inspector = inspectors[normalized]
     result = inspector(source_path)
     payload = asdict(result) if is_dataclass(result) else result
+
+    def json_safe(value: Any) -> Any:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {str(key): json_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(item) for item in value]
+        return value
+
+    payload = json_safe(payload)
+    language = _journey_language(project_root) if project_root else "en"
     return {
         "schema_version": "1.0",
         "status": "ready_for_review",
         "read_only": True,
         "method": normalized,
-        "review_boundary": "Review proposed columns, units, context, and parameters before processing; inspection is not a scientific conclusion.",
+        "review_boundary": _journey_text(
+            language,
+            "Review proposed columns, units, context, and parameters before processing; inspection is not a scientific conclusion.",
+            "处理前请复核建议的列、单位、实验背景和参数；检查结果不是科学结论。",
+        ),
         "source": str(source_path),
         "inspection": payload,
         "next_steps": [
-            "Review proposed columns, units, context, and parameters before running the method-specific process command."
+            _journey_text(
+                language,
+                "Review proposed columns, units, context, and parameters before running the method-specific process command.",
+                "运行对应方法的处理命令前，请先复核建议的列、单位、实验背景和参数。",
+            )
         ],
     }
 

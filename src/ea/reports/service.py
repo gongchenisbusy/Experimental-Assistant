@@ -596,7 +596,7 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
     if peaks.empty:
         return "当前没有可展示的自动检峰/拟合结果。"
     rows = [
-        "| 峰 ID | 峰位 (cm^-1) | 拟合中心 ± 标准误 (cm^-1) | 半高全宽 (cm^-1) | 拟合 R² | 显著度 | 候选归属 |",
+        "| 峰 ID | 峰位 (cm^-1) | 拟合中心 ± 拟合协方差标准误 (cm^-1) | 半高全宽 (cm^-1) | 拟合 R² | 显著度 | 候选归属 |",
         "|---|---:|---:|---:|---:|---:|---|",
     ]
     sort_column = "prominence" if "prominence" in peaks.columns else "height"
@@ -605,6 +605,11 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
         fit_center_error = peak.get("fit_center_standard_error_cm-1")
         fwhm = peak.get("fit_fwhm_cm-1")
         fit_r2 = peak.get("fit_r2")
+        fit_uncertainty_usable = (
+            pd.notna(fit_center_error)
+            and pd.notna(fit_r2)
+            and float(fit_r2) >= 0.8
+        )
         assignment = peak.get("assignment") if pd.notna(peak.get("assignment")) else ""
         rows.append(
             "| {peak_id} | {position:.1f} | {fit_center} | {fwhm} | {fit_r2} | {prominence:.3g} | {assignment} |".format(
@@ -612,8 +617,9 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
                 position=float(peak["position_cm-1"]),
                 fit_center=(
                     f"{float(fit_center):.2f} ± {float(fit_center_error):.2f}"
-                    if pd.notna(fit_center) and pd.notna(fit_center_error)
+                    if pd.notna(fit_center) and fit_uncertainty_usable
                     else f"{float(fit_center):.2f}"
+                    + "（标准误不适用）"
                     if pd.notna(fit_center)
                     else "n/a"
                 ),
@@ -653,6 +659,11 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
                 else ""
             )
             + " cm^-1`"
+            + (
+                "（± 为局部拟合协方差标准误，不包含波数校准、预处理、仪器或重复测量不确定度）"
+                if separation_error is not None
+                else ""
+            )
             if separation is not None
             else ""
         )
@@ -772,6 +783,8 @@ def generate_raman_report(
 在当前数据范围内，自动峰位与拟合结果只能支持“可能解释”，不能仅凭本次 Raman 数据直接确认层数、缺陷机制或生长机理。{literature_note}任何科学解释进入项目记忆前都需要用户审核。
 
 ## 不确定性与限制
+
+表中和模态间距后的“±”仅表示局部峰拟合协方差给出的标准误，不包含波数校准、预处理选择、仪器漂移、样品差异或重复测量不确定度，不能替代完整测量不确定度评估。
 
 {warning_text}
 
