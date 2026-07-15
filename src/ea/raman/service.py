@@ -838,14 +838,16 @@ def _plot_raman(
     x_unit: str,
     *,
     footer: str | None = None,
+    language: str = "en",
 ) -> None:
+    zh = language == "zh"
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(
         processed["raman_shift"],
         processed["processed_intensity"],
         color=NATURE_LIKE_COLORS["orange"],
         linewidth=1.2,
-        label="Processed intensity (normalized)",
+        label="处理强度（归一化）" if zh else "Processed intensity (normalized)",
     )
     raw_ax = ax.twinx()
     raw_ax.plot(
@@ -854,7 +856,7 @@ def _plot_raman(
         color=NATURE_LIKE_COLORS["gray"],
         linewidth=1.0,
         alpha=0.38,
-        label="Raw intensity (original scale)",
+        label="原始强度（原始量程）" if zh else "Raw intensity (original scale)",
     )
     if not peaks.empty:
         ax.scatter(
@@ -862,7 +864,7 @@ def _plot_raman(
             peaks["height"],
             color=NATURE_LIKE_COLORS["black"],
             s=18,
-            label="Detected peaks",
+            label="候选峰" if zh else "Detected peaks",
             zorder=3,
         )
     if "spike_candidate" in processed.columns and processed["spike_candidate"].any():
@@ -874,18 +876,18 @@ def _plot_raman(
             edgecolors=NATURE_LIKE_COLORS["pink"],
             s=28,
             linewidths=0.8,
-            label="Spike candidates",
+            label="尖峰候选" if zh else "Spike candidates",
             zorder=4,
         )
     unit_label = "cm$^{-1}$" if x_unit == "cm^-1" else "unknown unit"
     style_axis(
         ax,
-        title="Raman spectrum",
-        xlabel=f"Raman shift ({unit_label})",
-        ylabel="Processed intensity (normalized a.u.)",
+        title="Raman 光谱" if zh else "Raman spectrum",
+        xlabel=f"Raman 位移 ({unit_label})" if zh else f"Raman shift ({unit_label})",
+        ylabel="处理强度（归一化，a.u.）" if zh else "Processed intensity (normalized a.u.)",
         legend=False,
     )
-    raw_ax.set_ylabel("Raw intensity (original scale)")
+    raw_ax.set_ylabel("原始强度（原始量程）" if zh else "Raw intensity (original scale)")
     raw_ax.grid(False)
     raw_ax.spines["top"].set_visible(False)
     raw_ax.spines["right"].set_visible(True)
@@ -951,6 +953,11 @@ def process_raman_result(
         figure,
         request.x_unit,
         footer=figure_footer(figure_id, None) if figure_id else None,
+        language=str(
+            read_yaml(root / ".ea" / "project_config.yml").get("report_language")
+            if (root / ".ea" / "project_config.yml").is_file()
+            else "zh"
+        ),
     )
 
     warnings: list[Any] = []

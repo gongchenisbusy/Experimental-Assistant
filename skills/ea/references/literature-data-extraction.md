@@ -36,7 +36,7 @@ ea literature data-template --output /path/to/project/optical-gap.schema.yml --y
 ea literature data-schema validate /path/to/project/optical-gap.schema.yml
 ```
 
-The schema validator returns stable error codes, paths, and next actions. A dataset stores the confirmed schema and semantic SHA-256. Later semantic edits require an explicit migration or a new dataset ID; EA does not reinterpret reviewed records in place.
+The schema validator returns stable error codes, paths, and next actions. A dataset stores the confirmed schema and semantic SHA-256. Later semantic edits require restoring the confirmed schema or planning a new dataset ID with the revised schema; EA does not reinterpret reviewed records in place. In YAML, write the missing-value policy as `"null"` when that policy is intended—bare `null` is a YAML null value, not the policy string.
 
 ## Schema-driven commands
 

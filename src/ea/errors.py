@@ -5,7 +5,20 @@ from pathlib import Path
 from typing import Any
 
 
+class ReviewRequiredError(ValueError):
+    """Raised when reviewed-only output is requested before review exists."""
+
+
 def _error_details(exc: BaseException) -> tuple[str, str, bool, list[str]]:
+    if isinstance(exc, ReviewRequiredError):
+        return (
+            "EA-REVIEW-REQUIRED",
+            "Reviewed evidence is required before this downstream action.",
+            False,
+            [
+                "Run the relevant `ea literature data-review` command, then validate the reviewed dataset."
+            ],
+        )
     if isinstance(exc, IsADirectoryError):
         return (
             "EA-IO-PATH-NOT-FILE",

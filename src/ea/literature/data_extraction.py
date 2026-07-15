@@ -23,6 +23,7 @@ from ea.literature.data_schema import (
     validate_literature_data_schema_payload,
 )
 from ea.figures.style import apply_figure_style
+from ea.errors import ReviewRequiredError
 from ea.provenance import write_provenance_entry
 from ea.schema.models import EARecord
 from ea.storage.files import (
@@ -37,9 +38,8 @@ DATASET_SCHEMA_VERSION = LITERATURE_DATA_SCHEMA_VERSION
 REVIEW_DECISIONS = {"accept", "reject", "edit", "defer", "not_comparable"}
 NOT_REPORTED = "not_reported"
 
-VALUE_PATTERN = re.compile(
-    r"(?P<value>[+-]?(?:\d+(?:,\d{3})*|\d*\.\d+)(?:\.\d+)?(?:\s*[x×]\s*10\s*\^?\s*[+-]?\d+|[eE][+-]?\d+)?)"
-)
+NUMBER_PATTERN = r"[+-]?(?:\d+(?:,\d{3})*|\d*\.\d+)(?:\.\d+)?(?:\s*[x×]\s*10\s*\^?\s*[+-]?\d+|[eE][+-]?\d+)?"
+VALUE_PATTERN = re.compile(rf"(?P<value>{NUMBER_PATTERN})")
 
 
 def _slug(value: str) -> str:
@@ -570,7 +570,7 @@ def _schema_for_dataset(
         expected_hash = str(spec.get("schema_hash") or "")
         if expected_hash and current_hash != expected_hash:
             raise LiteratureDataSchemaError(
-                "literature_data_schema_changed: the dataset schema hash no longer matches the confirmed extraction spec; create a migration plan before continuing"
+                "literature_data_schema_changed: the dataset schema hash no longer matches the confirmed extraction spec; restore it or create a new dataset ID with the revised schema"
             )
         return schema, current_hash
     property_kind = str(spec.get("property_kind") or "")
@@ -653,7 +653,7 @@ def _schema_numeric_match(
     )
     if field_type == "range":
         match = re.search(
-            rf"(?P<low>{VALUE_PATTERN.pattern})\s*(?:-|–|—|to)\s*(?P<high>{VALUE_PATTERN.pattern}){optional_unit}",
+            rf"(?P<low>{NUMBER_PATTERN})\s*(?:-|–|—|to)\s*(?P<high>{NUMBER_PATTERN}){optional_unit}",
             tail,
             flags=re.I,
         )
@@ -685,7 +685,7 @@ def _schema_numeric_match(
         }
     if field_type == "uncertain_number":
         match = re.search(
-            rf"(?P<value>{VALUE_PATTERN.pattern})\s*(?:±|\+/-)\s*(?P<uncertainty>{VALUE_PATTERN.pattern}){optional_unit}",
+            rf"(?P<value>{NUMBER_PATTERN})\s*(?:±|\+/-)\s*(?P<uncertainty>{NUMBER_PATTERN}){optional_unit}",
             tail,
             flags=re.I,
         )
@@ -918,12 +918,37 @@ def _extract_source_records(
     return records
 
 
-def _mark_duplicates_and_conflicts(records: list[dict[str, Any]]) -> None:
+def _canonical_value_key(record: dict[str, Any]) -> tuple[str, str]:
+    value = record.get("normalized_value")
+    unit = record.get("normalized_unit")
+    if value is None or unit in {None, NOT_REPORTED}:
+        value = record.get("reported_value")
+        unit = record.get("reported_unit")
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        str(unit or NOT_REPORTED).strip().lower(),
+    )
+
+
+def _mark_duplicates_and_conflicts(
+    records: list[dict[str, Any]], primary_field: dict[str, Any]
+) -> None:
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    if str(primary_field.get("dedup_policy") or "source_field_value") == "none":
+        return
     for record in records:
         doi = str(record["source"].get("doi") or "").lower()
-        if doi and doi != NOT_REPORTED:
-            groups[(doi, record["property_kind"])].append(record)
+        source_identity = (
+            doi
+            if doi and doi != NOT_REPORTED
+            else str(
+                record["source"].get("source_hash")
+                or record["source"].get("source_id")
+                or ""
+            )
+        )
+        if source_identity:
+            groups[(source_identity, record["property_kind"])].append(record)
     for grouped in groups.values():
         if len(grouped) < 2:
             continue
@@ -934,8 +959,7 @@ def _mark_duplicates_and_conflicts(records: list[dict[str, Any]]) -> None:
             same = [
                 peer["record_id"]
                 for peer in peers
-                if peer.get("reported_value") == record.get("reported_value")
-                and peer.get("reported_unit") == record.get("reported_unit")
+                if _canonical_value_key(peer) == _canonical_value_key(record)
             ]
             conflicts = [
                 peer["record_id"] for peer in peers if peer["record_id"] not in same
@@ -968,6 +992,7 @@ CSV_FIELDS = [
     "temperature",
     "direction",
     "instrument_or_method",
+    "conditions_json",
     "doi",
     "paper_title",
     "page",
@@ -1012,6 +1037,12 @@ def _csv_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "instrument_or_method": record.get("conditions", {}).get(
                     "instrument_or_method", NOT_REPORTED
+                ),
+                "conditions_json": json.dumps(
+                    record.get("conditions") or {},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
                 ),
                 "doi": record["source"]["doi"],
                 "paper_title": record["source"]["paper_title"],
@@ -1142,7 +1173,7 @@ def extract_literature_data(
                 "updated_at": extracted_at,
                 "error_code": "literature_data_schema_changed",
                 "error": str(exc),
-                "next_action": "Restore the confirmed schema or create an explicit dataset migration plan.",
+                "next_action": "Restore the confirmed schema, or run data-plan with a new dataset ID and the revised schema.",
             }
         )
         write_yaml(state_path, state)
@@ -1152,6 +1183,7 @@ def extract_literature_data(
             "error_code": state["error_code"],
             "next_action": state["next_action"],
         }
+    primary_field = schema_field(schema, str(schema["primary_field_id"]))
     candidate_path = dataset_root / "candidate_records.yml"
     records = (
         (read_yaml(candidate_path).get("records") or [])
@@ -1242,7 +1274,7 @@ def extract_literature_data(
                 "safe_to_retry": True,
             }
             failures += 1
-        _mark_duplicates_and_conflicts(records)
+        _mark_duplicates_and_conflicts(records, primary_field)
         write_yaml(
             candidate_path,
             {
@@ -1349,6 +1381,15 @@ def _comparison_status(
     if missing:
         return "not_comparable_missing_conditions:" + ",".join(missing)
     if record["audit"].get("conflict_refs"):
+        conflict_policy = str(
+            (primary_field or {}).get("conflict_policy") or "preserve"
+        )
+        if conflict_policy == "prefer_reviewed" and record["audit"].get(
+            "review_state"
+        ) in {"accepted", "edited"}:
+            return "comparable"
+        if conflict_policy == "reject_conflict":
+            return "not_comparable_conflict_rejected"
         return "not_comparable_conflicting_evidence"
     return "comparable"
 
@@ -1398,6 +1439,43 @@ def review_literature_data(
         record = next(item for item in records if item["record_id"] == record_id)
     except StopIteration as exc:
         raise KeyError(f"Unknown literature data record: {record_id}") from exc
+    allowed_conditions = {
+        str(name)
+        for field in schema.get("fields") or []
+        if isinstance(field, dict)
+        for name in [
+            *(field.get("required_conditions") or []),
+            *(field.get("optional_conditions") or []),
+        ]
+    }
+    unsupported_conditions = sorted(set(conditions or {}) - allowed_conditions)
+    if unsupported_conditions:
+        raise ValueError(
+            "Unsupported reviewed condition(s): "
+            + ", ".join(unsupported_conditions)
+            + "; declare them in required_conditions or optional_conditions first"
+        )
+    if conditions:
+        record.setdefault("conditions", {}).update(conditions)
+
+    conflict_policy = str(primary_field.get("conflict_policy") or "preserve")
+    if decision in {"accept", "edit"} and record["audit"].get("conflict_refs"):
+        if conflict_policy == "reject_conflict":
+            raise ValueError(
+                "Conflicting evidence cannot be accepted under reject_conflict; reject, defer, or create a new reviewed resolution"
+            )
+        if conflict_policy == "prefer_reviewed":
+            reviewed_conflicts = [
+                peer["record_id"]
+                for peer in records
+                if peer["record_id"] in record["audit"]["conflict_refs"]
+                and peer["audit"].get("review_state") in {"accepted", "edited"}
+            ]
+            if reviewed_conflicts:
+                raise ValueError(
+                    "A conflicting record is already preferred by review: "
+                    + ", ".join(reviewed_conflicts)
+                )
     if decision == "edit":
         edited_value_or_unit = any(
             value is not None
@@ -1416,8 +1494,6 @@ def review_literature_data(
             record["normalized_value"] = normalized_value
         if normalized_unit is not None:
             record["normalized_unit"] = normalized_unit
-        if conditions:
-            record["conditions"].update(conditions)
         if record.get("value_type", primary_field.get("type")) in NUMERIC_FIELD_TYPES and (
             record.get("normalized_value") is None
             or record.get("normalized_unit") in {None, NOT_REPORTED}
@@ -1541,7 +1617,7 @@ def validate_literature_data(
                     "message": str(exc),
                 }
             ],
-            "next_action": "Restore the confirmed schema or create an explicit dataset migration plan.",
+            "next_action": "Restore the confirmed schema, or run data-plan with a new dataset ID and the revised schema.",
         }
         if write_report:
             write_yaml(dataset_root / "validation.yml", validation)
@@ -1688,7 +1764,12 @@ def plot_literature_data(
         raise ValueError(
             f"Plot configuration does not support field type {primary_type}; reviewed export remains available"
         )
-    reviewed = read_yaml(dataset_root / "reviewed_dataset.yml").get("records") or []
+    reviewed_path = dataset_root / "reviewed_dataset.yml"
+    if not reviewed_path.is_file():
+        raise ReviewRequiredError(
+            f"Dataset {dataset_id} has no reviewed_dataset.yml; review candidate records with `ea literature data-review` first"
+        )
+    reviewed = read_yaml(reviewed_path).get("records") or []
     eligible = [
         record
         for record in reviewed
@@ -1920,7 +2001,12 @@ def export_literature_data(
     exported_at = exported_at or EARecord.now_iso()
     dataset_root = _dataset_root(root, dataset_id)
     spec = read_yaml(dataset_root / "extraction_spec.yml")
-    reviewed = read_yaml(dataset_root / "reviewed_dataset.yml").get("records") or []
+    reviewed_path = dataset_root / "reviewed_dataset.yml"
+    if not reviewed_path.is_file():
+        raise ReviewRequiredError(
+            f"Dataset {dataset_id} has no reviewed_dataset.yml; review candidate records with `ea literature data-review` first"
+        )
+    reviewed = read_yaml(reviewed_path).get("records") or []
     validation = validate_literature_data(
         root, dataset_id=dataset_id, write_report=True, validated_at=exported_at
     )

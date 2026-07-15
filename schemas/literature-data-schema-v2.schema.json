@@ -117,7 +117,16 @@
         "required_conditions": {"type": "array", "items": {"type": "string"}},
         "optional_conditions": {"type": "array", "items": {"type": "string"}},
         "missing_value_policy": {"enum": ["not_reported", "null", "omit", "defer"]},
-        "comparability": {"type": "object"},
+        "comparability": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "require_same_unit": {"type": "boolean"},
+            "rules": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
         "dedup_policy": {"enum": ["source_field_value", "source_field", "none"]},
         "conflict_policy": {"enum": ["preserve", "prefer_reviewed", "reject_conflict"]},
         "search_hints": {"type": "array", "items": {"type": "string"}},
@@ -133,11 +142,32 @@
           },
           "additionalProperties": true
         },
-        "output": {"type": "object"},
-        "plot": {"type": "object"},
+        "output": {
+          "type": "object",
+          "required": ["include"],
+          "properties": {
+            "include": {"type": "boolean"},
+            "group_by": {"type": "array", "items": {"type": "string"}},
+            "sort_by": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+        "plot": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "kind": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
         "unit": {"$ref": "#/$defs/unit"},
         "choices": {"type": "array", "minItems": 1},
-        "children": {"type": "array", "minItems": 1}
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/field"}
+        }
       },
       "allOf": [
         {

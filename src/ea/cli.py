@@ -363,6 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.add_argument("workspace", type=Path)
     start.add_argument("--name")
+    start.add_argument("--slug", help="portable ASCII slug used in stable prj/res/rpt/fig IDs")
     start.add_argument("--direction")
     start.add_argument("--material")
     start.add_argument("--experiment-type")
@@ -2594,6 +2595,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
             research_direction=args.direction,
             material_system=args.material,
             experiment_type=args.experiment_type,
+            project_slug=args.slug,
             report_language=args.report_language,
             confirmed=args.yes,
         )

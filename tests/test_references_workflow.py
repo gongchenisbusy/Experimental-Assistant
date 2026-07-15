@@ -397,7 +397,7 @@ def test_raman_report_can_embed_registered_references(tmp_path: Path) -> None:
     frontmatter, body = read_markdown_record(report_path)
     reports_index = read_yaml(tmp_path / "reports" / "index.yml")
 
-    assert "[1]" in body.split("## References", 1)[0]
+    assert "[1]" in body.split("## 参考文献", 1)[0]
     assert "[1] Lee C. et al." in body
     assert frontmatter["reference_ids"] == [ref_path.stem]
     assert reports_index["reports"][frontmatter["report_id"]]["reference_ids"] == [ref_path.stem]

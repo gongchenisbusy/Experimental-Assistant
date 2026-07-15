@@ -83,6 +83,17 @@ def _unit_proposal(column: str) -> str | None:
     return None
 
 
+def _looks_numeric_cell(value: str) -> bool:
+    value = value.strip().replace(",", "")
+    if not value:
+        return False
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
+
+
 def preview_import(
     source_path: Path,
     *,
@@ -109,8 +120,14 @@ def preview_import(
     rows = list(csv.reader(text.splitlines(), delimiter=selected_delimiter))
     if not rows:
         raise ValueError("No rows were detected in the import preview.")
-    columns = [str(value).strip() or f"column_{index}" for index, value in enumerate(rows[0])]
-    preview_rows = [row for row in rows[1 : max_rows + 1]]
+    first_row_is_data = bool(rows[0]) and all(_looks_numeric_cell(str(value)) for value in rows[0])
+    if first_row_is_data:
+        columns = [f"col_{index}" for index in range(len(rows[0]))]
+        preview_rows = [row for row in rows[:max_rows]]
+        warnings.append("header_row_not_detected")
+    else:
+        columns = [str(value).strip() or f"column_{index}" for index, value in enumerate(rows[0])]
+        preview_rows = [row for row in rows[1 : max_rows + 1]]
     inconsistent = [index + 2 for index, row in enumerate(preview_rows) if len(row) != len(columns)]
     if inconsistent:
         warnings.append(f"inconsistent_column_count_rows:{','.join(map(str, inconsistent))}")

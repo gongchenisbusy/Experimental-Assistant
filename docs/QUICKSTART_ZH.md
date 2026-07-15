@@ -21,17 +21,22 @@ ea doctor
 ```bash
 ea start /path/to/project \
   --name "二维材料研究" \
+  --slug "mos2-study" \
   --material "MoS2" \
   --direction "电学和光谱表征"
 
 ea start /path/to/project \
   --name "二维材料研究" \
+  --slug "mos2-study" \
   --material "MoS2" \
   --direction "电学和光谱表征" \
   --yes
 
 ea status /path/to/project
+ea journey /path/to/project
 ```
+
+`--slug` 用于生成稳定、可读的 `prj/res/rpt/fig` ID；中文项目名未指定 slug 时，EA 会优先根据材料等可移植字段生成，不再退回旧版 ID。`ea journey` 每次只给出一个下一步，并在图件或图下源数据不完整时阻止流程错误地显示完成。
 
 ## 3. 导入数据
 
@@ -77,7 +82,9 @@ ea literature data-export /path/to/project --help
 ea healthcheck /path/to/project
 ea brief project /path/to/project
 ea trace index /path/to/project
+ea export report-html /path/to/project --report-id REPORT_ID
 ea export report-bundle /path/to/project --report-id REPORT_ID --include-trace --zip
+ea export verify-bundle /path/to/project/exports/report-bundles/REPORT_ID
 ea export verify-archive /path/to/report-bundle.zip
 ```
 
@@ -85,4 +92,4 @@ ea export verify-archive /path/to/report-bundle.zip
 
 `ea update`、`ea rollback` 和 `ea uninstall` 默认只显示计划，执行替换或移除时需要 `--yes`。遇到错误先查看 `code`、`safe_to_retry`、`artifacts_written` 和 `next_steps`；错误目录见 `docs/ERROR_CATALOG.md`。
 
-完整英文安装说明见 `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`，能力成熟度见 `docs/CAPABILITY_MATRIX.md`，已知限制见 `docs/V0_9_KNOWN_LIMITATIONS.md`。
+完整英文安装说明见 `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md`，具体支持边界与限制见 `docs/V0_9_KNOWN_LIMITATIONS.md`。

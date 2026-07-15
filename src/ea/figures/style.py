@@ -42,7 +42,15 @@ class FigureStyleProfile:
     def rcparams(self) -> dict[str, Any]:
         return {
             "font.family": "sans-serif",
-            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "sans-serif"],
+            "font.sans-serif": [
+                "Arial Unicode MS",
+                "STHeiti",
+                "Heiti TC",
+                "Arial",
+                "Helvetica",
+                "DejaVu Sans",
+                "sans-serif",
+            ],
             "svg.fonttype": "none",
             "pdf.fonttype": 42,
             "font.size": self.font_size,

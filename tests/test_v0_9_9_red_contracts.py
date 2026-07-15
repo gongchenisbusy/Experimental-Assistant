@@ -79,7 +79,7 @@ def test_user_schema_preview_accepts_unknown_field_without_writes(tmp_path: Path
                     "required_conditions": ["instrument_or_method"],
                     "optional_conditions": ["temperature"],
                     "missing_value_policy": "not_reported",
-                    "comparability": {"require_same_unit": True},
+                    "comparability": {"enabled": True, "require_same_unit": True},
                     "dedup_policy": "source_field_value",
                     "conflict_policy": "preserve",
                     "search_hints": ["Tauc"],
@@ -385,14 +385,7 @@ def test_schema_validator_supports_all_contract_types_and_actionable_errors() ->
         base_field(
             "nested_value",
             "nested",
-            children=[
-                {
-                    "field_id": "child",
-                    "name": {"en": "child", "zh": ""},
-                    "aliases": ["child"],
-                    "type": "text",
-                }
-            ],
+            children=[base_field("child", "text")],
         ),
     ]
     schema = {

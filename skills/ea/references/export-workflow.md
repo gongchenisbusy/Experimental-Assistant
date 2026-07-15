@@ -8,7 +8,7 @@ User-readable report command:
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --output exports/user-reports/custom-report.html
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --no-embed-images
-ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --no-audit
+ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --include-audit
 ```
 
 HTML export default output:
@@ -20,7 +20,7 @@ exports/user-reports/{report_id}.html.yml
 
 The HTML report is a friendly rendering of the canonical Markdown report from `reports/index.yml`. It embeds linked figures as data URIs by default, adds a Figures section from `figures/index.yml` so images remain visible even when the Markdown only lists file paths, preserves figure IDs, captions, original project-local paths, report IDs, reference records, citation-number checks, provenance summaries, and an audit appendix. The sidecar YAML records `canonical_report_ref`, figure/reference/provenance metadata, missing refs if any, and the same boundaries. Use this for a user-readable report first; use `report-bundle` when the recipient also needs copied source data, result metadata, references, checksums, and optional focused traceability records.
 
-`--no-embed-images` keeps project-local image refs rather than data URIs. `--no-audit` omits detailed provenance YAML from the HTML appendix while keeping summary and sidecar metadata.
+`--no-embed-images` keeps project-local image refs rather than data URIs. Audit details are omitted by default; `--include-audit` adds the detailed provenance appendix when explicitly needed.
 
 Report bundle command:
 

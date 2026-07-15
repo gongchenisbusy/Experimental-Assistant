@@ -11,6 +11,80 @@ from ea.project_state import aggregate_project_state
 from ea.projects import initialize_project
 from ea.storage.files import read_markdown_record
 from ea.storage.files import read_yaml
+from ea.standards import slugify
+
+
+def _project_slug(
+    *,
+    explicit: str | None,
+    project_name: str,
+    material_system: str,
+    experiment_type: str,
+    research_direction: str,
+) -> str:
+    """Choose a portable public ID even when the display name is non-Latin."""
+    if explicit:
+        return slugify(explicit)
+    for candidate in (
+        project_name,
+        material_system,
+        experiment_type,
+        research_direction,
+    ):
+        slug = slugify(candidate)
+        if slug != "project" and slug not in {
+            "not-specified",
+            "materials-characterization",
+            "general-materials-research",
+        }:
+            return slug
+    return "project"
+
+
+def _journey_language(root: Path) -> str:
+    config_path = root / ".ea" / "project_config.yml"
+    config = read_yaml(config_path) if config_path.is_file() else {}
+    language = str(config.get("report_language") or "zh").lower()
+    return language if language in {"zh", "en"} else "zh"
+
+
+def _journey_text(language: str, en: str, zh: str) -> str:
+    return zh if language == "zh" else en
+
+
+def _report_figure_contract(root: Path, report_ref: str) -> list[str]:
+    """Return semantic artifact failures that checksums alone cannot detect."""
+    failures: list[str] = []
+    report_path = root / report_ref
+    if not report_ref or not report_path.is_file():
+        return ["report_file_missing"]
+    frontmatter, _ = read_markdown_record(report_path)
+    figure_ids = [str(value) for value in frontmatter.get("figure_ids") or []]
+    if not figure_ids:
+        return ["report_figure_ids_missing"]
+    index_path = root / "figures" / "index.yml"
+    if not index_path.is_file():
+        return ["figure_index_missing"]
+    figures = read_yaml(index_path).get("figures") or {}
+    for figure_id in figure_ids:
+        figure = figures.get(figure_id)
+        if not isinstance(figure, dict):
+            failures.append(f"figure_record_missing:{figure_id}")
+            continue
+        path = str(figure.get("path") or figure.get("base_path") or "")
+        if not path or not (root / path).is_file():
+            failures.append(f"figure_file_missing:{figure_id}")
+        source_data = list(figure.get("source_data") or [])
+        source_refs = [str(value) for value in figure.get("source_data_refs") or []]
+        if not source_data and not source_refs:
+            failures.append(f"figure_source_data_missing:{figure_id}")
+            continue
+        refs = [str(item.get("ref") or "") for item in source_data if isinstance(item, dict)]
+        refs.extend(source_refs)
+        for ref in refs:
+            if not ref or not (root / ref).is_file():
+                failures.append(f"figure_source_data_file_missing:{figure_id}:{ref}")
+    return failures
 
 
 def start_project(
@@ -20,16 +94,28 @@ def start_project(
     research_direction: str | None = None,
     material_system: str | None = None,
     experiment_type: str | None = None,
+    project_slug: str | None = None,
     report_language: str = "zh",
     confirmed: bool = False,
 ) -> dict[str, Any]:
     root = root.expanduser()
     name = project_name or root.name or "EA project"
+    direction = research_direction or "general materials research"
+    material = material_system or "not specified"
+    experiment = experiment_type or "materials characterization"
+    normalized_slug = _project_slug(
+        explicit=project_slug,
+        project_name=name,
+        material_system=material,
+        experiment_type=experiment,
+        research_direction=direction,
+    )
     values = {
         "project_name": name,
-        "research_direction": research_direction or "general materials research",
-        "material_system": material_system or "not specified",
-        "experiment_type": experiment_type or "materials characterization",
+        "project_slug": normalized_slug,
+        "research_direction": direction,
+        "material_system": material,
+        "experiment_type": experiment,
         "report_language": report_language,
     }
     will_write = [
@@ -40,6 +126,11 @@ def start_project(
         "memory/project-working-memory.md",
     ]
     if not confirmed:
+        next_action = _journey_text(
+            report_language,
+            "Review the proposed values, edit any that matter now, then rerun with --yes.",
+            "核对建议值，修改需要调整的内容，然后使用 --yes 重新运行。",
+        )
         return {
             "schema_version": "1.0",
             "status": "needs_confirmation",
@@ -47,8 +138,8 @@ def start_project(
             "values": values,
             "will_write": will_write,
             "literature": "not_used",
-            "next_action": "Review the proposed values, edit any that matter now, then rerun with --yes.",
-            "next_steps": ["Review the proposed values, edit any that matter now, then rerun with --yes."],
+            "next_action": next_action,
+            "next_steps": [next_action],
         }
     if (root / "EA_PROJECT.md").exists():
         raise FileExistsError(f"EA project already exists: {root}")
@@ -58,7 +149,13 @@ def start_project(
         research_direction=values["research_direction"],
         material_system=values["material_system"],
         experiment_type=values["experiment_type"],
+        project_slug=values["project_slug"],
         default_language=values["report_language"],
+    )
+    next_action = _journey_text(
+        report_language,
+        f"Run `ea journey {shlex.quote(str(root))}` to continue the guided first project.",
+        f"运行 `ea journey {shlex.quote(str(root))}` 继续第一个项目向导。",
     )
     return {
         "schema_version": "1.0",
@@ -66,8 +163,8 @@ def start_project(
         "workspace": str(root),
         "values": values,
         "artifacts_written": {key: str(path) for key, path in outputs.items()},
-        "next_action": f"Run `ea journey {shlex.quote(str(root))}` to continue the guided first project.",
-        "next_steps": [f"Run `ea journey {shlex.quote(str(root))}` to continue the guided first project."],
+        "next_action": next_action,
+        "next_steps": [next_action],
     }
 
 
@@ -81,6 +178,7 @@ def guided_first_journey(
     root = root.expanduser().resolve()
     source = source_path.expanduser().resolve() if source_path else None
     selected_method = (method or "").lower().replace("-", "_")
+    language = _journey_language(root)
     progress = {
         "project": False,
         "import": False,
@@ -126,7 +224,7 @@ def guided_first_journey(
         return result(
             "project",
             "project_not_created",
-            "Preview the project identity and safe defaults, then confirm creation.",
+            _journey_text(language, "Preview the project identity and safe defaults, then confirm creation.", "预览项目身份和安全默认值，然后确认创建。"),
             status="needs_action",
             next_command=command,
         )
@@ -138,14 +236,14 @@ def guided_first_journey(
             return result(
                 "import",
                 "source_required",
-                "Choose the first local delimited-text source and rerun this journey with --source and --method.",
+                _journey_text(language, "Choose the first local delimited-text source and rerun this journey with --source and --method.", "选择第一个本地分隔文本数据源，并使用 --source 和 --method 重新运行本向导。"),
                 status="needs_input",
             )
         if not source.is_file():
             return result(
                 "import",
                 "source_not_found",
-                "Correct the source path; no project file was changed.",
+                _journey_text(language, "Correct the source path; no project file was changed.", "请修正数据源路径；项目文件尚未发生更改。"),
                 status="blocked",
                 details={"source": str(source)},
             )
@@ -153,7 +251,7 @@ def guided_first_journey(
             return result(
                 "import",
                 "method_required",
-                "Specify the characterization method for this source with --method.",
+                _journey_text(language, "Specify the characterization method for this source with --method.", "请使用 --method 指定该数据源的表征方法。"),
                 status="needs_input",
             )
         preview = preview_import(source)
@@ -165,7 +263,7 @@ def guided_first_journey(
         return result(
             "import",
             "import_ready_for_confirmation",
-            "Review the detected encoding, columns, units, warnings, and source hash; apply only if they match the source.",
+            _journey_text(language, "Review the detected encoding, columns, units, warnings, and source hash; apply only if they match the source.", "核对检测到的编码、列、单位、警告和源文件哈希；确认与源文件一致后再导入。"),
             status="needs_confirmation",
             next_command=command,
             details={
@@ -186,7 +284,7 @@ def guided_first_journey(
         return result(
             "review",
             "review_required",
-            "Use $ea to review the detected columns, units, context, and processing parameters before analysis.",
+            _journey_text(language, "Use $ea to review the detected columns, units, context, and processing parameters before analysis.", "分析前请使用 $ea 复核检测到的列、单位、实验背景和处理参数。"),
             status="needs_confirmation",
             artifacts={
                 "raw_metadata": raw_metadata[-1].relative_to(root).as_posix()
@@ -199,7 +297,7 @@ def guided_first_journey(
         return result(
             "analysis",
             "analysis_required",
-            f"Use $ea to process the reviewed {selected_method} source; the selected parameters remain confirmation-gated.",
+            _journey_text(language, f"Use $ea to process the reviewed {selected_method} source; the selected parameters remain confirmation-gated.", f"请使用 $ea 处理已经复核的 {selected_method} 数据源；所选参数仍需明确确认。"),
             status="needs_confirmation",
             artifacts={
                 "raw_metadata": raw_metadata[-1].relative_to(root).as_posix(),
@@ -219,7 +317,7 @@ def guided_first_journey(
         return result(
             "report",
             "report_required",
-            "Generate a draft report from the reviewed processed metadata, then review its evidence and limitations.",
+            _journey_text(language, "Generate a draft report from the reviewed processed metadata, then review its evidence and limitations.", "根据已复核的处理结果生成报告草稿，然后核对证据与限制。"),
             status="needs_confirmation",
             next_command=command,
             artifacts={"processed_metadata": metadata_ref},
@@ -227,6 +325,20 @@ def guided_first_journey(
     progress["report"] = True
     report_id = list(reports)[-1]
     report_ref = str(reports[report_id].get("path") or "")
+    figure_failures = _report_figure_contract(root, report_ref)
+    if figure_failures:
+        return result(
+            "report",
+            "report_figure_contract_failed",
+            _journey_text(
+                language,
+                "Regenerate the analysis and report after restoring registered figures and figure-local source data.",
+                "请恢复已登记图件及图件下方的源数据后，重新生成分析结果与报告。",
+            ),
+            status="blocked",
+            artifacts={"report": report_ref, "report_id": report_id},
+            details={"failures": figure_failures},
+        )
     html_path = root / "exports" / "user-reports" / f"{report_id}.html"
     if not html_path.is_file():
         command = (
@@ -236,7 +348,7 @@ def guided_first_journey(
         return result(
             "html",
             "html_export_required",
-            "Render the reviewed draft as a user-readable HTML report.",
+            _journey_text(language, "Render the reviewed draft as a user-readable HTML report.", "将已复核的报告草稿导出为便于阅读的 HTML 报告。"),
             status="needs_action",
             next_command=command,
             artifacts={"report": report_ref, "report_id": report_id},
@@ -253,7 +365,7 @@ def guided_first_journey(
         return result(
             "verified_export",
             "verified_bundle_required",
-            "Create the deterministic report bundle and checksum-protected archive.",
+            _journey_text(language, "Create the deterministic report bundle and checksum-protected archive.", "创建确定性的报告包和受校验和保护的归档文件。"),
             status="needs_action",
             next_command=command,
             artifacts={
@@ -270,7 +382,7 @@ def guided_first_journey(
         return result(
             "verified_export",
             "bundle_verification_failed",
-            "Inspect the reported checksum failures, restore the valid prior artifacts, then recreate the export.",
+            _journey_text(language, "Inspect the reported checksum failures, restore the valid prior artifacts, then recreate the export.", "检查校验和失败项，恢复有效产物后重新导出。"),
             status="blocked",
             artifacts={
                 "bundle": bundle_dir.relative_to(root).as_posix(),

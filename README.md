@@ -107,7 +107,7 @@ ea literature zotero-readiness /path/to/project
 ea literature acceptance-checklist /path/to/project
 ```
 
-The literature-library decision record, `public_search_state.yml`, `institution-access-guide`, and `zotero-bridge` describe local and companion boundaries. `import-zotero-status`, `reconcile-acquisition`, and `render-reconciliation` normalize current acquisition evidence and expose actionable `repair_actions`.
+The literature-library decision record, `public_search_state.yml`, `institution-access-guide`, and `zotero-bridge` describe what EA runs locally and what remains an optional external integration. `import-zotero-status`, `reconcile-acquisition`, and `render-reconciliation` normalize current acquisition evidence and expose actionable `repair_actions`.
 
 Confirmed source-candidate manifests such as `confirmed_ftir_source_candidates.yml`, `confirmed_uv_vis_source_candidates.yml`, and `confirmed_xps_source_candidates.yml` can feed method-specific packet builders after review.
 

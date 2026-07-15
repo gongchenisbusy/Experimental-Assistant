@@ -135,7 +135,11 @@ def _english_dynamic_interpretations(metadata: dict[str, Any], method: str) -> s
 def _report_language(root: Path) -> str:
     path = root / ".ea" / "project_config.yml"
     config = read_yaml(path) if path.is_file() else {}
-    language = str(config.get("default_report_language") or "zh").lower()
+    language = str(
+        config.get("report_language")
+        or config.get("default_report_language")
+        or "zh"
+    ).lower()
     return language if language in {"zh", "en"} else "zh"
 
 
@@ -212,9 +216,30 @@ def _localize_chinese_dynamic_labels(body: str) -> str:
         "assignment_source:": "归属来源：",
         "| confidence |": "| 可信度 |",
         "| source |": "| 来源 |",
+        "## References": "## 参考文献",
+        "provenance": "溯源记录",
     }
     for source, target in replacements.items():
         body = body.replace(source, target)
+    body = re.sub(
+        r"\b(Raman|PL|XRD|FTIR|UV-Vis|XPS|electrochemistry|thermal) processing result\b",
+        r"\1 处理结果",
+        body,
+    )
+    body = body.replace("processed result", "处理结果")
+    confidence_values = {
+        "high": "高",
+        "medium": "中",
+        "low": "低",
+        "insufficient": "不足",
+    }
+    for source, target in confidence_values.items():
+        body = re.sub(
+            rf"(可信度：\s*`){source}(`)",
+            rf"\g<1>{target}\2",
+            body,
+            flags=re.I,
+        )
     return body
 
 
@@ -247,8 +272,29 @@ def lint_report_locale(body: str, language: str) -> dict[str, Any]:
     if language != "zh":
         return {"status": "pass", "violations": []}
     violations: list[dict[str, Any]] = []
+    forbidden_phrases = {
+        "Raman processing result",
+        "PL processing result",
+        "XRD processing result",
+        "FTIR processing result",
+        "UV-Vis processing result",
+        "XPS processing result",
+        "processed result",
+        "No baseline correction was applied.",
+        "Intensity normalized by processing parameters.",
+    }
     in_dynamic_section = False
     for line_number, line in enumerate(body.splitlines(), start=1):
+        matched = sorted(phrase for phrase in forbidden_phrases if phrase in line)
+        if matched:
+            violations.append(
+                {
+                    "code": "unlocalized_ordinary_phrase",
+                    "line": line_number,
+                    "text": line[:240],
+                    "matched": matched,
+                }
+            )
         heading = re.match(r"^##\s+(.+?)\s*$", line.strip())
         if heading:
             in_dynamic_section = heading.group(1) in ZH_DYNAMIC_SECTION_HEADINGS
@@ -550,7 +596,7 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
     if peaks.empty:
         return "当前没有可展示的自动检峰/拟合结果。"
     rows = [
-        "| peak_id | position (cm^-1) | fit center (cm^-1) | FWHM (cm^-1) | prominence | assignment |",
+        "| 峰 ID | 峰位 (cm^-1) | 拟合中心 (cm^-1) | 半高全宽 (cm^-1) | 显著度 | 候选归属 |",
         "|---|---:|---:|---:|---:|---|",
     ]
     sort_column = "prominence" if "prominence" in peaks.columns else "height"
@@ -567,7 +613,7 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
                 else "n/a",
                 fwhm=f"{float(fwhm):.2f}" if pd.notna(fwhm) else "n/a",
                 prominence=float(peak.get("prominence", 0.0)),
-                assignment=assignment or "unassigned",
+                assignment=assignment or "未归属",
             )
         )
     return "\n".join(rows)
@@ -581,23 +627,28 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
     lines: list[str] = []
     for item in interpretations:
         text = _localized_dynamic_interpretation(item, "raman")
-        confidence = str(item.get("confidence", "insufficient"))
+        confidence = {
+            "high": "高",
+            "medium": "中",
+            "low": "低",
+            "insufficient": "不足",
+        }.get(str(item.get("confidence", "insufficient")), "不足")
         evidence = (
             ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
         )
         separation = item.get("mode_separation_cm-1")
         suffix = (
-            f"；mode separation: `{float(separation):.2f} cm^-1`"
+            f"；模态间距：`{float(separation):.2f} cm^-1`"
             if separation is not None
             else ""
         )
         cite = citation_text if citation_text else ""
         lines.append(
-            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`{suffix}"
+            f"- {text}{cite}\n  - 可信度：`{confidence}`；证据峰：`{evidence}`{suffix}"
         )
     if not citation_text:
         lines.append(
-            "- 上述自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+            "- 上述自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - 可信度：`不足`"
         )
     return "\n".join(lines)
 
@@ -641,14 +692,28 @@ def generate_raman_report(
     peak_text = _peak_summary(root, outputs["peak_table"])
     peak_fit_table = _peak_fit_table(root, outputs["peak_table"])
     warnings = metadata.get("warnings") or []
+    warning_catalog = {
+        "normalization_applied": "已按复核的处理参数对强度进行归一化。",
+        "baseline_not_corrected": "未执行基线校正。",
+        "instrument_metadata_missing": "原始 Raman 文件中未找到仪器元数据。",
+        "x_unit_unknown": "Raman 横轴单位仍未确定。",
+        "sample_mapping_missing": "本次处理尚未提供样品映射。",
+        "sample_mapping_differs_from_raw_metadata": "本次样品映射与原始元数据记录不完全一致。",
+    }
     warning_text = (
         "；".join(
-            warning.get("message", str(warning))
-            if isinstance(warning, dict)
-            else str(warning)
+            (
+                warning_catalog.get(
+                    str(warning.get("code") or ""),
+                    "存在一项未本地化的处理警告；请查看结构化 metadata。",
+                )
+                if isinstance(warning, dict)
+                else "存在一项处理警告；请查看结构化 metadata。"
+            ).rstrip("。；")
             for warning in warnings
         )
-        or "未记录高风险 warning。"
+        + ("。" if warnings else "")
+        or "未记录高风险警告。"
     )
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
@@ -669,15 +734,15 @@ def generate_raman_report(
 
 ## 数据来源
 
-本报告基于 Raman processing result `{metadata["raman_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 Raman 处理结果 `{metadata["raman_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过溯源记录保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，Raman shift 单位记录为 `{metadata["x_unit"]}`。处理参数为 `{metadata["processing_parameters"]}`。
+用户确认的横轴列为 `{metadata["x_column"]}`，纵轴列为 `{metadata["y_column"]}`，Raman 位移单位记录为 `{metadata["x_unit"]}`。完整处理参数保存在本结果的结构化 metadata 中。
 
 ## 主要观察
 
-{peak_text}这些峰位是脚本处理得到的 processed result，仍需要结合样品形貌、实验记录和用户审核进行解释。
+{peak_text}这些峰位来自脚本生成的处理结果，仍需要结合样品形貌、实验记录和用户审核进行解释。
 
 ## 拟合峰参数
 
@@ -702,13 +767,13 @@ def generate_raman_report(
 - plot: `{outputs["figure"]}`
 - metadata: `{outputs["metadata"]}`
 
-## References
+## 参考文献
 
 {reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 Raman result `{metadata["raman_result_id"]}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 Raman 结果 `{metadata["raman_result_id"]}`，对应溯源记录将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")

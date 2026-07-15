@@ -1,0 +1,20 @@
+schema_version: '1.0'
+evidence_type: simulated_public_benchmark
+real_user_or_external_expert_evidence: false
+expected_source_failures: 0
+expected_record_count: 1
+expected_anchor: universal-v1-page-001
+expected_field_types:
+  catalytic_rate: number
+  activity_range: range
+  measured_rate: uncertain_number
+  synthesis_route: text
+  phase_class: enum
+  reusable: boolean
+  publication_date: date
+  measured_at: datetime
+  precursors: list
+  reactor_record: nested
+schema_file_sha256: b09e02f893012fe71c78f70723fbe261bc1214f84c89fc5f755570487afacd05
+source_chunks_sha256: 27d394bf73128b3cfb60162a35e6896bad072b0402255ec404d125f915b7063b
+source_metadata_sha256: 3daa4e85240898d948ac3916cf41ee67fc03b3c493fcd14e69ff9a334bb920af

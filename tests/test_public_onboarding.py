@@ -129,8 +129,13 @@ def test_chinese_quickstart_and_error_catalog_cover_first_user_path() -> None:
     assert "ea setup" in quickstart
     assert "ea start" in quickstart
     assert "ea import preview" in quickstart
+    assert "ea journey" in quickstart
+    assert "ea export report-html" in quickstart
+    assert "ea export verify-bundle" in quickstart
     assert "用户自定义文献数据收集" in quickstart
     assert "任意数据类别" in quickstart
+    assert "能力成熟度" not in quickstart
+    assert "文献数据 beta" not in quickstart.lower()
     assert "EA-INPUT-INVALID" in errors
     assert "EA-INSTALL-CLI-IDENTITY-MISMATCH" in errors
     assert "ea diagnostics collect" in errors

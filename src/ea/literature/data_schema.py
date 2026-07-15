@@ -248,9 +248,13 @@ def request_schema(
             comparability_rules=comparability_rules,
         )
     field_id = _field_id(property_kind or property_name)
+    contains_cjk = bool(re.search(r"[\u3400-\u9fff]", property_name))
     field = _base_field(
         field_id=field_id,
-        name={"en": property_name, "zh": ""},
+        name={
+            "en": field_id.replace("_", " ") if contains_cjk else property_name,
+            "zh": property_name if contains_cjk else "",
+        },
         aliases=[property_name, *aliases],
         field_type=field_type,
         material_scope=material_scope,
@@ -373,11 +377,11 @@ def validate_literature_data_schema_payload(
         )
         fields = []
     seen: set[str] = set()
-    for index, field in enumerate(fields):
-        path = f"fields[{index}]"
+
+    def validate_field(field: Any, path: str, *, nested_child: bool = False) -> str:
         if not isinstance(field, dict):
             error("invalid_field", path, "Field must be an object.", "Replace it with a field mapping.")
-            continue
+            return ""
         field_id = str(field.get("field_id") or "")
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", field_id):
             error(
@@ -386,14 +390,15 @@ def validate_literature_data_schema_payload(
                 "field_id must be lower snake_case.",
                 "Use a stable lower-case identifier beginning with a letter.",
             )
-        if field_id in seen:
+        if not nested_child and field_id in seen:
             error(
                 "duplicate_field_id",
                 f"{path}.field_id",
                 f"Duplicate field_id: {field_id}",
                 "Rename or merge the duplicate field.",
             )
-        seen.add(field_id)
+        if not nested_child:
+            seen.add(field_id)
         name = field.get("name")
         if not isinstance(name, dict) or not str(name.get("en") or "").strip():
             error(
@@ -438,12 +443,14 @@ def validate_literature_data_schema_payload(
                 "A supported conflict policy is required.",
                 f"Choose one of: {', '.join(sorted(CONFLICT_POLICIES))}.",
             )
-        if not isinstance(field.get("comparability"), dict):
+        if not isinstance(field.get("comparability"), dict) or not isinstance(
+            field.get("comparability", {}).get("enabled"), bool
+        ):
             error(
                 "comparability_policy_required",
                 f"{path}.comparability",
                 "An explicit comparability policy is required.",
-                "Add comparability.enabled and any required rules.",
+                "Add boolean comparability.enabled and any required rules.",
             )
         evidence = field.get("evidence")
         if not isinstance(evidence, dict) or not evidence.get("minimum_anchors"):
@@ -452,6 +459,22 @@ def validate_literature_data_schema_payload(
                 f"{path}.evidence",
                 "Minimum evidence anchors are required.",
                 "Add at least page_or_chunk to evidence.minimum_anchors.",
+            )
+        output = field.get("output")
+        if not isinstance(output, dict) or not isinstance(output.get("include"), bool):
+            error(
+                "output_policy_required",
+                f"{path}.output",
+                "An explicit output policy is required.",
+                "Add boolean output.include and optional grouping or sorting rules.",
+            )
+        plot = field.get("plot")
+        if not isinstance(plot, dict) or not isinstance(plot.get("enabled"), bool):
+            error(
+                "plot_policy_required",
+                f"{path}.plot",
+                "An explicit plot policy is required.",
+                "Add boolean plot.enabled and an optional plot kind.",
             )
         if field_type in NUMERIC_FIELD_TYPES:
             unit = field.get("unit")
@@ -500,13 +523,33 @@ def validate_literature_data_schema_payload(
                 "Enum fields need controlled choices.",
                 "Add at least one allowed choice.",
             )
-        if field_type == "nested" and not field.get("children"):
-            error(
-                "nested_children_required",
-                f"{path}.children",
-                "Nested fields need child definitions.",
-                "Add one or more child fields.",
-            )
+        if field_type == "nested":
+            children = field.get("children")
+            if not isinstance(children, list) or not children:
+                error(
+                    "nested_children_required",
+                    f"{path}.children",
+                    "Nested fields need child definitions.",
+                    "Add one or more complete child field contracts.",
+                )
+            else:
+                child_ids: set[str] = set()
+                for child_index, child in enumerate(children):
+                    child_path = f"{path}.children[{child_index}]"
+                    child_id = validate_field(child, child_path, nested_child=True)
+                    if child_id and child_id in child_ids:
+                        error(
+                            "duplicate_nested_field_id",
+                            f"{child_path}.field_id",
+                            f"Duplicate nested field_id: {child_id}",
+                            "Rename or merge the duplicate nested child.",
+                        )
+                    if child_id:
+                        child_ids.add(child_id)
+        return field_id
+
+    for index, field in enumerate(fields):
+        validate_field(field, f"fields[{index}]")
 
     primary = str(schema.get("primary_field_id") or "")
     if primary not in seen:
