@@ -1,33 +1,31 @@
-# Experimental Assistant v0.9.7 Release Notes
+# Experimental Assistant v0.9.8 Release Notes
 
-v0.9.7 is the full engineering candidate for v1.0. It focuses on ordinary-user safety, cross-platform release quality, stable identity, literature evidence collection, and honest capability maturity while preserving existing scientific workflows.
+v0.9.8 is an integration and non-regression release on the v1.0-candidate line. It closes the version gap between the Python CLI and Codex skills, turns literature discovery/acquisition/cache reading into a compact recoverable pipeline, and makes briefs, report language, figures, and feedback evidence consistent while preserving v0.9.7 project and protocol readers.
 
 ## Version
 
-- Package version: `0.9.7`
-- Release label: `v0.9.7`
+- Package version: `0.9.8`
+- Release label: `v0.9.8`
 - Distribution: `experimental-assistant`
 - CLI: `ea`
 - Primary Codex skill: `$ea`
 - Compatibility: `$ea-v0-2` thin wrapper through v1.0.x
 - License: Apache-2.0
 
-## Major Changes Since v0.9.6
+## Major Changes Since v0.9.7
 
-- Unified the public identity around Experimental Assistant / `ea` / `$ea`; legacy names remain diagnostic compatibility metadata only.
-- Added transactional setup, doctor, update, rollback, and uninstall flows with exact PATH identity checks.
-- Added project-format migration planning, backups, journals, rollback, atomic writes, and stale-lock recovery.
-- Added two-stage protected import with UTF-8 BOM/UTF-8/GB18030/CP936/CP1252 and delimiter detection.
-- Added ordinary-user start/status/analyze/report routes, stable structured errors, explicit consult/record/execute/audit semantics, review-gated draft promotion, and privacy-safe local diagnostics.
-- Added a machine-readable stable/beta/experimental capability contract and Python/platform CI matrix.
-- Hardened literature queries, relevance checks, DOI deduplication, acquisition status normalization, Zotero companion handoff, redaction, and compact outputs.
-- Added the beta literature data-plan/extract/review/validate/plot/export workflow with evidence anchors, typed electrical properties, resumable checkpoints, conflict retention, reviewed-only outputs, and privacy-scoped bundles.
-- Added a deterministic Raman golden benchmark and external scientific-review evidence surface; Raman remains beta pending sign-off.
-- Added Apache-2.0 governance, security, support, contribution, citation, SBOM, vulnerability, constraints, checksum, signature, and reproducibility policies.
+- Wheel and sdist artifacts now carry the exact `$ea` and `$ea-v0-2` skill payloads. Release pages also carry a compact deterministic skill ZIP and SHA-256 sidecar. Setup prefers explicit or bundled sources and no longer requires an ordinary user to clone the repository.
+- Skill replacement and CLI update flows record before/after identity and restoration state. Validator and lifecycle subprocess output is decoded safely under UTF-8 and common Windows GBK code pages; native CI covers deep paths and clean bundled-skill setup.
+- Literature commands use a short stage router and compact default output, with full audit state retained on disk or exposed explicitly. Acquisition handoff v2 adds per-stage attempts, canonical targets, Zotero parent/attachment identity, PDF/cache hashes, blockers, transactions, and recovery while retaining the v1 reader.
+- Crossref, OpenAlex, and arXiv run through a shared discovery adapter; Unpaywall resolution, bounded retrieval, PDF validation, SHA-256 content-addressed storage, SQLite FTS5/BM25 retrieval, auto-widening evidence reads, and a versioned non-regression benchmark are available without claiming exhaustive coverage.
+- Project dashboard and brief now share one read-only state aggregator. An optional decision summary puts the current question, evidence gates, top action, project home, and latest reports on the first screen.
+- Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, and thermal reports use the configured Chinese or English catalog while preserving identical numeric values, units, evidence refs, confidence enums, citations, and warning codes.
+- New figures keep a footer-free base and produce immutable report-bound renderings with exactly one final `FigID`/`Report` footer. Structured processed source-data roles, purposes, columns, and portable links are verified during export; historical figures are not silently rewritten.
+- The optional `ea-feedback` compatibility manifest pins a tested companion commit with UTF-8 I/O, execution-event reconciliation, project `.venv` CLI discovery, and distinct prepared/verified draft states.
 
 ## Relationship To v1.0
 
-The v0.9.7 code is intended to become v1.0 without feature expansion if controlled trials find no blockers. Promotion still requires real independent novice trials on the supported platforms and independent scientific review of the beta evidence surfaces. Pending evidence is not treated as a pass.
+The v0.9.8 code remains a controlled v1.0 candidate. Promotion still requires real independent novice trials on supported platforms and independent scientific review of beta evidence surfaces. Internal automation and the public OA trial do not substitute for that evidence.
 
 ## Maturity
 

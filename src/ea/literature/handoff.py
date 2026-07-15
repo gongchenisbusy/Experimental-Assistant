@@ -8,7 +8,8 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 
-HANDOFF_SCHEMA_VERSION = "1.0"
+HANDOFF_SCHEMA_VERSION = "2.0"
+HANDOFF_PROTOCOL_VERSION = "2.0"
 TARGET_STATUSES = {
     "acquired",
     "cache_verified",
@@ -18,6 +19,7 @@ TARGET_STATUSES = {
     "manual_pdf_handoff_ready",
     "invalid_pdf",
     "retryable_error",
+    "partial",
     "not_attempted",
 }
 READY_STATUSES = {"acquired", "cache_verified"}
@@ -68,6 +70,9 @@ _STATUS_ALIASES = {
     "retryable-error": "retryable_error",
     "failed-nonjson": "retryable_error",
     "failed_nonjson": "retryable_error",
+    "partial": "partial",
+    "partially-complete": "partial",
+    "partially_complete": "partial",
     "failed": "blocked",
     "failure": "blocked",
     "error": "blocked",
@@ -81,16 +86,45 @@ _STATUS_ALIASES = {
 }
 
 _ERROR_PATTERNS = [
-    (re.compile(r"\b(eperm|permission denied|operation not permitted)\b", re.I), "permission_denied"),
+    (
+        re.compile(r"\b(eperm|permission denied|operation not permitted)\b", re.I),
+        "permission_denied",
+    ),
     (re.compile(r"\b(connection refused|econnrefused)\b", re.I), "connection_refused"),
     (re.compile(r"\b(timeout|timed out|etimedout)\b", re.I), "timeout"),
-    (re.compile(r"\b(not running|software unavailable|service unavailable)\b", re.I), "software_not_running"),
-    (re.compile(r"\b(duplicate parent|ambiguous parent|multiple parent)\b", re.I), "duplicate_parent_ambiguous"),
-    (re.compile(r"\b(missing attachment|attachment file.*missing|attachment.*not found)\b", re.I), "missing_attachment_file"),
-    (re.compile(r"\b(is a directory|path.*directory|eisdir)\b", re.I), "path_is_directory"),
-    (re.compile(r"\b(subscription|paywall|no access)\b", re.I), "subscription_required"),
-    (re.compile(r"\b(login|sign[ -]?in|authentication|authorization)\b", re.I), "user_login_required"),
-    (re.compile(r"\b(non[- ]?pdf|invalid pdf|corrupt pdf|html instead of pdf)\b", re.I), "invalid_pdf"),
+    (
+        re.compile(r"\b(not running|software unavailable|service unavailable)\b", re.I),
+        "software_not_running",
+    ),
+    (
+        re.compile(r"\b(duplicate parent|ambiguous parent|multiple parent)\b", re.I),
+        "duplicate_parent_ambiguous",
+    ),
+    (
+        re.compile(
+            r"\b(missing attachment|attachment file.*missing|attachment.*not found)\b",
+            re.I,
+        ),
+        "missing_attachment_file",
+    ),
+    (
+        re.compile(r"\b(is a directory|path.*directory|eisdir)\b", re.I),
+        "path_is_directory",
+    ),
+    (
+        re.compile(r"\b(subscription|paywall|no access)\b", re.I),
+        "subscription_required",
+    ),
+    (
+        re.compile(r"\b(login|sign[ -]?in|authentication|authorization)\b", re.I),
+        "user_login_required",
+    ),
+    (
+        re.compile(
+            r"\b(non[- ]?pdf|invalid pdf|corrupt pdf|html instead of pdf)\b", re.I
+        ),
+        "invalid_pdf",
+    ),
 ]
 
 _NEXT_ACTIONS = {
@@ -102,6 +136,7 @@ _NEXT_ACTIONS = {
     "manual_pdf_handoff_ready": "Provide the lawfully obtained PDF to the recorded manual ingest path.",
     "invalid_pdf": "Replace the response with a verified PDF before ingesting or extracting data.",
     "retryable_error": "Resolve the transient local error, then run the privacy-safe retry command.",
+    "partial": "Resume from the recorded stage; reuse verified parent, attachment, and cache objects.",
     "not_attempted": "Start acquisition for this target when the user confirms the external workflow.",
 }
 
@@ -134,10 +169,23 @@ def classify_blocked_reason(value: Any) -> str | None:
 def normalize_target_status(item: dict[str, Any]) -> str:
     source_status = _status_text(item).replace(" ", "-")
     normalized = _STATUS_ALIASES.get(source_status, source_status.replace("-", "_"))
-    has_cache = any(item.get(key) for key in ("cache_path", "cache_dir", "cached_path", "source_hash", "cache_hash"))
-    has_pdf = any(item.get(key) for key in ("local_path", "pdf_path", "attachment_path", "pdf"))
+    has_cache = any(
+        item.get(key)
+        for key in (
+            "cache_path",
+            "cache_dir",
+            "cached_path",
+            "source_hash",
+            "cache_hash",
+        )
+    )
+    has_pdf = any(
+        item.get(key) for key in ("local_path", "pdf_path", "attachment_path", "pdf")
+    )
     if normalized not in TARGET_STATUSES:
-        reason = classify_blocked_reason(item.get("reason") or item.get("error") or item.get("message"))
+        reason = classify_blocked_reason(
+            item.get("reason") or item.get("error") or item.get("message")
+        )
         if reason in {"connection_refused", "timeout", "software_not_running"}:
             normalized = "retryable_error"
         elif reason == "user_login_required":
@@ -181,7 +229,9 @@ def privacy_safe_cache_ref(value: Any) -> str | None:
     if not is_absolute and ".." not in relative_path.parts:
         return relative_path.as_posix()
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-    name = (windows_path.name if windows_path.is_absolute() else posix_path.name) or "cache"
+    name = (
+        windows_path.name if windows_path.is_absolute() else posix_path.name
+    ) or "cache"
     return f"external-cache://{digest}/{name}"
 
 
@@ -191,9 +241,21 @@ def privacy_safe_retry_command(value: Any) -> str | None:
     command = _text(value)
     if not command:
         return None
-    command = re.sub(r"https?://[^\s'\"]+", lambda match: privacy_safe_url(match.group(0)) or "<redacted-url>", command)
-    command = re.sub(r"(?i)(--(?:browser-)?profile(?:-path)?\s+)(?:'[^']*'|\"[^\"]*\"|\S+)", r"\1<user-profile>", command)
-    command = re.sub(r"(?i)(--(?:session|session-id|token|cookie)\s+)(?:'[^']*'|\"[^\"]*\"|\S+)", r"\1<redacted>", command)
+    command = re.sub(
+        r"https?://[^\s'\"]+",
+        lambda match: privacy_safe_url(match.group(0)) or "<redacted-url>",
+        command,
+    )
+    command = re.sub(
+        r"(?i)(--(?:browser-)?profile(?:-path)?\s+)(?:'[^']*'|\"[^\"]*\"|\S+)",
+        r"\1<user-profile>",
+        command,
+    )
+    command = re.sub(
+        r"(?i)(--(?:session|session-id|token|cookie)\s+)(?:'[^']*'|\"[^\"]*\"|\S+)",
+        r"\1<redacted>",
+        command,
+    )
     command = re.sub(r"(?<![\w.-])(?:/[\w .@+,:=-]+){2,}", "<local-path>", command)
     return command[:500]
 
@@ -226,8 +288,18 @@ def _attempts(item: dict[str, Any]) -> list[dict[str, Any]]:
                 key: value
                 for key, value in {
                     "attempt": attempt.get("attempt") or index,
-                    "status": _STATUS_ALIASES.get(_status_text(attempt), _status_text(attempt).replace("-", "_")) or None,
-                    "blocked_reason": classify_blocked_reason(attempt.get("reason") or attempt.get("error") or attempt.get("message")),
+                    "stage": attempt.get("stage"),
+                    "status": _STATUS_ALIASES.get(
+                        _status_text(attempt), _status_text(attempt).replace("-", "_")
+                    )
+                    or None,
+                    "error_code": classify_blocked_reason(
+                        attempt.get("error_code")
+                        or attempt.get("reason")
+                        or attempt.get("error")
+                        or attempt.get("message")
+                    ),
+                    "artifact_count": attempt.get("artifact_count"),
                     "updated_at": attempt.get("updated_at") or attempt.get("ended_at"),
                 }.items()
                 if value not in (None, "")
@@ -236,9 +308,70 @@ def _attempts(item: dict[str, Any]) -> list[dict[str, Any]]:
     return attempts
 
 
-def normalize_handoff_target(item: dict[str, Any], *, updated_at: str) -> dict[str, Any]:
+def _canonical_doi(value: Any) -> str | None:
+    doi = _text(value).lower()
+    doi = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", doi).rstrip("./")
+    return doi or None
+
+
+def _stage_records(
+    item: dict[str, Any], *, target_status: str
+) -> dict[str, dict[str, Any]]:
+    supplied = item.get("stages")
+    if isinstance(supplied, dict):
+        return {
+            stage: _compact_state_item(value)
+            for stage, value in supplied.items()
+            if stage
+            in {"discovery", "resolve", "retrieve", "import", "cache", "reconcile"}
+        }
+    ready = target_status in READY_STATUSES
     result = item.get("result") if isinstance(item.get("result"), dict) else {}
-    next_action = item.get("next_action") if isinstance(item.get("next_action"), dict) else {}
+    has_pdf = bool(
+        item.get("pdf_path")
+        or item.get("attachment_path")
+        or item.get("pdf")
+        or item.get("pdf_sha256")
+        or result.get("pdf_path")
+        or result.get("attachment_path")
+    )
+    has_zotero = bool(
+        item.get("zotero_parent_key")
+        or item.get("zotero_item_key")
+        or item.get("item_key")
+        or result.get("item_key")
+    )
+    has_cache = bool(
+        item.get("cache_object_ref")
+        or item.get("cache_path")
+        or item.get("cache_dir")
+        or item.get("source_hash")
+        or result.get("cache_dir")
+        or result.get("cache_path")
+    )
+    return {
+        "discovery": {
+            "status": "completed" if item.get("doi") or item.get("title") else "unknown"
+        },
+        "resolve": {
+            "status": "completed" if ready or item.get("url") else "not_started"
+        },
+        "retrieve": {"status": "completed" if ready or has_pdf else target_status},
+        "import": {"status": "completed" if has_zotero else "not_applicable"},
+        "cache": {"status": "completed" if has_cache else "not_started"},
+        "reconcile": {
+            "status": "pending" if target_status not in READY_STATUSES else "ready"
+        },
+    }
+
+
+def normalize_handoff_target(
+    item: dict[str, Any], *, updated_at: str
+) -> dict[str, Any]:
+    result = item.get("result") if isinstance(item.get("result"), dict) else {}
+    next_action = (
+        item.get("next_action") if isinstance(item.get("next_action"), dict) else {}
+    )
     status = normalize_target_status(item)
     reason_value = (
         item.get("blocked_reason")
@@ -247,19 +380,41 @@ def normalize_handoff_target(item: dict[str, Any], *, updated_at: str) -> dict[s
         or item.get("last_error")
         or item.get("message")
     )
-    blocked_reason = classify_blocked_reason(reason_value) if status not in READY_STATUSES else None
+    blocked_reason = (
+        classify_blocked_reason(reason_value) if status not in READY_STATUSES else None
+    )
+    target_id = item.get("target_id") or item.get("id")
+    doi = _canonical_doi(item.get("doi") or item.get("DOI") or result.get("doi"))
+    parent_key = (
+        item.get("zotero_parent_key")
+        or item.get("zotero_item_key")
+        or item.get("item_key")
+        or result.get("item_key")
+    )
+    attachment_key = (
+        item.get("zotero_attachment_key")
+        or item.get("attachment_key")
+        or result.get("attachment_key")
+    )
+    source_hash = _source_hash(item)
+    cache_ref = privacy_safe_cache_ref(
+        item.get("cache_object_ref")
+        or item.get("cache_dir")
+        or item.get("cache_path")
+        or item.get("cached_path")
+        or result.get("cache_dir")
+    )
     return {
+        "protocol_version": HANDOFF_PROTOCOL_VERSION,
         "target_id": item.get("target_id") or item.get("id"),
         "rank": item.get("rank") or item.get("top30_rank"),
         "title": item.get("title") or result.get("title") or "Untitled target",
-        "doi": item.get("doi") or item.get("DOI") or result.get("doi"),
+        "doi": doi,
         "url": privacy_safe_url(item.get("url") or item.get("landing_page_url")),
         "attempts": _attempts(item),
         "status": status,
-        "cache_dir": privacy_safe_cache_ref(
-            item.get("cache_dir") or item.get("cache_path") or item.get("cached_path") or result.get("cache_dir")
-        ),
-        "zotero_item_key": item.get("zotero_item_key") or item.get("item_key") or result.get("item_key"),
+        "cache_dir": cache_ref,
+        "zotero_item_key": parent_key,
         "blocked_reason": blocked_reason,
         "retry_command": privacy_safe_retry_command(
             item.get("retry_command")
@@ -268,9 +423,44 @@ def normalize_handoff_target(item: dict[str, Any], *, updated_at: str) -> dict[s
             or next_action.get("manual_pdf_handoff_command")
             or next_action.get("prepare_command")
         ),
-        "source_hash": _source_hash(item),
+        "source_hash": source_hash,
         "updated_at": item.get("updated_at") or updated_at,
         "next_action": _NEXT_ACTIONS[status],
+        "canonical": {
+            "doi": doi,
+            "title": item.get("canonical_title")
+            or item.get("title")
+            or result.get("title")
+            or "Untitled target",
+            "version": item.get("version") or item.get("version_label"),
+            "document_type": item.get("document_type") or item.get("type") or "unknown",
+        },
+        "stages": _stage_records(item, target_status=status),
+        "zotero": {
+            "parent_key": parent_key,
+            "attachment_key": attachment_key,
+            "attachment_verified": bool(
+                attachment_key and (source_hash or status in READY_STATUSES)
+            ),
+        },
+        "pdf": {
+            "sha256": item.get("pdf_sha256") or source_hash,
+            "verified": bool(
+                (item.get("pdf_sha256") or source_hash) and status in READY_STATUSES
+            ),
+        },
+        "cache": {
+            "object_ref": cache_ref,
+            "verified": bool(cache_ref and status in READY_STATUSES),
+        },
+        "blocker": {
+            "code": blocked_reason,
+            "authorization_required": status in {"needs_login", "needs_subscription"},
+            "next_action": _NEXT_ACTIONS[status],
+        }
+        if blocked_reason
+        else None,
+        "diagnostics_ref": privacy_safe_cache_ref(item.get("diagnostics_ref")),
     }
 
 
@@ -300,17 +490,29 @@ def _compact_state_item(item: Any) -> dict[str, Any]:
         key: value
         for key, value in {
             "status": item.get("status"),
-            "code": classify_blocked_reason(item.get("code") or item.get("reason") or item.get("error")),
-            "summary": _text(item.get("summary") or item.get("message") or item.get("reason"))[:200] or None,
+            "code": classify_blocked_reason(
+                item.get("code") or item.get("reason") or item.get("error")
+            ),
+            "summary": _text(
+                item.get("summary") or item.get("message") or item.get("reason")
+            )[:200]
+            or None,
             "updated_at": item.get("updated_at"),
         }.items()
         if value not in (None, "")
     }
 
 
-def normalize_acquisition_handoff(payload: dict[str, Any], *, updated_at: str) -> dict[str, Any]:
-    targets = [normalize_handoff_target(item, updated_at=updated_at) for item in _items(payload)]
-    current_keys = set().union(*(_identifier_keys(item) for item in targets)) if targets else set()
+def normalize_acquisition_handoff(
+    payload: dict[str, Any], *, updated_at: str
+) -> dict[str, Any]:
+    targets = [
+        normalize_handoff_target(item, updated_at=updated_at)
+        for item in _items(payload)
+    ]
+    current_keys = (
+        set().union(*(_identifier_keys(item) for item in targets)) if targets else set()
+    )
     current_task_blockers = [
         {
             "target_id": item.get("target_id"),
@@ -322,7 +524,9 @@ def normalize_acquisition_handoff(payload: dict[str, Any], *, updated_at: str) -
         for item in targets
         if item["status"] not in READY_STATUSES
     ]
-    stale_global_state = [_compact_state_item(item) for item in (payload.get("stale_global_state") or [])]
+    stale_global_state = [
+        _compact_state_item(item) for item in (payload.get("stale_global_state") or [])
+    ]
     for session in payload.get("sessions") or []:
         if not isinstance(session, dict):
             continue
@@ -334,32 +538,91 @@ def normalize_acquisition_handoff(payload: dict[str, Any], *, updated_at: str) -
             stale_global_state.append(_compact_state_item(session))
     ready_count = sum(item["status"] in READY_STATUSES for item in targets)
     blocked_count = len(targets) - ready_count
-    aggregate_status = "complete" if targets and not blocked_count else "partial" if ready_count else "blocked" if targets else "not_started"
+    aggregate_status = (
+        "complete"
+        if targets and not blocked_count
+        else "partial"
+        if ready_count
+        else "blocked"
+        if targets
+        else "not_started"
+    )
     source_hash = hashlib.sha256(
-        json.dumps(targets, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(
+            targets, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
     ).hexdigest()
-    attempts = sum(max(1, len(item["attempts"])) if item["status"] != "not_attempted" else 0 for item in targets)
+    attempts = sum(
+        max(1, len(item["attempts"])) if item["status"] != "not_attempted" else 0
+        for item in targets
+    )
+    source_protocol_version = str(
+        payload.get("protocol_version") or payload.get("schema_version") or "1.0"
+    )
+    source_summary = payload.get("transaction_counts") or payload.get("summary") or {}
+    transaction_counts = {
+        "created": int(
+            source_summary.get("created") or source_summary.get("created_count") or 0
+        ),
+        "reused": int(
+            source_summary.get("reused") or source_summary.get("reused_count") or 0
+        ),
+        "rolled_back": int(
+            source_summary.get("rolled_back")
+            or source_summary.get("rolled_back_count")
+            or 0
+        ),
+        "partial": int(
+            source_summary.get("partial")
+            or source_summary.get("partial_count")
+            or sum(item["status"] == "partial" for item in targets)
+        ),
+    }
+    task_id = (
+        payload.get("task_id")
+        or payload.get("request_id")
+        or payload.get("batch_id")
+        or payload.get("acquisition_id")
+        or f"external-{source_hash[:12]}"
+    )
     return {
         "schema_version": HANDOFF_SCHEMA_VERSION,
-        "request_id": payload.get("request_id") or payload.get("batch_id") or payload.get("acquisition_id") or f"external-{source_hash[:12]}",
+        "protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "source_protocol_version": source_protocol_version,
+        "task_id": task_id,
+        "request_id": task_id,
         "targets": targets,
         "attempts": attempts,
         "status": aggregate_status,
-        "cache_dir": "per_target_privacy_safe_refs" if any(item.get("cache_dir") for item in targets) else None,
-        "zotero_item_key": "per_target" if any(item.get("zotero_item_key") for item in targets) else None,
-        "blocked_reason": "see_current_task_blockers" if current_task_blockers else None,
-        "retry_command": "per_target" if any(item.get("retry_command") for item in targets) else None,
+        "cache_dir": "per_target_privacy_safe_refs"
+        if any(item.get("cache_dir") for item in targets)
+        else None,
+        "zotero_item_key": "per_target"
+        if any(item.get("zotero_item_key") for item in targets)
+        else None,
+        "blocked_reason": "see_current_task_blockers"
+        if current_task_blockers
+        else None,
+        "retry_command": "per_target"
+        if any(item.get("retry_command") for item in targets)
+        else None,
         "source_hash": source_hash,
         "updated_at": updated_at,
         "summary": {
             "target_count": len(targets),
             "ready_count": ready_count,
             "acquired_count": sum(item["status"] == "acquired" for item in targets),
-            "cache_verified_count": sum(item["status"] == "cache_verified" for item in targets),
+            "cache_verified_count": sum(
+                item["status"] == "cache_verified" for item in targets
+            ),
             "blocked_count": blocked_count,
         },
+        "transaction_counts": transaction_counts,
         "current_task_blockers": current_task_blockers,
-        "optional_capabilities": [_compact_state_item(item) for item in (payload.get("optional_capabilities") or [])],
+        "optional_capabilities": [
+            _compact_state_item(item)
+            for item in (payload.get("optional_capabilities") or [])
+        ],
         "stale_global_state": stale_global_state,
         "browser_download_event_fallback": {
             "status": "companion_contract_available",
@@ -400,7 +663,13 @@ def render_compact_status_markdown(state: dict[str, Any]) -> str:
             item.get("blocked_reason") or "-",
             item.get("next_action") or "-",
         ]
-        lines.append("| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in values) + " |")
+        lines.append(
+            "| "
+            + " | ".join(
+                str(value).replace("|", "\\|").replace("\n", " ") for value in values
+            )
+            + " |"
+        )
     lines.extend(
         [
             "",

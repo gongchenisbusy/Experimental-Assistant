@@ -15,7 +15,7 @@ from ea.identity import DISTRIBUTION_NAME
 from ea.storage.files import atomic_write_text
 
 
-DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-0.9.7-install-smoke.json"
+DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-0.9.8-install-smoke.json"
 
 
 def _run(
@@ -104,6 +104,13 @@ def smoke_install_artifact(
             "version": ["ea", "version", "--json"],
             "capabilities": ["ea", "capabilities", "--json"],
             "help": ["ea", "--help"],
+            "bundled_skill_setup": [
+                "ea",
+                "setup",
+                "--codex-home",
+                str(temporary_root / "codex-home"),
+                "--json",
+            ],
         }
         results: dict[str, Any] = {}
         for name, command in commands.items():
@@ -132,15 +139,24 @@ def smoke_install_artifact(
             and identity.get("package_version") == __version__
             and identity.get("skill_folder") == "ea"
         )
+        skill_setup_pass = all(
+            (
+                temporary_root / "codex-home" / "skills" / skill_name / "SKILL.md"
+            ).is_file()
+            for skill_name in ("ea", "ea-v0-2")
+        )
         return {
             "artifact": artifact.name,
             "artifact_kind": "wheel" if artifact.suffix == ".whl" else "sdist",
-            "status": "pass" if commands_pass and identity_pass else "fail",
+            "status": "pass"
+            if commands_pass and identity_pass and skill_setup_pass
+            else "fail",
             "stage": "complete",
             "path_resolved_ea": bool(
                 resolved and Path(resolved).resolve() == ea.resolve()
             ),
             "commands": results,
+            "bundled_skills_installed": skill_setup_pass,
         }
 
 

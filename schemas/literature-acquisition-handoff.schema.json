@@ -5,6 +5,9 @@
   "type": "object",
   "required": [
     "schema_version",
+    "protocol_version",
+    "source_protocol_version",
+    "task_id",
     "request_id",
     "targets",
     "attempts",
@@ -17,7 +20,10 @@
     "updated_at"
   ],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
+    "protocol_version": {"const": "2.0"},
+    "source_protocol_version": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
     "request_id": {"type": "string", "minLength": 1},
     "targets": {
       "type": "array",
@@ -35,12 +41,17 @@
     "current_task_blockers": {"type": "array"},
     "optional_capabilities": {"type": "array"},
     "stale_global_state": {"type": "array"}
+    ,"transaction_counts": {
+      "type": "object",
+      "required": ["created", "reused", "rolled_back", "partial"]
+    }
   },
   "$defs": {
     "target": {
       "type": "object",
       "required": [
         "title",
+        "protocol_version",
         "attempts",
         "status",
         "cache_dir",
@@ -53,6 +64,7 @@
       ],
       "properties": {
         "target_id": {"type": ["string", "integer", "null"]},
+        "protocol_version": {"const": "2.0"},
         "rank": {"type": ["string", "integer", "number", "null"]},
         "title": {"type": "string"},
         "doi": {"type": ["string", "null"]},
@@ -68,6 +80,7 @@
             "manual_pdf_handoff_ready",
             "invalid_pdf",
             "retryable_error",
+            "partial",
             "not_attempted"
           ]
         },
@@ -77,7 +90,14 @@
         "retry_command": {"type": ["string", "null"]},
         "source_hash": {"type": ["string", "null"]},
         "updated_at": {"type": "string"},
-        "next_action": {"type": "string"}
+        "next_action": {"type": "string"},
+        "canonical": {"type": "object"},
+        "stages": {"type": "object"},
+        "zotero": {"type": "object"},
+        "pdf": {"type": "object"},
+        "cache": {"type": "object"},
+        "blocker": {"type": ["object", "null"]},
+        "diagnostics_ref": {"type": ["string", "null"]}
       },
       "additionalProperties": false
     }

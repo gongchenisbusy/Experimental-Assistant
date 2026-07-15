@@ -13,13 +13,22 @@ from typing import Any, Callable, Literal
 
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
-from ea.storage.files import atomic_write_text, read_markdown_record, read_yaml, write_yaml
-from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.storage.files import (
+    atomic_write_text,
+    read_markdown_record,
+    read_yaml,
+    write_yaml,
+)
+from ea.literature.source_packet_manifest import (
+    SourcePacketManifestError,
+    confirmed_source_packet_library,
+)
 from ea.literature.handoff import (
     READY_STATUSES,
     normalize_acquisition_handoff,
     render_compact_status_markdown,
 )
+from ea.literature.pipeline import PublicMetadataDiscoveryAdapter
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
@@ -48,12 +57,17 @@ RANKING_HEADERS = [
     "venue",
     "doi",
     "url",
+    "document_type",
+    "version",
     "project_relevance",
     "venue_authority",
     "recency",
     "citation_or_influence",
     "fulltext_availability_and_usefulness",
     "score",
+    "source_fusion_score",
+    "source_count",
+    "fused_score",
     "relevance_gate_status",
     "material_match",
     "application_match",
@@ -168,10 +182,26 @@ def ensure_literature_status(
     }
     write_yaml(path, status)
     for sibling, data in {
-        "library_manifest.yml": {"schema_version": "0.2", "project_id": project_id, "items": []},
-        "search_queries.yml": {"schema_version": "0.2", "project_id": project_id, "queries": []},
-        "selected_items.yml": {"schema_version": "0.2", "project_id": project_id, "items": []},
-        "cache_index.yml": {"schema_version": "0.2", "project_id": project_id, "items": []},
+        "library_manifest.yml": {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "items": [],
+        },
+        "search_queries.yml": {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "queries": [],
+        },
+        "selected_items.yml": {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "items": [],
+        },
+        "cache_index.yml": {
+            "schema_version": "0.2",
+            "project_id": project_id,
+            "items": [],
+        },
     }.items():
         target = root / "literature" / sibling
         if not target.exists():
@@ -187,7 +217,11 @@ def setup_literature_preflight(
     checked_at: str | None = None,
 ) -> dict[str, Any]:
     checked_at = checked_at or EARecord.now_iso()
-    config = read_yaml(root / ".ea" / "project_config.yml") if (root / ".ea" / "project_config.yml").exists() else {}
+    config = (
+        read_yaml(root / ".ea" / "project_config.yml")
+        if (root / ".ea" / "project_config.yml").exists()
+        else {}
+    )
     literature_config = config.get("literature") or {}
     zotero_config = config.get("zotero") or {}
     browser_config = config.get("browser_assist") or {}
@@ -199,8 +233,15 @@ def setup_literature_preflight(
         Path("/Applications/Zotero.app"),
         Path.home() / "Applications" / "Zotero.app",
     ]
-    chrome_available = any(path.exists() for path in chrome_candidates) or shutil.which("google-chrome") is not None or shutil.which("chrome") is not None
-    zotero_available = any(path.exists() for path in zotero_candidates) or shutil.which("zotero") is not None
+    chrome_available = (
+        any(path.exists() for path in chrome_candidates)
+        or shutil.which("google-chrome") is not None
+        or shutil.which("chrome") is not None
+    )
+    zotero_available = (
+        any(path.exists() for path in zotero_candidates)
+        or shutil.which("zotero") is not None
+    )
     cache_root = literature_config.get("cache_root")
     cache_path = Path(cache_root).expanduser() if cache_root else root / "literature"
     cache_writable = cache_path.exists() and cache_path.is_dir()
@@ -208,12 +249,16 @@ def setup_literature_preflight(
     auto_done = [
         {
             "code": "project_config_checked",
-            "message": "已检查项目配置。" if lang == "zh" else "Project configuration checked.",
+            "message": "已检查项目配置。"
+            if lang == "zh"
+            else "Project configuration checked.",
             "status": "pass" if config else "warning",
         },
         {
             "code": "literature_cache_path_checked",
-            "message": f"文献缓存/状态路径可写性：{cache_path}" if lang == "zh" else f"Literature cache/status path checked: {cache_path}",
+            "message": f"文献缓存/状态路径可写性：{cache_path}"
+            if lang == "zh"
+            else f"Literature cache/status path checked: {cache_path}",
             "status": "pass" if cache_writable else "warning",
         },
     ]
@@ -250,7 +295,9 @@ def setup_literature_preflight(
         manual.append(
             {
                 "code": "browser_name_missing",
-                "message": "浏览器辅助已启用但未记录浏览器名称。" if lang == "zh" else "Browser assistance is enabled but no browser name is recorded.",
+                "message": "浏览器辅助已启用但未记录浏览器名称。"
+                if lang == "zh"
+                else "Browser assistance is enabled but no browser name is recorded.",
             }
         )
     if config.get("institution_access", {}).get("enabled"):
@@ -346,7 +393,9 @@ def generate_literature_keywords(
     experiment_type: str,
     extra_keywords: list[str] | None = None,
 ) -> dict[str, list[str]]:
-    extra_phrases = _unique([str(value).strip() for value in (extra_keywords or []) if str(value).strip()])
+    extra_phrases = _unique(
+        [str(value).strip() for value in (extra_keywords or []) if str(value).strip()]
+    )
     exact_terms = _unique(
         [
             material_system.strip(),
@@ -358,11 +407,23 @@ def generate_literature_keywords(
     )
     text = " ".join(exact_terms)
     method_terms = []
-    for method in ["raman", "photoluminescence", "pl", "xrd", "ftir", "sem", "tem", "afm", "cvd"]:
+    for method in [
+        "raman",
+        "photoluminescence",
+        "pl",
+        "xrd",
+        "ftir",
+        "sem",
+        "tem",
+        "afm",
+        "cvd",
+    ]:
         if method in text.lower():
             method_terms.append(method)
     material_tokens = _unique(_tokenize(material_system))
-    topic_tokens = _unique(_tokenize(f"{project_name} {research_direction} {experiment_type}"))
+    topic_tokens = _unique(
+        _tokenize(f"{project_name} {research_direction} {experiment_type}")
+    )
     return {
         "exact_terms": exact_terms,
         "confirmed_phrases": _unique([material_system.strip(), *extra_phrases]),
@@ -377,18 +438,28 @@ def generate_literature_keywords(
 
 
 def build_search_queries(keywords: dict[str, list[str]]) -> list[dict[str, Any]]:
-    material_phrases = keywords.get("material_phrases") or keywords.get("material_terms") or ["material"]
+    material_phrases = (
+        keywords.get("material_phrases")
+        or keywords.get("material_terms")
+        or ["material"]
+    )
     confirmed_phrases = keywords.get("confirmed_phrases") or material_phrases
     application_phrases = keywords.get("application_phrases") or []
     methods = keywords.get("method_terms") or ["characterization"]
     topics = keywords.get("topic_terms") or []
-    immutable_clauses = _unique([phrase.strip() for phrase in confirmed_phrases if phrase.strip()])
-    rendered_clauses = [f'"{phrase}"' if " " in phrase else phrase for phrase in immutable_clauses]
+    immutable_clauses = _unique(
+        [phrase.strip() for phrase in confirmed_phrases if phrase.strip()]
+    )
+    rendered_clauses = [
+        f'"{phrase}"' if " " in phrase else phrase for phrase in immutable_clauses
+    ]
     base_query = " ".join(rendered_clauses) or "material"
     provenance = [
         {
             "phrase": phrase,
-            "source": "material_system" if phrase in material_phrases else "user_confirmed_extra_keyword",
+            "source": "material_system"
+            if phrase in material_phrases
+            else "user_confirmed_extra_keyword",
             "immutable": True,
         }
         for phrase in immutable_clauses
@@ -409,7 +480,11 @@ def build_search_queries(keywords: dict[str, list[str]]) -> list[dict[str, Any]]
         }
 
     queries = [
-        record("q-core-review", "review synthesis characterization properties", "broad project background and review coverage")
+        record(
+            "q-core-review",
+            "review synthesis characterization properties",
+            "broad project background and review coverage",
+        )
     ]
     for method in methods[:6]:
         queries.append(
@@ -454,7 +529,9 @@ def _project_relative(root: Path, path: Path) -> str:
 
 
 def _compact_dict(data: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in data.items() if value not in (None, "", [], {})}
+    return {
+        key: value for key, value in data.items() if value not in (None, "", [], {})
+    }
 
 
 def _local_yaml_or_json(path: Path) -> dict[str, Any]:
@@ -503,14 +580,24 @@ def _write_csv_rows(path: Path, headers: list[str], rows: list[dict[str, Any]]) 
         writer.writerows(rows)
 
 
-def _estimate_confirmation(scope: ProjectScope, top_n: int | tuple[int, int], access_mode: AccessMode) -> dict[str, Any]:
+def _estimate_confirmation(
+    scope: ProjectScope, top_n: int | tuple[int, int], access_mode: AccessMode
+) -> dict[str, Any]:
     recommended_max = _recommended_max(top_n)
-    multiplier = 1.0 if access_mode == "index_only" else 1.5 if access_mode == "open_access_only" else 2.2
+    multiplier = (
+        1.0
+        if access_mode == "index_only"
+        else 1.5
+        if access_mode == "open_access_only"
+        else 2.2
+    )
     return {
         "recommended_top_n": top_n,
         "estimated_time_minutes": {
             "search_and_rank": max(10, int(recommended_max * 0.8)),
-            "fulltext_acquisition_after_confirmation": int(recommended_max * multiplier),
+            "fulltext_acquisition_after_confirmation": int(
+                recommended_max * multiplier
+            ),
         },
         "estimated_token_budget": {
             "planning_and_ranking": f"{recommended_max * 200}-{recommended_max * 400}",
@@ -600,7 +687,10 @@ def plan_literature_deployment(
             "sources": SEARCH_SOURCES,
         },
     )
-    _write_csv_header(literature_root / "candidates.csv", RANKING_HEADERS[:7] + ["source", "abstract", "keywords"])
+    _write_csv_header(
+        literature_root / "candidates.csv",
+        RANKING_HEADERS[:9] + ["source", "abstract", "keywords"],
+    )
     _write_csv_header(literature_root / "ranking.csv", RANKING_HEADERS)
     write_yaml(literature_root / "confirmation_request.yml", confirmation)
     search_log = "\n".join(
@@ -695,7 +785,11 @@ def confirm_literature_selection(
     )
     write_yaml(status_path, status)
     selected_path = root / "literature" / "selected_items.yml"
-    selected = read_yaml(selected_path) if selected_path.exists() else {"schema_version": "0.2", "items": []}
+    selected = (
+        read_yaml(selected_path)
+        if selected_path.exists()
+        else {"schema_version": "0.2", "items": []}
+    )
     selected.update(
         {
             "project_id": status.get("project_id"),
@@ -730,13 +824,17 @@ def prepare_literature_acquisition_handoff(
         "ranked_candidates_ready",
         "acquisition_handoff_ready",
     }:
-        raise ValueError("Literature acquisition handoff requires confirmed_awaiting_acquisition status")
+        raise ValueError(
+            "Literature acquisition handoff requires confirmed_awaiting_acquisition status"
+        )
     selected_top_n = status.get("selected_top_n")
     if not selected_top_n:
         raise ValueError("Literature acquisition handoff requires selected_top_n")
 
     project = _project_context(root)
-    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    project_id = str(
+        status.get("project_id") or project.get("project_id", "unknown-project")
+    )
     created_at = created_at or EARecord.now_iso()
     handoff_id = f"lit-handoff-{_timestamp_key(created_at)}"
     handoff_path = literature_root / "acquisition_handoff.yml"
@@ -754,8 +852,12 @@ def prepare_literature_acquisition_handoff(
         "access_mode": status.get("access_mode", "open_access_only"),
         "input_refs": {
             "deployment_status": "literature/deployment_status.yml",
-            "search_queries": status.get("search_queries_ref", "literature/search_queries.yml"),
-            "confirmation_request": status.get("confirmation_request_ref", "literature/confirmation_request.yml"),
+            "search_queries": status.get(
+                "search_queries_ref", "literature/search_queries.yml"
+            ),
+            "confirmation_request": status.get(
+                "confirmation_request_ref", "literature/confirmation_request.yml"
+            ),
             "candidate_table": "literature/candidates.csv",
             "ranking_table": "literature/ranking.csv",
             "selected_items": "literature/selected_items.yml",
@@ -793,7 +895,7 @@ def prepare_literature_acquisition_handoff(
             f"- access_mode: `{handoff['access_mode']}`",
             f"- handoff_mode: `{handoff_mode}`",
             "",
-            "Use Experimental Assistant v0.9.7 literature workflow references. Work only from the files listed in the handoff YAML.",
+            "Use Experimental Assistant v0.9.8 literature workflow references. Work only from the files listed in the handoff YAML.",
             "Keep the acquisition workflow context separate from experimental analysis work.",
             "",
             "## Required Inputs",
@@ -802,7 +904,10 @@ def prepare_literature_acquisition_handoff(
             "",
             "## Expected Outputs",
             "",
-            *[f"- {key}: `{value}`" for key, value in handoff["expected_output_refs"].items()],
+            *[
+                f"- {key}: `{value}`"
+                for key, value in handoff["expected_output_refs"].items()
+            ],
             "",
             "## Sync Back",
             "",
@@ -847,7 +952,9 @@ def prepare_literature_acquisition_handoff(
     }
 
 
-def _load_acquisition_candidates(root: Path, selected_top_n: int) -> tuple[str, list[dict[str, Any]]]:
+def _load_acquisition_candidates(
+    root: Path, selected_top_n: int
+) -> tuple[str, list[dict[str, Any]]]:
     selected_path = root / "literature" / "selected_items.yml"
     selected = read_yaml(selected_path) if selected_path.exists() else {}
     selected_items = list(selected.get("items") or [])
@@ -855,12 +962,19 @@ def _load_acquisition_candidates(root: Path, selected_top_n: int) -> tuple[str, 
         return "selected_items", selected_items[:selected_top_n]
 
     ranking_rows = _read_csv_rows(root / "literature" / "ranking.csv")
-    ranked = [row for row in ranking_rows if row.get("title") or row.get("doi") or row.get("url")]
+    ranked = [
+        row
+        for row in ranking_rows
+        if row.get("title") or row.get("doi") or row.get("url")
+    ]
     return "ranking_table", ranked[:selected_top_n]
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    content = "".join(json.dumps(_compact_dict(row), ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    content = "".join(
+        json.dumps(_compact_dict(row), ensure_ascii=False, sort_keys=True) + "\n"
+        for row in rows
+    )
     atomic_write_text(path, content)
 
 
@@ -877,7 +991,9 @@ def _acquisition_identity(candidate: dict[str, Any]) -> str:
     return f"title:{title}" if title else ""
 
 
-def _deduplicate_acquisition_targets(candidates: list[dict[str, Any]], *, project_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _deduplicate_acquisition_targets(
+    candidates: list[dict[str, Any]], *, project_id: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     targets: list[dict[str, Any]] = []
     duplicates: list[dict[str, Any]] = []
     seen: dict[str, dict[str, Any]] = {}
@@ -887,7 +1003,10 @@ def _deduplicate_acquisition_targets(candidates: list[dict[str, Any]], *, projec
             parent = seen[identity]
             duplicate_id = candidate.get("candidate_id") or candidate.get("id")
             parent.setdefault("duplicate_source_candidate_ids", [])
-            if duplicate_id and duplicate_id not in parent["duplicate_source_candidate_ids"]:
+            if (
+                duplicate_id
+                and duplicate_id not in parent["duplicate_source_candidate_ids"]
+            ):
                 parent["duplicate_source_candidate_ids"].append(duplicate_id)
             duplicates.append(
                 {
@@ -898,16 +1017,25 @@ def _deduplicate_acquisition_targets(candidates: list[dict[str, Any]], *, projec
                 }
             )
             continue
-        target = _target_from_candidate(candidate, index=len(targets) + 1, project_id=project_id)
+        target = _target_from_candidate(
+            candidate, index=len(targets) + 1, project_id=project_id
+        )
         targets.append(target)
         if identity:
             seen[identity] = target
     return targets, duplicates
 
 
-def _target_from_candidate(candidate: dict[str, Any], *, index: int, project_id: str) -> dict[str, Any]:
-    candidate_id = candidate.get("candidate_id") or candidate.get("id") or f"lit-target-{index:03d}"
+def _target_from_candidate(
+    candidate: dict[str, Any], *, index: int, project_id: str
+) -> dict[str, Any]:
+    candidate_id = (
+        candidate.get("candidate_id")
+        or candidate.get("id")
+        or f"lit-target-{index:03d}"
+    )
     return {
+        "protocol_version": "2.0",
         "target_id": f"target-{index:03d}",
         "project_id": project_id,
         "source_candidate_id": candidate_id,
@@ -920,6 +1048,24 @@ def _target_from_candidate(candidate: dict[str, Any], *, index: int, project_id:
         "venue": candidate.get("venue"),
         "notes": candidate.get("notes"),
         "tags": candidate.get("tags") or [f"project:{project_id}", "ea-literature"],
+        "canonical": {
+            "doi": _acquisition_identity(candidate).removeprefix("doi:")
+            if _acquisition_identity(candidate).startswith("doi:")
+            else None,
+            "title": candidate.get("title"),
+            "version": candidate.get("version") or candidate.get("version_label"),
+            "document_type": candidate.get("document_type")
+            or candidate.get("type")
+            or "unknown",
+        },
+        "stages": {
+            "discovery": {"status": "completed"},
+            "resolve": {"status": "not_started"},
+            "retrieve": {"status": "not_started"},
+            "import": {"status": "not_started"},
+            "cache": {"status": "not_started"},
+            "reconcile": {"status": "not_started"},
+        },
     }
 
 
@@ -939,17 +1085,25 @@ def prepare_literature_acquisition_request(
         "acquisition_handoff_ready",
         "acquisition_request_ready",
     }:
-        raise ValueError("Literature acquisition request requires confirmed literature selection")
+        raise ValueError(
+            "Literature acquisition request requires confirmed literature selection"
+        )
     selected_top_n = status.get("selected_top_n")
     if not selected_top_n:
         raise ValueError("Literature acquisition request requires selected_top_n")
 
     created_at = created_at or EARecord.now_iso()
     project = _project_context(root)
-    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    project_id = str(
+        status.get("project_id") or project.get("project_id", "unknown-project")
+    )
     request_id = f"lit-acq-{_timestamp_key(created_at)}"
     query_rows = []
-    query_data = read_yaml(literature_root / "search_queries.yml") if (literature_root / "search_queries.yml").exists() else {}
+    query_data = (
+        read_yaml(literature_root / "search_queries.yml")
+        if (literature_root / "search_queries.yml").exists()
+        else {}
+    )
     for query in query_data.get("queries") or []:
         query_rows.append(
             {
@@ -961,8 +1115,14 @@ def prepare_literature_acquisition_request(
             }
         )
 
-    candidate_source, candidates = _load_acquisition_candidates(root, int(selected_top_n))
-    targets, duplicate_targets = _deduplicate_acquisition_targets(candidates, project_id=project_id)
+    candidate_source, candidates = _load_acquisition_candidates(
+        root, int(selected_top_n)
+    )
+    targets, duplicate_targets = _deduplicate_acquisition_targets(
+        candidates, project_id=project_id
+    )
+    for target in targets:
+        target["task_id"] = request_id
     request_path = literature_root / "acquisition_request.yml"
     query_manifest_path = literature_root / "zotero_codex_queries.jsonl"
     target_manifest_path = literature_root / "zotero_codex_targets.jsonl"
@@ -970,9 +1130,12 @@ def prepare_literature_acquisition_request(
     _write_jsonl(query_manifest_path, query_rows)
     _write_jsonl(target_manifest_path, targets)
 
-    target_status = "ready_for_batch_acquisition" if targets else "awaiting_search_results"
+    target_status = (
+        "ready_for_batch_acquisition" if targets else "awaiting_search_results"
+    )
     request = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
+        "protocol_version": "2.0",
         "request_id": request_id,
         "project_id": project_id,
         "created_at": created_at,
@@ -989,6 +1152,8 @@ def prepare_literature_acquisition_request(
         "target_manifest_ref": _project_relative(root, target_manifest_path),
         "batch_status_ref": _project_relative(root, batch_status_path),
         "zotero_codex_contract": {
+            "protocol_version": "2.0",
+            "ea_import_compatibility": ["1.0", "2.0", "zotero-codex-batch/v1"],
             "run_inside_skill": "zotero-codex-literature",
             "doctor_command": "python3 scripts/literature_doctor.py --json",
             "batch_acquire_command": (
@@ -1133,15 +1298,25 @@ def prepare_zotero_codex_acquisition_bridge(
     status = read_yaml(status_path)
     created_at = created_at or EARecord.now_iso()
     project = _project_context(root)
-    project_id = str(request.get("project_id") or status.get("project_id") or project.get("project_id", "unknown-project"))
+    project_id = str(
+        request.get("project_id")
+        or status.get("project_id")
+        or project.get("project_id", "unknown-project")
+    )
     bridge_id = f"lit-zotero-bridge-{_timestamp_key(created_at)}"
     target_count = _safe_int(request.get("target_count"), 0)
-    access_mode = str(request.get("access_mode") or status.get("access_mode") or "open_access_only")
+    access_mode = str(
+        request.get("access_mode") or status.get("access_mode") or "open_access_only"
+    )
     zotero_config_ref = _optional_path_ref(root, zotero_config)
     cache_root_ref = _optional_path_ref(root, cache_root)
     browser_profile_ref = _optional_path_ref(root, browser_profile)
-    target_manifest_ref = str(request.get("target_manifest_ref") or "literature/zotero_codex_targets.jsonl")
-    batch_status_ref = str(request.get("batch_status_ref") or "literature/zotero_codex_batch_status.json")
+    target_manifest_ref = str(
+        request.get("target_manifest_ref") or "literature/zotero_codex_targets.jsonl"
+    )
+    batch_status_ref = str(
+        request.get("batch_status_ref") or "literature/zotero_codex_batch_status.json"
+    )
     batch_status_md_ref = "literature/zotero_codex_batch_status.md"
     acquisition_manifest_ref = "literature/acquisition_manifest.yml"
     status_update_ref = "literature/acquisition_status_update.yml"
@@ -1253,9 +1428,13 @@ def prepare_zotero_codex_acquisition_bridge(
         "",
     ]
     if required_inputs:
-        runbook_lines.extend(f"- `{item['field']}`: {item['reason']}" for item in required_inputs)
+        runbook_lines.extend(
+            f"- `{item['field']}`: {item['reason']}" for item in required_inputs
+        )
     else:
-        runbook_lines.append("- All bridge settings required before batch acquisition are confirmed.")
+        runbook_lines.append(
+            "- All bridge settings required before batch acquisition are confirmed."
+        )
     runbook_lines.extend(
         [
             "",
@@ -1274,7 +1453,9 @@ def prepare_zotero_codex_acquisition_bridge(
     runbook_path.write_text("\n".join(runbook_lines) + "\n", encoding="utf-8")
     status.update(
         {
-            "status": "zotero_codex_bridge_ready" if bridge_status == "ready_for_zotero_codex_batch" else bridge_status,
+            "status": "zotero_codex_bridge_ready"
+            if bridge_status == "ready_for_zotero_codex_batch"
+            else bridge_status,
             "zotero_codex_bridge_ref": _project_relative(root, bridge_path),
             "zotero_codex_bridge_runbook_ref": _project_relative(root, runbook_path),
             "zotero_codex_settings_request_ref": _project_relative(root, settings_path),
@@ -1301,7 +1482,9 @@ def _quote_cli_value(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-SENSITIVE_ACCESS_DETAIL_RE = re.compile(r"\b(pass(word)?|pwd|token|cookie|session|otp|samlresponse)\b\s*[:=]", re.IGNORECASE)
+SENSITIVE_ACCESS_DETAIL_RE = re.compile(
+    r"\b(pass(word)?|pwd|token|cookie|session|otp|samlresponse)\b\s*[:=]", re.IGNORECASE
+)
 
 
 def _redact_sensitive_access_text(value: str | None) -> tuple[str | None, bool]:
@@ -1338,7 +1521,12 @@ def _institution_access_required_inputs(
         return []
     inputs: list[dict[str, str]] = []
     if not institution_name:
-        inputs.append({"field": "institution_name", "reason": "Name the institution or library access provider the user will use."})
+        inputs.append(
+            {
+                "field": "institution_name",
+                "reason": "Name the institution or library access provider the user will use.",
+            }
+        )
     if not access_method:
         inputs.append(
             {
@@ -1354,7 +1542,12 @@ def _institution_access_required_inputs(
             }
         )
     if not browser_name:
-        inputs.append({"field": "browser_name", "reason": "Confirm the user-managed browser for visible authorization."})
+        inputs.append(
+            {
+                "field": "browser_name",
+                "reason": "Confirm the user-managed browser for visible authorization.",
+            }
+        )
     if not browser_profile_ref:
         inputs.append(
             {
@@ -1395,10 +1588,14 @@ def prepare_institution_access_guidance(
     created_at = created_at or EARecord.now_iso()
     project = _project_context(root)
     status = read_yaml(status_path)
-    project_id = str(status.get("project_id") or project.get("project_id", "unknown-project"))
+    project_id = str(
+        status.get("project_id") or project.get("project_id", "unknown-project")
+    )
     access_mode = str(status.get("access_mode") or "open_access_only")
     access_url, access_url_redacted = _redact_sensitive_access_text(access_url)
-    access_instructions, access_instructions_redacted = _redact_sensitive_access_text(access_instructions)
+    access_instructions, access_instructions_redacted = _redact_sensitive_access_text(
+        access_instructions
+    )
     notes, notes_redacted = _redact_sensitive_access_notes(note)
     browser_profile_ref = _optional_path_ref(root, browser_profile)
     zotero_config_ref = _optional_path_ref(root, zotero_config)
@@ -1416,7 +1613,11 @@ def prepare_institution_access_guidance(
     if access_mode != "user_authenticated":
         guidance_status = "not_required_for_current_access_mode"
     else:
-        guidance_status = "needs_user_settings" if required_inputs else "ready_for_user_managed_authorization"
+        guidance_status = (
+            "needs_user_settings"
+            if required_inputs
+            else "ready_for_user_managed_authorization"
+        )
     guide_id = f"lit-institution-access-{_timestamp_key(created_at)}"
     settings = _compact_dict(
         {
@@ -1431,7 +1632,9 @@ def prepare_institution_access_guidance(
             "project_collection": project_collection,
             "authorization_status": authorization_status,
             "notes": notes,
-            "redaction_notes": ["Sensitive access details were redacted before writing this project artifact."]
+            "redaction_notes": [
+                "Sensitive access details were redacted before writing this project artifact."
+            ]
             if access_url_redacted or access_instructions_redacted or notes_redacted
             else [],
         }
@@ -1447,7 +1650,9 @@ def prepare_institution_access_guidance(
     if cache_root_ref:
         bridge_parts.extend(["--cache-root", cache_root_ref])
     if project_collection:
-        bridge_parts.extend(["--project-collection", _quote_cli_value(project_collection)])
+        bridge_parts.extend(
+            ["--project-collection", _quote_cli_value(project_collection)]
+        )
     if browser_name or browser_profile_ref:
         bridge_parts.append("--enable-browser-assist")
     if browser_name:
@@ -1455,7 +1660,9 @@ def prepare_institution_access_guidance(
     if browser_profile_ref:
         bridge_parts.extend(["--browser-profile", browser_profile_ref])
     if institution_access_summary:
-        bridge_parts.extend(["--institution-access", _quote_cli_value(institution_access_summary)])
+        bridge_parts.extend(
+            ["--institution-access", _quote_cli_value(institution_access_summary)]
+        )
 
     safe_commands = {
         "prepare_zotero_bridge": " ".join(bridge_parts),
@@ -1489,7 +1696,10 @@ def prepare_institution_access_guidance(
         "access_mode": access_mode,
         "settings": settings,
         "required_user_inputs": required_inputs,
-        "questions_for_user": [{"field": item["field"], "question": item["reason"]} for item in required_inputs],
+        "questions_for_user": [
+            {"field": item["field"], "question": item["reason"]}
+            for item in required_inputs
+        ],
         "user_actions": user_actions,
         "safe_commands": safe_commands,
         "boundaries": boundaries,
@@ -1513,9 +1723,13 @@ def prepare_institution_access_guidance(
         "",
     ]
     if required_inputs:
-        runbook_lines.extend(f"- `{item['field']}`: {item['reason']}" for item in required_inputs)
+        runbook_lines.extend(
+            f"- `{item['field']}`: {item['reason']}" for item in required_inputs
+        )
     else:
-        runbook_lines.append("- No missing institution-access settings for the current access mode.")
+        runbook_lines.append(
+            "- No missing institution-access settings for the current access mode."
+        )
     runbook_lines.extend(
         [
             "",
@@ -1537,7 +1751,9 @@ def prepare_institution_access_guidance(
     status.update(
         {
             "institution_access_guidance_ref": _project_relative(root, guidance_path),
-            "institution_access_guidance_runbook_ref": _project_relative(root, runbook_path),
+            "institution_access_guidance_runbook_ref": _project_relative(
+                root, runbook_path
+            ),
             "institution_access_guidance_status": guidance_status,
             "summary_for_origin_thread": (
                 f"Institution access guidance prepared with status {guidance_status}. "
@@ -1572,7 +1788,13 @@ ZOTERO_CODEX_SUCCESS_STATUSES = {
     "imported",
     "ingested",
 }
-ZOTERO_CODEX_CACHE_STATUSES = {"cached", "reused-cache", "reused_cache", "cache-ok", "cache_ok"}
+ZOTERO_CODEX_CACHE_STATUSES = {
+    "cached",
+    "reused-cache",
+    "reused_cache",
+    "cache-ok",
+    "cache_ok",
+}
 ZOTERO_CODEX_LOGIN_STATUSES = {
     "needs-login",
     "needs_login",
@@ -1614,13 +1836,17 @@ def _zotero_codex_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _zotero_codex_item_status(item: dict[str, Any]) -> str:
-    return _as_text(
-        item.get("status")
-        or item.get("acquisition_status")
-        or item.get("result_status")
-        or item.get("outcome")
-        or item.get("state")
-    ).strip().lower()
+    return (
+        _as_text(
+            item.get("status")
+            or item.get("acquisition_status")
+            or item.get("result_status")
+            or item.get("outcome")
+            or item.get("state")
+        )
+        .strip()
+        .lower()
+    )
 
 
 def _zotero_codex_item_ref(item: dict[str, Any]) -> dict[str, Any]:
@@ -1631,7 +1857,9 @@ def _zotero_codex_item_ref(item: dict[str, Any]) -> dict[str, Any]:
             "title": item.get("title"),
             "doi": item.get("doi"),
             "url": item.get("url"),
-            "status": item.get("status") or item.get("acquisition_status") or item.get("outcome"),
+            "status": item.get("status")
+            or item.get("acquisition_status")
+            or item.get("outcome"),
             "reason": item.get("reason") or item.get("error") or item.get("message"),
             "zotero_item_key": item.get("zotero_item_key") or item.get("item_key"),
             "cache_path": item.get("cache_path") or item.get("cache_dir"),
@@ -1648,21 +1876,39 @@ def _sidecar_verification_summary(payload: dict[str, Any]) -> dict[str, Any]:
     return _compact_dict(
         {
             "status": payload.get("status"),
-            "verified_count": payload.get("verified_count") or payload.get("checked_count") or payload.get("count"),
-            "missing_count": len(missing) if isinstance(missing, list) else payload.get("missing_count"),
-            "invalid_count": len(invalid) if isinstance(invalid, list) else payload.get("invalid_count"),
-            "error_count": len(errors) if isinstance(errors, list) else payload.get("error_count"),
+            "verified_count": payload.get("verified_count")
+            or payload.get("checked_count")
+            or payload.get("count"),
+            "missing_count": len(missing)
+            if isinstance(missing, list)
+            else payload.get("missing_count"),
+            "invalid_count": len(invalid)
+            if isinstance(invalid, list)
+            else payload.get("invalid_count"),
+            "error_count": len(errors)
+            if isinstance(errors, list)
+            else payload.get("error_count"),
         }
     )
 
 
-def _status_from_zotero_counts(total: int, success_count: int, login_count: int, blocked_count: int) -> str:
+def _status_from_zotero_counts(
+    total: int, success_count: int, login_count: int, blocked_count: int
+) -> str:
     if total == 0:
         return "acquisition_status_imported_no_targets"
     if blocked_count:
-        return "acquisition_partial_with_blockers" if success_count or login_count else "acquisition_blocked"
+        return (
+            "acquisition_partial_with_blockers"
+            if success_count or login_count
+            else "acquisition_blocked"
+        )
     if login_count:
-        return "acquisition_partial_needs_user_login" if success_count else "acquisition_needs_user_login"
+        return (
+            "acquisition_partial_needs_user_login"
+            if success_count
+            else "acquisition_needs_user_login"
+        )
     if success_count >= total:
         return "acquisition_complete"
     if success_count:
@@ -1683,20 +1929,34 @@ def import_zotero_codex_batch_status(
     literature_root.mkdir(parents=True, exist_ok=True)
     status_path = literature_root / "deployment_status.yml"
     imported_at = imported_at or EARecord.now_iso()
-    batch_status_path = batch_status_path or Path("literature/zotero_codex_batch_status.json")
+    batch_status_path = batch_status_path or Path(
+        "literature/zotero_codex_batch_status.json"
+    )
     resolved_batch_status = _resolve_project_path(root, batch_status_path)
     batch_payload = _load_manifest(resolved_batch_status)
     if not isinstance(batch_payload, dict):
         raise ValueError("Zotero-Codex batch status must be a JSON/YAML object")
     project_status = read_yaml(status_path) if status_path.exists() else {}
-    project_id = str(project_status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
+    project_id = str(
+        project_status.get("project_id")
+        or _project_context(root).get("project_id", "unknown-project")
+    )
     handoff_state = normalize_acquisition_handoff(batch_payload, updated_at=imported_at)
     handoff_targets = handoff_state["targets"]
-    success_items = [item for item in handoff_targets if item["status"] in READY_STATUSES]
+    success_items = [
+        item for item in handoff_targets if item["status"] in READY_STATUSES
+    ]
     login_items = [item for item in handoff_targets if item["status"] == "needs_login"]
-    blocked_items = [item for item in handoff_targets if item["status"] not in READY_STATUSES | {"needs_login"}]
+    blocked_items = [
+        item
+        for item in handoff_targets
+        if item["status"] not in READY_STATUSES | {"needs_login"}
+    ]
     downloaded_fulltext = len(success_items)
-    cached_fulltext = sum(item["status"] == "cache_verified" or bool(item.get("cache_dir")) for item in success_items)
+    cached_fulltext = sum(
+        item["status"] == "cache_verified" or bool(item.get("cache_dir"))
+        for item in success_items
+    )
 
     sidecar_payload: dict[str, Any] = {}
     sidecar_ref = None
@@ -1721,8 +1981,13 @@ def import_zotero_codex_batch_status(
         resolved_markdown = _resolve_project_path(root, status_markdown_path)
         status_markdown_ref = _project_relative(root, resolved_markdown)
 
-    total = _safe_int(batch_payload.get("target_count") or batch_payload.get("item_count"), len(handoff_targets))
-    status_value = _status_from_zotero_counts(total, len(success_items), len(login_items), len(blocked_items))
+    total = _safe_int(
+        batch_payload.get("target_count") or batch_payload.get("item_count"),
+        len(handoff_targets),
+    )
+    status_value = _status_from_zotero_counts(
+        total, len(success_items), len(login_items), len(blocked_items)
+    )
     summary = (
         f"Zotero-Codex status import saw {total} target(s): "
         f"{downloaded_fulltext} downloaded/reused PDF item(s), {cached_fulltext} cached full-text item(s), "
@@ -1767,8 +2032,12 @@ def import_zotero_codex_batch_status(
     update = {
         "schema_version": "0.2",
         "status": status_value,
-        "candidate_count": batch_payload.get("candidate_count") or project_status.get("candidate_count") or total,
-        "deduped_count": batch_payload.get("deduped_count") or project_status.get("deduped_count") or total,
+        "candidate_count": batch_payload.get("candidate_count")
+        or project_status.get("candidate_count")
+        or total,
+        "deduped_count": batch_payload.get("deduped_count")
+        or project_status.get("deduped_count")
+        or total,
         "downloaded_fulltext": downloaded_fulltext,
         "cached_fulltext": cached_fulltext,
         "needs_user_login": login_items,
@@ -1783,7 +2052,9 @@ def import_zotero_codex_batch_status(
         "sidecar_verification": status_import["sidecar_verification"],
     }
     write_yaml(external_state_path, handoff_state)
-    atomic_write_text(compact_status_path, render_compact_status_markdown(handoff_state))
+    atomic_write_text(
+        compact_status_path, render_compact_status_markdown(handoff_state)
+    )
     write_yaml(status_import_path, status_import)
     write_yaml(update_path, update)
     sync_result = None
@@ -1823,17 +2094,22 @@ def _standard_literature_refs(root: Path) -> dict[str, Path]:
         "public_search_state": literature_root / "public_search_state.yml",
         "ranking": literature_root / "ranking.csv",
         "acquisition_request": literature_root / "acquisition_request.yml",
-        "institution_access_guidance": literature_root / "institution_access_guidance.yml",
+        "institution_access_guidance": literature_root
+        / "institution_access_guidance.yml",
         "zotero_codex_bridge": literature_root / "zotero_codex_bridge.yml",
-        "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
-        "external_acquisition_state": literature_root / "external_acquisition_state.yml",
+        "zotero_codex_status_import": literature_root
+        / "zotero_codex_status_import.yml",
+        "external_acquisition_state": literature_root
+        / "external_acquisition_state.yml",
         "acquisition_status_compact": literature_root / "acquisition_status_compact.md",
         "acquisition_manifest": literature_root / "acquisition_manifest.yml",
         "library_manifest": literature_root / "library_manifest.yml",
         "cache_index": literature_root / "cache_index.yml",
         "reference_index": literature_root / "references" / "index.yml",
-        "acquisition_reconciliation": literature_root / "acquisition_reconciliation.yml",
-        "acquisition_reconciliation_markdown": literature_root / "acquisition_reconciliation.md",
+        "acquisition_reconciliation": literature_root
+        / "acquisition_reconciliation.yml",
+        "acquisition_reconciliation_markdown": literature_root
+        / "acquisition_reconciliation.md",
     }
 
 
@@ -1910,7 +2186,13 @@ def _literature_acceptance_markdown(checklist: dict[str, Any]) -> str:
         "",
     ]
     summary = checklist.get("summary", {})
-    for key in ["ready", "needs_user_action", "blocked", "not_applicable", "total_steps"]:
+    for key in [
+        "ready",
+        "needs_user_action",
+        "blocked",
+        "not_applicable",
+        "total_steps",
+    ]:
         lines.append(f"- {key}: {summary.get(key, 0)}")
     lines.extend(["", "## Steps", ""])
     for step in checklist.get("steps", []):
@@ -1924,7 +2206,9 @@ def _literature_acceptance_markdown(checklist: dict[str, Any]) -> str:
         if step.get("question_for_user"):
             lines.append(f"- question_for_user: {step['question_for_user']}")
         if step.get("details"):
-            lines.append(f"- details: `{json.dumps(step['details'], ensure_ascii=False, sort_keys=True)}`")
+            lines.append(
+                f"- details: `{json.dumps(step['details'], ensure_ascii=False, sort_keys=True)}`"
+            )
         lines.append("")
     if checklist.get("questions_for_user"):
         lines.extend(["## Questions For User", ""])
@@ -1969,7 +2253,10 @@ def prepare_literature_acceptance_checklist(
                 title="Literature status initialized",
                 status="ready",
                 evidence_refs=[_project_relative(root, paths["deployment_status"])],
-                details={"deployment_status": status.get("status"), "access_mode": access_mode},
+                details={
+                    "deployment_status": status.get("status"),
+                    "access_mode": access_mode,
+                },
             )
         )
     else:
@@ -1986,33 +2273,51 @@ def prepare_literature_acceptance_checklist(
             )
         )
 
-    query_count = len((_local_yaml_or_json(paths["search_queries"]).get("queries") or []))
-    search_plan_ready = paths["search_queries"].exists() and paths["confirmation_request"].exists()
+    query_count = len(
+        (_local_yaml_or_json(paths["search_queries"]).get("queries") or [])
+    )
+    search_plan_ready = (
+        paths["search_queries"].exists() and paths["confirmation_request"].exists()
+    )
     steps.append(
         _checklist_step(
             step_id="search_plan",
             title="Search plan and confirmation package",
             status="ready" if search_plan_ready else "needs_user_action",
-            evidence_refs=_existing_refs(root, [paths["search_queries"], paths["confirmation_request"]]),
-            details={"query_count": query_count, "recommended_top_n": status.get("recommended_top_n")},
-            next_action=None if search_plan_ready else "Run `ea literature plan` with a user-confirmed scope and access mode.",
+            evidence_refs=_existing_refs(
+                root, [paths["search_queries"], paths["confirmation_request"]]
+            ),
+            details={
+                "query_count": query_count,
+                "recommended_top_n": status.get("recommended_top_n"),
+            },
+            next_action=None
+            if search_plan_ready
+            else "Run `ea literature plan` with a user-confirmed scope and access mode.",
         )
     )
 
     selection_ready = selected_count > 0 and bool(status.get("selected_top_n"))
     if not selection_ready:
-        questions_for_user.append("Which top N literature candidates should be used for this project?")
+        questions_for_user.append(
+            "Which top N literature candidates should be used for this project?"
+        )
     steps.append(
         _checklist_step(
             step_id="selection_confirmation",
             title="Literature selection confirmed",
             status="ready" if selection_ready else "needs_user_action",
             evidence_refs=_existing_refs(root, [paths["selected_items"]]),
-            details={"selected_top_n": status.get("selected_top_n"), "selected_item_count": selected_count},
+            details={
+                "selected_top_n": status.get("selected_top_n"),
+                "selected_item_count": selected_count,
+            },
             next_action=None
             if selection_ready
             else "Run `ea literature confirm` after the user reviews the recommended or ranked candidates.",
-            question_for_user=None if selection_ready else "Which top N literature candidates should be used for this project?",
+            question_for_user=None
+            if selection_ready
+            else "Which top N literature candidates should be used for this project?",
         )
     )
 
@@ -2021,7 +2326,12 @@ def prepare_literature_acceptance_checklist(
     discovery_ready = public_candidate_count > 0 or ranking_row_count > 0
     discovery_refs = _existing_refs(
         root,
-        [paths["public_search_candidates"], paths["search_coverage"], paths["public_search_state"], paths["ranking"]],
+        [
+            paths["public_search_candidates"],
+            paths["search_coverage"],
+            paths["public_search_state"],
+            paths["ranking"],
+        ],
     )
     steps.append(
         _checklist_step(
@@ -2041,14 +2351,21 @@ def prepare_literature_acceptance_checklist(
     )
 
     if source_manifest_refs or source_preflight_refs:
-        source_status = "ready" if source_manifest_refs and source_preflight_refs else "needs_user_action"
+        source_status = (
+            "ready"
+            if source_manifest_refs and source_preflight_refs
+            else "needs_user_action"
+        )
         steps.append(
             _checklist_step(
                 step_id="source_candidate_preflight",
                 title="FTIR/UV-Vis/XPS source-candidate manifests and preflight",
                 status=source_status,
                 evidence_refs=source_manifest_refs + source_preflight_refs,
-                details={"manifest_count": len(source_manifest_refs), "preflight_count": len(source_preflight_refs)},
+                details={
+                    "manifest_count": len(source_manifest_refs),
+                    "preflight_count": len(source_preflight_refs),
+                },
                 next_action=None
                 if source_status == "ready"
                 else "Run `ea literature preflight-source-candidates` for each confirmed source-candidate manifest before using source-packet builders.",
@@ -2071,14 +2388,18 @@ def prepare_literature_acceptance_checklist(
             title="Acquisition request and target manifests",
             status="ready" if acquisition_refs else "needs_user_action",
             evidence_refs=acquisition_refs,
-            next_action=None if acquisition_refs else "Run `ea literature acquisition-request` after selection is confirmed.",
+            next_action=None
+            if acquisition_refs
+            else "Run `ea literature acquisition-request` after selection is confirmed.",
         )
     )
 
     institution_refs = _existing_refs(root, [paths["institution_access_guidance"]])
     if access_mode == "user_authenticated":
         if not institution_refs:
-            questions_for_user.append("What lawful user-managed institution access route should be used?")
+            questions_for_user.append(
+                "What lawful user-managed institution access route should be used?"
+            )
         institution_status = "ready" if institution_refs else "needs_user_action"
     else:
         institution_status = "not_applicable"
@@ -2101,11 +2422,15 @@ def prepare_literature_acceptance_checklist(
             title="Dedicated Zotero-Codex bridge runbook",
             status="ready" if bridge_refs else "needs_user_action",
             evidence_refs=bridge_refs,
-            next_action=None if bridge_refs else "Run `ea literature zotero-bridge` when the user wants dedicated full-text acquisition.",
+            next_action=None
+            if bridge_refs
+            else "Run `ea literature zotero-bridge` when the user wants dedicated full-text acquisition.",
         )
     )
 
-    import_refs = _existing_refs(root, [paths["zotero_codex_status_import"], paths["acquisition_manifest"]])
+    import_refs = _existing_refs(
+        root, [paths["zotero_codex_status_import"], paths["acquisition_manifest"]]
+    )
     steps.append(
         _checklist_step(
             step_id="acquisition_status_import",
@@ -2120,15 +2445,23 @@ def prepare_literature_acceptance_checklist(
 
     library = _local_yaml_or_json(paths["library_manifest"])
     cache = _local_yaml_or_json(paths["cache_index"])
-    library_refs = _existing_refs(root, [paths["library_manifest"], paths["cache_index"], paths["reference_index"]])
-    library_ready = bool(library_refs and (library.get("item_count") or library.get("items")))
+    library_refs = _existing_refs(
+        root,
+        [paths["library_manifest"], paths["cache_index"], paths["reference_index"]],
+    )
+    library_ready = bool(
+        library_refs and (library.get("item_count") or library.get("items"))
+    )
     steps.append(
         _checklist_step(
             step_id="library_reference_state",
             title="Library/cache/reference state",
             status="ready" if library_ready else "needs_user_action",
             evidence_refs=library_refs,
-            details={"library_item_count": library.get("item_count"), "cached_count": cache.get("cached_count")},
+            details={
+                "library_item_count": library.get("item_count"),
+                "cached_count": cache.get("cached_count"),
+            },
             next_action=None
             if library_ready
             else "Import an acquisition manifest or register references before citing literature-supported claims.",
@@ -2136,8 +2469,16 @@ def prepare_literature_acceptance_checklist(
     )
 
     reconciliation = _local_yaml_or_json(paths["acquisition_reconciliation"])
-    reconciliation_refs = _existing_refs(root, [paths["acquisition_reconciliation"], paths["acquisition_reconciliation_markdown"]])
-    reconciliation_ready = bool(reconciliation_refs and reconciliation.get("status") in {"pass", "warnings"})
+    reconciliation_refs = _existing_refs(
+        root,
+        [
+            paths["acquisition_reconciliation"],
+            paths["acquisition_reconciliation_markdown"],
+        ],
+    )
+    reconciliation_ready = bool(
+        reconciliation_refs and reconciliation.get("status") in {"pass", "warnings"}
+    )
     steps.append(
         _checklist_step(
             step_id="reconciliation",
@@ -2168,12 +2509,22 @@ def prepare_literature_acceptance_checklist(
 
     counts = {
         "ready": sum(1 for step in steps if step["status"] == "ready"),
-        "needs_user_action": sum(1 for step in steps if step["status"] == "needs_user_action"),
+        "needs_user_action": sum(
+            1 for step in steps if step["status"] == "needs_user_action"
+        ),
         "blocked": sum(1 for step in steps if step["status"] == "blocked"),
-        "not_applicable": sum(1 for step in steps if step["status"] == "not_applicable"),
+        "not_applicable": sum(
+            1 for step in steps if step["status"] == "not_applicable"
+        ),
         "total_steps": len(steps),
     }
-    checklist_status = "blocked" if counts["blocked"] else "needs_user_action" if counts["needs_user_action"] else "ready"
+    checklist_status = (
+        "blocked"
+        if counts["blocked"]
+        else "needs_user_action"
+        if counts["needs_user_action"]
+        else "ready"
+    )
     checklist = {
         "schema_version": "0.2",
         "checklist_id": f"lit-acceptance-{_timestamp_key(checked_at)}",
@@ -2194,13 +2545,19 @@ def prepare_literature_acceptance_checklist(
         ],
     }
     write_yaml(output_path, checklist)
-    markdown_path.write_text(_literature_acceptance_markdown(checklist), encoding="utf-8")
+    markdown_path.write_text(
+        _literature_acceptance_markdown(checklist), encoding="utf-8"
+    )
     status_path = paths["deployment_status"]
     if status_path.exists():
         status.update(
             {
-                "literature_acceptance_checklist_ref": _project_relative(root, output_path),
-                "literature_acceptance_checklist_markdown_ref": _project_relative(root, markdown_path),
+                "literature_acceptance_checklist_ref": _project_relative(
+                    root, output_path
+                ),
+                "literature_acceptance_checklist_markdown_ref": _project_relative(
+                    root, markdown_path
+                ),
                 "literature_acceptance_status": checklist_status,
                 "last_literature_acceptance_check_at": checked_at,
             }
@@ -2257,8 +2614,18 @@ def _zotero_readiness_markdown(readiness: dict[str, Any]) -> str:
         else:
             for item in values:
                 if isinstance(item, dict):
-                    label = item.get("target_id") or item.get("code") or item.get("status") or "item"
-                    detail = item.get("blocked_reason") or item.get("summary") or item.get("next_action") or "see local state"
+                    label = (
+                        item.get("target_id")
+                        or item.get("code")
+                        or item.get("status")
+                        or "item"
+                    )
+                    detail = (
+                        item.get("blocked_reason")
+                        or item.get("summary")
+                        or item.get("next_action")
+                        or "see local state"
+                    )
                     lines.append(f"- `{label}`: {detail}")
                 else:
                     lines.append(f"- {_markdown_value(item)}")
@@ -2311,7 +2678,9 @@ def _zotero_readiness_status(
     if bridge_status == "awaiting_targets":
         return "needs_acquisition_targets"
     if status_import:
-        if _safe_int(status_import.get("blocked_count"), 0) or _safe_int(status_import.get("needs_user_login_count"), 0):
+        if _safe_int(status_import.get("blocked_count"), 0) or _safe_int(
+            status_import.get("needs_user_login_count"), 0
+        ):
             return "acquisition_attention_required"
         if str(status_import.get("status") or "") == "acquisition_complete":
             if reconciliation.get("status") in {"pass", "warnings"}:
@@ -2354,9 +2723,17 @@ def summarize_zotero_codex_readiness(
     acquisition_manifest = _local_yaml_or_json(paths["acquisition_manifest"])
     reconciliation = _local_yaml_or_json(paths["acquisition_reconciliation"])
     external_state = _local_yaml_or_json(paths["external_acquisition_state"])
-    bridge_settings = bridge.get("settings") if isinstance(bridge.get("settings"), dict) else {}
-    request_contract = request.get("zotero_codex_contract") if isinstance(request.get("zotero_codex_contract"), dict) else {}
-    bridge_commands = bridge.get("commands") if isinstance(bridge.get("commands"), dict) else {}
+    bridge_settings = (
+        bridge.get("settings") if isinstance(bridge.get("settings"), dict) else {}
+    )
+    request_contract = (
+        request.get("zotero_codex_contract")
+        if isinstance(request.get("zotero_codex_contract"), dict)
+        else {}
+    )
+    bridge_commands = (
+        bridge.get("commands") if isinstance(bridge.get("commands"), dict) else {}
+    )
 
     readiness_status = _zotero_readiness_status(
         deployment_status=deployment_status,
@@ -2392,9 +2769,13 @@ def summarize_zotero_codex_readiness(
         ],
         "ready_for_zotero_codex_handoff": [
             "Use the `zotero-codex-literature` skill in a dedicated workflow.",
-            bridge_commands.get("doctor") or request_contract.get("doctor_command") or "python3 scripts/literature_doctor.py --json",
-            bridge_commands.get("batch_acquire") or request_contract.get("batch_acquire_command"),
-            bridge_commands.get("render_status") or request_contract.get("render_status_command"),
+            bridge_commands.get("doctor")
+            or request_contract.get("doctor_command")
+            or "python3 scripts/literature_doctor.py --json",
+            bridge_commands.get("batch_acquire")
+            or request_contract.get("batch_acquire_command"),
+            bridge_commands.get("render_status")
+            or request_contract.get("render_status_command"),
             "After status is produced, run `ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json`.",
         ],
         "acquisition_attention_required": [
@@ -2422,7 +2803,9 @@ def summarize_zotero_codex_readiness(
             "Use lawful login, subscription, or manual PDF handoff paths for the remaining targets.",
         ],
     }
-    next_actions = [item for item in next_actions_by_status.get(readiness_status, []) if item]
+    next_actions = [
+        item for item in next_actions_by_status.get(readiness_status, []) if item
+    ]
     evidence_refs = _existing_refs(
         root,
         [
@@ -2456,10 +2839,28 @@ def summarize_zotero_codex_readiness(
     readiness = {
         "schema_version": "1.0",
         "readiness_id": f"lit-zotero-readiness-{_timestamp_key(checked_at)}",
-        "project_id": str(deployment_status.get("project_id") or request.get("project_id") or bridge.get("project_id") or project_id),
+        "project_id": str(
+            deployment_status.get("project_id")
+            or request.get("project_id")
+            or bridge.get("project_id")
+            or project_id
+        ),
         "checked_at": checked_at,
         "status": readiness_status,
         "companion_skill": "zotero-codex-literature",
+        "protocol": {
+            "writer": request.get("protocol_version") or "2.0",
+            "reader_compatibility": ["1.0", "2.0", "zotero-codex-batch/v1"],
+        },
+        "capability_state": {
+            "app_installation": "configured_or_user_managed" if bridge else "unknown",
+            "data_library": "present"
+            if acquisition_manifest or status_import or external_state
+            else "unknown",
+            "api_connector": "configured"
+            if bridge.get("status") == "ready_for_zotero_codex_batch"
+            else "unknown_or_not_configured",
+        },
         "summary": {
             "target_count": target_count,
             "bridge_status": bridge.get("status"),
@@ -2468,33 +2869,54 @@ def summarize_zotero_codex_readiness(
             "success_count": status_import.get("success_count", 0),
             "needs_user_login_count": status_import.get("needs_user_login_count", 0),
             "blocked_count": status_import.get("blocked_count", 0),
-            "downloaded_fulltext": status_import.get("downloaded_fulltext", deployment_status.get("downloaded_fulltext", 0)),
-            "cached_fulltext": status_import.get("cached_fulltext", deployment_status.get("cached_fulltext", 0)),
+            "downloaded_fulltext": status_import.get(
+                "downloaded_fulltext", deployment_status.get("downloaded_fulltext", 0)
+            ),
+            "cached_fulltext": status_import.get(
+                "cached_fulltext", deployment_status.get("cached_fulltext", 0)
+            ),
             "reconciliation_status": reconciliation.get("status"),
-            "external_cache_used": bool(_safe_int((external_state.get("summary") or {}).get("ready_count"), 0)),
-            "external_ready_count": (external_state.get("summary") or {}).get("ready_count", 0),
+            "external_cache_used": bool(
+                _safe_int((external_state.get("summary") or {}).get("ready_count"), 0)
+            ),
+            "external_ready_count": (external_state.get("summary") or {}).get(
+                "ready_count", 0
+            ),
         },
-        "current_task_blockers": external_state.get("current_task_blockers") or status_import.get("current_task_blockers") or [],
+        "current_task_blockers": external_state.get("current_task_blockers")
+        or status_import.get("current_task_blockers")
+        or [],
         "optional_capabilities": external_state.get("optional_capabilities") or [],
         "stale_global_state": external_state.get("stale_global_state") or [],
         "evidence_refs": evidence_refs,
         "required_user_inputs": bridge.get("required_user_inputs") or [],
         "zotero_codex_contract": _compact_dict(
             {
-                "target_manifest_ref": request.get("target_manifest_ref") or bridge.get("target_manifest_ref"),
-                "batch_status_ref": request.get("batch_status_ref") or bridge.get("expected_outputs", {}).get("batch_status"),
-                "doctor_command": bridge_commands.get("doctor") or request_contract.get("doctor_command"),
-                "batch_acquire_command": bridge_commands.get("batch_acquire") or request_contract.get("batch_acquire_command"),
-                "render_status_command": bridge_commands.get("render_status") or request_contract.get("render_status_command"),
-                "write_project_sidecars_command": bridge_commands.get("write_project_sidecars")
+                "target_manifest_ref": request.get("target_manifest_ref")
+                or bridge.get("target_manifest_ref"),
+                "batch_status_ref": request.get("batch_status_ref")
+                or bridge.get("expected_outputs", {}).get("batch_status"),
+                "doctor_command": bridge_commands.get("doctor")
+                or request_contract.get("doctor_command"),
+                "batch_acquire_command": bridge_commands.get("batch_acquire")
+                or request_contract.get("batch_acquire_command"),
+                "render_status_command": bridge_commands.get("render_status")
+                or request_contract.get("render_status_command"),
+                "write_project_sidecars_command": bridge_commands.get(
+                    "write_project_sidecars"
+                )
                 or request_contract.get("sidecar_command"),
-                "verify_project_sidecars_command": bridge_commands.get("verify_project_sidecars"),
+                "verify_project_sidecars_command": bridge_commands.get(
+                    "verify_project_sidecars"
+                ),
                 "import_zotero_status_command": (
                     "ea literature import-zotero-status /path/to/ea-project "
                     "--batch-status literature/zotero_codex_batch_status.json "
                     "--sidecar-verification literature/zotero_codex_sidecars_verify.json"
                 ),
-                "import_acquisition_manifest_command": bridge_commands.get("import_acquisition_manifest")
+                "import_acquisition_manifest_command": bridge_commands.get(
+                    "import_acquisition_manifest"
+                )
                 or request_contract.get("import_back_command"),
                 "settings": bridge_settings,
             }
@@ -2522,13 +2944,19 @@ def summarize_zotero_codex_readiness(
             deployment_status.update(
                 {
                     "zotero_codex_readiness_ref": _project_relative(root, output_path),
-                    "zotero_codex_readiness_markdown_ref": _project_relative(root, markdown_path),
+                    "zotero_codex_readiness_markdown_ref": _project_relative(
+                        root, markdown_path
+                    ),
                     "zotero_codex_readiness_status": readiness_status,
                     "last_zotero_codex_readiness_check_at": checked_at,
                 }
             )
             write_yaml(status_path, deployment_status)
-    return {"readiness": readiness, "readiness_path": str(output_path) if write_report else None, "markdown_path": str(markdown_path) if write_report else None}
+    return {
+        "readiness": readiness,
+        "readiness_path": str(output_path) if write_report else None,
+        "markdown_path": str(markdown_path) if write_report else None,
+    }
 
 
 def _literature_identifier_keys(item: dict[str, Any]) -> set[str]:
@@ -2578,7 +3006,16 @@ def _reconciliation_finding(
     message: str,
     details: dict[str, Any] | None = None,
 ) -> None:
-    findings.append(_compact_dict({"severity": severity, "code": code, "message": message, "details": details or {}}))
+    findings.append(
+        _compact_dict(
+            {
+                "severity": severity,
+                "code": code,
+                "message": message,
+                "details": details or {},
+            }
+        )
+    )
 
 
 def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]:
@@ -2693,7 +3130,11 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
                 "ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json",
                 *base_commands,
             ],
-            "file_refs": ["literature/acquisition_manifest.yml", "literature/library_manifest.yml", "literature/zotero_codex_status_import.yml"],
+            "file_refs": [
+                "literature/acquisition_manifest.yml",
+                "literature/library_manifest.yml",
+                "literature/zotero_codex_status_import.yml",
+            ],
             "requires_user_confirmation": False,
         },
         "cache_item_missing_from_library_or_status": {
@@ -2716,7 +3157,10 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
                 "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
                 *base_commands,
             ],
-            "file_refs": ["literature/deployment_status.yml", "literature/zotero_codex_status_import.yml"],
+            "file_refs": [
+                "literature/deployment_status.yml",
+                "literature/zotero_codex_status_import.yml",
+            ],
             "requires_user_confirmation": False,
         },
         "deployment_cached_fulltext_mismatch": {
@@ -2727,7 +3171,10 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
                 "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
                 *base_commands,
             ],
-            "file_refs": ["literature/deployment_status.yml", "literature/zotero_codex_status_import.yml"],
+            "file_refs": [
+                "literature/deployment_status.yml",
+                "literature/zotero_codex_status_import.yml",
+            ],
             "requires_user_confirmation": False,
         },
         "deployment_cache_count_differs_from_cache_index": {
@@ -2738,7 +3185,10 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
                 "ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml",
                 *base_commands,
             ],
-            "file_refs": ["literature/deployment_status.yml", "literature/cache_index.yml"],
+            "file_refs": [
+                "literature/deployment_status.yml",
+                "literature/cache_index.yml",
+            ],
             "requires_user_confirmation": True,
             "question_for_user": "Should EA treat deployment_status.yml or cache_index.yml as the authoritative cached-fulltext count?",
         },
@@ -2751,7 +3201,10 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
                 "ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml",
                 *base_commands,
             ],
-            "file_refs": ["literature/origin_thread_sync.yml", "literature/deployment_status.yml"],
+            "file_refs": [
+                "literature/origin_thread_sync.yml",
+                "literature/deployment_status.yml",
+            ],
             "requires_user_confirmation": False,
         }
     suggestion = suggestions.get(
@@ -2764,11 +3217,18 @@ def _reconciliation_repair_suggestion(finding: dict[str, Any]) -> dict[str, Any]
         },
     )
     if expected_ref := details.get("expected_ref"):
-        suggestion = {**suggestion, "file_refs": _unique([*(suggestion.get("file_refs") or []), str(expected_ref)])}
+        suggestion = {
+            **suggestion,
+            "file_refs": _unique(
+                [*(suggestion.get("file_refs") or []), str(expected_ref)]
+            ),
+        }
     return _compact_dict({"finding_code": code, **suggestion, "auto_applied": False})
 
 
-def _reconciliation_repair_actions(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _reconciliation_repair_actions(
+    findings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     actions: dict[str, dict[str, Any]] = {}
     for finding in findings:
         suggestion = finding.get("repair_suggestion")
@@ -2786,14 +3246,25 @@ def _reconciliation_repair_actions(findings: list[dict[str, Any]]) -> list[dict[
                 "requires_user_confirmation": False,
             },
         )
-        action["finding_codes"] = _unique([*action["finding_codes"], _as_text(finding.get("code"))])
-        action["command_hints"] = _unique([*action["command_hints"], *(suggestion.get("command_hints") or [])])
-        action["file_refs"] = _unique([*action["file_refs"], *(suggestion.get("file_refs") or [])])
-        action["requires_user_confirmation"] = bool(action["requires_user_confirmation"] or suggestion.get("requires_user_confirmation"))
+        action["finding_codes"] = _unique(
+            [*action["finding_codes"], _as_text(finding.get("code"))]
+        )
+        action["command_hints"] = _unique(
+            [*action["command_hints"], *(suggestion.get("command_hints") or [])]
+        )
+        action["file_refs"] = _unique(
+            [*action["file_refs"], *(suggestion.get("file_refs") or [])]
+        )
+        action["requires_user_confirmation"] = bool(
+            action["requires_user_confirmation"]
+            or suggestion.get("requires_user_confirmation")
+        )
     return [_compact_dict(action) for action in actions.values()]
 
 
-def _reconciliation_questions_for_user(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _reconciliation_questions_for_user(
+    findings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     questions: dict[str, dict[str, Any]] = {}
     for finding in findings:
         suggestion = finding.get("repair_suggestion")
@@ -2802,9 +3273,15 @@ def _reconciliation_questions_for_user(findings: list[dict[str, Any]]) -> list[d
         question = _as_text(suggestion.get("question_for_user"))
         record = questions.setdefault(
             question,
-            {"question": question, "finding_codes": [], "why_it_matters": "Answer only if this affects the next repair step."},
+            {
+                "question": question,
+                "finding_codes": [],
+                "why_it_matters": "Answer only if this affects the next repair step.",
+            },
         )
-        record["finding_codes"] = _unique([*record["finding_codes"], _as_text(finding.get("code"))])
+        record["finding_codes"] = _unique(
+            [*record["finding_codes"], _as_text(finding.get("code"))]
+        )
     return list(questions.values())
 
 
@@ -2816,7 +3293,14 @@ def _markdown_value(value: Any) -> str:
     if isinstance(value, int | float):
         return str(value)
     if isinstance(value, list):
-        return "; ".join(_markdown_value(item) for item in value if item not in (None, "", [], {})) or "not recorded"
+        return (
+            "; ".join(
+                _markdown_value(item)
+                for item in value
+                if item not in (None, "", [], {})
+            )
+            or "not recorded"
+        )
     if isinstance(value, dict):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     return str(value).replace("\n", " ").strip() or "not recorded"
@@ -2839,12 +3323,36 @@ def _markdown_mapping(mapping: dict[str, Any]) -> list[str]:
 
 
 def _reconciliation_markdown(reconciliation: dict[str, Any]) -> str:
-    summary = reconciliation.get("summary") if isinstance(reconciliation.get("summary"), dict) else {}
-    source_refs = reconciliation.get("source_refs") if isinstance(reconciliation.get("source_refs"), dict) else {}
-    findings = reconciliation.get("findings") if isinstance(reconciliation.get("findings"), list) else []
-    repair_actions = reconciliation.get("repair_actions") if isinstance(reconciliation.get("repair_actions"), list) else []
-    questions = reconciliation.get("questions_for_user") if isinstance(reconciliation.get("questions_for_user"), list) else []
-    boundaries = reconciliation.get("boundaries") if isinstance(reconciliation.get("boundaries"), list) else []
+    summary = (
+        reconciliation.get("summary")
+        if isinstance(reconciliation.get("summary"), dict)
+        else {}
+    )
+    source_refs = (
+        reconciliation.get("source_refs")
+        if isinstance(reconciliation.get("source_refs"), dict)
+        else {}
+    )
+    findings = (
+        reconciliation.get("findings")
+        if isinstance(reconciliation.get("findings"), list)
+        else []
+    )
+    repair_actions = (
+        reconciliation.get("repair_actions")
+        if isinstance(reconciliation.get("repair_actions"), list)
+        else []
+    )
+    questions = (
+        reconciliation.get("questions_for_user")
+        if isinstance(reconciliation.get("questions_for_user"), list)
+        else []
+    )
+    boundaries = (
+        reconciliation.get("boundaries")
+        if isinstance(reconciliation.get("boundaries"), list)
+        else []
+    )
 
     lines = [
         "# Literature Acquisition Reconciliation Audit",
@@ -2876,8 +3384,16 @@ def _reconciliation_markdown(reconciliation: dict[str, Any]) -> str:
         for index, finding in enumerate(findings, start=1):
             if not isinstance(finding, dict):
                 continue
-            suggestion = finding.get("repair_suggestion") if isinstance(finding.get("repair_suggestion"), dict) else {}
-            details = finding.get("details") if isinstance(finding.get("details"), dict) else {}
+            suggestion = (
+                finding.get("repair_suggestion")
+                if isinstance(finding.get("repair_suggestion"), dict)
+                else {}
+            )
+            details = (
+                finding.get("details")
+                if isinstance(finding.get("details"), dict)
+                else {}
+            )
             lines.extend(
                 [
                     f"### F{index:03d} `{_markdown_value(finding.get('code'))}` [{_markdown_value(finding.get('severity'))}]",
@@ -2895,7 +3411,9 @@ def _reconciliation_markdown(reconciliation: dict[str, Any]) -> str:
                     f"- requires_user_confirmation: {_markdown_value(suggestion.get('requires_user_confirmation'))}",
                     f"- auto_applied: {_markdown_value(suggestion.get('auto_applied'))}",
                     "- command_hints:",
-                    *_markdown_bullets(suggestion.get("command_hints") or [], code=True),
+                    *_markdown_bullets(
+                        suggestion.get("command_hints") or [], code=True
+                    ),
                     "- file_refs:",
                     *_markdown_bullets(suggestion.get("file_refs") or [], code=True),
                     "",
@@ -2949,7 +3467,11 @@ def _reconciliation_markdown(reconciliation: dict[str, Any]) -> str:
             "",
             "## Boundaries",
             "",
-            *(_markdown_bullets(boundaries) if boundaries else ["- This Markdown rendering is local artifact rendering only."]),
+            *(
+                _markdown_bullets(boundaries)
+                if boundaries
+                else ["- This Markdown rendering is local artifact rendering only."]
+            ),
             "- Rendering this Markdown view does not repair records, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, store credentials, or handle institution-login state.",
             "",
         ]
@@ -2963,7 +3485,9 @@ def render_literature_acquisition_reconciliation(
     reconciliation_path: Path | None = None,
 ) -> dict[str, Any]:
     literature_root = root / "literature"
-    reconciliation_path = reconciliation_path or literature_root / "acquisition_reconciliation.yml"
+    reconciliation_path = (
+        reconciliation_path or literature_root / "acquisition_reconciliation.yml"
+    )
     if not reconciliation_path.is_absolute():
         reconciliation_path = root / reconciliation_path
     if not reconciliation_path.exists():
@@ -2971,12 +3495,18 @@ def render_literature_acquisition_reconciliation(
 
     reconciliation = read_yaml(reconciliation_path)
     if not isinstance(reconciliation, dict):
-        raise ValueError(f"Reconciliation artifact must be a mapping: {reconciliation_path}")
+        raise ValueError(
+            f"Reconciliation artifact must be a mapping: {reconciliation_path}"
+        )
 
     markdown_path = literature_root / "acquisition_reconciliation.md"
     yaml_ref = _project_relative(root, reconciliation_path)
     markdown_ref = _project_relative(root, markdown_path)
-    updated_reconciliation = {**reconciliation, "yaml_ref": yaml_ref, "markdown_ref": markdown_ref}
+    updated_reconciliation = {
+        **reconciliation,
+        "yaml_ref": yaml_ref,
+        "markdown_ref": markdown_ref,
+    }
     if updated_reconciliation != reconciliation:
         write_yaml(reconciliation_path, updated_reconciliation)
 
@@ -2992,8 +3522,12 @@ def render_literature_acquisition_reconciliation(
                 {
                     "acquisition_reconciliation_ref": yaml_ref,
                     "acquisition_reconciliation_markdown_ref": markdown_ref,
-                    "acquisition_reconciliation_status": updated_reconciliation.get("status"),
-                    "last_acquisition_reconciliation_at": updated_reconciliation.get("reconciled_at"),
+                    "acquisition_reconciliation_status": updated_reconciliation.get(
+                        "status"
+                    ),
+                    "last_acquisition_reconciliation_at": updated_reconciliation.get(
+                        "reconciled_at"
+                    ),
                 }
             )
         )
@@ -3018,11 +3552,16 @@ def reconcile_literature_acquisition(
     status_path = literature_root / "deployment_status.yml"
     reconciled_at = reconciled_at or EARecord.now_iso()
     status = read_yaml(status_path) if status_path.exists() else {}
-    project_id = str(status.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
+    project_id = str(
+        status.get("project_id")
+        or _project_context(root).get("project_id", "unknown-project")
+    )
     artifact_paths = {
         "acquisition_manifest": literature_root / "acquisition_manifest.yml",
-        "zotero_codex_status_import": literature_root / "zotero_codex_status_import.yml",
-        "external_acquisition_state": literature_root / "external_acquisition_state.yml",
+        "zotero_codex_status_import": literature_root
+        / "zotero_codex_status_import.yml",
+        "external_acquisition_state": literature_root
+        / "external_acquisition_state.yml",
         "library_manifest": literature_root / "library_manifest.yml",
         "cache_index": literature_root / "cache_index.yml",
         "reference_index": literature_root / "references" / "index.yml",
@@ -3036,7 +3575,14 @@ def reconcile_literature_acquisition(
         if path.exists():
             artifacts[name] = _load_manifest(path)
             refs[name] = _project_relative(root, path)
-        elif name in {"acquisition_manifest", "zotero_codex_status_import", "external_acquisition_state", "library_manifest", "cache_index", "reference_index"}:
+        elif name in {
+            "acquisition_manifest",
+            "zotero_codex_status_import",
+            "external_acquisition_state",
+            "library_manifest",
+            "cache_index",
+            "reference_index",
+        }:
             _reconciliation_finding(
                 findings,
                 severity="warning",
@@ -3045,7 +3591,15 @@ def reconcile_literature_acquisition(
                 details={"expected_ref": _project_relative(root, path)},
             )
 
-    if not any(name in artifacts for name in ("acquisition_manifest", "zotero_codex_status_import", "external_acquisition_state", "library_manifest")):
+    if not any(
+        name in artifacts
+        for name in (
+            "acquisition_manifest",
+            "zotero_codex_status_import",
+            "external_acquisition_state",
+            "library_manifest",
+        )
+    ):
         _reconciliation_finding(
             findings,
             severity="error",
@@ -3053,21 +3607,37 @@ def reconcile_literature_acquisition(
             message="No acquisition manifest, external acquisition state, Zotero-Codex status import, or library manifest is available to reconcile.",
         )
 
-    manifest_items = _manifest_items(artifacts.get("acquisition_manifest", {})) if "acquisition_manifest" in artifacts else []
+    manifest_items = (
+        _manifest_items(artifacts.get("acquisition_manifest", {}))
+        if "acquisition_manifest" in artifacts
+        else []
+    )
     library = artifacts.get("library_manifest", {})
-    library_items = [item for item in library.get("items") or [] if isinstance(item, dict)]
+    library_items = [
+        item for item in library.get("items") or [] if isinstance(item, dict)
+    ]
     cache = artifacts.get("cache_index", {})
     cache_items = [item for item in cache.get("items") or [] if isinstance(item, dict)]
-    references = (artifacts.get("reference_index", {}).get("references") or {}) if "reference_index" in artifacts else {}
+    references = (
+        (artifacts.get("reference_index", {}).get("references") or {})
+        if "reference_index" in artifacts
+        else {}
+    )
     status_import = artifacts.get("zotero_codex_status_import", {})
     status_items = _status_import_items(status_import)
     external_state = artifacts.get("external_acquisition_state", {})
     if not status_items:
-        status_items = [item for item in external_state.get("targets") or [] if isinstance(item, dict)]
+        status_items = [
+            item
+            for item in external_state.get("targets") or []
+            if isinstance(item, dict)
+        ]
     origin_sync = artifacts.get("origin_thread_sync", {})
 
     declared_library_count = library.get("item_count")
-    if declared_library_count is not None and _safe_int(declared_library_count, -1) != len(library_items):
+    if declared_library_count is not None and _safe_int(
+        declared_library_count, -1
+    ) != len(library_items):
         _reconciliation_finding(
             findings,
             severity="error",
@@ -3077,7 +3647,10 @@ def reconcile_literature_acquisition(
         )
     declared_cache_count = cache.get("cached_count")
     actual_cache_count = sum(1 for item in cache_items if item.get("cache_path"))
-    if declared_cache_count is not None and _safe_int(declared_cache_count, -1) != actual_cache_count:
+    if (
+        declared_cache_count is not None
+        and _safe_int(declared_cache_count, -1) != actual_cache_count
+    ):
         _reconciliation_finding(
             findings,
             severity="error",
@@ -3095,7 +3668,11 @@ def reconcile_literature_acquisition(
                 severity="error",
                 code="missing_reference_record",
                 message="A library item points to a reference_id missing from literature/references/index.yml.",
-                details={"reference_id": reference_id, "title": item.get("title"), "doi": item.get("doi")},
+                details={
+                    "reference_id": reference_id,
+                    "title": item.get("title"),
+                    "doi": item.get("doi"),
+                },
             )
 
     library_keys = _literature_items_by_key(library_items)
@@ -3120,7 +3697,11 @@ def reconcile_literature_acquisition(
                 severity="error",
                 code="cache_item_missing_from_library_or_status",
                 message="A cache index item is not represented in the library manifest or Zotero-Codex status import.",
-                details={"title": item.get("title"), "doi": item.get("doi"), "cache_path": item.get("cache_path")},
+                details={
+                    "title": item.get("title"),
+                    "doi": item.get("doi"),
+                    "cache_path": item.get("cache_path"),
+                },
             )
 
     if status_import:
@@ -3130,38 +3711,68 @@ def reconcile_literature_acquisition(
         ]:
             imported_value = status_import.get(field)
             deployed_value = status.get(status_field)
-            if imported_value is not None and deployed_value is not None and _safe_int(imported_value, -1) != _safe_int(deployed_value, -1):
+            if (
+                imported_value is not None
+                and deployed_value is not None
+                and _safe_int(imported_value, -1) != _safe_int(deployed_value, -1)
+            ):
                 _reconciliation_finding(
                     findings,
                     severity="error",
                     code=f"deployment_{status_field}_mismatch",
                     message=f"deployment_status.yml {status_field} does not match Zotero-Codex status import.",
-                    details={"status_import": imported_value, "deployment_status": deployed_value},
+                    details={
+                        "status_import": imported_value,
+                        "deployment_status": deployed_value,
+                    },
                 )
-    if cache and status.get("cached_fulltext") is not None and _safe_int(status.get("cached_fulltext"), -1) != actual_cache_count:
+    if (
+        cache
+        and status.get("cached_fulltext") is not None
+        and _safe_int(status.get("cached_fulltext"), -1) != actual_cache_count
+    ):
         _reconciliation_finding(
             findings,
             severity="warning",
             code="deployment_cache_count_differs_from_cache_index",
             message="deployment_status.yml cached_fulltext differs from cache_index.yml cached_count.",
-            details={"deployment_status": status.get("cached_fulltext"), "cache_index": actual_cache_count},
+            details={
+                "deployment_status": status.get("cached_fulltext"),
+                "cache_index": actual_cache_count,
+            },
         )
-    for field in ("downloaded_fulltext", "cached_fulltext", "candidate_count", "deduped_count"):
-        if origin_sync and status.get(field) is not None and origin_sync.get(field) is not None:
-            if _safe_int(status.get(field), -1) != _safe_int(origin_sync.get(field), -1):
+    for field in (
+        "downloaded_fulltext",
+        "cached_fulltext",
+        "candidate_count",
+        "deduped_count",
+    ):
+        if (
+            origin_sync
+            and status.get(field) is not None
+            and origin_sync.get(field) is not None
+        ):
+            if _safe_int(status.get(field), -1) != _safe_int(
+                origin_sync.get(field), -1
+            ):
                 _reconciliation_finding(
                     findings,
                     severity="error",
                     code=f"origin_sync_{field}_mismatch",
                     message=f"origin_thread_sync.yml {field} does not mirror deployment_status.yml.",
-                    details={"deployment_status": status.get(field), "origin_thread_sync": origin_sync.get(field)},
+                    details={
+                        "deployment_status": status.get(field),
+                        "origin_thread_sync": origin_sync.get(field),
+                    },
                 )
 
     for finding in findings:
         finding["repair_suggestion"] = _reconciliation_repair_suggestion(finding)
     error_count = sum(1 for item in findings if item.get("severity") == "error")
     warning_count = sum(1 for item in findings if item.get("severity") == "warning")
-    reconciliation_status = "fail" if error_count else "warnings" if warning_count else "pass"
+    reconciliation_status = (
+        "fail" if error_count else "warnings" if warning_count else "pass"
+    )
     repair_actions = _reconciliation_repair_actions(findings)
     questions_for_user = _reconciliation_questions_for_user(findings)
     reconciliation = {
@@ -3180,8 +3791,12 @@ def reconcile_literature_acquisition(
             "cached_count": actual_cache_count,
             "reference_count": len(reference_ids),
             "zotero_status_items": len(status_items),
-            "external_cache_used": bool((external_state.get("summary") or {}).get("ready_count")),
-            "external_ready_count": (external_state.get("summary") or {}).get("ready_count", 0),
+            "external_cache_used": bool(
+                (external_state.get("summary") or {}).get("ready_count")
+            ),
+            "external_ready_count": (external_state.get("summary") or {}).get(
+                "ready_count", 0
+            ),
         },
         "source_refs": refs,
         "findings": findings,
@@ -3284,7 +3899,9 @@ def _source_candidate_method(method: str) -> str:
     }
     normalized = aliases.get(normalized, normalized)
     if normalized not in SOURCE_CANDIDATE_METHODS:
-        raise ValueError(f"Unsupported source-candidate method: {method}. Expected one of {sorted(SOURCE_CANDIDATE_METHODS)}")
+        raise ValueError(
+            f"Unsupported source-candidate method: {method}. Expected one of {sorted(SOURCE_CANDIDATE_METHODS)}"
+        )
     return normalized
 
 
@@ -3293,9 +3910,15 @@ def _source_candidate_default_path(root: Path, method: str, *, confirmed: bool) 
     return root / "literature" / f"{stem}_{method}_source_candidates.yml"
 
 
-def _source_candidate_source_items_path(root: Path, source_items_path: Path | None) -> Path:
+def _source_candidate_source_items_path(
+    root: Path, source_items_path: Path | None
+) -> Path:
     if source_items_path is not None:
-        return source_items_path if source_items_path.is_absolute() else root / source_items_path
+        return (
+            source_items_path
+            if source_items_path.is_absolute()
+            else root / source_items_path
+        )
     library_manifest = root / "literature" / "library_manifest.yml"
     if library_manifest.exists() and _manifest_items(_load_manifest(library_manifest)):
         return library_manifest
@@ -3306,29 +3929,51 @@ def _source_candidate_seed_id(method: str, item: dict[str, Any], index: int) -> 
     reference_id = str(item.get("reference_id") or "").strip()
     if reference_id:
         return reference_id
-    raw_id = str(item.get("candidate_id") or item.get("id") or item.get("doi") or item.get("title") or index).strip().lower()
+    raw_id = (
+        str(
+            item.get("candidate_id")
+            or item.get("id")
+            or item.get("doi")
+            or item.get("title")
+            or index
+        )
+        .strip()
+        .lower()
+    )
     slug = re.sub(r"[^a-z0-9]+", "-", raw_id).strip("-")[:48]
     return f"ref-lit-{method}-{slug}" if slug else f"ref-lit-{method}-{index:03d}"
 
 
-def _source_candidate_reference_seed(item: dict[str, Any], *, seed_id: str, source_ref: str) -> dict[str, Any]:
+def _source_candidate_reference_seed(
+    item: dict[str, Any], *, seed_id: str, source_ref: str
+) -> dict[str, Any]:
     seed: dict[str, Any] = {
         "citation": _item_citation(item) or str(item.get("title") or seed_id),
         "title": item.get("title"),
         "authors": _item_authors(item),
-        "year": item.get("year") or item.get("publication_year") or item.get("published_year"),
-        "venue": item.get("venue") or item.get("journal") or item.get("container_title"),
+        "year": item.get("year")
+        or item.get("publication_year")
+        or item.get("published_year"),
+        "venue": item.get("venue")
+        or item.get("journal")
+        or item.get("container_title"),
         "doi": item.get("doi") or item.get("DOI"),
-        "url": item.get("url") or item.get("article_url") or item.get("landing_page_url"),
+        "url": item.get("url")
+        or item.get("article_url")
+        or item.get("landing_page_url"),
         "local_path": item.get("local_path") or item.get("pdf_path"),
         "source_type": "literature_library",
         "source_item_ref": source_ref,
-        "source_item_id": item.get("reference_id") or item.get("candidate_id") or item.get("id"),
+        "source_item_id": item.get("reference_id")
+        or item.get("candidate_id")
+        or item.get("id"),
     }
     return _compact_dict(seed)
 
 
-def _source_candidate_base(method: str, item: dict[str, Any], *, index: int, seed_id: str) -> dict[str, Any]:
+def _source_candidate_base(
+    method: str, item: dict[str, Any], *, index: int, seed_id: str
+) -> dict[str, Any]:
     title = str(item.get("title") or "untitled literature item").strip()
     summary = (
         f"Literature item `{title}` was selected from the project literature workflow. "
@@ -3350,9 +3995,13 @@ def _source_candidate_base(method: str, item: dict[str, Any], *, index: int, see
         "source_item": _compact_dict(
             {
                 "title": item.get("title"),
-                "year": item.get("year") or item.get("publication_year") or item.get("published_year"),
+                "year": item.get("year")
+                or item.get("publication_year")
+                or item.get("published_year"),
                 "doi": item.get("doi") or item.get("DOI"),
-                "url": item.get("url") or item.get("article_url") or item.get("landing_page_url"),
+                "url": item.get("url")
+                or item.get("article_url")
+                or item.get("landing_page_url"),
                 "rank": item.get("rank"),
                 "score": item.get("score"),
                 "reference_id": item.get("reference_id"),
@@ -3434,7 +4083,12 @@ def _source_candidate_method_aliases(method: str) -> set[str]:
             "optical_absorption",
             "optical_spectroscopy",
         }
-    return {"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"}
+    return {
+        "xps",
+        "xps_parameter",
+        "xps_parameter_source_packet",
+        "surface_spectroscopy",
+    }
 
 
 def _source_candidate_preflight_fix_step(method: str) -> str:
@@ -3482,7 +4136,9 @@ def prepare_literature_source_candidate_manifest(
     created_at = created_at or EARecord.now_iso()
     project = _project_context(root)
     project_id = str(project.get("project_id", "unknown-project"))
-    output_path = output_path or _source_candidate_default_path(root, method, confirmed=confirm_for_source_packet)
+    output_path = output_path or _source_candidate_default_path(
+        root, method, confirmed=confirm_for_source_packet
+    )
     if not output_path.is_absolute():
         output_path = root / output_path
     source_ref = _project_relative(root, source_path)
@@ -3492,15 +4148,21 @@ def prepare_literature_source_candidate_manifest(
     candidates: list[dict[str, Any]] = []
     for index, item in enumerate(items, start=1):
         seed_id = _source_candidate_seed_id(method, item, index)
-        reference_seeds[seed_id] = _source_candidate_reference_seed(item, seed_id=seed_id, source_ref=source_ref)
-        candidates.append(_source_candidate_base(method, item, index=index, seed_id=seed_id))
+        reference_seeds[seed_id] = _source_candidate_reference_seed(
+            item, seed_id=seed_id, source_ref=source_ref
+        )
+        candidates.append(
+            _source_candidate_base(method, item, index=index, seed_id=seed_id)
+        )
 
     manifest: dict[str, Any] = {
         "schema_version": "0.2",
         "source": "ea.literature.source_candidates:v0.2",
         "project_id": project_id,
         "method_scope": [method],
-        "status": "confirmed_for_source_packet" if confirm_for_source_packet else "draft_requires_candidate_edit",
+        "status": "confirmed_for_source_packet"
+        if confirm_for_source_packet
+        else "draft_requires_candidate_edit",
         "prepared_at": created_at,
         "source_items_ref": source_ref,
         "source_item_count": len(items),
@@ -3551,7 +4213,9 @@ def prepare_literature_source_candidate_manifest(
     }
 
 
-def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> list[str]:
+def _source_candidate_missing_fields(
+    method: str, candidate: dict[str, Any]
+) -> list[str]:
     missing: list[str] = []
     if method == "ftir":
         required = FTIR_SOURCE_CANDIDATE_REQUIRED_FIELDS
@@ -3565,12 +4229,22 @@ def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> 
             missing.append(field)
     if method == "ftir":
         window = candidate.get("wavenumber_window_cm1")
-        if not (isinstance(window, list | tuple) and len(window) >= 2 and _as_float(window[0]) is not None and _as_float(window[1]) is not None):
+        if not (
+            isinstance(window, list | tuple)
+            and len(window) >= 2
+            and _as_float(window[0]) is not None
+            and _as_float(window[1]) is not None
+        ):
             if "wavenumber_window_cm1" not in missing:
                 missing.append("wavenumber_window_cm1")
     elif method == "uv_vis":
-        candidate_type = str(candidate.get("candidate_type") or "").strip().lower().replace("-", "_")
-        if candidate_type not in UV_VIS_SOURCE_CANDIDATE_TYPES and "candidate_type" not in missing:
+        candidate_type = (
+            str(candidate.get("candidate_type") or "").strip().lower().replace("-", "_")
+        )
+        if (
+            candidate_type not in UV_VIS_SOURCE_CANDIDATE_TYPES
+            and "candidate_type" not in missing
+        ):
             missing.append("supported_candidate_type")
         energy = _as_float(candidate.get("reported_energy_eV"))
         energy_window = candidate.get("energy_window_eV")
@@ -3588,7 +4262,11 @@ def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> 
             and _as_float(wavelength_window[1]) is not None
         )
         if candidate_type == "optical_transition_model":
-            for field in ["transition_model", "transition_assumption", "tauc_transform"]:
+            for field in [
+                "transition_model",
+                "transition_assumption",
+                "tauc_transform",
+            ]:
                 if candidate.get(field) in (None, "", [], {}):
                     missing.append(field)
         elif candidate_type == "optical_gap_candidate":
@@ -3605,17 +4283,31 @@ def _source_candidate_missing_fields(method: str, candidate: dict[str, Any]) -> 
             correction_context = candidate.get("correction_context")
             if not isinstance(correction_context, dict) or not any(
                 correction_context.get(key)
-                for key in ["substrate", "reference", "background", "sample_geometry", "diffuse_reflectance_model"]
+                for key in [
+                    "substrate",
+                    "reference",
+                    "background",
+                    "sample_geometry",
+                    "diffuse_reflectance_model",
+                ]
             ):
                 missing.append("correction_context")
     else:
-        suggestion_type = str(candidate.get("suggestion_type") or "").strip().lower().replace("-", "_")
+        suggestion_type = (
+            str(candidate.get("suggestion_type") or "")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
         if suggestion_type == "spin_orbit_constraint":
             for field in ["center_delta_eV", "area_ratio", "fwhm_ratio"]:
                 if _as_float(candidate.get(field)) is None:
                     missing.append(field)
         elif suggestion_type == "tougaard_parameter":
-            if _as_float(candidate.get("tougaard_B")) is None and _as_float(candidate.get("tougaard_C_eV2")) is None:
+            if (
+                _as_float(candidate.get("tougaard_B")) is None
+                and _as_float(candidate.get("tougaard_C_eV2")) is None
+            ):
                 missing.append("tougaard_B_or_tougaard_C_eV2")
         elif "suggestion_type" not in missing:
             missing.append("supported_suggestion_type")
@@ -3631,11 +4323,15 @@ def preflight_literature_source_candidate_manifest(
     checked_at: str | None = None,
 ) -> dict[str, Any]:
     method = _source_candidate_method(method)
-    resolved_manifest = manifest_path if manifest_path.is_absolute() else root / manifest_path
+    resolved_manifest = (
+        manifest_path if manifest_path.is_absolute() else root / manifest_path
+    )
     literature_root = root / "literature"
     literature_root.mkdir(parents=True, exist_ok=True)
     checked_at = checked_at or EARecord.now_iso()
-    output_path = output_path or literature_root / f"{method}_source_candidates_preflight.yml"
+    output_path = (
+        output_path or literature_root / f"{method}_source_candidates_preflight.yml"
+    )
     if not output_path.is_absolute():
         output_path = root / output_path
 
@@ -3644,7 +4340,11 @@ def preflight_literature_source_candidate_manifest(
     candidates: list[dict[str, Any]] = []
     reference_seeds: dict[str, Any] = {}
     confirmation_status = ""
-    source_manifest_ref = _project_relative(root, resolved_manifest) if resolved_manifest.exists() else str(manifest_path)
+    source_manifest_ref = (
+        _project_relative(root, resolved_manifest)
+        if resolved_manifest.exists()
+        else str(manifest_path)
+    )
     try:
         library, manifest_warnings = confirmed_source_packet_library(
             root,
@@ -3653,10 +4353,20 @@ def preflight_literature_source_candidate_manifest(
             method_aliases=_source_candidate_method_aliases(method),
         )
         warnings.extend(manifest_warnings)
-        candidates = [candidate for candidate in library.get("candidates") or [] if isinstance(candidate, dict)]
-        reference_seeds = library.get("reference_seeds") if isinstance(library.get("reference_seeds"), dict) else {}
+        candidates = [
+            candidate
+            for candidate in library.get("candidates") or []
+            if isinstance(candidate, dict)
+        ]
+        reference_seeds = (
+            library.get("reference_seeds")
+            if isinstance(library.get("reference_seeds"), dict)
+            else {}
+        )
         confirmation_status = str(library.get("confirmation_status") or "")
-        source_manifest_ref = str(library.get("source_manifest_ref") or source_manifest_ref)
+        source_manifest_ref = str(
+            library.get("source_manifest_ref") or source_manifest_ref
+        )
     except (SourcePacketManifestError, FileNotFoundError) as exc:
         errors.append(
             {
@@ -3674,8 +4384,17 @@ def preflight_literature_source_candidate_manifest(
         reference_ids = _coerce_string_list(candidate.get("reference_ids"))
         referenced_ids.update(reference_ids)
         missing_fields = _source_candidate_missing_fields(method, candidate)
-        candidate_id = str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or f"candidate-{index:03d}")
-        status = "ready_for_source_packet" if not missing_fields else "missing_required_metadata"
+        candidate_id = str(
+            candidate.get("candidate_id")
+            or candidate.get("assignment_id")
+            or candidate.get("suggestion_id")
+            or f"candidate-{index:03d}"
+        )
+        status = (
+            "ready_for_source_packet"
+            if not missing_fields
+            else "missing_required_metadata"
+        )
         if missing_fields:
             invalid_count += 1
             warnings.append(
@@ -3706,7 +4425,11 @@ def preflight_literature_source_candidate_manifest(
                 "severity": "high",
             }
         )
-    missing_seed_ids = sorted(reference_id for reference_id in referenced_ids if reference_id not in reference_seeds)
+    missing_seed_ids = sorted(
+        reference_id
+        for reference_id in referenced_ids
+        if reference_id not in reference_seeds
+    )
     if missing_seed_ids:
         warnings.append(
             {
@@ -3717,7 +4440,9 @@ def preflight_literature_source_candidate_manifest(
             }
         )
 
-    status = "ready_for_source_packet" if not errors and invalid_count == 0 else "not_ready"
+    status = (
+        "ready_for_source_packet" if not errors and invalid_count == 0 else "not_ready"
+    )
     preflight = {
         "schema_version": "0.2",
         "source": "ea.literature.source_candidate_manifest_preflight:v0.2",
@@ -3767,7 +4492,15 @@ def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
     doi = _as_text(candidate.get("doi") or candidate.get("DOI")).lower().strip()
     if doi:
         return f"doi:{doi.removeprefix('https://doi.org/').removeprefix('http://doi.org/')}"
-    url = _as_text(candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url")).lower().strip()
+    url = (
+        _as_text(
+            candidate.get("url")
+            or candidate.get("article_url")
+            or candidate.get("landing_page_url")
+        )
+        .lower()
+        .strip()
+    )
     if url:
         return f"url:{url.rstrip('/')}"
     title = _normalized_title(candidate.get("title"))
@@ -3776,7 +4509,30 @@ def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
     return f"row:{candidate.get('_row_index')}"
 
 
-def _project_ranking_terms(root: Path, extra_keywords: list[str] | None = None) -> list[str]:
+def _normalized_document_type(candidate: dict[str, Any]) -> str:
+    value = _as_text(
+        candidate.get("document_type")
+        or candidate.get("work_type")
+        or candidate.get("type")
+        or candidate.get("subtype")
+    ).lower()
+    if "supplement" in value:
+        return "supplement"
+    if any(marker in value for marker in ("correction", "erratum", "retraction")):
+        return "correction"
+    if any(
+        marker in value
+        for marker in ("preprint", "posted-content", "arxiv", "chemrxiv")
+    ):
+        return "preprint"
+    if any(marker in value for marker in ("article", "journal", "proceeding")):
+        return "article"
+    return value.replace("_", "-") or "unknown"
+
+
+def _project_ranking_terms(
+    root: Path, extra_keywords: list[str] | None = None
+) -> list[str]:
     project = _project_context(root)
     keywords = generate_literature_keywords(
         project_name=str(project.get("project_name", "")),
@@ -3797,7 +4553,9 @@ def _candidate_body(candidate: dict[str, Any]) -> str:
         candidate.get("abstract"),
         candidate.get("keywords"),
         candidate.get("notes"),
-        candidate.get("venue") or candidate.get("journal") or candidate.get("container_title"),
+        candidate.get("venue")
+        or candidate.get("journal")
+        or candidate.get("container_title"),
     ]
     return " ".join(_as_text(field) for field in fields).lower()
 
@@ -3848,7 +4606,11 @@ def _phrase_matches(body: str, phrase: str) -> bool:
         return False
     if normalized_phrase in normalized_body:
         return True
-    tokens = [token for token in _tokenize(normalized_phrase) if token not in RELEVANCE_STOP_TERMS]
+    tokens = [
+        token
+        for token in _tokenize(normalized_phrase)
+        if token not in RELEVANCE_STOP_TERMS
+    ]
     body_tokens = set(_tokenize(normalized_body))
     return bool(tokens) and all(token in body_tokens for token in tokens)
 
@@ -3858,7 +4620,11 @@ def _material_phrase_matches(body: str, phrase: str) -> bool:
     normalized_phrase = _normalized_title(phrase)
     if normalized_phrase and normalized_phrase in normalized_body:
         return True
-    tokens = [token for token in _tokenize(normalized_phrase) if token not in MATERIAL_GENERIC_TERMS]
+    tokens = [
+        token
+        for token in _tokenize(normalized_phrase)
+        if token not in MATERIAL_GENERIC_TERMS
+    ]
     if not tokens:
         tokens = _tokenize(normalized_phrase)
     matched = sum(1 for token in tokens if token in normalized_body)
@@ -3866,7 +4632,9 @@ def _material_phrase_matches(body: str, phrase: str) -> bool:
     return matched >= required
 
 
-def _relevance_requirements(root: Path, extra_keywords: list[str] | None) -> dict[str, list[str]]:
+def _relevance_requirements(
+    root: Path, extra_keywords: list[str] | None
+) -> dict[str, list[str]]:
     project = _project_context(root)
     keywords = generate_literature_keywords(
         project_name=str(project.get("project_name", "")),
@@ -3877,14 +4645,21 @@ def _relevance_requirements(root: Path, extra_keywords: list[str] | None) -> dic
     )
     material = keywords.get("material_phrases") or keywords.get("material_terms") or []
     if extra_keywords:
-        application = _unique([str(value).strip() for value in extra_keywords if str(value).strip()])
+        application = _unique(
+            [str(value).strip() for value in extra_keywords if str(value).strip()]
+        )
     else:
         material_tokens = set(_tokenize(" ".join(material)))
         method_tokens = set(keywords.get("method_terms") or [])
         application = [
             token
-            for token in [*(keywords.get("research_direction_terms") or []), *(keywords.get("experiment_terms") or [])]
-            if token not in RELEVANCE_STOP_TERMS and token not in material_tokens and token not in method_tokens
+            for token in [
+                *(keywords.get("research_direction_terms") or []),
+                *(keywords.get("experiment_terms") or []),
+            ]
+            if token not in RELEVANCE_STOP_TERMS
+            and token not in material_tokens
+            and token not in method_tokens
         ][:12]
     return {
         "material": _unique(material),
@@ -3893,14 +4668,22 @@ def _relevance_requirements(root: Path, extra_keywords: list[str] | None) -> dic
     }
 
 
-def _candidate_relevance_gate(candidate: dict[str, Any], requirements: dict[str, list[str]]) -> dict[str, Any]:
+def _candidate_relevance_gate(
+    candidate: dict[str, Any], requirements: dict[str, list[str]]
+) -> dict[str, Any]:
     body = _candidate_body(candidate)
     material_terms = requirements.get("material") or []
     application_terms = requirements.get("application_or_property") or []
     exclusion_terms = requirements.get("exclusions") or []
-    matched_material = [term for term in material_terms if _material_phrase_matches(body, term)]
-    matched_application = [term for term in application_terms if _phrase_matches(body, term)]
-    matched_exclusions = [term for term in exclusion_terms if _phrase_matches(body, term)]
+    matched_material = [
+        term for term in material_terms if _material_phrase_matches(body, term)
+    ]
+    matched_application = [
+        term for term in application_terms if _phrase_matches(body, term)
+    ]
+    matched_exclusions = [
+        term for term in exclusion_terms if _phrase_matches(body, term)
+    ]
     material_match = not material_terms or bool(matched_material)
     application_match = not application_terms or bool(matched_application)
     exclusion_match = bool(matched_exclusions)
@@ -3924,24 +4707,38 @@ def _candidate_relevance_gate(candidate: dict[str, Any], requirements: dict[str,
 
 
 def _score_relevance(candidate: dict[str, Any], project_terms: list[str]) -> float:
-    supplied = _score_component(candidate.get("project_relevance") or candidate.get("relevance_score") or candidate.get("relevance"))
+    supplied = _score_component(
+        candidate.get("project_relevance")
+        or candidate.get("relevance_score")
+        or candidate.get("relevance")
+    )
     if supplied is not None:
         return supplied
     body = _candidate_body(candidate)
     if not body or not project_terms:
         return 1.0
     body_tokens = set(_tokenize(body))
-    matches = sum(1 for term in project_terms if term.lower() in body_tokens or term.lower() in body)
+    matches = sum(
+        1
+        for term in project_terms
+        if term.lower() in body_tokens or term.lower() in body
+    )
     title = _as_text(candidate.get("title")).lower()
     title_matches = sum(1 for term in project_terms if term.lower() in title)
     return max(1.0, min(5.0, 1.0 + matches * 0.45 + title_matches * 0.35))
 
 
 def _score_venue(candidate: dict[str, Any]) -> float:
-    supplied = _score_component(candidate.get("venue_authority") or candidate.get("journal_authority") or candidate.get("venue_score"))
+    supplied = _score_component(
+        candidate.get("venue_authority")
+        or candidate.get("journal_authority")
+        or candidate.get("venue_score")
+    )
     if supplied is not None:
         return supplied
-    impact = _as_float(candidate.get("impact_factor") or candidate.get("journal_impact_factor"))
+    impact = _as_float(
+        candidate.get("impact_factor") or candidate.get("journal_impact_factor")
+    )
     if impact is not None:
         if impact >= 30:
             return 5.0
@@ -3954,15 +4751,24 @@ def _score_venue(candidate: dict[str, Any]) -> float:
         if impact >= 1:
             return 2.0
         return 1.0
-    tier = _as_text(candidate.get("venue_tier") or candidate.get("journal_tier")).lower()
+    tier = _as_text(
+        candidate.get("venue_tier") or candidate.get("journal_tier")
+    ).lower()
     if tier in {"flagship", "top", "high", "q1"}:
         return 4.5
     if tier in {"medium", "q2"}:
         return 3.0
-    venue = _as_text(candidate.get("venue") or candidate.get("journal") or candidate.get("container_title")).lower()
+    venue = _as_text(
+        candidate.get("venue")
+        or candidate.get("journal")
+        or candidate.get("container_title")
+    ).lower()
     if any(marker in venue for marker in ("nature", "science", "cell")):
         return 5.0
-    if any(marker in venue for marker in ("advanced", "acs nano", "nano letters", "angewandte")):
+    if any(
+        marker in venue
+        for marker in ("advanced", "acs nano", "nano letters", "angewandte")
+    ):
         return 4.0
     if any(marker in venue for marker in ("journal", "letters", "communications")):
         return 3.0
@@ -3970,10 +4776,16 @@ def _score_venue(candidate: dict[str, Any]) -> float:
 
 
 def _score_recency(candidate: dict[str, Any], reference_year: int) -> float:
-    supplied = _score_component(candidate.get("recency") or candidate.get("recency_score"))
+    supplied = _score_component(
+        candidate.get("recency") or candidate.get("recency_score")
+    )
     if supplied is not None:
         return supplied
-    year = _as_float(candidate.get("year") or candidate.get("publication_year") or candidate.get("published_year"))
+    year = _as_float(
+        candidate.get("year")
+        or candidate.get("publication_year")
+        or candidate.get("published_year")
+    )
     if year is None:
         return 1.0
     age = max(0, reference_year - int(year))
@@ -3986,11 +4798,17 @@ def _score_recency(candidate: dict[str, Any], reference_year: int) -> float:
 
 def _score_influence(candidate: dict[str, Any]) -> float:
     supplied = _score_component(
-        candidate.get("citation_or_influence") or candidate.get("influence_score") or candidate.get("citation_score")
+        candidate.get("citation_or_influence")
+        or candidate.get("influence_score")
+        or candidate.get("citation_score")
     )
     if supplied is not None:
         return supplied
-    citations = _as_float(candidate.get("citation_count") or candidate.get("cited_by_count") or candidate.get("citations"))
+    citations = _as_float(
+        candidate.get("citation_count")
+        or candidate.get("cited_by_count")
+        or candidate.get("citations")
+    )
     if citations is None:
         return 1.0
     if citations >= 1000:
@@ -4014,31 +4832,53 @@ def _score_fulltext(candidate: dict[str, Any]) -> float:
     )
     if supplied is not None:
         return supplied
-    if candidate.get("local_path") or candidate.get("cache_path") or candidate.get("pdf_path"):
+    if (
+        candidate.get("local_path")
+        or candidate.get("cache_path")
+        or candidate.get("pdf_path")
+    ):
         return 5.0
-    status = _as_text(candidate.get("status") or candidate.get("acquisition_status") or candidate.get("fulltext_status")).lower()
-    if any(marker in status for marker in ("cached", "downloaded", "fulltext", "full_text")):
+    status = _as_text(
+        candidate.get("status")
+        or candidate.get("acquisition_status")
+        or candidate.get("fulltext_status")
+    ).lower()
+    if any(
+        marker in status for marker in ("cached", "downloaded", "fulltext", "full_text")
+    ):
         return 5.0
-    if _as_bool(candidate.get("open_access")) or candidate.get("pdf_url") or candidate.get("oa_url"):
+    if (
+        _as_bool(candidate.get("open_access"))
+        or candidate.get("pdf_url")
+        or candidate.get("oa_url")
+    ):
         return 4.0
     if candidate.get("abstract"):
         return 2.0
     return 1.0
 
 
-def _score_candidate(candidate: dict[str, Any], *, project_terms: list[str], reference_year: int) -> dict[str, float]:
+def _score_candidate(
+    candidate: dict[str, Any], *, project_terms: list[str], reference_year: int
+) -> dict[str, float]:
     project_relevance = _score_relevance(candidate, project_terms)
     venue_authority = _score_venue(candidate)
     recency = _score_recency(candidate, reference_year)
     influence = _score_influence(candidate)
     fulltext = _score_fulltext(candidate)
     score = (
-        project_relevance * 0.40
-        + venue_authority * 0.20
-        + recency * 0.15
-        + influence * 0.15
-        + fulltext * 0.10
-    ) / 5 * 100
+        (
+            project_relevance * 0.40
+            + venue_authority * 0.20
+            + recency * 0.15
+            + influence * 0.15
+            + fulltext * 0.10
+        )
+        / 5
+        * 100
+    )
+    if _normalized_document_type(candidate) == "supplement":
+        score = max(0.0, score - 15.0)
     return {
         "project_relevance": round(project_relevance, 2),
         "venue_authority": round(venue_authority, 2),
@@ -4061,15 +4901,25 @@ def _candidate_record(
         "candidate_id": candidate_id,
         "title": candidate.get("title"),
         "authors": _as_text(candidate.get("authors") or candidate.get("author")),
-        "year": candidate.get("year") or candidate.get("publication_year") or candidate.get("published_year"),
-        "venue": candidate.get("venue") or candidate.get("journal") or candidate.get("container_title"),
+        "year": candidate.get("year")
+        or candidate.get("publication_year")
+        or candidate.get("published_year"),
+        "venue": candidate.get("venue")
+        or candidate.get("journal")
+        or candidate.get("container_title"),
         "doi": candidate.get("doi") or candidate.get("DOI"),
-        "url": candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url"),
+        "url": candidate.get("url")
+        or candidate.get("article_url")
+        or candidate.get("landing_page_url"),
+        "document_type": _normalized_document_type(candidate),
+        "version": candidate.get("version") or candidate.get("version_label"),
         "project_relevance": scores["project_relevance"],
         "venue_authority": scores["venue_authority"],
         "recency": scores["recency"],
         "citation_or_influence": scores["citation_or_influence"],
-        "fulltext_availability_and_usefulness": scores["fulltext_availability_and_usefulness"],
+        "fulltext_availability_and_usefulness": scores[
+            "fulltext_availability_and_usefulness"
+        ],
         "score": scores["score"],
         "relevance_gate_status": relevance_gate["status"],
         "material_match": relevance_gate["material_match"],
@@ -4093,7 +4943,9 @@ def rank_literature_candidates(
 ) -> dict[str, Any]:
     literature_root = root / "literature"
     literature_root.mkdir(parents=True, exist_ok=True)
-    resolved_path = candidates_path if candidates_path.is_absolute() else root / candidates_path
+    resolved_path = (
+        candidates_path if candidates_path.is_absolute() else root / candidates_path
+    )
     if not resolved_path.exists():
         raise FileNotFoundError(resolved_path)
 
@@ -4112,6 +4964,8 @@ def rank_literature_candidates(
     ranked_at = ranked_at or EARecord.now_iso()
     candidate_rows: list[dict[str, Any]] = []
     best_by_key: dict[str, dict[str, Any]] = {}
+    source_positions: dict[str, int] = {}
+    fusion_positions: dict[str, list[int]] = {}
     duplicate_count = 0
     rejected_count = 0
     seen_keys: set[str] = set()
@@ -4119,12 +4973,24 @@ def rank_literature_candidates(
     for raw_index, raw in enumerate(raw_candidates, start=1):
         candidate = dict(raw)
         candidate["_row_index"] = raw_index
+        candidate_source = _as_text(
+            candidate.get("source") or source_label or "unknown"
+        )
+        source_positions[candidate_source] = (
+            source_positions.get(candidate_source, 0) + 1
+        )
         title = candidate.get("title")
         doi = candidate.get("doi") or candidate.get("DOI")
-        url = candidate.get("url") or candidate.get("article_url") or candidate.get("landing_page_url")
+        url = (
+            candidate.get("url")
+            or candidate.get("article_url")
+            or candidate.get("landing_page_url")
+        )
         if not (title or doi or url):
             continue
-        scores = _score_candidate(candidate, project_terms=project_terms, reference_year=reference_year)
+        scores = _score_candidate(
+            candidate, project_terms=project_terms, reference_year=reference_year
+        )
         relevance_gate = _candidate_relevance_gate(candidate, relevance_requirements)
         notes = _as_text(candidate.get("notes"))
         source_id = candidate.get("candidate_id") or candidate.get("id")
@@ -4151,17 +5017,24 @@ def rank_literature_candidates(
                 "venue": record["venue"],
                 "doi": record["doi"],
                 "url": record["url"],
+                "document_type": record["document_type"],
+                "version": record["version"],
                 "source": candidate.get("source") or source_label,
                 "abstract": candidate.get("abstract"),
                 "keywords": _as_text(candidate.get("keywords")),
                 "relevance_gate_status": relevance_gate["status"],
                 "material_match": relevance_gate["material_match"],
                 "application_match": relevance_gate["application_match"],
-                "matched_required_terms": "; ".join(relevance_gate["matched_required_terms"]),
-                "missing_required_groups": "; ".join(relevance_gate["missing_required_groups"]),
+                "matched_required_terms": "; ".join(
+                    relevance_gate["matched_required_terms"]
+                ),
+                "missing_required_groups": "; ".join(
+                    relevance_gate["missing_required_groups"]
+                ),
             }
         )
         key = _candidate_dedup_key(candidate)
+        fusion_positions.setdefault(key, []).append(source_positions[candidate_source])
         if key in seen_keys:
             duplicate_count += 1
         seen_keys.add(key)
@@ -4172,9 +5045,19 @@ def rank_literature_candidates(
         if existing is None or float(record["score"]) > float(existing["score"]):
             best_by_key[key] = record
 
+    for key, row in best_by_key.items():
+        positions = fusion_positions.get(key) or []
+        rrf = sum(1.0 / (60 + position) for position in positions)
+        row["source_fusion_score"] = round(rrf, 6)
+        row["source_count"] = len(positions)
+        row["fused_score"] = round(
+            min(100.0, float(row["score"]) + min(5.0, rrf * 100)), 2
+        )
+
     ranked_rows = sorted(
         best_by_key.values(),
         key=lambda row: (
+            -float(row["fused_score"]),
             -float(row["score"]),
             -int(float(row["year"])) if _as_float(row.get("year")) is not None else 0,
             _as_text(row.get("title")).lower(),
@@ -4184,11 +5067,21 @@ def rank_literature_candidates(
         row["candidate_id"] = f"cand-{rank:03d}"
 
     confirmed_top_n = status.get("selected_top_n")
-    effective_top_n = int(confirmed_top_n or top_n or _recommended_max(status.get("recommended_top_n", recommended_top_n("ordinary"))))
+    effective_top_n = int(
+        confirmed_top_n
+        or top_n
+        or _recommended_max(
+            status.get("recommended_top_n", recommended_top_n("ordinary"))
+        )
+    )
     if effective_top_n <= 0:
         raise ValueError("top_n must be positive")
     selected_rows = ranked_rows[:effective_top_n]
-    selection_status = "selected_from_ranked_candidates" if confirmed_top_n else "ranked_preview_awaiting_user_confirmation"
+    selection_status = (
+        "selected_from_ranked_candidates"
+        if confirmed_top_n
+        else "ranked_preview_awaiting_user_confirmation"
+    )
     selected_items = {
         "schema_version": "0.2",
         "project_id": project_id,
@@ -4206,7 +5099,10 @@ def rank_literature_candidates(
                     "venue": row.get("venue"),
                     "doi": row.get("doi"),
                     "url": row.get("url"),
+                    "document_type": row.get("document_type"),
+                    "version": row.get("version"),
                     "score": row.get("score"),
+                    "fused_score": row.get("fused_score"),
                     "notes": row.get("notes"),
                 }
             )
@@ -4218,8 +5114,17 @@ def rank_literature_candidates(
     selected_path = literature_root / "selected_items.yml"
     _write_csv_rows(
         candidates_table_path,
-        RANKING_HEADERS[:7]
-        + ["source", "abstract", "keywords", "relevance_gate_status", "material_match", "application_match", "matched_required_terms", "missing_required_groups"],
+        RANKING_HEADERS[:9]
+        + [
+            "source",
+            "abstract",
+            "keywords",
+            "relevance_gate_status",
+            "material_match",
+            "application_match",
+            "matched_required_terms",
+            "missing_required_groups",
+        ],
         candidate_rows,
     )
     _write_csv_rows(ranking_path, RANKING_HEADERS, ranked_rows)
@@ -4227,7 +5132,9 @@ def rank_literature_candidates(
 
     status.update(
         {
-            "status": "ranked_candidates_ready" if confirmed_top_n else "ranked_awaiting_user_confirmation",
+            "status": "ranked_candidates_ready"
+            if confirmed_top_n
+            else "ranked_awaiting_user_confirmation",
             "candidate_count": len(candidate_rows),
             "deduped_count": len(ranked_rows),
             "duplicate_candidate_count": duplicate_count,
@@ -4250,6 +5157,12 @@ def rank_literature_candidates(
                     "fulltext_availability_and_usefulness": 0.10,
                 },
                 "must_match_gate": relevance_requirements,
+                "source_fusion": {
+                    "method": "reciprocal_rank_fusion",
+                    "k": 60,
+                    "max_bonus_points": 5,
+                    "supplement_downrank_points": 15,
+                },
                 "gate_order": "must_match_before_weighted_ranking",
                 "boundaries": [
                     (
@@ -4264,6 +5177,7 @@ def rank_literature_candidates(
                     ),
                     "Scores support triage only and require user review before bulk acquisition.",
                     "Candidates that fail required material/application terms remain in candidates.csv but cannot enter ranking, selection, or acquisition.",
+                    "Supplement records are preserved and down-ranked; they are never treated as proof that the parent article is absent.",
                 ],
             },
             "summary_for_origin_thread": (
@@ -4299,7 +5213,7 @@ def _public_fetch_text(url: str, *, source: str, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "Experimental-Assistant-v0.9.7 public-metadata-search/0.9.7 (local-first research assistant)",
+            "User-Agent": "Experimental-Assistant-v0.9.8 public-metadata-search/0.9.8 (local-first research assistant)",
             "Accept": "application/json, application/xml, text/xml, */*",
         },
     )
@@ -4325,7 +5239,11 @@ def _public_search_url(
         )
     if source == "arxiv":
         return "https://export.arxiv.org/api/query?" + urllib.parse.urlencode(
-            {"search_query": f'all:"{query}"', "start": offset, "max_results": max_results}
+            {
+                "search_query": f'all:"{query}"',
+                "start": offset,
+                "max_results": max_results,
+            }
         )
     raise ValueError(f"Unsupported public metadata source: {source}")
 
@@ -4369,17 +5287,33 @@ def _public_next_page(
     if source == "crossref":
         payload = json.loads(response_text)
         next_cursor = payload.get("message", {}).get("next-cursor")
-        has_next = bool(next_cursor and next_cursor != current_cursor and normalized_count > 0)
-        return {"has_next_page": has_next, "next_cursor": str(next_cursor) if has_next else None, "next_offset": None}
+        has_next = bool(
+            next_cursor and next_cursor != current_cursor and normalized_count > 0
+        )
+        return {
+            "has_next_page": has_next,
+            "next_cursor": str(next_cursor) if has_next else None,
+            "next_offset": None,
+        }
     if source == "openalex":
         payload = json.loads(response_text)
         next_cursor = payload.get("meta", {}).get("next_cursor")
-        has_next = bool(next_cursor and next_cursor != current_cursor and normalized_count > 0)
-        return {"has_next_page": has_next, "next_cursor": str(next_cursor) if has_next else None, "next_offset": None}
+        has_next = bool(
+            next_cursor and next_cursor != current_cursor and normalized_count > 0
+        )
+        return {
+            "has_next_page": has_next,
+            "next_cursor": str(next_cursor) if has_next else None,
+            "next_offset": None,
+        }
     if source == "arxiv":
         next_offset = current_offset + max_results
         total_results = _arxiv_total_results(response_text)
-        has_next = normalized_count > 0 and total_results is not None and next_offset < total_results
+        has_next = (
+            normalized_count > 0
+            and total_results is not None
+            and next_offset < total_results
+        )
         return {
             "has_next_page": has_next,
             "next_cursor": None,
@@ -4392,7 +5326,11 @@ def _public_next_page(
 def _public_search_state_status(progress: dict[str, Any]) -> str:
     if not progress:
         return "complete"
-    statuses = [str(item.get("status", "")) for item in progress.values() if isinstance(item, dict)]
+    statuses = [
+        str(item.get("status", ""))
+        for item in progress.values()
+        if isinstance(item, dict)
+    ]
     if any(status == "error" for status in statuses):
         return "partial_with_errors"
     if all(status == "complete" for status in statuses):
@@ -4428,7 +5366,11 @@ def _first(value: Any) -> Any:
 
 def _crossref_year(item: dict[str, Any]) -> int | None:
     for key in ("published-print", "published-online", "issued", "created"):
-        parts = item.get(key, {}).get("date-parts") if isinstance(item.get(key), dict) else None
+        parts = (
+            item.get(key, {}).get("date-parts")
+            if isinstance(item.get(key), dict)
+            else None
+        )
         if parts and parts[0]:
             try:
                 return int(parts[0][0])
@@ -4442,13 +5384,17 @@ def _crossref_authors(item: dict[str, Any]) -> list[str]:
     for author in item.get("author") or []:
         if not isinstance(author, dict):
             continue
-        name = " ".join(part for part in [author.get("given"), author.get("family")] if part)
+        name = " ".join(
+            part for part in [author.get("given"), author.get("family")] if part
+        )
         if name:
             authors.append(name)
     return authors
 
 
-def _normalize_crossref_results(payload: dict[str, Any], *, query: str) -> list[dict[str, Any]]:
+def _normalize_crossref_results(
+    payload: dict[str, Any], *, query: str
+) -> list[dict[str, Any]]:
     items = payload.get("message", {}).get("items") or []
     candidates = []
     for item in items:
@@ -4465,6 +5411,8 @@ def _normalize_crossref_results(payload: dict[str, Any], *, query: str) -> list[
                     "url": item.get("URL"),
                     "abstract": item.get("abstract"),
                     "citation_count": item.get("is-referenced-by-count"),
+                    "document_type": item.get("subtype") or item.get("type"),
+                    "version": item.get("update-to") or item.get("relation"),
                     "source": "crossref",
                     "source_query": query,
                 }
@@ -4480,20 +5428,34 @@ def _openalex_abstract(item: dict[str, Any]) -> str | None:
     positions: list[tuple[int, str]] = []
     for word, indices in inverted.items():
         if isinstance(indices, list):
-            positions.extend((int(index), str(word)) for index in indices if isinstance(index, int))
+            positions.extend(
+                (int(index), str(word)) for index in indices if isinstance(index, int)
+            )
     return " ".join(word for _, word in sorted(positions)) if positions else None
 
 
-def _normalize_openalex_results(payload: dict[str, Any], *, query: str) -> list[dict[str, Any]]:
+def _normalize_openalex_results(
+    payload: dict[str, Any], *, query: str
+) -> list[dict[str, Any]]:
     items = payload.get("results") or []
     candidates = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        location = item.get("primary_location") if isinstance(item.get("primary_location"), dict) else {}
-        source = location.get("source") if isinstance(location.get("source"), dict) else {}
-        host_venue = item.get("host_venue") if isinstance(item.get("host_venue"), dict) else {}
-        open_access = item.get("open_access") if isinstance(item.get("open_access"), dict) else {}
+        location = (
+            item.get("primary_location")
+            if isinstance(item.get("primary_location"), dict)
+            else {}
+        )
+        source = (
+            location.get("source") if isinstance(location.get("source"), dict) else {}
+        )
+        host_venue = (
+            item.get("host_venue") if isinstance(item.get("host_venue"), dict) else {}
+        )
+        open_access = (
+            item.get("open_access") if isinstance(item.get("open_access"), dict) else {}
+        )
         candidates.append(
             _compact_dict(
                 {
@@ -4504,13 +5466,17 @@ def _normalize_openalex_results(payload: dict[str, Any], *, query: str) -> list[
                         if isinstance(authorship, dict) and authorship.get("author")
                     ],
                     "year": item.get("publication_year"),
-                    "venue": source.get("display_name") or host_venue.get("display_name"),
-                    "doi": _as_text(item.get("doi")).replace("https://doi.org/", "") or None,
+                    "venue": source.get("display_name")
+                    or host_venue.get("display_name"),
+                    "doi": _as_text(item.get("doi")).replace("https://doi.org/", "")
+                    or None,
                     "url": location.get("landing_page_url") or item.get("doi"),
                     "abstract": _openalex_abstract(item),
                     "citation_count": item.get("cited_by_count"),
                     "open_access": open_access.get("is_oa"),
                     "pdf_url": location.get("pdf_url"),
+                    "document_type": item.get("type"),
+                    "version": item.get("version"),
                     "source": "openalex",
                     "source_query": query,
                 }
@@ -4521,7 +5487,10 @@ def _normalize_openalex_results(payload: dict[str, Any], *, query: str) -> list[
 
 def _normalize_arxiv_results(payload: str, *, query: str) -> list[dict[str, Any]]:
     root = ET.fromstring(payload)
-    ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "arxiv": "http://arxiv.org/schemas/atom",
+    }
     candidates = []
     for entry in root.findall("atom:entry", ns):
         title = (entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
@@ -4541,17 +5510,25 @@ def _normalize_arxiv_results(payload: str, *, query: str) -> list[dict[str, Any]
                     "venue": "arXiv",
                     "doi": doi,
                     "url": url,
-                    "abstract": (entry.findtext("atom:summary", default="", namespaces=ns) or "").strip(),
+                    "abstract": (
+                        entry.findtext("atom:summary", default="", namespaces=ns) or ""
+                    ).strip(),
                     "source": "arxiv",
                     "source_query": query,
                     "open_access": True,
+                    "document_type": "preprint",
+                    "version": re.search(r"v(\d+)$", url).group(0)
+                    if re.search(r"v(\d+)$", url)
+                    else None,
                 }
             )
         )
     return candidates
 
 
-def _normalize_public_response(source: PublicMetadataSource, response_text: str, *, query: str) -> list[dict[str, Any]]:
+def _normalize_public_response(
+    source: PublicMetadataSource, response_text: str, *, query: str
+) -> list[dict[str, Any]]:
     if source == "crossref":
         return _normalize_crossref_results(json.loads(response_text), query=query)
     if source == "openalex":
@@ -4561,11 +5538,17 @@ def _normalize_public_response(source: PublicMetadataSource, response_text: str,
     raise ValueError(f"Unsupported public metadata source: {source}")
 
 
-def _search_query_strings(root: Path, extra_keywords: list[str] | None = None) -> list[str]:
+def _search_query_strings(
+    root: Path, extra_keywords: list[str] | None = None
+) -> list[str]:
     query_path = root / "literature" / "search_queries.yml"
     if query_path.exists():
         data = read_yaml(query_path)
-        queries = [str(item.get("query")) for item in data.get("queries") or [] if item.get("query")]
+        queries = [
+            str(item.get("query"))
+            for item in data.get("queries") or []
+            if item.get("query")
+        ]
         if extra_keywords:
             queries.extend(extra_keywords)
         return _unique(queries)
@@ -4604,9 +5587,13 @@ def search_public_literature_metadata(
     if delay_seconds < 0:
         raise ValueError("delay_seconds must be non-negative")
     selected_sources = sources or PUBLIC_METADATA_SOURCES
-    unsupported = [source for source in selected_sources if source not in PUBLIC_METADATA_SOURCES]
+    unsupported = [
+        source for source in selected_sources if source not in PUBLIC_METADATA_SOURCES
+    ]
     if unsupported:
-        raise ValueError(f"Unsupported public metadata source(s): {', '.join(unsupported)}")
+        raise ValueError(
+            f"Unsupported public metadata source(s): {', '.join(unsupported)}"
+        )
 
     literature_root = root / "literature"
     literature_root.mkdir(parents=True, exist_ok=True)
@@ -4618,13 +5605,24 @@ def search_public_literature_metadata(
     if query_limit is not None:
         queries = queries[:query_limit]
     fetch = fetcher or (lambda url, source: _public_fetch_text(url, source=source))
+    adapters = {
+        source: PublicMetadataDiscoveryAdapter(
+            name=source,
+            fetcher=fetch,
+            url_builder=_public_search_url,
+            normalizer=_normalize_public_response,
+        )
+        for source in selected_sources
+    }
 
     candidate_manifest_path = literature_root / "public_search_candidates.yml"
     coverage_path = literature_root / "search_coverage.yml"
     state_path = _public_search_state_path(root)
     previous_state = read_yaml(state_path) if resume and state_path.exists() else {}
     progress: dict[str, Any] = dict(previous_state.get("progress") or {})
-    state_entries: list[dict[str, Any]] = list(previous_state.get("state_entries") or [])
+    state_entries: list[dict[str, Any]] = list(
+        previous_state.get("state_entries") or []
+    )
     request_count = _safe_int(previous_state.get("request_count"), len(state_entries))
 
     candidates: list[dict[str, Any]] = []
@@ -4632,15 +5630,21 @@ def search_public_literature_metadata(
     if resume and candidate_manifest_path.exists():
         previous_manifest = read_yaml(candidate_manifest_path)
         candidates.extend(
-            item for item in previous_manifest.get("candidates") or [] if isinstance(item, dict)
+            item
+            for item in previous_manifest.get("candidates") or []
+            if isinstance(item, dict)
         )
     if resume and coverage_path.exists():
         previous_coverage = read_yaml(coverage_path)
         coverage_entries.extend(
-            item for item in previous_coverage.get("coverage_entries") or [] if isinstance(item, dict)
+            item
+            for item in previous_coverage.get("coverage_entries") or []
+            if isinstance(item, dict)
         )
     if not state_entries and coverage_entries:
         state_entries.extend(coverage_entries)
+    candidate_count_before_run = len(candidates)
+    request_count_before_run = request_count
 
     task_keys = []
     for source in selected_sources:
@@ -4712,7 +5716,8 @@ def search_public_literature_metadata(
         snapshot = {
             "schema_version": "0.2",
             "project_id": project_id,
-            "run_id": previous_state.get("run_id") or _public_search_run_id(searched_at),
+            "run_id": previous_state.get("run_id")
+            or _public_search_run_id(searched_at),
             "created_at": previous_state.get("created_at") or searched_at,
             "updated_at": searched_at,
             "status": _public_search_state_status(current_progress),
@@ -4750,14 +5755,22 @@ def search_public_literature_metadata(
             task_state = progress[task_key]
             if resume and task_state.get("status") == "complete":
                 continue
-            cursor = str(task_state.get("next_cursor")) if resume and task_state.get("next_cursor") else None
+            cursor = (
+                str(task_state.get("next_cursor"))
+                if resume and task_state.get("next_cursor")
+                else None
+            )
             offset = _safe_int(task_state.get("next_offset"), 0) if resume else 0
-            page_index = _safe_int(task_state.get("next_page_index"), 0) if resume else 0
+            page_index = (
+                _safe_int(task_state.get("next_page_index"), 0) if resume else 0
+            )
             pages_requested = 0
             while pages_requested < page_limit:
                 if delay_seconds and request_count_this_run:
                     time.sleep(delay_seconds)
-                url = _public_search_url(source, query, max_results, cursor=cursor, offset=offset)
+                url = _public_search_url(
+                    source, query, max_results, cursor=cursor, offset=offset
+                )
                 entry: dict[str, Any] = _compact_dict(
                     {
                         "source": source,
@@ -4765,15 +5778,21 @@ def search_public_literature_metadata(
                         "url": url,
                         "status": "not_started",
                         "page_index": page_index + 1,
-                        "cursor": cursor if source in {"crossref", "openalex"} else None,
+                        "cursor": cursor
+                        if source in {"crossref", "openalex"}
+                        else None,
                         "offset": offset if source == "arxiv" else None,
                         "candidate_count": 0,
                     }
                 )
                 request_count_this_run += 1
                 try:
-                    response_text = fetch(url, source)
-                    normalized = _normalize_public_response(source, response_text, query=query)
+                    response_text, normalized = adapters[source].search_page(
+                        query,
+                        limit=max_results,
+                        cursor=cursor,
+                        offset=offset,
+                    )
                     page_state = _public_next_page(
                         source,
                         response_text,
@@ -4818,8 +5837,12 @@ def search_public_literature_metadata(
                 state_entries.append(entry.copy())
                 candidates.extend(normalized)
                 pages_requested += 1
-                task_state["page_count"] = _safe_int(task_state.get("page_count"), 0) + 1
-                task_state["candidate_count"] = _safe_int(task_state.get("candidate_count"), 0) + len(normalized)
+                task_state["page_count"] = (
+                    _safe_int(task_state.get("page_count"), 0) + 1
+                )
+                task_state["candidate_count"] = _safe_int(
+                    task_state.get("candidate_count"), 0
+                ) + len(normalized)
                 task_state["last_url"] = url
                 task_state["last_candidate_count"] = len(normalized)
                 if page_state.get("has_next_page"):
@@ -4890,7 +5913,11 @@ def search_public_literature_metadata(
     write_yaml(status_path, status)
 
     search_log = literature_root / "search_log.md"
-    previous_log = search_log.read_text(encoding="utf-8") if search_log.exists() else "# Literature Search Log\n"
+    previous_log = (
+        search_log.read_text(encoding="utf-8")
+        if search_log.exists()
+        else "# Literature Search Log\n"
+    )
     log_lines = [
         previous_log.rstrip(),
         "",
@@ -4915,6 +5942,11 @@ def search_public_literature_metadata(
         "ranking_path": ranking["ranking_path"],
         "selected_items_path": ranking["selected_items_path"],
         "candidate_count": len(candidates),
+        "run_delta": {
+            "request_count": request_count - request_count_before_run,
+            "candidate_count": len(candidates) - candidate_count_before_run,
+            "remaining_task_count": len(search_state.get("next_tasks") or []),
+        },
         "coverage": coverage,
         "search_state": search_state,
         "ranking": ranking,
@@ -4964,14 +5996,20 @@ def import_literature_acquisition_manifest(
     created_at: str | None = None,
 ) -> dict[str, Any]:
     literature_root = root / "literature"
-    resolved_manifest = manifest_path if manifest_path.is_absolute() else root / manifest_path
+    resolved_manifest = (
+        manifest_path if manifest_path.is_absolute() else root / manifest_path
+    )
     if not resolved_manifest.exists():
         raise FileNotFoundError(resolved_manifest)
     manifest = _load_manifest(resolved_manifest)
     status_path = literature_root / "deployment_status.yml"
     status = read_yaml(status_path) if status_path.exists() else {}
     project = _project_context(root)
-    project_id = str(manifest.get("project_id") or status.get("project_id") or project.get("project_id", "unknown-project"))
+    project_id = str(
+        manifest.get("project_id")
+        or status.get("project_id")
+        or project.get("project_id", "unknown-project")
+    )
     created_at = created_at or EARecord.now_iso()
     imported: list[dict[str, Any]] = []
     reused: list[dict[str, Any]] = []
@@ -4982,17 +6020,27 @@ def import_literature_acquisition_manifest(
     for index, item in enumerate(_manifest_items(manifest), start=1):
         citation = _item_citation(item)
         if not citation:
-            skipped.append({"index": index, "reason": "missing_title_or_citation", "item": item})
+            skipped.append(
+                {"index": index, "reason": "missing_title_or_citation", "item": item}
+            )
             continue
         title = item.get("title")
         doi = item.get("doi")
         url = item.get("url") or item.get("article_url")
         local_path = item.get("local_path") or item.get("pdf_path")
         cache_path = item.get("cache_path") or item.get("fulltext_cache_path")
-        duplicate = find_duplicate_reference(root, doi=doi, url=url, title=title, citation=citation)
+        duplicate = find_duplicate_reference(
+            root, doi=doi, url=url, title=title, citation=citation
+        )
         if duplicate:
             reference_id = duplicate["reference_id"]
-            reused.append({"index": index, "reference_id": reference_id, "match": duplicate["match"]})
+            reused.append(
+                {
+                    "index": index,
+                    "reference_id": reference_id,
+                    "match": duplicate["match"],
+                }
+            )
         else:
             reference_path = register_reference(
                 root,
@@ -5001,7 +6049,9 @@ def import_literature_acquisition_manifest(
                 title=str(title) if title else None,
                 authors=_item_authors(item),
                 year=item.get("year") or item.get("publication_year"),
-                venue=item.get("venue") or item.get("journal") or item.get("container_title"),
+                venue=item.get("venue")
+                or item.get("journal")
+                or item.get("container_title"),
                 doi=str(doi) if doi else None,
                 url=str(url) if url else None,
                 local_path=str(local_path) if local_path else None,
@@ -5010,16 +6060,25 @@ def import_literature_acquisition_manifest(
                 created_at=created_at,
             )
             reference_id = reference_path.stem
-            imported.append({"index": index, "reference_id": reference_id, "path": str(reference_path)})
+            imported.append(
+                {
+                    "index": index,
+                    "reference_id": reference_id,
+                    "path": str(reference_path),
+                }
+            )
         manifest_record = {
             "reference_id": reference_id,
             "title": title,
             "doi": doi,
             "url": url,
             "year": item.get("year") or item.get("publication_year"),
-            "venue": item.get("venue") or item.get("journal") or item.get("container_title"),
+            "venue": item.get("venue")
+            or item.get("journal")
+            or item.get("container_title"),
             "zotero_item_key": item.get("zotero_item_key") or item.get("item_key"),
-            "zotero_attachment_key": item.get("zotero_attachment_key") or item.get("attachment_key"),
+            "zotero_attachment_key": item.get("zotero_attachment_key")
+            or item.get("attachment_key"),
             "local_path": local_path,
             "cache_path": cache_path,
             "status": item.get("status") or item.get("acquisition_status"),
@@ -5050,7 +6109,9 @@ def import_literature_acquisition_manifest(
 
     downloaded_fulltext = manifest.get("downloaded_fulltext")
     if downloaded_fulltext is None:
-        downloaded_fulltext = sum(1 for item in manifest_items if item.get("local_path"))
+        downloaded_fulltext = sum(
+            1 for item in manifest_items if item.get("local_path")
+        )
     cached_fulltext = manifest.get("cached_fulltext")
     if cached_fulltext is None:
         cached_fulltext = cache_index["cached_count"]
@@ -5077,7 +6138,11 @@ def import_literature_acquisition_manifest(
     }
     update_path = literature_root / "acquisition_status_update.yml"
     write_yaml(update_path, update)
-    sync = sync_literature_acquisition_status(root, update_path=Path("literature/acquisition_status_update.yml"), synced_at=created_at)
+    sync = sync_literature_acquisition_status(
+        root,
+        update_path=Path("literature/acquisition_status_update.yml"),
+        synced_at=created_at,
+    )
     return {
         "manifest_path": str(resolved_manifest),
         "library_manifest_path": str(literature_root / "library_manifest.yml"),
@@ -5111,17 +6176,24 @@ def sync_literature_acquisition_status(
         if field in update:
             status[field] = update[field]
     status["last_acquisition_sync_at"] = synced_at or EARecord.now_iso()
-    status["acquisition_status_update_ref"] = update_path.relative_to(root).as_posix() if update_path.is_relative_to(root) else str(update_path)
+    status["acquisition_status_update_ref"] = (
+        update_path.relative_to(root).as_posix()
+        if update_path.is_relative_to(root)
+        else str(update_path)
+    )
     if "status" not in update:
         status["status"] = "acquisition_in_progress"
     write_yaml(status_path, status)
 
     sync_path = literature_root / "origin_thread_sync.yml"
-    sync_record = read_yaml(sync_path) if sync_path.exists() else {"schema_version": "0.2"}
+    sync_record = (
+        read_yaml(sync_path) if sync_path.exists() else {"schema_version": "0.2"}
+    )
     sync_record.update(
         {
             "project_id": status.get("project_id"),
-            "handoff_id": sync_record.get("handoff_id") or status.get("acquisition_handoff_ref"),
+            "handoff_id": sync_record.get("handoff_id")
+            or status.get("acquisition_handoff_ref"),
             "last_synced_at": status["last_acquisition_sync_at"],
             "status": status.get("status"),
             "candidate_count": status.get("candidate_count", 0),

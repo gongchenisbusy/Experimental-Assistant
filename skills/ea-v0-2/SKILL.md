@@ -1,6 +1,6 @@
 ---
 name: ea-v0-2
-description: Compatibility entry point for Experimental Assistant v0.9.7. Use only when an existing task or installation still invokes $ea-v0-2; route all work to the installed $ea skill while preserving historical project identifiers.
+description: Compatibility entry point for Experimental Assistant v0.9.8. Use only when an existing task or installation still invokes $ea-v0-2; route all work to the installed $ea skill while preserving historical project identifiers.
 ---
 
 # Experimental Assistant Compatibility Entry

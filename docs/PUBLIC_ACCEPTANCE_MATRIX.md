@@ -1,10 +1,10 @@
-# Experimental Assistant v0.9.7 Public Acceptance Matrix
+# Experimental Assistant v0.9.8 Public Acceptance Matrix
 
 This matrix is the release-candidate contract for ordinary users. A row is passed only by current evidence; automated tests do not substitute for novice usability or independent scientific review.
 
-| Area | Required evidence | v0.9.7 gate |
+| Area | Required evidence | v0.9.8 gate |
 |---|---|---|
-| Identity | `experimental-assistant 0.9.7`, CLI `ea`, primary `$ea`, thin `$ea-v0-2` wrapper | Blocking |
+| Identity | `experimental-assistant 0.9.8`, CLI `ea`, primary `$ea`, thin `$ea-v0-2` wrapper | Blocking |
 | Platforms | Native Windows, Ubuntu, macOS on Python 3.11-3.13; 3.14 observation only | Blocking |
 | Install lifecycle | clean wheel and sdist install; setup, doctor, update plan, rollback plan, uninstall plan | Blocking |
 | Project safety | migration plan/apply/rollback, atomic writes, interruption recovery, protected raw import | Blocking |
@@ -31,7 +31,7 @@ python3 -m build
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -58,4 +58,4 @@ ea-release-checklist
 - Any conversion of advisory/screening evidence into definitive material, phase, composition, band-gap, chemical-state, performance, or mechanism claims.
 - Any claim that an external novice or scientific review passed without real recorded evidence.
 
-External trials may remain `pending` for a controlled v0.9.7 candidate. They must pass before the same commit is promoted to v1.0.
+External trials may remain `pending` for a controlled v0.9.8 candidate. They must pass before the same commit is promoted to v1.0.

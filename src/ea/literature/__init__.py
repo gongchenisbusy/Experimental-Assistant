@@ -32,6 +32,20 @@ from ea.literature.data_extraction import (
     review_literature_data,
     validate_literature_data,
 )
+from ea.literature.pipeline import (
+    AccessResolver,
+    ContentAddressedPdfStore,
+    DiscoveryAdapter,
+    HttpPdfRetriever,
+    LiteratureFtsIndex,
+    OACandidate,
+    PublicMetadataDiscoveryAdapter,
+    Retriever,
+    UnpaywallResolver,
+    acquire_open_access_pdf,
+    canonical_doi,
+    validate_pdf_payload,
+)
 
 __all__ = [
     "build_search_queries",
@@ -64,4 +78,16 @@ __all__ = [
     "plot_literature_data",
     "review_literature_data",
     "validate_literature_data",
+    "AccessResolver",
+    "ContentAddressedPdfStore",
+    "DiscoveryAdapter",
+    "HttpPdfRetriever",
+    "LiteratureFtsIndex",
+    "OACandidate",
+    "PublicMetadataDiscoveryAdapter",
+    "Retriever",
+    "UnpaywallResolver",
+    "acquire_open_access_pdf",
+    "canonical_doi",
+    "validate_pdf_payload",
 ]

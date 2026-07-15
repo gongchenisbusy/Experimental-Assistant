@@ -45,7 +45,7 @@ DEFAULT_INCLUDE_ROOTS = [
     "tests",
     "scripts",
 ]
-DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-v0.9.7-release-manifest.yml"
+DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-v0.9.8-release-manifest.yml"
 EXCLUDED_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -68,7 +68,7 @@ PUBLIC_REPOSITORY = {
     "project_name": "Experimental Assistant (EA)",
     "repository_full_name": "gongchenisbusy/Experimental-Assistant",
     "repository_url": "https://github.com/gongchenisbusy/Experimental-Assistant",
-    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.7",
+    "release_url": "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8",
 }
 SMOKE_GATE_COMMANDS = [
     "python3 scripts/public_release_smoke.py",
@@ -98,6 +98,7 @@ SMOKE_GATE_COMMANDS = [
     "ea-sign-release-package",
     "ea-verify-release-signature",
     "ea-release-checklist",
+    "ea-release-skill-bundle",
 ]
 
 
@@ -235,8 +236,8 @@ def build_release_manifest(
             "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
             "manual_test_checklist_ref": "docs/V0_9_MANUAL_TEST_CHECKLIST.md",
             "agent_handoff_ref": "docs/V0_9_AGENT_HANDOFF.md",
-            "trial_report_ref": "docs/V0_9_7_TRIAL_REPORT.md",
-            "issue_disposition_ref": "docs/V0_9_7_ISSUE_DISPOSITION.md",
+            "trial_report_ref": "docs/V0_9_8_TRIAL_REPORT.md",
+            "issue_disposition_ref": "docs/V0_9_8_ISSUE_DISPOSITION.md",
         },
         "git": git_state(root),
         "release_inputs": {
@@ -281,6 +282,7 @@ def build_release_manifest(
                 "release_reproducibility_help",
                 "release_supply_chain_help",
                 "release_distribution_checklist_help",
+                "release_skill_bundle_help",
                 "portability_scan",
             ],
             "skill_validation_targets": ["skills/ea", "skills/ea-v0-2"],
@@ -304,17 +306,30 @@ def build_release_manifest(
             ],
         },
         "supply_chain": {
-            "sbom_ref": "dist/experimental-assistant-0.9.7-sbom.json",
-            "vulnerability_report_ref": "dist/experimental-assistant-0.9.7-vulnerability-report.json",
-            "install_smoke_ref": "dist/experimental-assistant-0.9.7-install-smoke.json",
-            "reproducibility_ref": "dist/experimental-assistant-0.9.7-reproducibility.json",
+            "sbom_ref": "dist/experimental-assistant-0.9.8-sbom.json",
+            "vulnerability_report_ref": "dist/experimental-assistant-0.9.8-vulnerability-report.json",
+            "install_smoke_ref": "dist/experimental-assistant-0.9.8-install-smoke.json",
+            "reproducibility_ref": "dist/experimental-assistant-0.9.8-reproducibility.json",
             "vulnerability_policy_ref": "docs/RELEASE_SECURITY_POLICY.md",
             "release_constraints_ref": "requirements/release.txt",
+        },
+        "skill_distribution": {
+            "bundle_ref": "dist/experimental-assistant-0.9.8-skills.zip",
+            "checksum_ref": "dist/experimental-assistant-0.9.8-skills.zip.sha256",
+            "companion_compatibility_ref": "skill-registry/companion-compatibility.yml",
+            "installation_source_priority": [
+                "explicit_source",
+                "bundled_distribution",
+                "verified_release_skill_bundle",
+                "developer_checkout",
+            ],
         },
         "scientific_evidence": {
             "raman_benchmark_ref": "benchmarks/raman-v1/benchmark.yml",
             "raman_review_ref": "benchmarks/raman-v1/scientific-review.yml",
             "raman_status": "beta_pending_external_reviewer",
+            "literature_benchmark_ref": "benchmarks/literature-v0.9.8.yml",
+            "public_oa_trial_ref": "docs/V0_9_8_TRIAL_REPORT.md",
         },
         "public_boundaries": PUBLIC_BOUNDARY_NOTES,
         "signature": {
@@ -346,7 +361,7 @@ def write_release_manifest(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate an Experimental Assistant v0.9.7 repository manifest."
+        description="Generate an Experimental Assistant v0.9.8 repository manifest."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

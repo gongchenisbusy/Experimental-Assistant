@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.7 中文快速入门
+# Experimental Assistant v0.9.8 中文快速入门
 
 EA 是一个本地优先的材料研究助手。公开名称是 Experimental Assistant，命令行是 `ea`，Codex 中的主入口是 `$ea`。`$ea-v0-2` 仅用于兼容旧任务。
 
@@ -7,7 +7,7 @@ EA 是一个本地优先的材料研究助手。公开名称是 Experimental Ass
 支持 Python 3.11、3.12 和 3.13，推荐 3.12。
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.7
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.8
 ea setup
 ea doctor
 ```
@@ -56,7 +56,7 @@ ea analyze /path/to/project raw/raman/RECORD/data.csv --method raman
 
 ## 5. 文献数据 beta
 
-v0.9.7 可以从用户合法获得的可搜索全文中提取窄范围的物性数据，保留页码/表格/图注/短上下文证据，并让用户逐条接受、拒绝、编辑、推迟或标记为不可比较。只有接受或编辑后的记录可以进入数据集和作图。
+v0.9.8 可以从用户合法获得的可搜索全文中提取窄范围的物性数据，保留页码/表格/图注/短上下文证据，并让用户逐条接受、拒绝、编辑、推迟或标记为不可比较。只有接受或编辑后的记录可以进入数据集和作图。
 
 电导率、电阻率、方阻、方电导、接触电阻和迁移率不会被混为同一个量。扫描版 PDF 会明确提示需要 OCR，不会编造数值。
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime
+import hashlib
 from importlib import metadata
 import json
+import locale
 import os
 from pathlib import Path
 import shutil
@@ -11,7 +13,11 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+
+from ea.companion import inspect_ea_feedback_companion
+from urllib.request import urlopen
 import uuid
+import zipfile
 
 import yaml
 
@@ -35,6 +41,17 @@ from ea.identity import (
 PACKAGE_NAME = DISTRIBUTION_NAME
 PACKAGE_COMPATIBILITY_NAME = LEGACY_DISTRIBUTION_NAMES[0]
 MIN_PYTHON = (3, 11)
+
+
+def _decode_subprocess_output(value: bytes) -> str:
+    """Decode CLI output emitted by UTF-8 or a common Windows console code page."""
+    encodings = ["utf-8", locale.getpreferredencoding(False), "gb18030", "cp1252"]
+    for encoding in dict.fromkeys(encodings):
+        try:
+            return value.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return value.decode("utf-8", errors="replace")
 
 
 def _python_version_tuple() -> tuple[int, int, int]:
@@ -94,7 +111,7 @@ def identity_record() -> dict[str, Any]:
     for legacy_name in LEGACY_DISTRIBUTION_NAMES:
         if legacy_name in installed:
             warnings.append(
-                f"Legacy distribution {legacy_name} {installed[legacy_name]} is installed; remove it after the v0.9.7 migration is verified."
+                f"Legacy distribution {legacy_name} {installed[legacy_name]} is installed; remove it after the v0.9.8 migration is verified."
             )
     if warnings:
         record["identity_warnings"] = warnings
@@ -110,11 +127,14 @@ def python_preflight_record() -> dict[str, Any]:
         "status": "pass" if ok else "fail",
         "python": sys.executable,
         "version": _python_version_label(),
-        "supported": [f"{major}.{minor_version}" for major, minor_version in SUPPORTED_PYTHON_MINORS],
+        "supported": [
+            f"{major}.{minor_version}"
+            for major, minor_version in SUPPORTED_PYTHON_MINORS
+        ],
         "message": (
-            "Python version is in the supported v0.9.7 matrix."
+            "Python version is in the supported v0.9.8 matrix."
             if ok
-            else "EA v0.9.7 supports Python 3.11, 3.12, and 3.13."
+            else "EA v0.9.8 supports Python 3.11, 3.12, and 3.13."
         ),
         "next_steps": []
         if ok
@@ -126,7 +146,9 @@ def python_preflight_record() -> dict[str, Any]:
 
 
 def codex_home(default: Path | None = None) -> Path:
-    return Path(os.environ.get("CODEX_HOME") or default or Path.home() / ".codex").expanduser()
+    return Path(
+        os.environ.get("CODEX_HOME") or default or Path.home() / ".codex"
+    ).expanduser()
 
 
 def codex_skills_dir(codex_home_path: Path | None = None) -> Path:
@@ -159,16 +181,41 @@ def find_local_skill_source(start: Path | None = None) -> Path | None:
     return None
 
 
+def find_bundled_skill_source() -> Path | None:
+    """Locate the skill payload installed by the current wheel/sdist."""
+    try:
+        distribution = metadata.distribution(DISTRIBUTION_NAME)
+    except metadata.PackageNotFoundError:
+        return None
+    suffix = "share/experimental-assistant/skills/ea/SKILL.md"
+    for entry in distribution.files or []:
+        normalized = str(entry).replace("\\", "/")
+        if not normalized.endswith(suffix):
+            continue
+        skill_md = Path(distribution.locate_file(entry)).resolve()
+        if skill_md.is_file():
+            return skill_md.parent
+    return None
+
+
 def quick_validate_path(codex_home_path: Path | None = None) -> Path | None:
     home = codex_home_path or codex_home()
     candidates = [
         home / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py",
-        Path.home() / ".codex" / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py",
+        Path.home()
+        / ".codex"
+        / "skills"
+        / ".system"
+        / "skill-creator"
+        / "scripts"
+        / "quick_validate.py",
     ]
     return next((path for path in candidates if path.is_file()), None)
 
 
-def validate_skill(skill_path: Path, *, validator: Path | None = None) -> dict[str, Any]:
+def validate_skill(
+    skill_path: Path, *, validator: Path | None = None
+) -> dict[str, Any]:
     validator_path = validator or quick_validate_path()
     if validator_path is None:
         return {
@@ -178,21 +225,25 @@ def validate_skill(skill_path: Path, *, validator: Path | None = None) -> dict[s
             "validator": None,
             "message": "Codex quick_validate.py was not found.",
         }
+    env = dict(os.environ)
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
     completed = subprocess.run(
         [sys.executable, str(validator_path), str(skill_path)],
-        text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
+        env=env,
     )
+    stdout = _decode_subprocess_output(completed.stdout)
+    stderr = _decode_subprocess_output(completed.stderr)
     return {
         "name": "codex_skill_validation",
         "status": "pass" if completed.returncode == 0 else "fail",
         "path": str(skill_path),
         "validator": str(validator_path),
         "returncode": completed.returncode,
-        "stdout": completed.stdout.strip(),
-        "stderr": completed.stderr.strip(),
+        "stdout": stdout.strip(),
+        "stderr": stderr.strip(),
     }
 
 
@@ -214,7 +265,7 @@ def inspect_skill_identity(path: Path, *, expected_name: str) -> dict[str, Any]:
     manifest = _skill_manifest(path)
     actual_name = manifest.get("name")
     description = str(manifest.get("description") or "")
-    version_ok = "v0.9.7" in description
+    version_ok = DISPLAY_VERSION in description
     status = "pass" if actual_name == expected_name and version_ok else "fail"
     return {
         "name": "codex_skill_identity",
@@ -222,29 +273,98 @@ def inspect_skill_identity(path: Path, *, expected_name: str) -> dict[str, Any]:
         "path": str(path),
         "expected_name": expected_name,
         "actual_name": actual_name,
-        "version_detected": "v0.9.7" if version_ok else None,
-        "next_steps": [] if status == "pass" else ["Run `ea codex install-skill` to replace the mismatched skill."],
+        "version_detected": DISPLAY_VERSION if version_ok else None,
+        "next_steps": []
+        if status == "pass"
+        else ["Run `ea codex install-skill` to replace the mismatched skill."],
     }
 
 
-def _clone_skill_sources(release_ref: str) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+def _fetch_compact_skill_bundle(
+    release_ref: str,
+) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     temp = tempfile.TemporaryDirectory(prefix="ea-skill-install-")
-    checkout = Path(temp.name) / "Experimental-Assistant"
-    completed = subprocess.run(
-        ["git", "clone", "--depth", "1", "--branch", release_ref, f"{REPOSITORY_URL}.git", str(checkout)],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    if completed.returncode != 0:
+    version = release_ref.removeprefix("v")
+    filename = f"experimental-assistant-{version}-skills.zip"
+    base_url = f"{REPOSITORY_URL}/releases/download/{release_ref}"
+    bundle_path = Path(temp.name) / filename
+    try:
+        with urlopen(f"{base_url}/{filename}", timeout=30) as response:  # noqa: S310 - fixed public release host
+            bundle_path.write_bytes(response.read())
+        with urlopen(f"{base_url}/{filename}.sha256", timeout=30) as response:  # noqa: S310 - fixed public release host
+            checksum_text = response.read().decode("utf-8")
+    except Exception as exc:  # noqa: BLE001 - converted to one actionable install error
         temp.cleanup()
-        raise RuntimeError(f"Could not fetch EA {release_ref}: {completed.stderr.strip()}")
-    source = checkout / "skills" / SKILL_NAME
+        raise RuntimeError(
+            f"Could not fetch compact EA skill bundle for {release_ref}: {exc}"
+        ) from exc
+    expected = checksum_text.split()[0] if checksum_text.split() else ""
+    actual = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+    if len(expected) != 64 or expected.lower() != actual:
+        temp.cleanup()
+        raise RuntimeError(f"EA skill bundle checksum mismatch for {release_ref}.")
+    extract_root = Path(temp.name) / "bundle"
+    with zipfile.ZipFile(bundle_path) as archive:
+        for member in archive.infolist():
+            destination = (extract_root / member.filename).resolve()
+            if (
+                extract_root.resolve() not in destination.parents
+                and destination != extract_root.resolve()
+            ):
+                temp.cleanup()
+                raise RuntimeError("EA skill bundle contains an unsafe path.")
+        archive.extractall(extract_root)
+    source = extract_root / "skills" / SKILL_NAME
     if not (source / "SKILL.md").is_file():
         temp.cleanup()
-        raise FileNotFoundError(f"Fetched release does not contain skills/{SKILL_NAME}/SKILL.md")
+        raise FileNotFoundError(
+            f"Compact release bundle does not contain skills/{SKILL_NAME}/SKILL.md"
+        )
     return temp, source
+
+
+def _installed_skill_snapshot(skills_dir: Path) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {}
+    for name in (SKILL_NAME, *LEGACY_SKILL_NAMES):
+        target = skills_dir / name
+        snapshot[name] = {
+            "exists": target.is_dir(),
+            "identity": inspect_skill_identity(target, expected_name=name)
+            if target.is_dir()
+            else None,
+        }
+    return snapshot
+
+
+def _write_install_journal(
+    skills_dir: Path,
+    *,
+    transaction_id: str,
+    status: str,
+    source_origin: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    restored_previous: bool,
+    error: str | None = None,
+) -> Path:
+    journal_root = skills_dir / ".transactions"
+    journal_root.mkdir(parents=True, exist_ok=True)
+    path = journal_root / f"{transaction_id}.json"
+    payload = {
+        "schema_version": "1.0",
+        "transaction_id": transaction_id,
+        "operation": "install_codex_skills",
+        "status": status,
+        "source_origin": source_origin,
+        "before": before,
+        "after": after,
+        "restored_previous": restored_previous,
+        "error": error,
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return path
 
 
 def _normalize_primary_source(source: Path) -> Path:
@@ -292,14 +412,24 @@ def install_codex_skill(
 ) -> dict[str, Any]:
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
-    source_path = _normalize_primary_source(source) if source else find_local_skill_source()
+    source_path = (
+        _normalize_primary_source(source) if source else find_bundled_skill_source()
+    )
     temp_checkout: tempfile.TemporaryDirectory[str] | None = None
-    source_origin = "local"
+    source_origin = "explicit" if source else "bundled_distribution"
     if source_path is None and allow_github_fetch:
-        temp_checkout, source_path = _clone_skill_sources(release_ref)
-        source_origin = f"github:{release_ref}"
+        try:
+            temp_checkout, source_path = _fetch_compact_skill_bundle(release_ref)
+            source_origin = f"github_release_skill_bundle:{release_ref}"
+        except RuntimeError:
+            source_path = None
     if source_path is None:
-        raise FileNotFoundError(f"Could not locate skills/{SKILL_NAME}; pass --source or allow GitHub fetch.")
+        source_path = find_local_skill_source()
+        source_origin = "developer_checkout"
+    if source_path is None:
+        raise FileNotFoundError(
+            f"Could not locate skills/{SKILL_NAME}; pass --source or allow GitHub fetch."
+        )
 
     skills_dir.mkdir(parents=True, exist_ok=True)
     stage_root = skills_dir / ".staging" / f"ea-{uuid.uuid4().hex}"
@@ -311,6 +441,8 @@ def install_codex_skill(
     installed: list[str] = []
     touched: list[str] = []
     stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    transaction_id = f"ea-skill-install-{stamp}-{uuid.uuid4().hex[:8]}"
+    before = _installed_skill_snapshot(skills_dir)
 
     try:
         for name, skill_source in _skill_sources(source_path):
@@ -321,6 +453,16 @@ def install_codex_skill(
             identity = inspect_skill_identity(stage, expected_name=name)
             validations[name] = {"structure": validation, "identity": identity}
             if validation["status"] == "fail" or identity["status"] == "fail":
+                journal_path = _write_install_journal(
+                    skills_dir,
+                    transaction_id=transaction_id,
+                    status="fail",
+                    source_origin=source_origin,
+                    before=before,
+                    after=_installed_skill_snapshot(skills_dir),
+                    restored_previous=True,
+                    error="staged_validation_failed",
+                )
                 return {
                     "schema_version": "1.0",
                     "check_type": "ea_codex_skill_install",
@@ -333,7 +475,10 @@ def install_codex_skill(
                     "validation": validation,
                     "validations": validations,
                     "restored_previous": True,
-                    "next_steps": ["Fix the staged skill validation failure; the existing installation was not changed."],
+                    "transaction_journal": str(journal_path),
+                    "next_steps": [
+                        "Fix the staged skill validation failure; the existing installation was not changed."
+                    ],
                 }
             staged[name] = stage
 
@@ -362,6 +507,15 @@ def install_codex_skill(
                 raise RuntimeError(f"Post-install validation failed for {name}")
             validations[name]["post_install"] = post_validation
 
+        journal_path = _write_install_journal(
+            skills_dir,
+            transaction_id=transaction_id,
+            status="pass",
+            source_origin=source_origin,
+            before=before,
+            after=_installed_skill_snapshot(skills_dir),
+            restored_previous=False,
+        )
         return {
             "schema_version": "1.0",
             "check_type": "ea_codex_skill_install",
@@ -378,13 +532,14 @@ def install_codex_skill(
             "validation": validations[SKILL_NAME]["post_install"],
             "validations": validations,
             "restored_previous": False,
+            "transaction_journal": str(journal_path),
             "next_steps": [
                 "Restart Codex before using the updated skill in a new task.",
                 f"Use the public invocation: {SKILL_INVOCATION}",
                 "Run `ea doctor` to verify CLI and skill identity.",
             ],
         }
-    except BaseException:
+    except BaseException as exc:
         for name in reversed(touched):
             target = skills_dir / name
             if target.exists():
@@ -393,6 +548,16 @@ def install_codex_skill(
             backup = Path(backup_value) if backup_value else rollback_root / name
             if backup.exists():
                 shutil.move(str(backup), str(target))
+        _write_install_journal(
+            skills_dir,
+            transaction_id=transaction_id,
+            status="fail",
+            source_origin=source_origin,
+            before=before,
+            after=_installed_skill_snapshot(skills_dir),
+            restored_previous=True,
+            error=str(exc),
+        )
         raise
     finally:
         if stage_root.exists():
@@ -405,7 +570,10 @@ def _latest_backup(skills_dir: Path, name: str) -> Path | None:
     backup_root = skills_dir / ".backups"
     if not backup_root.exists():
         return None
-    candidates = sorted((path for path in backup_root.glob(f"{name}-*") if path.is_dir()), key=lambda path: path.stat().st_mtime)
+    candidates = sorted(
+        (path for path in backup_root.glob(f"{name}-*") if path.is_dir()),
+        key=lambda path: path.stat().st_mtime,
+    )
     return candidates[-1] if candidates else None
 
 
@@ -417,10 +585,15 @@ def rollback_codex_skills(
 ) -> dict[str, Any]:
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
-    selected = {name: _latest_backup(skills_dir, name) for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)}
+    selected = {
+        name: _latest_backup(skills_dir, name)
+        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)
+    }
     missing = [name for name, backup in selected.items() if backup is None]
     if missing:
-        raise FileNotFoundError(f"No rollback backup is available for: {', '.join(missing)}")
+        raise FileNotFoundError(
+            f"No rollback backup is available for: {', '.join(missing)}"
+        )
     if not confirmed:
         return {
             "schema_version": "1.0",
@@ -473,16 +646,29 @@ def uninstall_codex_skills(
 ) -> dict[str, Any]:
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
-    targets = [skills_dir / name for name in (SKILL_NAME, *LEGACY_SKILL_NAMES) if (skills_dir / name).exists()]
+    targets = [
+        skills_dir / name
+        for name in (SKILL_NAME, *LEGACY_SKILL_NAMES)
+        if (skills_dir / name).exists()
+    ]
     if not confirmed:
-        return {"schema_version": "1.0", "status": "needs_confirmation", "will_remove": [str(path) for path in targets]}
+        return {
+            "schema_version": "1.0",
+            "status": "needs_confirmation",
+            "will_remove": [str(path) for path in targets],
+        }
     stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     backups: dict[str, str] = {}
     for target in targets:
         backup = _backup_path(skills_dir, target.name, f"uninstall-{stamp}")
         shutil.move(str(target), str(backup))
         backups[target.name] = str(backup)
-    return {"schema_version": "1.0", "status": "completed", "removed": [path.name for path in targets], "backups": backups}
+    return {
+        "schema_version": "1.0",
+        "status": "completed",
+        "removed": [path.name for path in targets],
+        "backups": backups,
+    }
 
 
 def _ea_executable() -> str | None:
@@ -492,28 +678,44 @@ def _ea_executable() -> str | None:
 def read_ea_executable_identity(executable: str | None = None) -> dict[str, Any]:
     path = executable or _ea_executable()
     if not path:
-        return {"status": "fail", "path": None, "identity": {}, "returncode": None, "stderr": "EA CLI was not found on PATH."}
+        return {
+            "status": "fail",
+            "path": None,
+            "identity": {},
+            "returncode": None,
+            "stderr": "EA CLI was not found on PATH.",
+        }
     try:
         completed = subprocess.run(
             [path, "version", "--json"],
-            text=True,
+            text=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
             timeout=20,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"status": "fail", "path": path, "identity": {}, "returncode": None, "stderr": str(exc)}
+        return {
+            "status": "fail",
+            "path": path,
+            "identity": {},
+            "returncode": None,
+            "stderr": str(exc),
+        }
     try:
-        detected = json.loads(completed.stdout) if completed.stdout.strip() else {}
+        stdout = completed.stdout.decode("utf-8", errors="replace")
+        stderr = completed.stderr.decode("utf-8", errors="replace")
+        detected = json.loads(stdout) if stdout.strip() else {}
     except json.JSONDecodeError:
         detected = {}
+        stderr = completed.stderr.decode("utf-8", errors="replace")
     return {
         "status": "pass" if completed.returncode == 0 and detected else "fail",
         "path": path,
         "identity": detected,
         "returncode": completed.returncode,
-        "stderr": completed.stderr.strip(),
+        "stderr": stderr.strip(),
     }
 
 
@@ -527,7 +729,9 @@ def inspect_ea_executable(executable: str | None = None) -> dict[str, Any]:
             "path": None,
             "code": "EA-INSTALL-CLI-NOT-FOUND",
             "message": "EA CLI was not found on PATH.",
-            "next_steps": [f"Install with: uv tool install --python 3.12 git+{REPOSITORY_URL}.git@{RELEASE_LABEL}"],
+            "next_steps": [
+                f"Install with: uv tool install --python 3.12 git+{REPOSITORY_URL}.git@{RELEASE_LABEL}"
+            ],
         }
     if raw["status"] == "fail":
         return {
@@ -536,7 +740,9 @@ def inspect_ea_executable(executable: str | None = None) -> dict[str, Any]:
             "path": path,
             "code": "EA-INSTALL-CLI-EXECUTION-FAILED",
             "message": f"PATH-resolved EA CLI could not be executed: {raw['stderr']}",
-            "next_steps": [f"Repair or remove the stale executable at `{path}`, then reinstall {DISTRIBUTION_NAME}."],
+            "next_steps": [
+                f"Repair or remove the stale executable at `{path}`, then reinstall {DISTRIBUTION_NAME}."
+            ],
         }
     detected = raw["identity"]
     expected = identity_record()
@@ -561,8 +767,14 @@ def inspect_ea_executable(executable: str | None = None) -> dict[str, Any]:
         },
         "stderr": raw["stderr"],
         "code": None if matches else "EA-INSTALL-CLI-IDENTITY-MISMATCH",
-        "message": "PATH-resolved EA CLI identity matches." if matches else "PATH resolves to a missing, stale, or mismatched EA CLI.",
-        "next_steps": [] if matches else [f"Reinstall {DISTRIBUTION_NAME} {__version__} and ensure `{path}` is the intended executable."],
+        "message": "PATH-resolved EA CLI identity matches."
+        if matches
+        else "PATH resolves to a missing, stale, or mismatched EA CLI.",
+        "next_steps": []
+        if matches
+        else [
+            f"Reinstall {DISTRIBUTION_NAME} {__version__} and ensure `{path}` is the intended executable."
+        ],
     }
 
 
@@ -577,7 +789,11 @@ def _repo_example_path(start: Path | None = None) -> Path | None:
 def run_public_example_check(example_workspace: Path | None = None) -> dict[str, Any]:
     workspace = example_workspace or _repo_example_path()
     if workspace is None or not workspace.exists():
-        return {"name": "public_example_healthcheck", "status": "warning", "workspace": str(workspace) if workspace else None}
+        return {
+            "name": "public_example_healthcheck",
+            "status": "warning",
+            "workspace": str(workspace) if workspace else None,
+        }
     from ea.healthcheck import run_healthcheck
 
     result = run_healthcheck(workspace)
@@ -608,8 +824,12 @@ def install_check(
 
     installed = identity["installed_distributions"]
     official_version = installed.get(DISTRIBUTION_NAME)
-    legacy_installed = {name: installed[name] for name in LEGACY_DISTRIBUTION_NAMES if name in installed}
-    package_status = "pass" if official_version == __version__ and not legacy_installed else "fail"
+    legacy_installed = {
+        name: installed[name] for name in LEGACY_DISTRIBUTION_NAMES if name in installed
+    }
+    package_status = (
+        "pass" if official_version == __version__ and not legacy_installed else "fail"
+    )
     checks.append(
         {
             "name": "ea_distribution",
@@ -618,13 +838,18 @@ def install_check(
             "expected_version": __version__,
             "installed_version": official_version,
             "legacy_installed": legacy_installed,
-            "code": None if package_status == "pass" else "EA-INSTALL-DISTRIBUTION-MISMATCH",
+            "code": None
+            if package_status == "pass"
+            else "EA-INSTALL-DISTRIBUTION-MISMATCH",
             "next_steps": []
             if package_status == "pass"
-            else [f"Install {DISTRIBUTION_NAME} {__version__} and remove legacy distributions after verification."],
+            else [
+                f"Install {DISTRIBUTION_NAME} {__version__} and remove legacy distributions after verification."
+            ],
         }
     )
     checks.append(inspect_ea_executable(executable))
+    checks.append(inspect_ea_feedback_companion(home))
 
     if not skip_codex_skill:
         for name in (SKILL_NAME, *LEGACY_SKILL_NAMES):
@@ -693,7 +918,11 @@ def lifecycle_update_plan(*, release_ref: str = RELEASE_LABEL) -> dict[str, Any]
         "status": "ready",
         "release_ref": release_ref,
         "previous_release_ref": previous_ref,
-        "will_write": ["installed CLI environment", "Codex skills/ea", "Codex skills/ea-v0-2"],
+        "will_write": [
+            "installed CLI environment",
+            "Codex skills/ea",
+            "Codex skills/ea-v0-2",
+        ],
         "cli_command": [
             "uv",
             "tool",
@@ -710,7 +939,56 @@ def lifecycle_update_plan(*, release_ref: str = RELEASE_LABEL) -> dict[str, Any]
 
 
 def _run_lifecycle_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    env = dict(os.environ)
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    completed = subprocess.run(
+        command,
+        text=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=env,
+    )
+    completed.stdout = _decode_subprocess_output(completed.stdout)
+    completed.stderr = _decode_subprocess_output(completed.stderr)
+    return completed
+
+
+def _write_lifecycle_journal(
+    *,
+    skills_dir: Path,
+    operation: str,
+    status: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    restored_previous: bool,
+    stage: str,
+    error: str | None = None,
+) -> Path:
+    transaction_id = f"ea-{operation}-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    journal_root = skills_dir / ".transactions"
+    journal_root.mkdir(parents=True, exist_ok=True)
+    path = journal_root / f"{transaction_id}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "transaction_id": transaction_id,
+                "operation": operation,
+                "status": status,
+                "stage": stage,
+                "before": before,
+                "after": after,
+                "restored_previous": restored_previous,
+                "error": error,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def update_installation(
@@ -719,20 +997,58 @@ def update_installation(
     confirmed: bool = False,
     uv_executable: str | None = None,
     command_runner=None,
+    codex_home_path: Path | None = None,
 ) -> dict[str, Any]:
     plan = lifecycle_update_plan(release_ref=release_ref)
     if not confirmed:
         return {**plan, "status": "needs_confirmation"}
     uv = uv_executable or shutil.which("uv")
     if not uv:
-        raise FileNotFoundError("uv was not found; install uv or perform the documented manual package transaction.")
+        raise FileNotFoundError(
+            "uv was not found; install uv or perform the documented manual package transaction."
+        )
     runner = command_runner or _run_lifecycle_command
-    previous_ref = plan.get("previous_release_ref") or "v0.9.6"
+    skills_dir = codex_skills_dir(codex_home_path)
+    before = {
+        "cli": read_ea_executable_identity(),
+        "skills": _installed_skill_snapshot(skills_dir),
+    }
+    previous_ref = plan.get("previous_release_ref") or "v0.9.7"
     python_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
-    install_command = [uv, "tool", "install", "--force", "--python", python_minor, f"git+{REPOSITORY_URL}.git@{release_ref}"]
-    rollback_command = [uv, "tool", "install", "--force", "--python", python_minor, f"git+{REPOSITORY_URL}.git@{previous_ref}"]
+    install_command = [
+        uv,
+        "tool",
+        "install",
+        "--force",
+        "--python",
+        python_minor,
+        f"git+{REPOSITORY_URL}.git@{release_ref}",
+    ]
+    rollback_command = [
+        uv,
+        "tool",
+        "install",
+        "--force",
+        "--python",
+        python_minor,
+        f"git+{REPOSITORY_URL}.git@{previous_ref}",
+    ]
     package_result = runner(install_command)
     if package_result.returncode != 0:
+        after = {
+            "cli": read_ea_executable_identity(),
+            "skills": _installed_skill_snapshot(skills_dir),
+        }
+        journal_path = _write_lifecycle_journal(
+            skills_dir=skills_dir,
+            operation="update_installation",
+            status="fail",
+            stage="cli_update",
+            before=before,
+            after=after,
+            restored_previous=True,
+            error=package_result.stderr.strip(),
+        )
         return {
             **plan,
             "status": "fail",
@@ -740,12 +1056,35 @@ def update_installation(
             "command": install_command,
             "stderr": package_result.stderr.strip(),
             "restored_previous": True,
+            "journal_path": str(journal_path),
         }
     executable = _ea_executable()
-    skill_command = [executable or "ea", "codex", "install-skill", "--release-ref", release_ref, "--json"]
+    skill_command = [
+        executable or "ea",
+        "codex",
+        "install-skill",
+        "--release-ref",
+        release_ref,
+        "--json",
+    ]
     skill_result = runner(skill_command)
     if skill_result.returncode != 0:
         rollback_result = runner(rollback_command)
+        restored = rollback_result.returncode == 0
+        after = {
+            "cli": read_ea_executable_identity(),
+            "skills": _installed_skill_snapshot(skills_dir),
+        }
+        journal_path = _write_lifecycle_journal(
+            skills_dir=skills_dir,
+            operation="update_installation",
+            status="fail",
+            stage="skill_update",
+            before=before,
+            after=after,
+            restored_previous=restored,
+            error=skill_result.stderr.strip(),
+        )
         return {
             **plan,
             "status": "fail",
@@ -753,9 +1092,23 @@ def update_installation(
             "command": skill_command,
             "stderr": skill_result.stderr.strip(),
             "rollback_command": rollback_command,
-            "restored_previous": rollback_result.returncode == 0,
+            "restored_previous": restored,
             "rollback_stderr": rollback_result.stderr.strip(),
+            "journal_path": str(journal_path),
         }
+    after = {
+        "cli": read_ea_executable_identity(),
+        "skills": _installed_skill_snapshot(skills_dir),
+    }
+    journal_path = _write_lifecycle_journal(
+        skills_dir=skills_dir,
+        operation="update_installation",
+        status="completed",
+        stage="complete",
+        before=before,
+        after=after,
+        restored_previous=False,
+    )
     return {
         **plan,
         "status": "completed",
@@ -764,12 +1117,13 @@ def update_installation(
         "previous_release_ref": previous_ref,
         "rollback_command": rollback_command,
         "restored_previous": False,
+        "journal_path": str(journal_path),
     }
 
 
 def rollback_installation(
     *,
-    release_ref: str = "v0.9.6",
+    release_ref: str = "v0.9.7",
     confirmed: bool = False,
     uv_executable: str | None = None,
     command_runner=None,
@@ -789,7 +1143,9 @@ def uninstall_installation(
     uv_executable: str | None = None,
     command_runner=None,
 ) -> dict[str, Any]:
-    skill_plan = uninstall_codex_skills(codex_home_path=codex_home_path, confirmed=False)
+    skill_plan = uninstall_codex_skills(
+        codex_home_path=codex_home_path, confirmed=False
+    )
     uv = uv_executable or shutil.which("uv")
     cli_command = [uv or "uv", "tool", "uninstall", DISTRIBUTION_NAME]
     if not confirmed:
@@ -801,8 +1157,12 @@ def uninstall_installation(
             "read_only": True,
         }
     if not uv:
-        raise FileNotFoundError("uv was not found; uninstall the CLI manually after removing the Codex skills.")
-    skills_result = uninstall_codex_skills(codex_home_path=codex_home_path, confirmed=True)
+        raise FileNotFoundError(
+            "uv was not found; uninstall the CLI manually after removing the Codex skills."
+        )
+    skills_result = uninstall_codex_skills(
+        codex_home_path=codex_home_path, confirmed=True
+    )
     runner = command_runner or _run_lifecycle_command
     cli_result = runner(cli_command)
     if cli_result.returncode != 0:
@@ -826,7 +1186,9 @@ def uninstall_installation(
     }
 
 
-def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") -> dict[str, Any]:
+def onboarding_post_install_record(
+    *, event: str = "install", lang: str = "zh"
+) -> dict[str, Any]:
     if event not in {"install", "update"}:
         raise ValueError("event must be install or update")
     if lang not in {"zh", "en"}:
@@ -842,9 +1204,13 @@ def onboarding_post_install_record(*, event: str = "install", lang: str = "zh") 
             "guided_project_creation",
             "protected_raw_import_and_review_gated_analysis",
             "traceable_reports_exports_and_project_status",
-            "permission_gated_literature_and_beta_evidence_datasets",
+            "permission_gated_literature_and_review_gated_evidence_datasets",
         ],
-        "recommended_first_checks": ["ea version --json", "ea doctor --json", "ea start --help"],
+        "recommended_first_checks": [
+            "ea version --json",
+            "ea doctor --json",
+            "ea start --help",
+        ],
         "confirmation_phrase": "确定配置" if lang == "zh" else "Confirm setup",
         "boundaries": [
             "Onboarding does not create project files.",
@@ -868,7 +1234,7 @@ def render_onboarding_post_install(record: dict[str, Any]) -> str:
                 "Use $ea for new work. Consult mode writes no project files.",
                 "Run `ea doctor` to verify CLI, distribution, and both skill identities.",
                 "Run `ea start` when you want a guided first project.",
-                "Literature acquisition and evidence datasets remain permission-gated beta/experimental workflows.",
+                "Literature acquisition requires explicit permission; scientific evidence remains review-gated.",
             ]
         )
     return "\n".join(
@@ -877,15 +1243,24 @@ def render_onboarding_post_install(record: dict[str, Any]) -> str:
             "新任务请使用 `$ea`；咨询模式不会写入项目文件。",
             "运行 `ea doctor` 检查 CLI、distribution 和两个 skill 身份。",
             "准备创建首个项目时运行 `ea start`。",
-            "文献获取和证据数据集仍是需要授权的 beta/experimental 工作流。",
+            "文献获取需要明确授权；科学证据仍需人工复核。",
         ]
     )
 
 
 def render_install_summary(result: dict[str, Any]) -> str:
-    lines = [f"{PRODUCT_NAME} doctor: {result['status']}", f"Version: {result['identity']['public_version']}", "Checks:"]
+    lines = [
+        f"{PRODUCT_NAME} doctor: {result['status']}",
+        f"Version: {result['identity']['public_version']}",
+        "Checks:",
+    ]
     for check in result.get("checks", []):
-        detail = check.get("message") or check.get("path") or check.get("installed_version") or ""
+        detail = (
+            check.get("message")
+            or check.get("path")
+            or check.get("installed_version")
+            or ""
+        )
         lines.append(f"- {check.get('name')}: {check.get('status')} {detail}".rstrip())
         for step in check.get("next_steps", []):
             lines.append(f"  next: {step}")
@@ -907,7 +1282,9 @@ def render_install_skill_summary(result: dict[str, Any]) -> str:
 
 
 def build_install_check_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=f"Check {PUBLIC_VERSION} installation readiness.")
+    parser = argparse.ArgumentParser(
+        description=f"Check {PUBLIC_VERSION} installation readiness."
+    )
     parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--skill-path", type=Path)
     parser.add_argument("--quick-validate", type=Path)
@@ -928,7 +1305,11 @@ def install_check_main(argv: list[str] | None = None) -> int:
         example_workspace=args.example_workspace,
         skip_codex_skill=args.skip_codex_skill,
     )
-    print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else render_install_summary(result))
+    print(
+        json.dumps(result, ensure_ascii=False, indent=2)
+        if args.json
+        else render_install_summary(result)
+    )
     return 0 if result["status"] != "fail" else 2
 
 

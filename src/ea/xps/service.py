@@ -23,10 +23,14 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
-from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.literature.source_packet_manifest import (
+    SourcePacketManifestError,
+    confirmed_source_packet_library,
+)
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
@@ -70,14 +74,26 @@ class XPSProcessingRequest:
     parameter_review_ref: str
 
 
-XPS_PARAMETER_SUGGESTION_TYPES = {"spin_orbit_constraint", "tougaard_parameter", "binding_energy_candidate"}
-XPS_PARAMETER_ORIGINS = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
+XPS_PARAMETER_SUGGESTION_TYPES = {
+    "spin_orbit_constraint",
+    "tougaard_parameter",
+    "binding_energy_candidate",
+}
+XPS_PARAMETER_ORIGINS = {
+    "reported_by_user",
+    "source_suggested",
+    "user_confirmed_source_suggested",
+}
 BUILTIN_XPS_PARAMETER_LIBRARY_DEFAULT = "generic_xps_parameters"
 
 
 @lru_cache(maxsize=1)
 def _builtin_xps_parameter_libraries() -> dict[str, Any]:
-    text = resources.files("ea.xps").joinpath("parameter_libraries.yml").read_text(encoding="utf-8")
+    text = (
+        resources.files("ea.xps")
+        .joinpath("parameter_libraries.yml")
+        .read_text(encoding="utf-8")
+    )
     loaded = yaml.safe_load(text) or {}
     libraries = loaded.get("libraries")
     if not isinstance(libraries, dict):
@@ -93,7 +109,9 @@ def _builtin_xps_parameter_library(name: str) -> dict[str, Any]:
     libraries = _builtin_xps_parameter_libraries()
     if name not in libraries:
         available = ", ".join(sorted(libraries)) or "none"
-        raise XPSProcessingError(f"Unknown built-in XPS parameter library: {name}. Available libraries: {available}")
+        raise XPSProcessingError(
+            f"Unknown built-in XPS parameter library: {name}. Available libraries: {available}"
+        )
     return deepcopy(libraries[name])
 
 
@@ -201,7 +219,9 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
@@ -214,7 +234,9 @@ def _relative_to_root(root: Path, path: Path) -> str:
         return str(path)
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -224,7 +246,13 @@ def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tupl
     return coerced, False
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -301,41 +329,61 @@ def _confirmed_frame(path: Path, request: XPSProcessingRequest) -> pd.DataFrame:
     frame, _ = _read_spectrum(path)
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise XPSProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise XPSProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"eV", "unknown"}:
         raise XPSProcessingError("XPS x_unit must be user-confirmed as eV or unknown")
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["binding_energy_raw", "raw_intensity"]
-    data["binding_energy_raw"] = pd.to_numeric(data["binding_energy_raw"], errors="coerce")
+    data["binding_energy_raw"] = pd.to_numeric(
+        data["binding_energy_raw"], errors="coerce"
+    )
     data["raw_intensity"] = pd.to_numeric(data["raw_intensity"], errors="coerce")
     data = data.dropna().sort_values("binding_energy_raw").reset_index(drop=True)
     if data.empty:
         raise XPSProcessingError("Confirmed XPS columns contain no numeric data")
-    data["binding_energy_eV"] = data["binding_energy_raw"] + float(request.energy_shift_eV)
+    data["binding_energy_eV"] = data["binding_energy_raw"] + float(
+        request.energy_shift_eV
+    )
     return data
 
 
-def _rolling_quantile_baseline(intensity: np.ndarray, window_points: int, quantile: float) -> np.ndarray:
+def _rolling_quantile_baseline(
+    intensity: np.ndarray, window_points: int, quantile: float
+) -> np.ndarray:
     series = pd.Series(intensity)
-    baseline = series.rolling(window=window_points, center=True, min_periods=max(3, window_points // 5)).quantile(quantile)
+    baseline = series.rolling(
+        window=window_points, center=True, min_periods=max(3, window_points // 5)
+    ).quantile(quantile)
     baseline = baseline.bfill().ffill()
     return baseline.to_numpy(dtype=float)
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     intensity = processed["raw_intensity"].to_numpy(dtype=float)
 
     baseline = parameters.get("baseline_correction", {})
     if baseline.get("enabled", False):
-        window_points, window_adjusted = _coerce_int(baseline.get("window_points"), 101, minimum=5)
-        quantile, quantile_adjusted = _coerce_float(baseline.get("quantile"), 0.05, minimum=0.0, maximum=1.0)
+        window_points, window_adjusted = _coerce_int(
+            baseline.get("window_points"), 101, minimum=5
+        )
+        quantile, quantile_adjusted = _coerce_float(
+            baseline.get("quantile"), 0.05, minimum=0.0, maximum=1.0
+        )
         if window_points % 2 == 0:
             window_points += 1
             window_adjusted = True
         if window_points > len(intensity):
-            window_points = len(intensity) if len(intensity) % 2 == 1 else max(5, len(intensity) - 1)
+            window_points = (
+                len(intensity)
+                if len(intensity) % 2 == 1
+                else max(5, len(intensity) - 1)
+            )
             window_adjusted = True
         baseline_signal = _rolling_quantile_baseline(intensity, window_points, quantile)
         processed["baseline_signal"] = baseline_signal
@@ -362,7 +410,9 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 9, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 9, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -378,7 +428,15 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
             polyorder = max(1, window_length - 1)
             adjusted = True
         if intensity.size >= 3 and window_length >= 3:
-            intensity = np.asarray(savgol_filter(intensity, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            intensity = np.asarray(
+                savgol_filter(
+                    intensity,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             processed["smoothed_intensity"] = intensity
             warnings.append(
                 _warning(
@@ -404,12 +462,19 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
         max_value = float(np.max(np.abs(intensity)))
         if max_value > 0:
             intensity = intensity / max_value
-        warnings.append(_warning("xps_normalization_applied", "XPS intensity normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "xps_normalization_applied",
+                "XPS intensity normalized by processing parameters.",
+            )
+        )
     processed["processed_intensity"] = intensity
     return processed, warnings
 
 
-def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: str) -> pd.DataFrame:
+def _detect_peaks(
+    processed: pd.DataFrame, parameters: dict[str, Any], x_unit: str
+) -> pd.DataFrame:
     intensity = processed["processed_intensity"].to_numpy(dtype=float)
     peak_params = parameters.get("peak_detection", {})
     prominence = peak_params.get("prominence", "auto")
@@ -421,7 +486,10 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: s
         distance = max(len(intensity) // 120, 1)
     peaks, properties = find_peaks(intensity, prominence=prominence, distance=distance)
     ranked = sorted(
-        [(int(peak), float(properties["prominences"][index])) for index, peak in enumerate(peaks)],
+        [
+            (int(peak), float(properties["prominences"][index]))
+            for index, peak in enumerate(peaks)
+        ],
         key=lambda item: item[1],
         reverse=True,
     )[:max_features]
@@ -493,7 +561,11 @@ def _component_columns() -> list[str]:
 
 
 def _component_window(component: dict[str, Any]) -> tuple[float, float] | None:
-    value = component.get("binding_energy_window_eV") or component.get("window_eV") or component.get("energy_window_eV")
+    value = (
+        component.get("binding_energy_window_eV")
+        or component.get("window_eV")
+        or component.get("energy_window_eV")
+    )
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         return None
     try:
@@ -555,10 +627,17 @@ def _candidate_energy_window(value: Any, *names: str) -> list[float] | None:
         if raw is None:
             continue
         if isinstance(raw, str):
-            raw = [part.strip() for part in raw.replace("to", ",").replace("-", ",").split(",")]
+            raw = [
+                part.strip()
+                for part in raw.replace("to", ",").replace("-", ",").split(",")
+            ]
         if isinstance(raw, dict):
-            low_raw = raw.get("min_eV", raw.get("min", raw.get("low_eV", raw.get("low"))))
-            high_raw = raw.get("max_eV", raw.get("max", raw.get("high_eV", raw.get("high"))))
+            low_raw = raw.get(
+                "min_eV", raw.get("min", raw.get("low_eV", raw.get("low")))
+            )
+            high_raw = raw.get(
+                "max_eV", raw.get("max", raw.get("high_eV", raw.get("high")))
+            )
             raw = [low_raw, high_raw]
         if not isinstance(raw, list | tuple) or len(raw) != 2:
             continue
@@ -569,14 +648,28 @@ def _candidate_energy_window(value: Any, *names: str) -> list[float] | None:
             continue
         if np.isfinite(low) and np.isfinite(high):
             return [min(low, high), max(low, high)]
-    low = _candidate_number(value, "binding_energy_min_eV", "be_min_eV", "window_min_eV", "min_binding_energy_eV")
-    high = _candidate_number(value, "binding_energy_max_eV", "be_max_eV", "window_max_eV", "max_binding_energy_eV")
+    low = _candidate_number(
+        value,
+        "binding_energy_min_eV",
+        "be_min_eV",
+        "window_min_eV",
+        "min_binding_energy_eV",
+    )
+    high = _candidate_number(
+        value,
+        "binding_energy_max_eV",
+        "be_max_eV",
+        "window_max_eV",
+        "max_binding_energy_eV",
+    )
     if low is not None and high is not None:
         return [min(low, high), max(low, high)]
     return None
 
 
-def _normalize_parameter_origin(value: Any, warnings: list[dict[str, Any]], *, candidate_id: str) -> str:
+def _normalize_parameter_origin(
+    value: Any, warnings: list[dict[str, Any]], *, candidate_id: str
+) -> str:
     origin = str(value or "source_suggested").strip().lower().replace(" ", "_")
     if origin in XPS_PARAMETER_ORIGINS:
         return origin
@@ -637,7 +730,12 @@ def _xps_parameter_source_candidates(source_packet: Any) -> list[Any]:
     if isinstance(source_packet, list):
         return source_packet
     if isinstance(source_packet, dict):
-        raw_candidates = source_packet.get("candidates") or source_packet.get("parameters") or source_packet.get("suggestions") or []
+        raw_candidates = (
+            source_packet.get("candidates")
+            or source_packet.get("parameters")
+            or source_packet.get("suggestions")
+            or []
+        )
         return raw_candidates if isinstance(raw_candidates, list) else []
     return []
 
@@ -710,7 +808,9 @@ def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
             ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; fill numeric values and source metadata before running suggest-parameters."],
+            "caveats": [
+                "Template candidate only; fill numeric values and source metadata before running suggest-parameters."
+            ],
         },
         {
             "candidate_id": "xps-param-template-tougaard-001",
@@ -720,10 +820,14 @@ def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
             "integration_direction": "toward_higher_binding_energy",
             "parameter_origin": "source_suggested",
             "source_summary": "TODO: summarize the source that supports the Tougaard parameter candidate.",
-            "applicability_notes": ["TODO: describe the reviewed background region and material/system where this candidate applies."],
+            "applicability_notes": [
+                "TODO: describe the reviewed background region and material/system where this candidate applies."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; fill numeric values and source metadata before running suggest-parameters."],
+            "caveats": [
+                "Template candidate only; fill numeric values and source metadata before running suggest-parameters."
+            ],
         },
         {
             "candidate_id": "xps-param-template-binding-energy-001",
@@ -751,7 +855,9 @@ def _xps_parameter_source_template_candidates() -> list[dict[str, Any]]:
 
 
 def _candidate_identity(candidate: dict[str, Any]) -> str:
-    return str(candidate.get("candidate_id") or candidate.get("suggestion_id") or "").strip()
+    return str(
+        candidate.get("candidate_id") or candidate.get("suggestion_id") or ""
+    ).strip()
 
 
 def _candidate_matches_filters(
@@ -764,11 +870,22 @@ def _candidate_matches_filters(
 ) -> bool:
     if include_candidates and _candidate_identity(candidate) not in include_candidates:
         return False
-    if suggestion_types and _normalize_xps_suggestion_type(candidate.get("suggestion_type") or candidate.get("parameter_type") or candidate.get("type")) not in suggestion_types:
+    if (
+        suggestion_types
+        and _normalize_xps_suggestion_type(
+            candidate.get("suggestion_type")
+            or candidate.get("parameter_type")
+            or candidate.get("type")
+        )
+        not in suggestion_types
+    ):
         return False
     if elements and str(candidate.get("element") or "").strip().lower() not in elements:
         return False
-    if core_levels and str(candidate.get("core_level") or "").strip().lower() not in core_levels:
+    if (
+        core_levels
+        and str(candidate.get("core_level") or "").strip().lower() not in core_levels
+    ):
         return False
     return True
 
@@ -785,7 +902,9 @@ def _xps_parameter_target_path(suggestion_type: str) -> str | None:
 
 def _xps_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str, Any]:
     suggestion_type = _normalize_xps_suggestion_type(
-        raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type")
+        raw_candidate.get("suggestion_type")
+        or raw_candidate.get("parameter_type")
+        or raw_candidate.get("type")
     )
     summary: dict[str, Any] = {
         "candidate_id": _candidate_identity(raw_candidate),
@@ -794,9 +913,18 @@ def _xps_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str,
         "element": str(raw_candidate.get("element") or "").strip() or None,
         "core_level": str(raw_candidate.get("core_level") or "").strip() or None,
         "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
-        "parameter_origin": str(raw_candidate.get("parameter_origin") or "source_suggested").strip() or "source_suggested",
-        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
-        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
+        "parameter_origin": str(
+            raw_candidate.get("parameter_origin") or "source_suggested"
+        ).strip()
+        or "source_suggested",
+        "source_summary": str(
+            raw_candidate.get("source_summary")
+            or raw_candidate.get("reference_summary")
+            or ""
+        ).strip(),
+        "applicability_notes": _coerce_string_list(
+            raw_candidate.get("applicability_notes")
+        ),
         "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
         "caveats": _coerce_string_list(raw_candidate.get("caveats")),
         "auto_applied": False,
@@ -805,18 +933,35 @@ def _xps_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str,
     if suggestion_type == "spin_orbit_constraint":
         summary.update(
             {
-                "constraint_id": str(raw_candidate.get("constraint_id") or summary["candidate_id"]).strip() or None,
-                "center_delta_eV": _candidate_number(raw_candidate, "center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"),
-                "area_ratio": _candidate_number(raw_candidate, "area_ratio", "dependent_area_ratio"),
-                "fwhm_ratio": _candidate_number(raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio"),
+                "constraint_id": str(
+                    raw_candidate.get("constraint_id") or summary["candidate_id"]
+                ).strip()
+                or None,
+                "center_delta_eV": _candidate_number(
+                    raw_candidate,
+                    "center_delta_eV",
+                    "dependent_center_delta_eV",
+                    "center_offset_eV",
+                ),
+                "area_ratio": _candidate_number(
+                    raw_candidate, "area_ratio", "dependent_area_ratio"
+                ),
+                "fwhm_ratio": _candidate_number(
+                    raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio"
+                ),
             }
         )
     elif suggestion_type == "tougaard_parameter":
         summary.update(
             {
                 "tougaard_B": _candidate_number(raw_candidate, "tougaard_B", "B", "b1"),
-                "tougaard_C_eV2": _candidate_number(raw_candidate, "tougaard_C_eV2", "C_eV2", "C"),
-                "integration_direction": str(raw_candidate.get("integration_direction") or "").strip() or None,
+                "tougaard_C_eV2": _candidate_number(
+                    raw_candidate, "tougaard_C_eV2", "C_eV2", "C"
+                ),
+                "integration_direction": str(
+                    raw_candidate.get("integration_direction") or ""
+                ).strip()
+                or None,
             }
         )
     elif suggestion_type == "binding_energy_candidate":
@@ -858,14 +1003,23 @@ def _xps_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str,
                     or ""
                 ).strip()
                 or None,
-                "overlap_notes": _coerce_string_list(raw_candidate.get("overlap_notes") or raw_candidate.get("overlap_risks")),
+                "overlap_notes": _coerce_string_list(
+                    raw_candidate.get("overlap_notes")
+                    or raw_candidate.get("overlap_risks")
+                ),
             }
         )
     return summary
 
 
-def _xps_discovery_build_source_command(library_id: str, filters: dict[str, list[str]]) -> str:
-    parts = ["ea xps build-source-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+def _xps_discovery_build_source_command(
+    library_id: str, filters: dict[str, list[str]]
+) -> str:
+    parts = [
+        "ea xps build-source-packet /path/to/ea-project --project-id <project-id>",
+        "--builtin-library",
+        library_id,
+    ]
     for candidate_id in filters["include_candidates"]:
         parts.extend(["--include-candidate", candidate_id])
     for suggestion_type in filters["suggestion_types"]:
@@ -888,20 +1042,36 @@ def summarize_xps_parameter_libraries(
     """Summarize built-in XPS parameter libraries without creating project artifacts."""
 
     libraries = _builtin_xps_parameter_libraries()
-    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    requested_library_ids = [
+        str(item).strip() for item in builtin_libraries or [] if str(item).strip()
+    ]
     if requested_library_ids:
-        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        unknown = sorted(
+            {item for item in requested_library_ids if item not in libraries}
+        )
         if unknown:
             available = ", ".join(sorted(libraries)) or "none"
-            raise XPSProcessingError(f"Unknown built-in XPS parameter library: {', '.join(unknown)}. Available libraries: {available}")
+            raise XPSProcessingError(
+                f"Unknown built-in XPS parameter library: {', '.join(unknown)}. Available libraries: {available}"
+            )
         library_ids = sorted(dict.fromkeys(requested_library_ids))
     else:
         library_ids = sorted(libraries)
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_xps_suggestion_type(item) for item in suggestion_types or [] if str(item).strip()}
-    element_set = {str(item).strip().lower() for item in elements or [] if str(item).strip()}
-    core_level_set = {str(item).strip().lower() for item in core_levels or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_xps_suggestion_type(item)
+        for item in suggestion_types or []
+        if str(item).strip()
+    }
+    element_set = {
+        str(item).strip().lower() for item in elements or [] if str(item).strip()
+    }
+    core_level_set = {
+        str(item).strip().lower() for item in core_levels or [] if str(item).strip()
+    }
     filters = {
         "builtin_libraries": library_ids,
         "include_candidates": sorted(include_set),
@@ -920,7 +1090,11 @@ def summarize_xps_parameter_libraries(
 
     for library_id in library_ids:
         library = libraries[library_id]
-        raw_candidates = [candidate for candidate in _xps_parameter_source_candidates(library) if isinstance(candidate, dict)]
+        raw_candidates = [
+            candidate
+            for candidate in _xps_parameter_source_candidates(library)
+            if isinstance(candidate, dict)
+        ]
         total_candidate_count += len(raw_candidates)
         matching_raw_candidates = [
             candidate
@@ -933,14 +1107,19 @@ def summarize_xps_parameter_libraries(
                 core_levels=core_level_set,
             )
         ]
-        candidate_summaries = [_xps_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        candidate_summaries = [
+            _xps_discovery_candidate_summary(candidate)
+            for candidate in matching_raw_candidates
+        ]
         matching_candidate_count += len(candidate_summaries)
         type_counts: dict[str, int] = {}
         library_elements: set[str] = set()
         library_core_levels: set[str] = set()
         for candidate in raw_candidates:
             suggestion_type = _normalize_xps_suggestion_type(
-                candidate.get("suggestion_type") or candidate.get("parameter_type") or candidate.get("type")
+                candidate.get("suggestion_type")
+                or candidate.get("parameter_type")
+                or candidate.get("type")
             )
             if suggestion_type:
                 type_counts[suggestion_type] = type_counts.get(suggestion_type, 0) + 1
@@ -954,15 +1133,27 @@ def summarize_xps_parameter_libraries(
                 library_core_levels.add(core_level)
                 all_core_levels.add(core_level)
         candidate_reference_ids = {
-            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+            reference_id
+            for candidate in matching_raw_candidates
+            for reference_id in _coerce_string_list(candidate.get("reference_ids"))
         }
-        guidance_reference_ids = _coerce_string_list(library.get("guidance_reference_ids"))
+        guidance_reference_ids = _coerce_string_list(
+            library.get("guidance_reference_ids")
+        )
         matching_reference_ids.update(candidate_reference_ids)
         if matching_raw_candidates:
             matching_reference_ids.update(guidance_reference_ids)
-        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
+        reference_seed_ids = (
+            sorted((library.get("reference_seeds") or {}).keys())
+            if isinstance(library.get("reference_seeds"), dict)
+            else []
+        )
         matching_reference_seed_ids = sorted(
-            set(reference_seed_ids) & (candidate_reference_ids | (set(guidance_reference_ids) if matching_raw_candidates else set()))
+            set(reference_seed_ids)
+            & (
+                candidate_reference_ids
+                | (set(guidance_reference_ids) if matching_raw_candidates else set())
+            )
         )
         summaries.append(
             {
@@ -979,7 +1170,9 @@ def summarize_xps_parameter_libraries(
                 "matching_reference_seed_ids": matching_reference_seed_ids,
                 "guidance_reference_ids": guidance_reference_ids,
                 "guidance_notes": _coerce_string_list(library.get("guidance_notes")),
-                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidate_ids": [
+                    candidate["candidate_id"] for candidate in candidate_summaries
+                ],
                 "candidates": candidate_summaries,
             }
         )
@@ -1032,13 +1225,18 @@ def build_xps_parameter_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    selected_source_count = sum(
+        bool(value)
+        for value in [library_path, builtin_library, literature_manifest_path, template]
+    )
     if selected_source_count > 1:
         raise XPSProcessingError(
             "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for XPS source-packet generation"
         )
 
-    template_mode = template and library_path is None and literature_manifest_path is None
+    template_mode = (
+        template and library_path is None and literature_manifest_path is None
+    )
     literature_mode = literature_manifest_path is not None
     builtin_mode = not template_mode and not literature_mode and library_path is None
     if builtin_mode and not builtin_library:
@@ -1050,7 +1248,13 @@ def build_xps_parameter_source_packet(
         if template_mode:
             output_path = root / "templates" / "xps_parameter_source_packet.yml"
         else:
-            output_path = root / "suggestions" / "xps" / "source-packets" / f"{source_packet_id}.yml"
+            output_path = (
+                root
+                / "suggestions"
+                / "xps"
+                / "source-packets"
+                / f"{source_packet_id}.yml"
+            )
     elif not output_path.is_absolute():
         output_path = root / output_path
     assert_not_raw_output_path(root, output_path)
@@ -1067,7 +1271,13 @@ def build_xps_parameter_source_packet(
         library_ref = f"builtin:{builtin_library}"
         library_kind = "built_in"
     elif literature_mode:
-        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        source_path = (
+            literature_manifest_path
+            if literature_manifest_path and literature_manifest_path.is_absolute()
+            else root / literature_manifest_path
+            if literature_manifest_path
+            else None
+        )
         if source_path is None:
             raise XPSProcessingError("XPS literature manifest path was not supplied")
         try:
@@ -1075,7 +1285,12 @@ def build_xps_parameter_source_packet(
                 root,
                 manifest_path=source_path,
                 method="xps",
-                method_aliases={"xps", "xps_parameter", "xps_parameter_source_packet", "surface_spectroscopy"},
+                method_aliases={
+                    "xps",
+                    "xps_parameter",
+                    "xps_parameter_source_packet",
+                    "surface_spectroscopy",
+                },
             )
         except SourcePacketManifestError as exc:
             raise XPSProcessingError(str(exc)) from exc
@@ -1084,17 +1299,35 @@ def build_xps_parameter_source_packet(
         library_ref = _relative_to_root(root, source_path)
         library_kind = "confirmed_literature_manifest"
     else:
-        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        source_path = (
+            library_path
+            if library_path and library_path.is_absolute()
+            else root / library_path
+            if library_path
+            else None
+        )
         if source_path is None or not source_path.exists():
-            raise XPSProcessingError(f"XPS parameter library file not found: {library_path}")
+            raise XPSProcessingError(
+                f"XPS parameter library file not found: {library_path}"
+            )
         library_ref = _relative_to_root(root, source_path)
         source_library = read_yaml(source_path)
         raw_candidates = _xps_parameter_source_candidates(source_library)
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_xps_suggestion_type(item) for item in suggestion_types or [] if str(item).strip()}
-    element_set = {str(item).strip().lower() for item in elements or [] if str(item).strip()}
-    core_level_set = {str(item).strip().lower() for item in core_levels or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_xps_suggestion_type(item)
+        for item in suggestion_types or []
+        if str(item).strip()
+    }
+    element_set = {
+        str(item).strip().lower() for item in elements or [] if str(item).strip()
+    }
+    core_level_set = {
+        str(item).strip().lower() for item in core_levels or [] if str(item).strip()
+    }
     selected: list[dict[str, Any]] = []
     for index, raw_candidate in enumerate(raw_candidates, start=1):
         if not isinstance(raw_candidate, dict):
@@ -1136,9 +1369,15 @@ def build_xps_parameter_source_packet(
             )
         )
 
-    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
+    candidate_reference_ids = {
+        reference_id
+        for candidate in selected
+        for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+    }
     guidance_reference_ids = (
-        _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+        _coerce_string_list(source_library.get("guidance_reference_ids"))
+        if isinstance(source_library, dict)
+        else []
     )
     reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
     reference_seeds = _xps_parameter_source_reference_seeds(
@@ -1147,7 +1386,11 @@ def build_xps_parameter_source_packet(
         warnings=warnings,
     )
     packet_ref = _relative_to_root(root, output_path)
-    status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_parameters" if selected else "no_matching_candidates")
+    status = (
+        "template_requires_user_edit"
+        if template_mode
+        else ("ready_for_suggest_parameters" if selected else "no_matching_candidates")
+    )
     packet = {
         "schema_version": "0.2",
         "source_packet_id": source_packet_id,
@@ -1158,11 +1401,17 @@ def build_xps_parameter_source_packet(
         "source": "ea.xps.parameter_source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
-        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
-        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
+        "source_manifest_ref": source_library.get("source_manifest_ref")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
+        "confirmation_status": source_library.get("confirmation_status")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
         "reference_seed_count": len(reference_seeds),
         "reference_seeds": reference_seeds,
-        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes"))
+        if isinstance(source_library, dict)
+        else [],
         "guidance_reference_ids": guidance_reference_ids,
         "candidate_count": len(selected),
         "candidates": selected,
@@ -1248,15 +1497,33 @@ def _normalize_xps_parameter_candidate(
             "missing_fields": ["candidate_mapping"],
         }
 
-    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("suggestion_id") or f"{suggestion_id}-cand-{number:03d}")
-    suggestion_type = _normalize_xps_suggestion_type(raw_candidate.get("suggestion_type") or raw_candidate.get("parameter_type") or raw_candidate.get("type"))
+    candidate_id = str(
+        raw_candidate.get("candidate_id")
+        or raw_candidate.get("suggestion_id")
+        or f"{suggestion_id}-cand-{number:03d}"
+    )
+    suggestion_type = _normalize_xps_suggestion_type(
+        raw_candidate.get("suggestion_type")
+        or raw_candidate.get("parameter_type")
+        or raw_candidate.get("type")
+    )
     reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
     applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
     caveats = _coerce_string_list(raw_candidate.get("caveats"))
-    parameter_origin = _normalize_parameter_origin(raw_candidate.get("parameter_origin"), warnings, candidate_id=candidate_id)
-    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    parameter_origin = _normalize_parameter_origin(
+        raw_candidate.get("parameter_origin"), warnings, candidate_id=candidate_id
+    )
+    source_summary = str(
+        raw_candidate.get("source_summary")
+        or raw_candidate.get("reference_summary")
+        or ""
+    ).strip()
     confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
-    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    unresolved_reference_ids = [
+        reference_id
+        for reference_id in reference_ids
+        if reference_id not in registered_references
+    ]
     missing_fields: list[str] = []
 
     if suggestion_type not in XPS_PARAMETER_SUGGESTION_TYPES:
@@ -1285,9 +1552,18 @@ def _normalize_xps_parameter_candidate(
     }
 
     if suggestion_type == "spin_orbit_constraint":
-        center_delta = _candidate_number(raw_candidate, "center_delta_eV", "dependent_center_delta_eV", "center_offset_eV")
-        area_ratio = _candidate_number(raw_candidate, "area_ratio", "dependent_area_ratio")
-        fwhm_ratio = _candidate_number(raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio")
+        center_delta = _candidate_number(
+            raw_candidate,
+            "center_delta_eV",
+            "dependent_center_delta_eV",
+            "center_offset_eV",
+        )
+        area_ratio = _candidate_number(
+            raw_candidate, "area_ratio", "dependent_area_ratio"
+        )
+        fwhm_ratio = _candidate_number(
+            raw_candidate, "fwhm_ratio", "dependent_fwhm_ratio"
+        )
         if center_delta is None:
             missing_fields.append("center_delta_eV")
         if area_ratio is None:
@@ -1301,9 +1577,17 @@ def _normalize_xps_parameter_candidate(
         candidate.update(
             {
                 "target_parameter_path": "component_fit.spin_orbit_constraints",
-                "constraint_id": str(raw_candidate.get("constraint_id") or candidate_id),
-                "anchor_component_id": str(raw_candidate.get("anchor_component_id") or "").strip() or None,
-                "dependent_component_id": str(raw_candidate.get("dependent_component_id") or "").strip() or None,
+                "constraint_id": str(
+                    raw_candidate.get("constraint_id") or candidate_id
+                ),
+                "anchor_component_id": str(
+                    raw_candidate.get("anchor_component_id") or ""
+                ).strip()
+                or None,
+                "dependent_component_id": str(
+                    raw_candidate.get("dependent_component_id") or ""
+                ).strip()
+                or None,
                 "center_delta_eV": center_delta,
                 "area_ratio": area_ratio,
                 "fwhm_ratio": fwhm_ratio,
@@ -1323,7 +1607,10 @@ def _normalize_xps_parameter_candidate(
                 "target_parameter_path": "background_subtraction.tougaard",
                 "tougaard_B": tougaard_b,
                 "tougaard_C_eV2": tougaard_c,
-                "integration_direction": str(raw_candidate.get("integration_direction") or "").strip() or None,
+                "integration_direction": str(
+                    raw_candidate.get("integration_direction") or ""
+                ).strip()
+                or None,
             }
         )
     elif suggestion_type == "binding_energy_candidate":
@@ -1363,7 +1650,9 @@ def _normalize_xps_parameter_candidate(
         if not chemical_state_label:
             missing_fields.append("chemical_state_label")
         if expected_binding_energy is None and binding_energy_window is None:
-            missing_fields.append("expected_binding_energy_eV_or_binding_energy_window_eV")
+            missing_fields.append(
+                "expected_binding_energy_eV_or_binding_energy_window_eV"
+            )
         if not calibration_reference:
             missing_fields.append("calibration_reference")
         if not charge_reference_assumption:
@@ -1378,12 +1667,22 @@ def _normalize_xps_parameter_candidate(
                 "chemical_state_label": chemical_state_label or None,
                 "expected_binding_energy_eV": expected_binding_energy,
                 "binding_energy_window_eV": binding_energy_window,
-                "binding_energy_min_eV": binding_energy_window[0] if binding_energy_window else None,
-                "binding_energy_max_eV": binding_energy_window[1] if binding_energy_window else None,
+                "binding_energy_min_eV": binding_energy_window[0]
+                if binding_energy_window
+                else None,
+                "binding_energy_max_eV": binding_energy_window[1]
+                if binding_energy_window
+                else None,
                 "calibration_reference": calibration_reference or None,
                 "charge_reference_assumption": charge_reference_assumption or None,
-                "calibration_group_id": str(raw_candidate.get("calibration_group_id") or "").strip() or None,
-                "overlap_notes": _coerce_string_list(raw_candidate.get("overlap_notes") or raw_candidate.get("overlap_risks")),
+                "calibration_group_id": str(
+                    raw_candidate.get("calibration_group_id") or ""
+                ).strip()
+                or None,
+                "overlap_notes": _coerce_string_list(
+                    raw_candidate.get("overlap_notes")
+                    or raw_candidate.get("overlap_risks")
+                ),
             }
         )
     else:
@@ -1470,17 +1769,49 @@ def suggest_xps_parameters(
         "caveats",
     ]:
         if column in table.columns:
-            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+            table[column] = table[column].apply(
+                lambda value: (
+                    "; ".join(str(item) for item in value)
+                    if isinstance(value, list)
+                    else value
+                )
+            )
 
-    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
-    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
-    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
-    status = "ready_for_user_review" if ready_count else ("needs_reference_registration" if unresolved_count else "needs_source_metadata")
+    ready_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "ready_for_user_review"
+    )
+    unresolved_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "needs_reference_registration"
+    )
+    invalid_count = sum(
+        1
+        for candidate in candidates
+        if str(candidate.get("status", "")).startswith("invalid")
+    )
+    status = (
+        "ready_for_user_review"
+        if ready_count
+        else (
+            "needs_reference_registration"
+            if unresolved_count
+            else "needs_source_metadata"
+        )
+    )
     source_ref = _relative_to_root(root, source_path)
     record_ref = _relative_to_root(root, record_path)
     table_ref = _relative_to_root(root, table_path)
     related_records = related_records or []
-    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    all_reference_ids = sorted(
+        {
+            reference_id
+            for candidate in candidates
+            for reference_id in candidate.get("reference_ids", [])
+        }
+    )
     record = {
         "schema_version": "0.2",
         "suggestion_id": suggestion_id,
@@ -1616,9 +1947,16 @@ def _review_value(value: Any) -> str:
     if value in (None, "", [], {}):
         return "not recorded"
     if isinstance(value, list | tuple):
-        return ", ".join(str(item) for item in value if str(item).strip()) or "not recorded"
+        return (
+            ", ".join(str(item) for item in value if str(item).strip())
+            or "not recorded"
+        )
     if isinstance(value, dict):
-        parts = [f"{key}={item}" for key, item in value.items() if item not in (None, "", [], {})]
+        parts = [
+            f"{key}={item}"
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        ]
         return "; ".join(parts) or "not recorded"
     return str(value)
 
@@ -1641,18 +1979,26 @@ def _xps_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "review_group": _review_group_for_status(status),
         "status": status,
         "suggestion_type": str(candidate.get("suggestion_type") or "unknown"),
-        "target_parameter_path": str(candidate.get("target_parameter_path") or "not recorded"),
+        "target_parameter_path": str(
+            candidate.get("target_parameter_path") or "not recorded"
+        ),
         "element": str(candidate.get("element") or "not specified"),
         "core_level": str(candidate.get("core_level") or "not specified"),
         "confidence": str(candidate.get("confidence") or "low"),
         "parameter_origin": str(candidate.get("parameter_origin") or "not recorded"),
         "parameter_values": _xps_candidate_parameter_values_text(candidate),
-        "chemical_state_label": str(candidate.get("chemical_state_label") or "not recorded"),
+        "chemical_state_label": str(
+            candidate.get("chemical_state_label") or "not recorded"
+        ),
         "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
-        "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
+        "unresolved_reference_ids": _coerce_string_list(
+            candidate.get("unresolved_reference_ids")
+        ),
         "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
         "source_summary": str(candidate.get("source_summary") or "not recorded"),
-        "applicability_notes": _coerce_string_list(candidate.get("applicability_notes")),
+        "applicability_notes": _coerce_string_list(
+            candidate.get("applicability_notes")
+        ),
         "caveats": _coerce_string_list(candidate.get("caveats")),
         "recommended_action": action,
     }
@@ -1719,22 +2065,42 @@ def prepare_xps_parameter_review_package(
     candidate_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.xps.parameter_suggestions:v0.2":
-        raise XPSProcessingError(f"Not an XPS parameter suggestion record: {suggestion_path}")
+        raise XPSProcessingError(
+            f"Not an XPS parameter suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise XPSProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise XPSProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
-    missing_candidate_ids = [candidate_id for candidate_id in requested_ids if candidate_id not in found_ids]
+    missing_candidate_ids = [
+        candidate_id for candidate_id in requested_ids if candidate_id not in found_ids
+    ]
     warnings: list[dict[str, Any]] = [
         _warning(
             "xps_review_package_candidate_not_found",
@@ -1753,10 +2119,25 @@ def prepare_xps_parameter_review_package(
         "other": "Inspect manually before downstream use.",
     }
     groups = []
-    for group_name in ["ready_for_user_review", "needs_reference_registration", "invalid_or_incomplete", "other"]:
-        ids = [summary["candidate_id"] for summary in summaries if summary["review_group"] == group_name]
+    for group_name in [
+        "ready_for_user_review",
+        "needs_reference_registration",
+        "invalid_or_incomplete",
+        "other",
+    ]:
+        ids = [
+            summary["candidate_id"]
+            for summary in summaries
+            if summary["review_group"] == group_name
+        ]
         if ids:
-            groups.append({"group": group_name, "candidate_ids": ids, "recommended_action": group_actions[group_name]})
+            groups.append(
+                {
+                    "group": group_name,
+                    "candidate_ids": ids,
+                    "recommended_action": group_actions[group_name],
+                }
+            )
 
     package_dir = resolved_suggestion_path.parent
     package_path = package_dir / "review_package.yml"
@@ -1791,13 +2172,25 @@ def prepare_xps_parameter_review_package(
         "selected_status_counts": _review_status_counts(selected),
         "groups": groups,
         "candidate_summaries": summaries,
-        "reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("reference_ids", [])}),
-        "unresolved_reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("unresolved_reference_ids", [])}),
+        "reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("reference_ids", [])
+            }
+        ),
+        "unresolved_reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("unresolved_reference_ids", [])
+            }
+        ),
         "recommended_commands": {
             "create_review_record": (
                 "ea review add /path/to/ea-project --target-type xps_parameter_suggestions "
-                f"--target-ref {suggestion_ref} --user-response \"可以，保存\" "
-                "--reviewed-content \"User reviewed the listed XPS parameter candidates; record accepted/rejected/edited candidate IDs.\""
+                f'--target-ref {suggestion_ref} --user-response "可以，保存" '
+                '--reviewed-content "User reviewed the listed XPS parameter candidates; record accepted/rejected/edited candidate IDs."'
             ),
             "report_with_suggestion": (
                 "ea xps report /path/to/ea-project --metadata <xps_metadata.yml> "
@@ -1820,7 +2213,9 @@ def prepare_xps_parameter_review_package(
         "warnings": warnings,
     }
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_xps_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_xps_review_package_markdown(package), encoding="utf-8"
+    )
     provenance_path = write_provenance_entry(
         root,
         workflow="xps_parameter_review_package",
@@ -1838,7 +2233,9 @@ def prepare_xps_parameter_review_package(
     )
     package["provenance_ref"] = _relative_to_root(root, provenance_path)
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_xps_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_xps_review_package_markdown(package), encoding="utf-8"
+    )
     return {
         "status": package["status"],
         "review_package": str(package_path),
@@ -1857,7 +2254,9 @@ def prepare_xps_parameter_review_package(
     }
 
 
-def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready: bool) -> tuple[bool, list[str]]:
+def _xps_candidate_is_valid_for_memory(
+    candidate: dict[str, Any], *, allow_non_ready: bool
+) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     status = str(candidate.get("status") or "")
     suggestion_type = str(candidate.get("suggestion_type") or "")
@@ -1884,13 +2283,20 @@ def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_r
             if candidate.get(field) is None:
                 reasons.append(f"missing_{field}")
     elif suggestion_type == "tougaard_parameter":
-        if candidate.get("tougaard_B") is None and candidate.get("tougaard_C_eV2") is None:
+        if (
+            candidate.get("tougaard_B") is None
+            and candidate.get("tougaard_C_eV2") is None
+        ):
             reasons.append("missing_tougaard_B_or_tougaard_C_eV2")
     elif suggestion_type == "binding_energy_candidate":
         if not str(candidate.get("chemical_state_label") or "").strip():
             reasons.append("missing_chemical_state_label")
-        if candidate.get("expected_binding_energy_eV") is None and not candidate.get("binding_energy_window_eV"):
-            reasons.append("missing_expected_binding_energy_eV_or_binding_energy_window_eV")
+        if candidate.get("expected_binding_energy_eV") is None and not candidate.get(
+            "binding_energy_window_eV"
+        ):
+            reasons.append(
+                "missing_expected_binding_energy_eV_or_binding_energy_window_eV"
+            )
         if not str(candidate.get("calibration_reference") or "").strip():
             reasons.append("missing_calibration_reference")
         if not str(candidate.get("charge_reference_assumption") or "").strip():
@@ -1910,10 +2316,15 @@ def _xps_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_r
         "missing_calibration_reference",
         "missing_charge_reference_assumption",
     }
-    return not any(reason in hard_blockers or reason.startswith("status:invalid") for reason in reasons), reasons
+    return not any(
+        reason in hard_blockers or reason.startswith("status:invalid")
+        for reason in reasons
+    ), reasons
 
 
-def _format_xps_parameter_memory_text(candidate: dict[str, Any], *, suggestion_id: str, review_ref: str) -> str:
+def _format_xps_parameter_memory_text(
+    candidate: dict[str, Any], *, suggestion_id: str, review_ref: str
+) -> str:
     candidate_id = str(candidate.get("candidate_id") or "unknown")
     suggestion_type = str(candidate.get("suggestion_type") or "unknown")
     target_path = str(candidate.get("target_parameter_path") or "not recorded")
@@ -1922,13 +2333,25 @@ def _format_xps_parameter_memory_text(candidate: dict[str, Any], *, suggestion_i
     status = str(candidate.get("status") or "unknown")
     confidence = _memory_confidence(candidate.get("confidence"))
     parameter_origin = str(candidate.get("parameter_origin") or "not recorded")
-    reference_ids = _format_memory_list(_coerce_string_list(candidate.get("reference_ids")))
-    applicability = _format_memory_list(_coerce_string_list(candidate.get("applicability_notes")))
+    reference_ids = _format_memory_list(
+        _coerce_string_list(candidate.get("reference_ids"))
+    )
+    applicability = _format_memory_list(
+        _coerce_string_list(candidate.get("applicability_notes"))
+    )
     caveats = _format_memory_list(_coerce_string_list(candidate.get("caveats")))
-    unresolved = _format_memory_list(_coerce_string_list(candidate.get("unresolved_reference_ids")))
-    source_summary = str(candidate.get("source_summary") or "No source summary recorded.").strip()
+    unresolved = _format_memory_list(
+        _coerce_string_list(candidate.get("unresolved_reference_ids"))
+    )
+    source_summary = str(
+        candidate.get("source_summary") or "No source summary recorded."
+    ).strip()
     parameter_values = _xps_candidate_parameter_values_text(candidate)
-    memory_kind = "interpretation" if suggestion_type == "binding_energy_candidate" else "method-note"
+    memory_kind = (
+        "interpretation"
+        if suggestion_type == "binding_energy_candidate"
+        else "method-note"
+    )
     return (
         f"XPS source-backed parameter candidate `{candidate_id}` from suggestion `{suggestion_id}` was reviewed via `{review_ref}` "
         f"and can be preserved as a draft {memory_kind} memory candidate.\n\n"
@@ -1960,15 +2383,21 @@ def propose_xps_parameter_memory_candidates(
     allow_non_ready: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.xps.parameter_suggestions:v0.2":
-        raise XPSProcessingError(f"Not an XPS parameter suggestion record: {suggestion_path}")
+        raise XPSProcessingError(
+            f"Not an XPS parameter suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise XPSProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise XPSProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
     review = require_confirmed_review(root, review_ref)
     review_target_ref = _normalize_review_target_ref(root, review.get("target_ref"))
@@ -1977,10 +2406,22 @@ def propose_xps_parameter_memory_candidates(
             f"ReviewRecord {review_ref} targets {review.get('target_ref')}, not XPS parameter suggestion {suggestion_ref}"
         )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
     skipped: list[dict[str, Any]] = [
         {"candidate_id": candidate_id, "reason": "candidate_id_not_found"}
@@ -2013,19 +2454,35 @@ def propose_xps_parameter_memory_candidates(
     output_refs: list[str] = []
     for candidate in selected:
         candidate_id = str(candidate.get("candidate_id") or "")
-        candidate_allow_non_ready = bool(allow_non_ready and requested_set and candidate_id in requested_set)
-        eligible, reasons = _xps_candidate_is_valid_for_memory(candidate, allow_non_ready=candidate_allow_non_ready)
+        candidate_allow_non_ready = bool(
+            allow_non_ready and requested_set and candidate_id in requested_set
+        )
+        eligible, reasons = _xps_candidate_is_valid_for_memory(
+            candidate, allow_non_ready=candidate_allow_non_ready
+        )
         if not eligible:
-            skipped.append({"candidate_id": candidate_id, "reason": "not_memory_candidate_eligible", "details": reasons})
+            skipped.append(
+                {
+                    "candidate_id": candidate_id,
+                    "reason": "not_memory_candidate_eligible",
+                    "details": reasons,
+                }
+            )
             continue
 
         candidate_text = _format_xps_parameter_memory_text(
             candidate,
-            suggestion_id=str(suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name),
+            suggestion_id=str(
+                suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name
+            ),
             review_ref=review_ref,
         )
         suggestion_type = str(candidate.get("suggestion_type") or "")
-        memory_category = "interpretation" if suggestion_type == "binding_energy_candidate" else "method_note"
+        memory_category = (
+            "interpretation"
+            if suggestion_type == "binding_energy_candidate"
+            else "method_note"
+        )
         rationale = (
             f"Generated from XPS parameter suggestion `{suggestion_ref}` candidate `{candidate_id}` after confirmed review `{review_ref}`. "
             f"This preserves a source-backed {memory_category.replace('_', ' ')} candidate for later user review and commit; it does not create confirmed memory, apply parameters, apply charge correction, or prove chemistry."
@@ -2034,7 +2491,8 @@ def propose_xps_parameter_memory_candidates(
             root,
             project_id=project_id or suggestion_project_id,
             candidate_text=candidate_text,
-            source_refs=source_refs + _coerce_string_list(candidate.get("reference_ids")),
+            source_refs=source_refs
+            + _coerce_string_list(candidate.get("reference_ids")),
             provenance_refs=provenance_refs,
             category=memory_category,
             confidence=_memory_confidence(candidate.get("confidence")),
@@ -2061,7 +2519,10 @@ def propose_xps_parameter_memory_candidates(
             root,
             workflow="xps_parameter_memory_candidate_proposal",
             inputs={"records": [suggestion_ref], "files": []},
-            outputs={"records": output_refs + ["memory/candidates/index.yml"], "files": []},
+            outputs={
+                "records": output_refs + ["memory/candidates/index.yml"],
+                "files": [],
+            },
             parameters={
                 "suggestion_id": suggestion.get("suggestion_id"),
                 "requested_candidate_ids": requested_ids,
@@ -2077,7 +2538,9 @@ def propose_xps_parameter_memory_candidates(
         bridge_provenance = _relative_to_root(root, bridge_provenance_path)
 
     return {
-        "status": "memory_candidates_proposed" if proposed else "no_memory_candidates_proposed",
+        "status": "memory_candidates_proposed"
+        if proposed
+        else "no_memory_candidates_proposed",
         "suggestion_id": suggestion.get("suggestion_id"),
         "suggestion_ref": suggestion_ref,
         "review_ref": review_ref,
@@ -2110,7 +2573,11 @@ def _has_record_payload(value: Any) -> bool:
 
 
 def _background_window(region: dict[str, Any]) -> tuple[float | None, float | None]:
-    value = region.get("binding_energy_window_eV") or region.get("window_eV") or region.get("energy_window_eV")
+    value = (
+        region.get("binding_energy_window_eV")
+        or region.get("window_eV")
+        or region.get("energy_window_eV")
+    )
     if isinstance(value, list | tuple) and len(value) >= 2:
         low, high = value[0], value[1]
     else:
@@ -2133,9 +2600,32 @@ def _reviewed_background_region(
     default_software: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
-    region_id = str(region.get("region_id") or region.get("id") or f"xps-background-region-{number:03d}")
-    background_type = str(region.get("background_type") or region.get("model_type") or region.get("model") or "unspecified").strip().lower().replace(" ", "_")
-    allowed = {"shirley", "tougaard", "linear", "local_minimum", "rolling_quantile", "instrument_applied", "other", "unspecified"}
+    region_id = str(
+        region.get("region_id")
+        or region.get("id")
+        or f"xps-background-region-{number:03d}"
+    )
+    background_type = (
+        str(
+            region.get("background_type")
+            or region.get("model_type")
+            or region.get("model")
+            or "unspecified"
+        )
+        .strip()
+        .lower()
+        .replace(" ", "_")
+    )
+    allowed = {
+        "shirley",
+        "tougaard",
+        "linear",
+        "local_minimum",
+        "rolling_quantile",
+        "instrument_applied",
+        "other",
+        "unspecified",
+    }
     if background_type not in allowed:
         warnings.append(
             _warning(
@@ -2168,24 +2658,30 @@ def _reviewed_background_region(
             "binding_energy_min_eV": low,
             "binding_energy_max_eV": high,
             "applied_to_processed_data": applied,
-            "parameters": deepcopy(region.get("parameters") or region.get("model_parameters") or {}),
+            "parameters": deepcopy(
+                region.get("parameters") or region.get("model_parameters") or {}
+            ),
             "software": deepcopy(region.get("software") or default_software),
             "reference_ids": _coerce_string_list(region.get("reference_ids")),
-            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "reviewer_notes": _coerce_string_list(
+                region.get("reviewer_notes") or region.get("notes")
+            ),
             "caveats": _coerce_string_list(region.get("caveats")),
             "confidence": confidence,
             "status": "reviewed_background_region_recorded",
             "assignment_source": source,
             "boundary": (
                 "This XPS background region records a user-reviewed background model choice and provenance only; "
-                "Experimental Assistant v0.9.7 does not automatically apply Shirley/Tougaard subtraction or prove chemical-state/composition claims from this record."
+                "Experimental Assistant v0.9.8 does not automatically apply Shirley/Tougaard subtraction or prove chemical-state/composition claims from this record."
             ),
         },
         warnings,
     )
 
 
-def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _record_background_model(
+    parameters: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("background_model", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
@@ -2201,12 +2697,17 @@ def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any]
         "regions": [],
         "reference_ids": [],
         "boundary": (
-            "XPS background model records preserve user-reviewed model/provenance choices only. Experimental Assistant v0.9.7 does not automatically perform "
+            "XPS background model records preserve user-reviewed model/provenance choices only. Experimental Assistant v0.9.8 does not automatically perform "
             "Shirley/Tougaard background subtraction, spin-orbit constrained fitting, formal composition, or chemical-state proof from this record."
         ),
     }
     if method != "reviewed_background_record":
-        warning = _warning("xps_background_model_method_unsupported", "XPS background model method is not supported by Experimental Assistant v0.9.7.", severity="medium", method=method)
+        warning = _warning(
+            "xps_background_model_method_unsupported",
+            "XPS background model method is not supported by Experimental Assistant v0.9.8.",
+            severity="medium",
+            method=method,
+        )
         warnings.append(warning)
         record.update({"status": "skipped_unsupported_method", "warnings": warnings})
         return record, warnings
@@ -2221,12 +2722,20 @@ def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any]
                 severity="medium",
             )
         )
-    if not raw_regions and _has_record_payload(params.get("background_type") or params.get("model_type") or params.get("model")):
+    if not raw_regions and _has_record_payload(
+        params.get("background_type") or params.get("model_type") or params.get("model")
+    ):
         raw_regions = [params]
     if not raw_regions:
-        warning = _warning("xps_background_regions_missing", "background_model was enabled, but no reviewed background regions were supplied.", severity="medium")
+        warning = _warning(
+            "xps_background_regions_missing",
+            "background_model was enabled, but no reviewed background regions were supplied.",
+            severity="medium",
+        )
         warnings.append(warning)
-        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        record.update(
+            {"status": "enabled_without_reviewed_regions", "warnings": warnings}
+        )
         return record, warnings
 
     default_software = deepcopy(params.get("software") or {})
@@ -2253,15 +2762,25 @@ def _record_background_model(parameters: dict[str, Any]) -> tuple[dict[str, Any]
         regions.append(background_region)
         warnings.extend(region_warnings)
 
-    reference_ids = sorted({reference_id for region in regions for reference_id in region.get("reference_ids", [])})
+    reference_ids = sorted(
+        {
+            reference_id
+            for region in regions
+            for reference_id in region.get("reference_ids", [])
+        }
+    )
     record.update(
         {
-            "status": "reviewed_background_model_recorded" if regions else "no_background_regions_recorded",
+            "status": "reviewed_background_model_recorded"
+            if regions
+            else "no_background_regions_recorded",
             "confidence": "low" if regions else "insufficient",
             "region_count": len(regions),
             "regions": regions,
             "reference_ids": reference_ids,
-            "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+            "reviewer_notes": _coerce_string_list(
+                params.get("reviewer_notes") or params.get("notes")
+            ),
             "caveats": _coerce_string_list(params.get("caveats")),
             "warnings": warnings,
         }
@@ -2327,7 +2846,9 @@ def _is_background_subtraction_success(record: dict[str, Any]) -> bool:
 
 
 def _anchor_window(region: dict[str, Any], side: str) -> tuple[float, float] | None:
-    value = region.get(f"{side}_anchor_window_eV") or region.get(f"{side}_endpoint_window_eV")
+    value = region.get(f"{side}_anchor_window_eV") or region.get(
+        f"{side}_endpoint_window_eV"
+    )
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         return None
     try:
@@ -2420,7 +2941,9 @@ def _background_anchor(
     return None
 
 
-def _linear_background_from_anchors(x: np.ndarray, *, x_left: float, y_left: float, x_right: float, y_right: float) -> tuple[np.ndarray, float]:
+def _linear_background_from_anchors(
+    x: np.ndarray, *, x_left: float, y_left: float, x_right: float, y_right: float
+) -> tuple[np.ndarray, float]:
     slope = (y_right - y_left) / (x_right - x_left)
     return y_left + slope * (x - x_left), float(slope)
 
@@ -2449,7 +2972,9 @@ def _shirley_background_from_anchors(
     max_iterations: int,
     tolerance: float,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    linear_background, slope = _linear_background_from_anchors(x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+    linear_background, slope = _linear_background_from_anchors(
+        x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right
+    )
     background = linear_background.copy()
     endpoint_low = float(linear_background[0])
     endpoint_high = float(linear_background[-1])
@@ -2489,7 +3014,12 @@ def _shirley_background_from_anchors(
     }
 
 
-def _first_config_value(region: dict[str, Any], params: dict[str, Any], keys: tuple[str, ...], default: Any = None) -> Any:
+def _first_config_value(
+    region: dict[str, Any],
+    params: dict[str, Any],
+    keys: tuple[str, ...],
+    default: Any = None,
+) -> Any:
     for container in (region, params):
         for key in keys:
             if key in container and container.get(key) is not None:
@@ -2526,7 +3056,9 @@ def _tougaard_region_parameters(
             )
         )
 
-    raw_c = _first_config_value(region, params, ("tougaard_C_eV2", "C_eV2", "C"), default_c_eV2)
+    raw_c = _first_config_value(
+        region, params, ("tougaard_C_eV2", "C_eV2", "C"), default_c_eV2
+    )
     c_value, adjusted_c = _coerce_float(raw_c, default_c_eV2, minimum=1e-12)
     if adjusted_c:
         warnings.append(
@@ -2574,7 +3106,9 @@ def _tougaard_u2_background_from_anchors(
     tougaard_C_eV2: float,
     integration_direction: str,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    linear_background, slope = _linear_background_from_anchors(x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+    linear_background, slope = _linear_background_from_anchors(
+        x, x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right
+    )
     residual = np.clip(y - linear_background, a_min=0.0, a_max=None)
     integrals = np.zeros_like(x, dtype=float)
     for index, x_value in enumerate(x):
@@ -2601,12 +3135,16 @@ def _tougaard_u2_background_from_anchors(
         "tougaard_B": float(tougaard_B),
         "tougaard_C_eV2": float(tougaard_C_eV2),
         "integration_direction": integration_direction,
-        "residual_area_after_linear_endpoint_baseline": _trapezoid_integral(residual, x),
+        "residual_area_after_linear_endpoint_baseline": _trapezoid_integral(
+            residual, x
+        ),
         "tougaard_integral_max": float(np.nanmax(integrals)) if integrals.size else 0.0,
     }
 
 
-def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _apply_background_subtraction(
+    processed: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("background_subtraction", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
@@ -2620,27 +3158,55 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
     }
     method_label = _background_subtraction_method_label(method)
     defaults = _background_subtraction_defaults(method)
-    base_defaults = _background_subtraction_defaults("reviewed_linear_background_subtraction")
+    base_defaults = _background_subtraction_defaults(
+        "reviewed_linear_background_subtraction"
+    )
     source = str(params.get("source") or "ea.xps.background_subtraction:v0.2")
-    input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
+    input_column = _column_name(
+        params.get("input_intensity_column"), "processed_intensity"
+    )
     background_column_input = params.get("background_column")
     corrected_column_input = params.get("corrected_intensity_column")
-    if method in {"reviewed_shirley_background_subtraction", "reviewed_tougaard_u2_background_subtraction"}:
+    if method in {
+        "reviewed_shirley_background_subtraction",
+        "reviewed_tougaard_u2_background_subtraction",
+    }:
         if background_column_input == base_defaults["background_column"]:
             background_column_input = None
         if corrected_column_input == base_defaults["corrected_intensity_column"]:
             corrected_column_input = None
-    background_column = _column_name(background_column_input, defaults["background_column"])
-    corrected_column = _column_name(corrected_column_input, defaults["corrected_intensity_column"])
-    region_id_column = _column_name(params.get("region_id_column"), defaults["region_id_column"])
-    min_points, adjusted_min_points = _coerce_int(params.get("min_points"), 5, minimum=2)
-    max_iterations, adjusted_max_iterations = _coerce_int(params.get("max_iterations"), 100, minimum=2)
-    tolerance, adjusted_tolerance = _coerce_float(params.get("tolerance"), 1e-6, minimum=1e-12)
-    global_tougaard_b = _positive_float(_first_config_value({}, params, ("tougaard_B", "B", "b1", "B1")))
-    tougaard_c_eV2, adjusted_tougaard_c = _coerce_float(params.get("tougaard_C_eV2", params.get("C_eV2", 1643.0)), 1643.0, minimum=1e-12)
-    integration_direction = str(params.get("integration_direction") or "toward_higher_binding_energy").strip()
+    background_column = _column_name(
+        background_column_input, defaults["background_column"]
+    )
+    corrected_column = _column_name(
+        corrected_column_input, defaults["corrected_intensity_column"]
+    )
+    region_id_column = _column_name(
+        params.get("region_id_column"), defaults["region_id_column"]
+    )
+    min_points, adjusted_min_points = _coerce_int(
+        params.get("min_points"), 5, minimum=2
+    )
+    max_iterations, adjusted_max_iterations = _coerce_int(
+        params.get("max_iterations"), 100, minimum=2
+    )
+    tolerance, adjusted_tolerance = _coerce_float(
+        params.get("tolerance"), 1e-6, minimum=1e-12
+    )
+    global_tougaard_b = _positive_float(
+        _first_config_value({}, params, ("tougaard_B", "B", "b1", "B1"))
+    )
+    tougaard_c_eV2, adjusted_tougaard_c = _coerce_float(
+        params.get("tougaard_C_eV2", params.get("C_eV2", 1643.0)), 1643.0, minimum=1e-12
+    )
+    integration_direction = str(
+        params.get("integration_direction") or "toward_higher_binding_energy"
+    ).strip()
     adjusted_integration_direction = False
-    if integration_direction not in {"toward_higher_binding_energy", "toward_lower_binding_energy"}:
+    if integration_direction not in {
+        "toward_higher_binding_energy",
+        "toward_lower_binding_energy",
+    }:
         integration_direction = "toward_higher_binding_energy"
         adjusted_integration_direction = True
     record: dict[str, Any] = {
@@ -2652,22 +3218,34 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         "corrected_intensity_column": corrected_column,
         "region_id_column": region_id_column,
         "min_points": min_points,
-        "max_iterations": max_iterations if method == "reviewed_shirley_background_subtraction" else None,
-        "tolerance": tolerance if method == "reviewed_shirley_background_subtraction" else None,
-        "tougaard_B": global_tougaard_b if method == "reviewed_tougaard_u2_background_subtraction" else None,
-        "tougaard_C_eV2": tougaard_c_eV2 if method == "reviewed_tougaard_u2_background_subtraction" else None,
-        "integration_direction": integration_direction if method == "reviewed_tougaard_u2_background_subtraction" else None,
+        "max_iterations": max_iterations
+        if method == "reviewed_shirley_background_subtraction"
+        else None,
+        "tolerance": tolerance
+        if method == "reviewed_shirley_background_subtraction"
+        else None,
+        "tougaard_B": global_tougaard_b
+        if method == "reviewed_tougaard_u2_background_subtraction"
+        else None,
+        "tougaard_C_eV2": tougaard_c_eV2
+        if method == "reviewed_tougaard_u2_background_subtraction"
+        else None,
+        "integration_direction": integration_direction
+        if method == "reviewed_tougaard_u2_background_subtraction"
+        else None,
         "status": "not_applied",
         "confidence": "insufficient",
         "region_count": 0,
         "corrected_region_count": 0,
         "regions": [],
         "reference_ids": _coerce_string_list(params.get("reference_ids")),
-        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "reviewer_notes": _coerce_string_list(
+            params.get("reviewer_notes") or params.get("notes")
+        ),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
             "XPS background_subtraction applies only user-reviewed numeric preprocessing inside explicit binding-energy regions. "
-            "Experimental Assistant v0.9.7 may suggest source-backed endpoints/windows or Tougaard parameters through traceable records, but this record does not silently choose or apply them, "
+            "Experimental Assistant v0.9.8 may suggest source-backed endpoints/windows or Tougaard parameters through traceable records, but this record does not silently choose or apply them, "
             "fit Tougaard parameters, run QUASES/depth-profile modeling or peak fitting, assign chemical states, prove composition, or perform spin-orbit constrained fitting."
         ),
     }
@@ -2675,7 +3253,7 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         warnings.append(
             _warning(
                 "xps_background_subtraction_method_unsupported",
-                "XPS background_subtraction method is not supported by Experimental Assistant v0.9.7.",
+                "XPS background_subtraction method is not supported by Experimental Assistant v0.9.8.",
                 severity="medium",
                 method=method,
                 supported_methods=sorted(supported_methods),
@@ -2692,7 +3270,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 min_points=min_points,
             )
         )
-    if method == "reviewed_shirley_background_subtraction" and (adjusted_max_iterations or adjusted_tolerance):
+    if method == "reviewed_shirley_background_subtraction" and (
+        adjusted_max_iterations or adjusted_tolerance
+    ):
         warnings.append(
             _warning(
                 "xps_background_subtraction_shirley_parameter_adjusted",
@@ -2702,7 +3282,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 tolerance=tolerance,
             )
         )
-    if method == "reviewed_tougaard_u2_background_subtraction" and (adjusted_tougaard_c or adjusted_integration_direction):
+    if method == "reviewed_tougaard_u2_background_subtraction" and (
+        adjusted_tougaard_c or adjusted_integration_direction
+    ):
         warnings.append(
             _warning(
                 "xps_background_subtraction_tougaard_parameter_adjusted",
@@ -2737,7 +3319,11 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         )
         record.update({"status": "skipped_column_collision", "warnings": warnings})
         return record, warnings
-    existing_output_columns = [column for column in [background_column, corrected_column, region_id_column] if column in processed.columns]
+    existing_output_columns = [
+        column
+        for column in [background_column, corrected_column, region_id_column]
+        if column in processed.columns
+    ]
     if existing_output_columns:
         warnings.append(
             _warning(
@@ -2747,7 +3333,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 existing_output_columns=existing_output_columns,
             )
         )
-        record.update({"status": "skipped_existing_output_column", "warnings": warnings})
+        record.update(
+            {"status": "skipped_existing_output_column", "warnings": warnings}
+        )
         return record, warnings
 
     raw_regions = params.get("regions", [])
@@ -2768,12 +3356,16 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 severity="medium",
             )
         )
-        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        record.update(
+            {"status": "enabled_without_reviewed_regions", "warnings": warnings}
+        )
         return record, warnings
 
     processed[background_column] = np.nan
     processed[corrected_column] = np.nan
-    processed[region_id_column] = pd.Series(pd.NA, index=processed.index, dtype="object")
+    processed[region_id_column] = pd.Series(
+        pd.NA, index=processed.index, dtype="object"
+    )
     x = processed["binding_energy_eV"].to_numpy(dtype=float)
     y = pd.to_numeric(processed[input_column], errors="coerce").to_numpy(dtype=float)
     regions: list[dict[str, Any]] = []
@@ -2791,7 +3383,11 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 )
             )
             continue
-        region_id = str(region.get("region_id") or region.get("id") or f"xps-background-subtraction-region-{number:03d}")
+        region_id = str(
+            region.get("region_id")
+            or region.get("id")
+            or f"xps-background-subtraction-region-{number:03d}"
+        )
         low, high = _background_window(region)
         region_record: dict[str, Any] = {
             "region_id": region_id,
@@ -2803,7 +3399,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
             "point_count": 0,
             "status": "invalid_region_window",
             "reference_ids": _coerce_string_list(region.get("reference_ids")),
-            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "reviewer_notes": _coerce_string_list(
+                region.get("reviewer_notes") or region.get("notes")
+            ),
             "caveats": _coerce_string_list(region.get("caveats")),
             "confidence": str(region.get("confidence") or "low").strip().lower(),
             "assignment_source": source,
@@ -2813,13 +3411,15 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
         region_tougaard_c = tougaard_c_eV2
         region_integration_direction = integration_direction
         if method == "reviewed_tougaard_u2_background_subtraction":
-            tougaard_b, region_tougaard_c, region_integration_direction = _tougaard_region_parameters(
-                region,
-                params,
-                default_c_eV2=tougaard_c_eV2,
-                default_direction=integration_direction,
-                region_id=region_id,
-                warnings=warnings,
+            tougaard_b, region_tougaard_c, region_integration_direction = (
+                _tougaard_region_parameters(
+                    region,
+                    params,
+                    default_c_eV2=tougaard_c_eV2,
+                    default_direction=integration_direction,
+                    region_id=region_id,
+                    warnings=warnings,
+                )
             )
             region_record.update(
                 {
@@ -2858,13 +3458,30 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
             regions.append(region_record)
             continue
 
-        if method == "reviewed_tougaard_u2_background_subtraction" and tougaard_b is None:
+        if (
+            method == "reviewed_tougaard_u2_background_subtraction"
+            and tougaard_b is None
+        ):
             region_record["status"] = "missing_reviewed_tougaard_B"
             regions.append(region_record)
             continue
 
-        left_anchor = _background_anchor(processed, input_column=input_column, region=region, side="left", region_id=region_id, warnings=warnings)
-        right_anchor = _background_anchor(processed, input_column=input_column, region=region, side="right", region_id=region_id, warnings=warnings)
+        left_anchor = _background_anchor(
+            processed,
+            input_column=input_column,
+            region=region,
+            side="left",
+            region_id=region_id,
+            warnings=warnings,
+        )
+        right_anchor = _background_anchor(
+            processed,
+            input_column=input_column,
+            region=region,
+            side="right",
+            region_id=region_id,
+            warnings=warnings,
+        )
         region_record["left_anchor"] = left_anchor
         region_record["right_anchor"] = right_anchor
         if left_anchor is None or right_anchor is None:
@@ -2935,7 +3552,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 integration_direction=region_integration_direction,
             )
         else:
-            background, slope = _linear_background_from_anchors(x[mask], x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right)
+            background, slope = _linear_background_from_anchors(
+                x[mask], x_left=x_left, y_left=y_left, x_right=x_right, y_right=y_right
+            )
             subtraction_details = {
                 "algorithm": "linear_anchor_interpolation",
                 "slope_intensity_per_eV": float(slope),
@@ -2952,7 +3571,11 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
                 "background_max": float(np.nanmax(background)),
                 "corrected_min": float(np.nanmin(corrected)),
                 "corrected_max": float(np.nanmax(corrected)),
-                "output_columns": [background_column, corrected_column, region_id_column],
+                "output_columns": [
+                    background_column,
+                    corrected_column,
+                    region_id_column,
+                ],
             }
         )
         corrected_count += 1
@@ -2960,7 +3583,9 @@ def _apply_background_subtraction(processed: pd.DataFrame, parameters: dict[str,
 
     record.update(
         {
-            "status": _background_subtraction_success_status(method) if corrected_count else "no_regions_corrected",
+            "status": _background_subtraction_success_status(method)
+            if corrected_count
+            else "no_regions_corrected",
             "confidence": "low" if corrected_count else "insufficient",
             "region_count": len(regions),
             "corrected_region_count": corrected_count,
@@ -3003,7 +3628,9 @@ def _apply_component_quantification(
         )
         return pd.DataFrame(columns=_component_columns()), summary, warnings
 
-    min_points, adjusted_min_points = _coerce_int(params.get("min_points"), 5, minimum=2)
+    min_points, adjusted_min_points = _coerce_int(
+        params.get("min_points"), 5, minimum=2
+    )
     baseline_mode = str(params.get("integration_baseline") or "local_minimum")
     if baseline_mode not in {"local_minimum", "zero"}:
         baseline_mode = "local_minimum"
@@ -3030,7 +3657,11 @@ def _apply_component_quantification(
     for index, component in enumerate(components, start=1):
         if not isinstance(component, dict):
             continue
-        component_id = str(component.get("component_id") or component.get("id") or f"xps-component-{index:03d}")
+        component_id = str(
+            component.get("component_id")
+            or component.get("id")
+            or f"xps-component-{index:03d}"
+        )
         label = str(component.get("label") or component_id)
         element = str(component.get("element") or "")
         core_level = str(component.get("core_level") or component.get("orbital") or "")
@@ -3055,7 +3686,10 @@ def _apply_component_quantification(
             "confidence": "insufficient",
             "assignment_source": source,
             "status": "invalid_window",
-            "notes": str(component.get("notes") or "reviewed XPS component window; screening only"),
+            "notes": str(
+                component.get("notes")
+                or "reviewed XPS component window; screening only"
+            ),
         }
         if window is None:
             rows.append(row)
@@ -3090,7 +3724,11 @@ def _apply_component_quantification(
 
         window_x = x[mask]
         window_y = y[mask]
-        local_y = window_y - float(np.nanmin(window_y)) if baseline_mode == "local_minimum" else window_y.copy()
+        local_y = (
+            window_y - float(np.nanmin(window_y))
+            if baseline_mode == "local_minimum"
+            else window_y.copy()
+        )
         local_y = np.clip(local_y, a_min=0.0, a_max=None)
         area = _trapezoid_integral(local_y, window_x)
         if area <= 0:
@@ -3108,7 +3746,11 @@ def _apply_component_quantification(
 
         max_index = int(np.nanargmax(window_y))
         weight_sum = float(np.sum(local_y))
-        centroid = float(np.sum(window_x * local_y) / weight_sum) if weight_sum > 0 else float(window_x[max_index])
+        centroid = (
+            float(np.sum(window_x * local_y) / weight_sum)
+            if weight_sum > 0
+            else float(window_x[max_index])
+        )
         rsf = _component_sensitivity_factor(component)
         row.update(
             {
@@ -3124,21 +3766,42 @@ def _apply_component_quantification(
         rows.append(row)
 
     table = pd.DataFrame(rows, columns=_component_columns())
-    integrated_mask = table["status"].astype(str) == "integrated" if not table.empty else pd.Series(dtype=bool)
+    integrated_mask = (
+        table["status"].astype(str) == "integrated"
+        if not table.empty
+        else pd.Series(dtype=bool)
+    )
     if integrated_mask.any():
-        area_total = float(pd.to_numeric(table.loc[integrated_mask, "integrated_area"], errors="coerce").sum())
+        area_total = float(
+            pd.to_numeric(
+                table.loc[integrated_mask, "integrated_area"], errors="coerce"
+            ).sum()
+        )
         if area_total > 0:
             table.loc[integrated_mask, "relative_area_percent"] = (
-                pd.to_numeric(table.loc[integrated_mask, "integrated_area"], errors="coerce") / area_total * 100.0
+                pd.to_numeric(
+                    table.loc[integrated_mask, "integrated_area"], errors="coerce"
+                )
+                / area_total
+                * 100.0
             )
         included = table.loc[integrated_mask].copy()
-        rsf_complete = bool(pd.to_numeric(included["sensitivity_factor"], errors="coerce").notna().all())
+        rsf_complete = bool(
+            pd.to_numeric(included["sensitivity_factor"], errors="coerce").notna().all()
+        )
         summary["rsf_complete"] = rsf_complete
         if rsf_complete:
-            corrected_total = float(pd.to_numeric(included["rsf_corrected_area"], errors="coerce").sum())
+            corrected_total = float(
+                pd.to_numeric(included["rsf_corrected_area"], errors="coerce").sum()
+            )
             if corrected_total > 0:
                 table.loc[integrated_mask, "relative_atomic_percent_screening"] = (
-                    pd.to_numeric(table.loc[integrated_mask, "rsf_corrected_area"], errors="coerce") / corrected_total * 100.0
+                    pd.to_numeric(
+                        table.loc[integrated_mask, "rsf_corrected_area"],
+                        errors="coerce",
+                    )
+                    / corrected_total
+                    * 100.0
                 )
                 summary["status"] = "rsf_normalized_screening"
             else:
@@ -3156,7 +3819,9 @@ def _apply_component_quantification(
         summary["status"] = "no_integrated_components"
 
     summary["component_count"] = int(len(table))
-    summary["quantified_component_count"] = int(integrated_mask.sum()) if not table.empty else 0
+    summary["quantified_component_count"] = (
+        int(integrated_mask.sum()) if not table.empty else 0
+    )
     summary["integration_baseline"] = baseline_mode
     summary["min_points"] = min_points
     if summary["quantified_component_count"]:
@@ -3166,9 +3831,15 @@ def _apply_component_quantification(
                 "label": str(row["label"]),
                 "element": str(row["element"]),
                 "core_level": str(row["core_level"]),
-                "centroid_eV": float(row["centroid_eV"]) if pd.notna(row["centroid_eV"]) else None,
-                "relative_area_percent": float(row["relative_area_percent"]) if pd.notna(row["relative_area_percent"]) else None,
-                "relative_atomic_percent_screening": float(row["relative_atomic_percent_screening"])
+                "centroid_eV": float(row["centroid_eV"])
+                if pd.notna(row["centroid_eV"])
+                else None,
+                "relative_area_percent": float(row["relative_area_percent"])
+                if pd.notna(row["relative_area_percent"])
+                else None,
+                "relative_atomic_percent_screening": float(
+                    row["relative_atomic_percent_screening"]
+                )
                 if pd.notna(row["relative_atomic_percent_screening"])
                 else None,
                 "confidence": str(row["confidence"]),
@@ -3219,7 +3890,9 @@ def _component_fit_columns() -> list[str]:
     ]
 
 
-def _component_fit_optional_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+def _component_fit_optional_float(
+    value: Any, field: str
+) -> tuple[float | None, dict[str, Any] | None]:
     if value is None or value == "":
         return None, None
     try:
@@ -3236,7 +3909,9 @@ def _component_fit_optional_float(value: Any, field: str) -> tuple[float | None,
         )
 
 
-def _component_fit_required_float(component: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+def _component_fit_required_float(
+    component: dict[str, Any], keys: tuple[str, ...]
+) -> float | None:
     for key in keys:
         if key in component and component.get(key) is not None:
             try:
@@ -3246,7 +3921,9 @@ def _component_fit_required_float(component: dict[str, Any], keys: tuple[str, ..
     return None
 
 
-def _component_fit_bounds(component: dict[str, Any], keys: tuple[str, ...]) -> tuple[float, float] | None:
+def _component_fit_bounds(
+    component: dict[str, Any], keys: tuple[str, ...]
+) -> tuple[float, float] | None:
     value = None
     for key in keys:
         if key in component and component.get(key) is not None:
@@ -3264,7 +3941,14 @@ def _component_fit_bounds(component: dict[str, Any], keys: tuple[str, ...]) -> t
     return low, high
 
 
-def _component_fit_profile(x: np.ndarray, amplitude: float, center: float, fwhm: float, mixing: float, shape: str) -> np.ndarray:
+def _component_fit_profile(
+    x: np.ndarray,
+    amplitude: float,
+    center: float,
+    fwhm: float,
+    mixing: float,
+    shape: str,
+) -> np.ndarray:
     width = max(float(fwhm), 1e-12)
     gaussian = np.exp(-4.0 * np.log(2.0) * np.square((x - float(center)) / width))
     lorentzian = 1.0 / (1.0 + 4.0 * np.square((x - float(center)) / width))
@@ -3278,7 +3962,9 @@ def _component_fit_profile(x: np.ndarray, amplitude: float, center: float, fwhm:
     return float(amplitude) * profile
 
 
-def _component_fit_area(amplitude: float, fwhm: float, mixing: float, shape: str) -> float:
+def _component_fit_area(
+    amplitude: float, fwhm: float, mixing: float, shape: str
+) -> float:
     width = max(float(fwhm), 1e-12)
     gaussian_sigma = width / (2.0 * np.sqrt(2.0 * np.log(2.0)))
     gaussian_area = float(amplitude) * gaussian_sigma * np.sqrt(2.0 * np.pi)
@@ -3291,7 +3977,9 @@ def _component_fit_area(amplitude: float, fwhm: float, mixing: float, shape: str
     return float((1.0 - mix) * gaussian_area + mix * lorentzian_area)
 
 
-def _component_fit_quality(observed: np.ndarray, fitted: np.ndarray, parameter_count: int) -> dict[str, float | None]:
+def _component_fit_quality(
+    observed: np.ndarray, fitted: np.ndarray, parameter_count: int
+) -> dict[str, float | None]:
     residual = observed - fitted
     rss = float(np.sum(residual**2))
     sst = float(np.sum((observed - float(np.mean(observed))) ** 2))
@@ -3308,7 +3996,9 @@ def _component_fit_quality(observed: np.ndarray, fitted: np.ndarray, parameter_c
     }
 
 
-def _component_fit_thresholds(params: dict[str, Any]) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
+def _component_fit_thresholds(
+    params: dict[str, Any],
+) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     thresholds = params.get("fit_quality_thresholds", {})
     if not isinstance(thresholds, dict):
@@ -3324,20 +4014,28 @@ def _component_fit_thresholds(params: dict[str, Any]) -> tuple[dict[str, float |
         )
     parsed: dict[str, float | None] = {}
     for name in ["max_rmse", "min_r_squared"]:
-        parsed[name], warning = _component_fit_optional_float(thresholds.get(name), f"fit_quality_thresholds.{name}")
+        parsed[name], warning = _component_fit_optional_float(
+            thresholds.get(name), f"fit_quality_thresholds.{name}"
+        )
         if warning:
             warnings.append(warning)
     return parsed, warnings
 
 
-def _component_fit_quality_checks(metrics: dict[str, float | None], thresholds: dict[str, float | None]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _component_fit_quality_checks(
+    metrics: dict[str, float | None], thresholds: dict[str, float | None]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     checks: dict[str, Any] = {}
     warnings: list[dict[str, Any]] = []
     max_rmse = thresholds.get("max_rmse")
     if max_rmse is not None:
         value = metrics.get("rmse")
         passed = value is not None and float(value) <= float(max_rmse)
-        checks["max_rmse"] = {"threshold": max_rmse, "value": value, "passed": bool(passed)}
+        checks["max_rmse"] = {
+            "threshold": max_rmse,
+            "value": value,
+            "passed": bool(passed),
+        }
         if not passed:
             warnings.append(
                 _warning(
@@ -3353,7 +4051,11 @@ def _component_fit_quality_checks(metrics: dict[str, float | None], thresholds: 
     if min_r2 is not None:
         value = metrics.get("r_squared")
         passed = value is not None and float(value) >= float(min_r2)
-        checks["min_r_squared"] = {"threshold": min_r2, "value": value, "passed": bool(passed)}
+        checks["min_r_squared"] = {
+            "threshold": min_r2,
+            "value": value,
+            "passed": bool(passed),
+        }
         if not passed:
             warnings.append(
                 _warning(
@@ -3376,8 +4078,17 @@ def _component_fit_component_spec(
     source: str,
     warnings: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    component_id = str(component.get("component_id") or component.get("id") or f"xps-fit-component-{number:03d}")
-    shape = str(component.get("peak_shape") or component.get("shape") or "pseudo_voigt").strip().lower().replace("-", "_")
+    component_id = str(
+        component.get("component_id")
+        or component.get("id")
+        or f"xps-fit-component-{number:03d}"
+    )
+    shape = (
+        str(component.get("peak_shape") or component.get("shape") or "pseudo_voigt")
+        .strip()
+        .lower()
+        .replace("-", "_")
+    )
     if shape not in {"gaussian", "lorentzian", "pseudo_voigt"}:
         warnings.append(
             _warning(
@@ -3391,12 +4102,22 @@ def _component_fit_component_spec(
         )
         return None
 
-    center = _component_fit_required_float(component, ("initial_center_eV", "center_eV", "initial_center"))
-    amplitude = _component_fit_required_float(component, ("initial_amplitude", "amplitude"))
-    fwhm = _component_fit_required_float(component, ("initial_fwhm_eV", "fwhm_eV", "initial_width_eV"))
-    center_bounds = _component_fit_bounds(component, ("center_bounds_eV", "center_bounds"))
+    center = _component_fit_required_float(
+        component, ("initial_center_eV", "center_eV", "initial_center")
+    )
+    amplitude = _component_fit_required_float(
+        component, ("initial_amplitude", "amplitude")
+    )
+    fwhm = _component_fit_required_float(
+        component, ("initial_fwhm_eV", "fwhm_eV", "initial_width_eV")
+    )
+    center_bounds = _component_fit_bounds(
+        component, ("center_bounds_eV", "center_bounds")
+    )
     amplitude_bounds = _component_fit_bounds(component, ("amplitude_bounds",))
-    fwhm_bounds = _component_fit_bounds(component, ("fwhm_bounds_eV", "fwhm_bounds", "width_bounds_eV"))
+    fwhm_bounds = _component_fit_bounds(
+        component, ("fwhm_bounds_eV", "fwhm_bounds", "width_bounds_eV")
+    )
     mixing = 0.0
     mixing_bounds = None
     if shape == "pseudo_voigt":
@@ -3432,7 +4153,11 @@ def _component_fit_component_spec(
             )
         )
         return None
-    if amplitude <= 0 or fwhm <= 0 or (shape == "pseudo_voigt" and not 0.0 <= float(mixing) <= 1.0):
+    if (
+        amplitude <= 0
+        or fwhm <= 0
+        or (shape == "pseudo_voigt" and not 0.0 <= float(mixing) <= 1.0)
+    ):
         warnings.append(
             _warning(
                 "xps_component_fit_initial_value_invalid",
@@ -3474,7 +4199,9 @@ def _component_fit_component_spec(
         "label": str(component.get("label") or component_id),
         "region_id": region_id,
         "element": str(component.get("element") or ""),
-        "core_level": str(component.get("core_level") or component.get("orbital") or ""),
+        "core_level": str(
+            component.get("core_level") or component.get("orbital") or ""
+        ),
         "peak_shape": shape,
         "spin_orbit_group_id": str(component.get("spin_orbit_group_id") or "") or None,
         "spin_orbit_role": str(component.get("spin_orbit_role") or "") or None,
@@ -3489,15 +4216,23 @@ def _component_fit_component_spec(
             "mixing": list(mixing_bounds) if mixing_bounds is not None else None,
         },
         "reference_ids": _coerce_string_list(component.get("reference_ids")),
-        "reviewer_notes": _coerce_string_list(component.get("reviewer_notes") or component.get("notes")),
+        "reviewer_notes": _coerce_string_list(
+            component.get("reviewer_notes") or component.get("notes")
+        ),
         "caveats": _coerce_string_list(component.get("caveats")),
         "confidence": str(component.get("confidence") or "low").strip().lower(),
-        "assignment_source": str(component.get("source") or component.get("assignment_source") or source),
-        "notes": str(component.get("notes") or "reviewed XPS component fit; screening only"),
+        "assignment_source": str(
+            component.get("source") or component.get("assignment_source") or source
+        ),
+        "notes": str(
+            component.get("notes") or "reviewed XPS component fit; screening only"
+        ),
     }
 
 
-def _component_fit_constraint_number(constraint: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+def _component_fit_constraint_number(
+    constraint: dict[str, Any], keys: tuple[str, ...]
+) -> float | None:
     for key in keys:
         if key in constraint and constraint.get(key) is not None:
             try:
@@ -3508,7 +4243,9 @@ def _component_fit_constraint_number(constraint: dict[str, Any], keys: tuple[str
     return None
 
 
-def _component_fit_intersect_bounds(current: tuple[float, float], candidate: tuple[float, float]) -> tuple[float, float] | None:
+def _component_fit_intersect_bounds(
+    current: tuple[float, float], candidate: tuple[float, float]
+) -> tuple[float, float] | None:
     low = max(float(current[0]), float(candidate[0]))
     high = min(float(current[1]), float(candidate[1]))
     if not np.isfinite(low) or not np.isfinite(high) or high <= low:
@@ -3522,13 +4259,17 @@ def _component_fit_spin_orbit_constraints(
     *,
     region_id: str,
     warnings: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[int, dict[str, tuple[float, float]]], set[int], bool]:
+) -> tuple[
+    list[dict[str, Any]], dict[int, dict[str, tuple[float, float]]], set[int], bool
+]:
     effective_bounds: dict[int, dict[str, tuple[float, float]]] = {
         index: {
             "center_eV": tuple(spec["bounds"]["center_eV"]),
             "amplitude": tuple(spec["bounds"]["amplitude"]),
             "fwhm_eV": tuple(spec["bounds"]["fwhm_eV"]),
-            "mixing": tuple(spec["bounds"]["mixing"]) if spec["bounds"].get("mixing") is not None else (0.0, 1.0),
+            "mixing": tuple(spec["bounds"]["mixing"])
+            if spec["bounds"].get("mixing") is not None
+            else (0.0, 1.0),
         }
         for index, spec in enumerate(specs)
     }
@@ -3554,21 +4295,49 @@ def _component_fit_spin_orbit_constraints(
             )
             fatal = True
             continue
-        constraint_id = str(constraint.get("constraint_id") or constraint.get("group_id") or f"xps-spin-orbit-constraint-{number:03d}")
+        constraint_id = str(
+            constraint.get("constraint_id")
+            or constraint.get("group_id")
+            or f"xps-spin-orbit-constraint-{number:03d}"
+        )
         group_id = str(constraint.get("group_id") or constraint_id)
-        anchor_id = str(constraint.get("anchor_component_id") or constraint.get("parent_component_id") or "")
-        dependent_id = str(constraint.get("dependent_component_id") or constraint.get("child_component_id") or "")
-        center_delta = _component_fit_constraint_number(constraint, ("center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"))
-        area_ratio = _component_fit_constraint_number(constraint, ("area_ratio", "dependent_area_ratio"))
-        fwhm_ratio = _component_fit_constraint_number(constraint, ("fwhm_ratio", "dependent_fwhm_ratio"))
+        anchor_id = str(
+            constraint.get("anchor_component_id")
+            or constraint.get("parent_component_id")
+            or ""
+        )
+        dependent_id = str(
+            constraint.get("dependent_component_id")
+            or constraint.get("child_component_id")
+            or ""
+        )
+        center_delta = _component_fit_constraint_number(
+            constraint,
+            ("center_delta_eV", "dependent_center_delta_eV", "center_offset_eV"),
+        )
+        area_ratio = _component_fit_constraint_number(
+            constraint, ("area_ratio", "dependent_area_ratio")
+        )
+        fwhm_ratio = _component_fit_constraint_number(
+            constraint, ("fwhm_ratio", "dependent_fwhm_ratio")
+        )
         reference_ids = _coerce_string_list(constraint.get("reference_ids"))
-        parameter_origin = str(
-            constraint.get("parameter_origin")
-            or constraint.get("constraint_origin")
-            or constraint.get("source_type")
-            or "reported_by_user"
-        ).strip().lower().replace(" ", "_")
-        allowed_origins = {"reported_by_user", "source_suggested", "user_confirmed_source_suggested"}
+        parameter_origin = (
+            str(
+                constraint.get("parameter_origin")
+                or constraint.get("constraint_origin")
+                or constraint.get("source_type")
+                or "reported_by_user"
+            )
+            .strip()
+            .lower()
+            .replace(" ", "_")
+        )
+        allowed_origins = {
+            "reported_by_user",
+            "source_suggested",
+            "user_confirmed_source_suggested",
+        }
         if parameter_origin not in allowed_origins:
             warnings.append(
                 _warning(
@@ -3581,7 +4350,10 @@ def _component_fit_spin_orbit_constraints(
                 )
             )
             parameter_origin = "reported_by_user"
-        if parameter_origin in {"source_suggested", "user_confirmed_source_suggested"} and not reference_ids:
+        if (
+            parameter_origin in {"source_suggested", "user_confirmed_source_suggested"}
+            and not reference_ids
+        ):
             warnings.append(
                 _warning(
                     "xps_component_fit_spin_orbit_source_reference_missing",
@@ -3632,7 +4404,11 @@ def _component_fit_spin_orbit_constraints(
             )
             fatal = True
             continue
-        if anchor_id not in spec_by_id or dependent_id not in spec_by_id or anchor_id == dependent_id:
+        if (
+            anchor_id not in spec_by_id
+            or dependent_id not in spec_by_id
+            or anchor_id == dependent_id
+        ):
             warnings.append(
                 _warning(
                     "xps_component_fit_spin_orbit_component_missing",
@@ -3667,7 +4443,7 @@ def _component_fit_spin_orbit_constraints(
             warnings.append(
                 _warning(
                     "xps_component_fit_spin_orbit_chained_constraint",
-                    "XPS spin-orbit constrained component-fit was skipped because chained or cyclic constraints are not supported in Experimental Assistant v0.9.7.",
+                    "XPS spin-orbit constrained component-fit was skipped because chained or cyclic constraints are not supported in Experimental Assistant v0.9.8.",
                     severity="medium",
                     region_id=region_id,
                     constraint_id=constraint_id,
@@ -3694,15 +4470,29 @@ def _component_fit_spin_orbit_constraints(
 
         amplitude_factor = float(area_ratio) / float(fwhm_ratio)
         bound_candidates = {
-            "center_eV": (float(dependent["bounds"]["center_eV"][0]) - float(center_delta), float(dependent["bounds"]["center_eV"][1]) - float(center_delta)),
-            "fwhm_eV": (float(dependent["bounds"]["fwhm_eV"][0]) / float(fwhm_ratio), float(dependent["bounds"]["fwhm_eV"][1]) / float(fwhm_ratio)),
-            "amplitude": (float(dependent["bounds"]["amplitude"][0]) / amplitude_factor, float(dependent["bounds"]["amplitude"][1]) / amplitude_factor),
+            "center_eV": (
+                float(dependent["bounds"]["center_eV"][0]) - float(center_delta),
+                float(dependent["bounds"]["center_eV"][1]) - float(center_delta),
+            ),
+            "fwhm_eV": (
+                float(dependent["bounds"]["fwhm_eV"][0]) / float(fwhm_ratio),
+                float(dependent["bounds"]["fwhm_eV"][1]) / float(fwhm_ratio),
+            ),
+            "amplitude": (
+                float(dependent["bounds"]["amplitude"][0]) / amplitude_factor,
+                float(dependent["bounds"]["amplitude"][1]) / amplitude_factor,
+            ),
         }
-        if anchor["peak_shape"] == "pseudo_voigt" and dependent["bounds"].get("mixing") is not None:
+        if (
+            anchor["peak_shape"] == "pseudo_voigt"
+            and dependent["bounds"].get("mixing") is not None
+        ):
             bound_candidates["mixing"] = tuple(dependent["bounds"]["mixing"])
         adjusted_bounds = dict(effective_bounds[anchor_index])
         for name, candidate_bounds in bound_candidates.items():
-            intersected = _component_fit_intersect_bounds(adjusted_bounds[name], candidate_bounds)
+            intersected = _component_fit_intersect_bounds(
+                adjusted_bounds[name], candidate_bounds
+            )
             if intersected is None:
                 warnings.append(
                     _warning(
@@ -3735,12 +4525,22 @@ def _component_fit_spin_orbit_constraints(
                 "fwhm_ratio": float(fwhm_ratio),
                 "amplitude_factor": amplitude_factor,
                 "parameter_origin": parameter_origin,
-                "source_summary": str(constraint.get("source_summary") or constraint.get("reference_summary") or "").strip(),
-                "applicability_notes": _coerce_string_list(constraint.get("applicability_notes")),
+                "source_summary": str(
+                    constraint.get("source_summary")
+                    or constraint.get("reference_summary")
+                    or ""
+                ).strip(),
+                "applicability_notes": _coerce_string_list(
+                    constraint.get("applicability_notes")
+                ),
                 "reference_ids": reference_ids,
-                "reviewer_notes": _coerce_string_list(constraint.get("reviewer_notes") or constraint.get("notes")),
+                "reviewer_notes": _coerce_string_list(
+                    constraint.get("reviewer_notes") or constraint.get("notes")
+                ),
                 "caveats": _coerce_string_list(constraint.get("caveats")),
-                "confidence": str(constraint.get("confidence") or "low").strip().lower(),
+                "confidence": str(constraint.get("confidence") or "low")
+                .strip()
+                .lower(),
                 "status": "applied",
             }
         )
@@ -3791,7 +4591,9 @@ def _component_fit_spin_orbit_constraints(
     return constraints, effective_bounds, dependent_indices, fatal
 
 
-def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
+def _apply_component_fit(
+    processed: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("component_fit", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return pd.DataFrame(columns=_component_fit_columns()), None, []
@@ -3803,17 +4605,25 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         warnings.append(
             _warning(
                 "xps_component_fit_method_unsupported",
-                "Only reviewed_component_fit_screening is supported for XPS component_fit in Experimental Assistant v0.9.7.",
+                "Only reviewed_component_fit_screening is supported for XPS component_fit in Experimental Assistant v0.9.8.",
                 severity="medium",
                 requested_method=method,
             )
         )
         method = "reviewed_component_fit_screening"
 
-    input_column = _column_name(params.get("input_intensity_column"), "processed_intensity")
-    fit_column = _column_name(params.get("fit_intensity_column"), "xps_component_fit_intensity")
-    residual_column = _column_name(params.get("residual_column"), "xps_component_fit_residual")
-    region_id_column = _column_name(params.get("region_id_column"), "xps_component_fit_region_id")
+    input_column = _column_name(
+        params.get("input_intensity_column"), "processed_intensity"
+    )
+    fit_column = _column_name(
+        params.get("fit_intensity_column"), "xps_component_fit_intensity"
+    )
+    residual_column = _column_name(
+        params.get("residual_column"), "xps_component_fit_residual"
+    )
+    region_id_column = _column_name(
+        params.get("region_id_column"), "xps_component_fit_region_id"
+    )
     min_points, min_adjusted = _coerce_int(params.get("min_points"), 8, minimum=4)
     max_nfev, max_adjusted = _coerce_int(params.get("max_nfev"), 5000, minimum=100)
     thresholds, threshold_warnings = _component_fit_thresholds(params)
@@ -3858,10 +4668,12 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         "constrained_component_count": 0,
         "regions": [],
         "reference_ids": _coerce_string_list(params.get("reference_ids")),
-        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "reviewer_notes": _coerce_string_list(
+            params.get("reviewer_notes") or params.get("notes")
+        ),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS component_fit is reviewed screening-level numerical modeling only. Experimental Assistant v0.9.7 may use reviewed user-provided or source-backed "
+            "XPS component_fit is reviewed screening-level numerical modeling only. Experimental Assistant v0.9.8 may use reviewed user-provided or source-backed "
             "component/background/bounds/peak-shape candidates, but this record does not silently choose them, use unsourced spin-orbit constants, "
             "or prove chemical states or definitive composition."
         ),
@@ -3892,7 +4704,11 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         )
         record.update({"status": "skipped_column_collision", "warnings": warnings})
         return pd.DataFrame(columns=_component_fit_columns()), record, warnings
-    existing_output_columns = [column for column in [fit_column, residual_column, region_id_column] if column in processed.columns]
+    existing_output_columns = [
+        column
+        for column in [fit_column, residual_column, region_id_column]
+        if column in processed.columns
+    ]
     if existing_output_columns:
         warnings.append(
             _warning(
@@ -3902,7 +4718,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 existing_output_columns=existing_output_columns,
             )
         )
-        record.update({"status": "skipped_existing_output_column", "warnings": warnings})
+        record.update(
+            {"status": "skipped_existing_output_column", "warnings": warnings}
+        )
         return pd.DataFrame(columns=_component_fit_columns()), record, warnings
 
     raw_regions = params.get("regions", [])
@@ -3923,12 +4741,16 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 severity="medium",
             )
         )
-        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        record.update(
+            {"status": "enabled_without_reviewed_regions", "warnings": warnings}
+        )
         return pd.DataFrame(columns=_component_fit_columns()), record, warnings
 
     processed[fit_column] = np.nan
     processed[residual_column] = np.nan
-    processed[region_id_column] = pd.Series(pd.NA, index=processed.index, dtype="object")
+    processed[region_id_column] = pd.Series(
+        pd.NA, index=processed.index, dtype="object"
+    )
     x = processed["binding_energy_eV"].to_numpy(dtype=float)
     y = pd.to_numeric(processed[input_column], errors="coerce").to_numpy(dtype=float)
     regions: list[dict[str, Any]] = []
@@ -3947,7 +4769,11 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 )
             )
             continue
-        region_id = str(region.get("region_id") or region.get("id") or f"xps-component-fit-region-{number:03d}")
+        region_id = str(
+            region.get("region_id")
+            or region.get("id")
+            or f"xps-component-fit-region-{number:03d}"
+        )
         low, high = _background_window(region)
         region_references = _coerce_string_list(region.get("reference_ids"))
         all_reference_ids.update(region_references)
@@ -3956,15 +4782,24 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             "label": str(region.get("label") or region_id),
             "binding_energy_min_eV": low,
             "binding_energy_max_eV": high,
-            "input_intensity_column": str(region.get("input_intensity_column") or input_column),
-            "background_source": str(region.get("background_source") or params.get("background_source") or "input_column_already_reviewed"),
-            "background_column": region.get("background_column") or params.get("background_column"),
+            "input_intensity_column": str(
+                region.get("input_intensity_column") or input_column
+            ),
+            "background_source": str(
+                region.get("background_source")
+                or params.get("background_source")
+                or "input_column_already_reviewed"
+            ),
+            "background_column": region.get("background_column")
+            or params.get("background_column"),
             "point_count": 0,
             "status": "invalid_region_window",
             "component_count": 0,
             "fitted_component_count": 0,
             "reference_ids": region_references,
-            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "reviewer_notes": _coerce_string_list(
+                region.get("reviewer_notes") or region.get("notes")
+            ),
             "caveats": _coerce_string_list(region.get("caveats")),
             "confidence": str(region.get("confidence") or "low").strip().lower(),
             "assignment_source": source,
@@ -3995,7 +4830,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 )
                 regions.append(region_record)
                 continue
-            region_y_all = pd.to_numeric(processed[region_input_column], errors="coerce").to_numpy(dtype=float)
+            region_y_all = pd.to_numeric(
+                processed[region_input_column], errors="coerce"
+            ).to_numpy(dtype=float)
         else:
             region_y_all = y
 
@@ -4014,7 +4851,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 )
                 regions.append(region_record)
                 continue
-            background_values = pd.to_numeric(processed[background_column], errors="coerce").to_numpy(dtype=float)
+            background_values = pd.to_numeric(
+                processed[background_column], errors="coerce"
+            ).to_numpy(dtype=float)
             target_y_all = region_y_all - background_values
             region_record["background_source"] = "reviewed_background_column_subtracted"
         else:
@@ -4065,7 +4904,13 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                     )
                 )
                 continue
-            spec = _component_fit_component_spec(component, region_id=region_id, number=component_number, source=source, warnings=warnings)
+            spec = _component_fit_component_spec(
+                component,
+                region_id=region_id,
+                number=component_number,
+                source=source,
+                warnings=warnings,
+            )
             if spec is not None:
                 specs.append(spec)
                 all_reference_ids.update(spec.get("reference_ids", []))
@@ -4077,7 +4922,10 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
 
         raw_spin_orbit_constraints: list[Any] = []
         spin_constraint_inputs_invalid = False
-        for constraint_source in [params.get("spin_orbit_constraints"), region.get("spin_orbit_constraints")]:
+        for constraint_source in [
+            params.get("spin_orbit_constraints"),
+            region.get("spin_orbit_constraints"),
+        ]:
             if constraint_source is None:
                 continue
             if isinstance(constraint_source, list):
@@ -4096,7 +4944,12 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             region_record["status"] = "invalid_spin_orbit_constraints"
             regions.append(region_record)
             continue
-        spin_constraints, effective_bounds, dependent_indices, spin_constraints_invalid = _component_fit_spin_orbit_constraints(
+        (
+            spin_constraints,
+            effective_bounds,
+            dependent_indices,
+            spin_constraints_invalid,
+        ) = _component_fit_spin_orbit_constraints(
             specs,
             raw_spin_orbit_constraints,
             region_id=region_id,
@@ -4107,7 +4960,11 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 {
                     "status": "invalid_spin_orbit_constraints",
                     "spin_orbit_constraints": [
-                        {key: value for key, value in constraint.items() if not key.endswith("_index")}
+                        {
+                            key: value
+                            for key, value in constraint.items()
+                            if not key.endswith("_index")
+                        }
                         for constraint in spin_constraints
                     ],
                 }
@@ -4159,10 +5016,19 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             for constraint in spin_constraints:
                 anchor = fitted_specs[int(constraint["anchor_index"])]
                 dependent = fitted_specs[int(constraint["dependent_index"])]
-                dependent["center_eV"] = float(anchor["center_eV"]) + float(constraint["center_delta_eV"])
-                dependent["fwhm_eV"] = float(anchor["fwhm_eV"]) * float(constraint["fwhm_ratio"])
-                dependent["amplitude"] = float(anchor["amplitude"]) * float(constraint["amplitude_factor"])
-                if specs[int(constraint["dependent_index"])]["peak_shape"] == "pseudo_voigt":
+                dependent["center_eV"] = float(anchor["center_eV"]) + float(
+                    constraint["center_delta_eV"]
+                )
+                dependent["fwhm_eV"] = float(anchor["fwhm_eV"]) * float(
+                    constraint["fwhm_ratio"]
+                )
+                dependent["amplitude"] = float(anchor["amplitude"]) * float(
+                    constraint["amplitude_factor"]
+                )
+                if (
+                    specs[int(constraint["dependent_index"])]["peak_shape"]
+                    == "pseudo_voigt"
+                ):
                     dependent["mixing"] = float(anchor["mixing"])
             return fitted_specs
 
@@ -4184,7 +5050,10 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             result = least_squares(
                 lambda values: model(values) - observed,
                 np.asarray(x0, dtype=float),
-                bounds=(np.asarray(lower_bounds, dtype=float), np.asarray(upper_bounds, dtype=float)),
+                bounds=(
+                    np.asarray(lower_bounds, dtype=float),
+                    np.asarray(upper_bounds, dtype=float),
+                ),
                 max_nfev=max_nfev,
             )
         except ValueError as exc:
@@ -4202,8 +5071,12 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
             continue
 
         fitted_signal = model(result.x)
-        fit_metrics = _component_fit_quality(observed, fitted_signal, len(parameter_map))
-        quality_checks, quality_warnings = _component_fit_quality_checks(fit_metrics, thresholds)
+        fit_metrics = _component_fit_quality(
+            observed, fitted_signal, len(parameter_map)
+        )
+        quality_checks, quality_warnings = _component_fit_quality_checks(
+            fit_metrics, thresholds
+        )
         warnings.extend(quality_warnings)
         optimizer_status = {
             "success": bool(result.success),
@@ -4222,7 +5095,13 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                     optimizer_status=optimizer_status,
                 )
             )
-            region_record.update({"status": "optimizer_not_converged", "optimizer_status": optimizer_status, "fit_quality": fit_metrics})
+            region_record.update(
+                {
+                    "status": "optimizer_not_converged",
+                    "optimizer_status": optimizer_status,
+                    "fit_quality": fit_metrics,
+                }
+            )
             regions.append(region_record)
             continue
 
@@ -4247,9 +5126,17 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         for constraint in spin_constraints:
             anchor_index = int(constraint["anchor_index"])
             dependent_index = int(constraint["dependent_index"])
-            spin_constraint_by_component[anchor_index] = {**constraint, "constraint_role": "anchor"}
-            spin_constraint_by_component[dependent_index] = {**constraint, "constraint_role": "dependent"}
-        for spec_index, (spec, fitted_spec) in enumerate(zip(specs, fitted_specs, strict=True)):
+            spin_constraint_by_component[anchor_index] = {
+                **constraint,
+                "constraint_role": "anchor",
+            }
+            spin_constraint_by_component[dependent_index] = {
+                **constraint,
+                "constraint_role": "dependent",
+            }
+        for spec_index, (spec, fitted_spec) in enumerate(
+            zip(specs, fitted_specs, strict=True)
+        ):
             spin_constraint = spin_constraint_by_component.get(spec_index)
             area = _component_fit_area(
                 fitted_spec["amplitude"],
@@ -4266,17 +5153,47 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "core_level": spec["core_level"],
                 "peak_shape": spec["peak_shape"],
                 "spin_orbit_group_id": spec.get("spin_orbit_group_id"),
-                "spin_orbit_role": (spin_constraint.get("constraint_role") if spin_constraint else spec.get("spin_orbit_role")),
-                "spin_orbit_constraint_id": spin_constraint.get("constraint_id") if spin_constraint else None,
-                "spin_orbit_anchor_component_id": spin_constraint.get("anchor_component_id") if spin_constraint else None,
-                "spin_orbit_dependent_component_id": spin_constraint.get("dependent_component_id") if spin_constraint else None,
-                "spin_orbit_center_delta_eV": spin_constraint.get("center_delta_eV") if spin_constraint else None,
-                "spin_orbit_area_ratio": spin_constraint.get("area_ratio") if spin_constraint else None,
-                "spin_orbit_fwhm_ratio": spin_constraint.get("fwhm_ratio") if spin_constraint else None,
-                "spin_orbit_constraint_status": spin_constraint.get("status") if spin_constraint else None,
-                "spin_orbit_parameter_origin": spin_constraint.get("parameter_origin") if spin_constraint else None,
-                "spin_orbit_source_summary": spin_constraint.get("source_summary") if spin_constraint else None,
-                "spin_orbit_applicability_notes": "; ".join(spin_constraint.get("applicability_notes") or []) if spin_constraint else None,
+                "spin_orbit_role": (
+                    spin_constraint.get("constraint_role")
+                    if spin_constraint
+                    else spec.get("spin_orbit_role")
+                ),
+                "spin_orbit_constraint_id": spin_constraint.get("constraint_id")
+                if spin_constraint
+                else None,
+                "spin_orbit_anchor_component_id": spin_constraint.get(
+                    "anchor_component_id"
+                )
+                if spin_constraint
+                else None,
+                "spin_orbit_dependent_component_id": spin_constraint.get(
+                    "dependent_component_id"
+                )
+                if spin_constraint
+                else None,
+                "spin_orbit_center_delta_eV": spin_constraint.get("center_delta_eV")
+                if spin_constraint
+                else None,
+                "spin_orbit_area_ratio": spin_constraint.get("area_ratio")
+                if spin_constraint
+                else None,
+                "spin_orbit_fwhm_ratio": spin_constraint.get("fwhm_ratio")
+                if spin_constraint
+                else None,
+                "spin_orbit_constraint_status": spin_constraint.get("status")
+                if spin_constraint
+                else None,
+                "spin_orbit_parameter_origin": spin_constraint.get("parameter_origin")
+                if spin_constraint
+                else None,
+                "spin_orbit_source_summary": spin_constraint.get("source_summary")
+                if spin_constraint
+                else None,
+                "spin_orbit_applicability_notes": "; ".join(
+                    spin_constraint.get("applicability_notes") or []
+                )
+                if spin_constraint
+                else None,
                 "initial_center_eV": spec["initial_center_eV"],
                 "fitted_center_eV": fitted_spec["center_eV"],
                 "initial_amplitude": spec["initial_amplitude"],
@@ -4284,7 +5201,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "initial_fwhm_eV": spec["initial_fwhm_eV"],
                 "fitted_fwhm_eV": fitted_spec["fwhm_eV"],
                 "initial_mixing": spec.get("initial_mixing"),
-                "fitted_mixing": fitted_spec["mixing"] if spec["peak_shape"] == "pseudo_voigt" else None,
+                "fitted_mixing": fitted_spec["mixing"]
+                if spec["peak_shape"] == "pseudo_voigt"
+                else None,
                 "fitted_area": area,
                 "relative_fit_area_percent": np.nan,
                 "fit_rmse": fit_metrics["rmse"],
@@ -4292,7 +5211,9 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "confidence": spec.get("confidence", "low"),
                 "assignment_source": spec.get("assignment_source", source),
                 "status": "fitted",
-                "notes": spec.get("notes", "reviewed XPS component fit; screening only"),
+                "notes": spec.get(
+                    "notes", "reviewed XPS component fit; screening only"
+                ),
                 "bounds": spec["bounds"],
                 "reference_ids": spec.get("reference_ids", []),
                 "reviewer_notes": spec.get("reviewer_notes", []),
@@ -4303,10 +5224,15 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         area_total = float(np.sum(fitted_areas))
         if area_total > 0:
             for fitted_component in fitted_components:
-                fitted_component["relative_fit_area_percent"] = float(fitted_component["fitted_area"] / area_total * 100.0)
+                fitted_component["relative_fit_area_percent"] = float(
+                    fitted_component["fitted_area"] / area_total * 100.0
+                )
 
         for fitted_component in fitted_components:
-            row = {key: fitted_component.get(key, np.nan) for key in _component_fit_columns()}
+            row = {
+                key: fitted_component.get(key, np.nan)
+                for key in _component_fit_columns()
+            }
             component_rows.append(row)
 
         region_record.update(
@@ -4321,7 +5247,11 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
                 "spin_orbit_constraint_count": len(spin_constraints),
                 "constrained_component_count": len(dependent_indices),
                 "spin_orbit_constraints": [
-                    {key: value for key, value in constraint.items() if not key.endswith("_index") and key != "amplitude_factor"}
+                    {
+                        key: value
+                        for key, value in constraint.items()
+                        if not key.endswith("_index") and key != "amplitude_factor"
+                    }
                     for constraint in spin_constraints
                 ],
             }
@@ -4330,17 +5260,33 @@ def _apply_component_fit(processed: pd.DataFrame, parameters: dict[str, Any]) ->
         regions.append(region_record)
 
     table = pd.DataFrame(component_rows, columns=_component_fit_columns())
-    fitted_component_count = int((table["status"].astype(str) == "fitted").sum()) if not table.empty else 0
+    fitted_component_count = (
+        int((table["status"].astype(str) == "fitted").sum()) if not table.empty else 0
+    )
     record.update(
         {
-            "status": "reviewed_component_fit_screening" if fitted_regions else "no_regions_fitted",
+            "status": "reviewed_component_fit_screening"
+            if fitted_regions
+            else "no_regions_fitted",
             "confidence": "low" if fitted_regions else "insufficient",
             "region_count": len(regions),
             "fitted_region_count": fitted_regions,
-            "component_count": int(sum(int(region.get("component_count", 0)) for region in regions)),
+            "component_count": int(
+                sum(int(region.get("component_count", 0)) for region in regions)
+            ),
             "fitted_component_count": fitted_component_count,
-            "spin_orbit_constraint_count": int(sum(int(region.get("spin_orbit_constraint_count", 0)) for region in regions)),
-            "constrained_component_count": int(sum(int(region.get("constrained_component_count", 0)) for region in regions)),
+            "spin_orbit_constraint_count": int(
+                sum(
+                    int(region.get("spin_orbit_constraint_count", 0))
+                    for region in regions
+                )
+            ),
+            "constrained_component_count": int(
+                sum(
+                    int(region.get("constrained_component_count", 0))
+                    for region in regions
+                )
+            ),
             "regions": regions,
             "reference_ids": sorted(all_reference_ids),
             "warnings": warnings,
@@ -4367,7 +5313,9 @@ def _region_record_columns() -> list[str]:
     ]
 
 
-def _region_record_refs(region: dict[str, Any], linked_outputs: dict[str, str | None]) -> list[str]:
+def _region_record_refs(
+    region: dict[str, Any], linked_outputs: dict[str, str | None]
+) -> list[str]:
     refs: list[str] = []
     for key in [
         "background_model_ref",
@@ -4413,7 +5361,7 @@ def _apply_region_records(
         warnings.append(
             _warning(
                 "xps_region_records_method_unsupported",
-                "Only reviewed_multi_region_project_record is supported for XPS region_records in Experimental Assistant v0.9.7.",
+                "Only reviewed_multi_region_project_record is supported for XPS region_records in Experimental Assistant v0.9.8.",
                 severity="medium",
                 requested_method=method,
             )
@@ -4440,12 +5388,16 @@ def _apply_region_records(
         "region_count": 0,
         "reviewed_region_count": 0,
         "regions": [],
-        "linked_output_refs": sorted(str(value) for value in linked_outputs.values() if value),
+        "linked_output_refs": sorted(
+            str(value) for value in linked_outputs.values() if value
+        ),
         "reference_ids": _coerce_string_list(params.get("reference_ids")),
-        "reviewer_notes": _coerce_string_list(params.get("reviewer_notes") or params.get("notes")),
+        "reviewer_notes": _coerce_string_list(
+            params.get("reviewer_notes") or params.get("notes")
+        ),
         "caveats": _coerce_string_list(params.get("caveats")),
         "boundary": (
-            "XPS region_records are reviewed project-organization and provenance records only. Experimental Assistant v0.9.7 does not share charge correction "
+            "XPS region_records are reviewed project-organization and provenance records only. Experimental Assistant v0.9.8 does not share charge correction "
             "or align survey/core-level spectra without review/provenance, assign chemical states, calculate formal multi-region composition, or rank samples."
         ),
     }
@@ -4468,7 +5420,9 @@ def _apply_region_records(
                 severity="medium",
             )
         )
-        record.update({"status": "enabled_without_reviewed_regions", "warnings": warnings})
+        record.update(
+            {"status": "enabled_without_reviewed_regions", "warnings": warnings}
+        )
         return pd.DataFrame(columns=_region_record_columns()), record, warnings
 
     x = processed["binding_energy_eV"].to_numpy(dtype=float)
@@ -4476,7 +5430,9 @@ def _apply_region_records(
     rows: list[dict[str, Any]] = []
     all_reference_ids = set(record["reference_ids"])
     reviewed_count = 0
-    default_calibration_group = params.get("default_calibration_group_id") or params.get("calibration_group_id")
+    default_calibration_group = params.get(
+        "default_calibration_group_id"
+    ) or params.get("calibration_group_id")
 
     for number, region in enumerate(raw_regions, start=1):
         if not isinstance(region, dict):
@@ -4489,8 +5445,16 @@ def _apply_region_records(
                 )
             )
             continue
-        region_id = str(region.get("region_id") or region.get("id") or f"xps-region-record-{number:03d}")
-        role = str(region.get("region_role") or region.get("role") or "core_level").strip().lower()
+        region_id = str(
+            region.get("region_id")
+            or region.get("id")
+            or f"xps-region-record-{number:03d}"
+        )
+        role = (
+            str(region.get("region_role") or region.get("role") or "core_level")
+            .strip()
+            .lower()
+        )
         if role not in {"survey", "core_level", "valence", "auger", "other"}:
             warnings.append(
                 _warning(
@@ -4514,14 +5478,21 @@ def _apply_region_records(
             "core_level": str(region.get("core_level") or region.get("orbital") or ""),
             "binding_energy_min_eV": low,
             "binding_energy_max_eV": high,
-            "calibration_group_id": str(region.get("calibration_group_id") or default_calibration_group or "") or None,
+            "calibration_group_id": str(
+                region.get("calibration_group_id") or default_calibration_group or ""
+            )
+            or None,
             "point_count": 0,
             "linked_output_refs": linked_refs,
             "reference_ids": reference_ids,
-            "reviewer_notes": _coerce_string_list(region.get("reviewer_notes") or region.get("notes")),
+            "reviewer_notes": _coerce_string_list(
+                region.get("reviewer_notes") or region.get("notes")
+            ),
             "caveats": _coerce_string_list(region.get("caveats")),
             "confidence": str(region.get("confidence") or "low").strip().lower(),
-            "assignment_source": str(region.get("source") or region.get("assignment_source") or source),
+            "assignment_source": str(
+                region.get("source") or region.get("assignment_source") or source
+            ),
             "status": "invalid_region_window",
         }
         if low is None or high is None:
@@ -4559,7 +5530,9 @@ def _apply_region_records(
     table = pd.DataFrame(rows, columns=_region_record_columns())
     record.update(
         {
-            "status": "reviewed_multi_region_project_record" if reviewed_count else "no_regions_recorded",
+            "status": "reviewed_multi_region_project_record"
+            if reviewed_count
+            else "no_regions_recorded",
             "confidence": "low" if reviewed_count else "insufficient",
             "region_count": len(regions),
             "reviewed_region_count": reviewed_count,
@@ -4628,13 +5601,21 @@ def _analyze_peaks(
         analysis["component_quantification"] = component_summary
         if component_summary.get("enabled"):
             status = component_summary.get("status", "unknown")
-            evidence = [item.get("component_id") for item in component_summary.get("components", []) if item.get("component_id")]
+            evidence = [
+                item.get("component_id")
+                for item in component_summary.get("components", [])
+                if item.get("component_id")
+            ]
             analysis["possible_interpretations"].append(
                 {
                     "text": "Reviewed XPS component windows were integrated to produce screening-level component areas and, when all sensitivity factors are present, RSF-normalized relative atomic percent estimates. These values are not definitive composition or chemical-state assignments.",
-                    "confidence": "low" if component_summary.get("quantified_component_count", 0) else "insufficient",
+                    "confidence": "low"
+                    if component_summary.get("quantified_component_count", 0)
+                    else "insufficient",
                     "evidence": evidence,
-                    "assignment_source": component_summary.get("assignment_source", "ea.xps.component_quantification:v0.2"),
+                    "assignment_source": component_summary.get(
+                        "assignment_source", "ea.xps.component_quantification:v0.2"
+                    ),
                     "component_quantification_status": status,
                 }
             )
@@ -4646,19 +5627,30 @@ def _analyze_peaks(
                     "text": "Reviewed XPS background model records were saved for the relevant binding-energy region(s). Use them to interpret component screening and future fitting, but do not treat the record as automatic Shirley/Tougaard subtraction, spin-orbit constrained fitting, composition, or chemical-state proof.",
                     "confidence": background_record.get("confidence", "low"),
                     "evidence": ["background_model"],
-                    "assignment_source": background_record.get("assignment_source", "ea.xps.background_model:v0.2"),
+                    "assignment_source": background_record.get(
+                        "assignment_source", "ea.xps.background_model:v0.2"
+                    ),
                 }
             )
     if background_subtraction_record:
         analysis["background_subtraction"] = background_subtraction_record
         if _is_background_subtraction_success(background_subtraction_record):
-            method_label = _background_subtraction_method_label(str(background_subtraction_record.get("method") or "reviewed_linear_background_subtraction"))
+            method_label = _background_subtraction_method_label(
+                str(
+                    background_subtraction_record.get("method")
+                    or "reviewed_linear_background_subtraction"
+                )
+            )
             analysis["possible_interpretations"].append(
                 {
                     "text": f"Reviewed {method_label} XPS background subtraction was applied only inside explicit user-confirmed binding-energy regions. Treat the corrected columns as preprocessing artifacts for review, not as QUASES/depth-profile modeling, definitive composition, chemical-state assignment, or spin-orbit constrained fitting.",
-                    "confidence": background_subtraction_record.get("confidence", "low"),
+                    "confidence": background_subtraction_record.get(
+                        "confidence", "low"
+                    ),
                     "evidence": ["background_subtraction"],
-                    "assignment_source": background_subtraction_record.get("assignment_source", "ea.xps.background_subtraction:v0.2"),
+                    "assignment_source": background_subtraction_record.get(
+                        "assignment_source", "ea.xps.background_subtraction:v0.2"
+                    ),
                 }
             )
     if component_fit_record:
@@ -4671,7 +5663,9 @@ def _analyze_peaks(
                 for component in region.get("components", [])
                 if isinstance(component, dict) and component.get("component_id")
             ]
-            constraint_count = int(component_fit_record.get("spin_orbit_constraint_count", 0) or 0)
+            constraint_count = int(
+                component_fit_record.get("spin_orbit_constraint_count", 0) or 0
+            )
             constraint_note = (
                 " Reviewed spin-orbit constraints were applied from recorded signed deltas/ratios/bounds with parameter origins and references preserved when supplied."
                 if constraint_count
@@ -4685,9 +5679,15 @@ def _analyze_peaks(
                         f"{constraint_note}"
                     ),
                     "confidence": component_fit_record.get("confidence", "low"),
-                    "evidence": ["component_fit", *evidence] if evidence else ["component_fit"],
-                    "assignment_source": component_fit_record.get("assignment_source", "ea.xps.component_fit:v0.2"),
-                    "component_fit_status": component_fit_record.get("status", "unknown"),
+                    "evidence": ["component_fit", *evidence]
+                    if evidence
+                    else ["component_fit"],
+                    "assignment_source": component_fit_record.get(
+                        "assignment_source", "ea.xps.component_fit:v0.2"
+                    ),
+                    "component_fit_status": component_fit_record.get(
+                        "status", "unknown"
+                    ),
                 }
             )
     return analysis
@@ -4712,13 +5712,33 @@ def _plot_xps(
     footer: str | None = None,
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    ax.plot(processed["binding_energy_eV"], processed["processed_intensity"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed intensity")
-    if background_subtraction and _is_background_subtraction_success(background_subtraction):
-        method_label = _background_subtraction_method_label(str(background_subtraction.get("method") or "reviewed_linear_background_subtraction"))
-        background_column = str(background_subtraction.get("background_column") or "xps_linear_background")
-        corrected_column = str(background_subtraction.get("corrected_intensity_column") or "xps_background_subtracted_intensity")
+    ax.plot(
+        processed["binding_energy_eV"],
+        processed["processed_intensity"],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=1.2,
+        label="Processed intensity",
+    )
+    if background_subtraction and _is_background_subtraction_success(
+        background_subtraction
+    ):
+        method_label = _background_subtraction_method_label(
+            str(
+                background_subtraction.get("method")
+                or "reviewed_linear_background_subtraction"
+            )
+        )
+        background_column = str(
+            background_subtraction.get("background_column") or "xps_linear_background"
+        )
+        corrected_column = str(
+            background_subtraction.get("corrected_intensity_column")
+            or "xps_background_subtracted_intensity"
+        )
         if background_column in processed.columns:
-            background_mask = pd.to_numeric(processed[background_column], errors="coerce").notna()
+            background_mask = pd.to_numeric(
+                processed[background_column], errors="coerce"
+            ).notna()
             if bool(background_mask.any()):
                 ax.plot(
                     processed.loc[background_mask, "binding_energy_eV"],
@@ -4729,7 +5749,9 @@ def _plot_xps(
                     label=f"Reviewed {method_label} background",
                 )
         if corrected_column in processed.columns:
-            corrected_mask = pd.to_numeric(processed[corrected_column], errors="coerce").notna()
+            corrected_mask = pd.to_numeric(
+                processed[corrected_column], errors="coerce"
+            ).notna()
             if bool(corrected_mask.any()):
                 ax.plot(
                     processed.loc[corrected_mask, "binding_energy_eV"],
@@ -4738,8 +5760,13 @@ def _plot_xps(
                     linewidth=1.0,
                     label="Background-subtracted intensity",
                 )
-    if component_fit and component_fit.get("status") == "reviewed_component_fit_screening":
-        fit_column = str(component_fit.get("fit_intensity_column") or "xps_component_fit_intensity")
+    if (
+        component_fit
+        and component_fit.get("status") == "reviewed_component_fit_screening"
+    ):
+        fit_column = str(
+            component_fit.get("fit_intensity_column") or "xps_component_fit_intensity"
+        )
         if fit_column in processed.columns:
             fit_mask = pd.to_numeric(processed[fit_column], errors="coerce").notna()
             if bool(fit_mask.any()):
@@ -4752,15 +5779,24 @@ def _plot_xps(
                     label="Reviewed component fit",
                 )
     if not components.empty:
-        for _, component in components[components["status"].astype(str) == "integrated"].head(8).iterrows():
+        for _, component in (
+            components[components["status"].astype(str) == "integrated"]
+            .head(8)
+            .iterrows()
+        ):
             low = float(component["binding_energy_min_eV"])
             high = float(component["binding_energy_max_eV"])
-            ax.axvspan(low, high, color=NATURE_LIKE_COLORS["green"], alpha=0.12, linewidth=0)
+            ax.axvspan(
+                low, high, color=NATURE_LIKE_COLORS["green"], alpha=0.12, linewidth=0
+            )
             centroid = component.get("centroid_eV")
             if pd.notna(centroid):
                 ax.annotate(
                     str(component["component_id"]),
-                    (float(centroid), float(processed["processed_intensity"].max()) * 0.86),
+                    (
+                        float(centroid),
+                        float(processed["processed_intensity"].max()) * 0.86,
+                    ),
                     textcoords="offset points",
                     xytext=(0, 0),
                     ha="center",
@@ -4768,8 +5804,17 @@ def _plot_xps(
                     color=NATURE_LIKE_COLORS["green"],
                 )
     if not peaks.empty:
-        ax.scatter(peaks["binding_energy_eV"], peaks["processed_intensity"], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected peaks", zorder=3)
-        for _, peak in peaks.sort_values("prominence", ascending=False).head(8).iterrows():
+        ax.scatter(
+            peaks["binding_energy_eV"],
+            peaks["processed_intensity"],
+            color=NATURE_LIKE_COLORS["black"],
+            s=18,
+            label="Detected peaks",
+            zorder=3,
+        )
+        for _, peak in (
+            peaks.sort_values("prominence", ascending=False).head(8).iterrows()
+        ):
             ax.annotate(
                 f"{float(peak['binding_energy_eV']):.1f}",
                 (float(peak["binding_energy_eV"]), float(peak["processed_intensity"])),
@@ -4779,7 +5824,12 @@ def _plot_xps(
                 fontsize=7,
             )
     ax.invert_xaxis()
-    style_axis(ax, title="XPS spectrum", xlabel="Binding energy (eV)", ylabel="Normalized intensity (a.u.)")
+    style_axis(
+        ax,
+        title="XPS spectrum",
+        xlabel="Binding energy (eV)",
+        ylabel="Normalized intensity (a.u.)",
+    )
     save_styled_figure(fig, output, footer=footer)
 
 
@@ -4802,18 +5852,37 @@ def process_xps_result(
         raise XPSProcessingError(f"File is {inspection.file_kind}, not XPS")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
-    background_subtraction_record, background_subtraction_warnings = _apply_background_subtraction(processed, parameters)
-    component_fit_table, component_fit_record, component_fit_warnings = _apply_component_fit(processed, parameters)
+    processed, processing_warnings = _apply_processing(
+        _confirmed_frame(raw_path, request), parameters
+    )
+    background_subtraction_record, background_subtraction_warnings = (
+        _apply_background_subtraction(processed, parameters)
+    )
+    component_fit_table, component_fit_record, component_fit_warnings = (
+        _apply_component_fit(processed, parameters)
+    )
     peaks = _detect_peaks(processed, parameters, request.x_unit)
-    components, component_summary, component_warnings = _apply_component_quantification(processed, parameters)
+    components, component_summary, component_warnings = _apply_component_quantification(
+        processed, parameters
+    )
     background_record, background_warnings = _record_background_model(parameters)
-    peak_analysis = _analyze_peaks(peaks, request, component_summary, background_record, background_subtraction_record, component_fit_record)
+    peak_analysis = _analyze_peaks(
+        peaks,
+        request,
+        component_summary,
+        background_record,
+        background_subtraction_record,
+        component_fit_record,
+    )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="xps", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="xps", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="xps", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="xps", day=day
+        )
     else:
         result_id = next_id(root, "xps_result", day)
         figure_id = None
@@ -4860,18 +5929,30 @@ def process_xps_result(
         for item in peak_analysis.get("possible_interpretations", []):
             evidence = item.get("evidence")
             if isinstance(evidence, list):
-                item["evidence"] = [background_ref if value == "background_model" else value for value in evidence]
+                item["evidence"] = [
+                    background_ref if value == "background_model" else value
+                    for value in evidence
+                ]
     background_subtraction_ref: str | None = None
     if background_subtraction_record is not None:
-        background_subtraction_ref = background_subtraction_yml.relative_to(root).as_posix()
+        background_subtraction_ref = background_subtraction_yml.relative_to(
+            root
+        ).as_posix()
         background_subtraction_record["record_ref"] = background_subtraction_ref
         write_yaml(background_subtraction_yml, background_subtraction_record)
         if peak_analysis.get("background_subtraction"):
-            peak_analysis["background_subtraction"]["record_ref"] = background_subtraction_ref
+            peak_analysis["background_subtraction"]["record_ref"] = (
+                background_subtraction_ref
+            )
         for item in peak_analysis.get("possible_interpretations", []):
             evidence = item.get("evidence")
             if isinstance(evidence, list):
-                item["evidence"] = [background_subtraction_ref if value == "background_subtraction" else value for value in evidence]
+                item["evidence"] = [
+                    background_subtraction_ref
+                    if value == "background_subtraction"
+                    else value
+                    for value in evidence
+                ]
     component_fit_table_ref: str | None = None
     component_fit_ref: str | None = None
     if component_fit_record is not None:
@@ -4883,25 +5964,32 @@ def process_xps_result(
         write_yaml(component_fit_yml, component_fit_record)
         if peak_analysis.get("component_fit"):
             peak_analysis["component_fit"]["record_ref"] = component_fit_ref
-            peak_analysis["component_fit"]["component_table_ref"] = component_fit_table_ref
+            peak_analysis["component_fit"]["component_table_ref"] = (
+                component_fit_table_ref
+            )
         for item in peak_analysis.get("possible_interpretations", []):
             evidence = item.get("evidence")
             if isinstance(evidence, list):
-                item["evidence"] = [component_fit_ref if value == "component_fit" else value for value in evidence]
+                item["evidence"] = [
+                    component_fit_ref if value == "component_fit" else value
+                    for value in evidence
+                ]
     region_records_table_ref: str | None = None
     region_records_ref: str | None = None
-    region_records_table, region_records_record, region_records_warnings = _apply_region_records(
-        processed,
-        parameters,
-        linked_outputs={
-            "processed_csv": processed_csv.relative_to(root).as_posix(),
-            "peak_table": peaks_csv.relative_to(root).as_posix(),
-            "component_table": components_csv.relative_to(root).as_posix(),
-            "background_model": background_ref,
-            "background_subtraction": background_subtraction_ref,
-            "component_fit": component_fit_ref,
-            "component_fit_table": component_fit_table_ref,
-        },
+    region_records_table, region_records_record, region_records_warnings = (
+        _apply_region_records(
+            processed,
+            parameters,
+            linked_outputs={
+                "processed_csv": processed_csv.relative_to(root).as_posix(),
+                "peak_table": peaks_csv.relative_to(root).as_posix(),
+                "component_table": components_csv.relative_to(root).as_posix(),
+                "background_model": background_ref,
+                "background_subtraction": background_subtraction_ref,
+                "component_fit": component_fit_ref,
+                "component_fit_table": component_fit_table_ref,
+            },
+        )
     )
     if region_records_record is not None:
         region_records_table_ref = region_records_csv.relative_to(root).as_posix()
@@ -4923,9 +6011,21 @@ def process_xps_result(
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("xps_x_unit_unknown", "XPS x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "xps_x_unit_unknown",
+                "XPS x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     if not request.calibration_reference:
-        warnings.append(_warning("xps_calibration_reference_missing", "No XPS calibration reference text was recorded.", severity="medium"))
+        warnings.append(
+            _warning(
+                "xps_calibration_reference_missing",
+                "No XPS calibration reference text was recorded.",
+                severity="medium",
+            )
+        )
     warnings.extend(processing_warnings)
     warnings.extend(background_subtraction_warnings)
     warnings.extend(component_fit_warnings)
@@ -4968,7 +6068,11 @@ def process_xps_result(
         peak_analysis=peak_analysis,
         figure_id=figure_id,
         warnings=warnings,
-        review_refs=[request.column_review_ref, request.calibration_review_ref, request.parameter_review_ref],
+        review_refs=[
+            request.column_review_ref,
+            request.calibration_review_ref,
+            request.parameter_review_ref,
+        ],
         created_at=created_at or EARecord.now_iso(),
         updated_at=created_at or EARecord.now_iso(),
     )
@@ -5007,7 +6111,11 @@ def process_xps_result(
             "calibration_reference": request.calibration_reference,
             "processing_parameters": parameters,
         },
-        review_refs=[request.column_review_ref, request.calibration_review_ref, request.parameter_review_ref],
+        review_refs=[
+            request.column_review_ref,
+            request.calibration_review_ref,
+            request.parameter_review_ref,
+        ],
         warnings=warnings,
         scripts=[{"path": "src/ea/xps/service.py", "version": "0.2.0"}],
         created_at=created_at,
@@ -5055,5 +6163,98 @@ def process_xps_result(
                 ]
                 if value
             ],
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed XPS spectrum plotted in the figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    peaks_csv.relative_to(root).as_posix(),
+                    role="peak_table",
+                    purpose="Detected XPS screening peaks.",
+                ),
+                source_data_entry(
+                    root,
+                    components_csv.relative_to(root).as_posix(),
+                    role="component_table",
+                    purpose="Reviewed XPS component definitions.",
+                ),
+            ]
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        component_fit_table_ref,
+                        role="fit_table",
+                        purpose="Component-fit values.",
+                    )
+                ]
+                if component_fit_table_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        component_fit_ref,
+                        role="fit_record",
+                        purpose="Reviewed component-fit record.",
+                    )
+                ]
+                if component_fit_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        region_records_table_ref,
+                        role="region_table",
+                        purpose="XPS region values.",
+                    )
+                ]
+                if region_records_table_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        region_records_ref,
+                        role="region_record",
+                        purpose="Reviewed XPS region records.",
+                    )
+                ]
+                if region_records_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        background_ref,
+                        role="background_model",
+                        purpose="Reviewed background model.",
+                    )
+                ]
+                if background_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        background_subtraction_ref,
+                        role="derived_plotting_dataset",
+                        purpose="Reviewed background-subtracted overlay values.",
+                    )
+                ]
+                if background_subtraction_ref
+                else []
+            ),
         )
     return result_metadata

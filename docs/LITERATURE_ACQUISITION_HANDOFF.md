@@ -1,6 +1,6 @@
 # Literature Acquisition Handoff
 
-Experimental Assistant v0.9.7 uses a small, local sidecar to reconcile lawful full-text acquisition performed by a companion workflow. EA owns project targets, status summaries, downstream evidence extraction, review, and provenance. The `zotero-codex-literature` companion owns Zotero operations, user-managed authorization, attachment validation, and reusable full-text caches.
+Experimental Assistant v0.9.8 uses a small, local sidecar to reconcile lawful full-text acquisition performed by a companion workflow. EA owns project targets, status summaries, downstream evidence extraction, review, and provenance. The `zotero-codex-literature` companion owns Zotero operations, user-managed authorization, attachment validation, and reusable full-text caches.
 
 ## Contract
 

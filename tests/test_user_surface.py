@@ -5,10 +5,17 @@ from pathlib import Path
 import shutil
 
 from ea.cli import main
-from ea.user_surface import build_project_dashboard, generate_user_report, inspect_analysis_source, start_project
+from ea.user_surface import (
+    build_project_dashboard,
+    generate_user_report,
+    inspect_analysis_source,
+    start_project,
+)
 
 
-def test_start_plans_before_writing_and_creates_with_safe_defaults(tmp_path: Path) -> None:
+def test_start_plans_before_writing_and_creates_with_safe_defaults(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "My first project"
 
     plan = start_project(workspace)
@@ -23,13 +30,23 @@ def test_start_plans_before_writing_and_creates_with_safe_defaults(tmp_path: Pat
     assert (workspace / ".ea" / "project_format.yml").is_file()
 
 
-def test_dashboard_is_read_only_and_uses_optional_literature_semantics(tmp_path: Path) -> None:
+def test_dashboard_is_read_only_and_uses_optional_literature_semantics(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "project"
     start_project(workspace, confirmed=True)
-    before = {path.relative_to(workspace): path.stat().st_mtime_ns for path in workspace.rglob("*") if path.is_file()}
+    before = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
 
     result = build_project_dashboard(workspace)
-    after = {path.relative_to(workspace): path.stat().st_mtime_ns for path in workspace.rglob("*") if path.is_file()}
+    after = {
+        path.relative_to(workspace): path.stat().st_mtime_ns
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
 
     assert result["read_only"] is True
     assert result["literature"]["status"] == "not_used"
@@ -45,10 +62,13 @@ def test_analyze_is_a_read_only_method_inspection(tmp_path: Path) -> None:
 
     assert result["status"] == "ready_for_review"
     assert result["read_only"] is True
-    assert result["maturity"] == "beta"
+    assert "maturity" not in result
+    assert "not a scientific conclusion" in result["review_boundary"]
 
 
-def test_report_plans_before_writing_and_dispatches_to_existing_generator(tmp_path: Path) -> None:
+def test_report_plans_before_writing_and_dispatches_to_existing_generator(
+    tmp_path: Path,
+) -> None:
     source = Path("examples/public-raman-project")
     workspace = tmp_path / "raman-project"
     shutil.copytree(source, workspace)
@@ -59,7 +79,9 @@ def test_report_plans_before_writing_and_dispatches_to_existing_generator(tmp_pa
     assert plan["status"] == "needs_confirmation"
     assert set((workspace / "reports").glob("*.md")) == before_reports
 
-    result = generate_user_report(workspace, method="raman", metadata_path=metadata, confirmed=True)
+    result = generate_user_report(
+        workspace, method="raman", metadata_path=metadata, confirmed=True
+    )
     assert result["status"] == "completed"
     assert Path(result["report_path"]).is_file()
 

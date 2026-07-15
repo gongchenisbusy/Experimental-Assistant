@@ -1,8 +1,10 @@
 from ea.figures.service import (
     FigureLookupError,
     figure_footer,
+    figure_path_for_report,
     lookup_figure,
     register_figure,
+    source_data_entry,
     update_figure_report_ref,
 )
 from ea.figures.style import (
@@ -22,10 +24,12 @@ __all__ = [
     "NATURE_LIKE_COLORS",
     "NATURE_LIKE_STYLE_PROFILE",
     "figure_footer",
+    "figure_path_for_report",
     "lookup_figure",
     "register_figure",
     "save_styled_figure",
     "style_axis",
     "styled_subplots",
+    "source_data_entry",
     "update_figure_report_ref",
 ]

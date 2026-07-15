@@ -23,6 +23,7 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
@@ -113,7 +114,9 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
@@ -183,7 +186,9 @@ def inspect_spectrum_file(path: Path) -> SpectrumInspection:
     frame, metadata = _read_spectrum(path)
     columns = [str(column) for column in frame.columns]
     if frame.empty or len(columns) < 2:
-        raise RamanProcessingError(f"No two-column numeric spectrum data found in {path}")
+        raise RamanProcessingError(
+            f"No two-column numeric spectrum data found in {path}"
+        )
 
     x_values = pd.to_numeric(frame.iloc[:, 0], errors="coerce").dropna()
     x_min = float(x_values.min())
@@ -191,7 +196,11 @@ def inspect_spectrum_file(path: Path) -> SpectrumInspection:
     axis_unit = (metadata.get("AxisUnit[1]") or metadata.get("x_unit") or "").lower()
     filename_upper = path.name.upper()
 
-    if "PL" in filename_upper or axis_unit == "ev" or (0.5 <= x_min <= 5 and 0.5 <= x_max <= 5):
+    if (
+        "PL" in filename_upper
+        or axis_unit == "ev"
+        or (0.5 <= x_min <= 5 and 0.5 <= x_max <= 5)
+    ):
         file_kind = "pl"
         x_unit = "eV"
     elif 100 <= x_min <= 4000 or 100 <= x_max <= 4000:
@@ -226,9 +235,13 @@ def _confirmed_frame(path: Path, request: RamanProcessingRequest) -> pd.DataFram
     frame, _ = _read_spectrum(path)
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise RamanProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise RamanProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"cm^-1", "unknown"}:
-        raise RamanProcessingError("Raman x_unit must be user-confirmed as cm^-1 or unknown")
+        raise RamanProcessingError(
+            "Raman x_unit must be user-confirmed as cm^-1 or unknown"
+        )
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["raman_shift", "raw_intensity"]
     data["raman_shift"] = pd.to_numeric(data["raman_shift"], errors="coerce")
@@ -249,7 +262,9 @@ def _asls_baseline(
     length = intensity.size
     if length < 3:
         return np.zeros_like(intensity, dtype=float)
-    difference = sparse.diags([1, -2, 1], [0, -1, -2], shape=(length, length - 2), dtype=float, format="csc")
+    difference = sparse.diags(
+        [1, -2, 1], [0, -1, -2], shape=(length, length - 2), dtype=float, format="csc"
+    )
     weights = np.ones(length)
     for _ in range(niter):
         weight_matrix = sparse.spdiags(weights, 0, length, length)
@@ -259,7 +274,13 @@ def _asls_baseline(
     return np.asarray(baseline, dtype=float)
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -271,7 +292,9 @@ def _coerce_float(value: Any, default: float, *, minimum: float | None = None, m
     return coerced, False
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -300,8 +323,12 @@ def _apply_baseline_correction(
             )
         )
 
-    lam, lam_adjusted = _coerce_float(baseline_params.get("lambda"), 100000.0, minimum=1.0)
-    p, p_adjusted = _coerce_float(baseline_params.get("p"), 0.01, minimum=0.0001, maximum=0.9999)
+    lam, lam_adjusted = _coerce_float(
+        baseline_params.get("lambda"), 100000.0, minimum=1.0
+    )
+    p, p_adjusted = _coerce_float(
+        baseline_params.get("p"), 0.01, minimum=0.0001, maximum=0.9999
+    )
     niter, niter_adjusted = _coerce_int(baseline_params.get("niter"), 10, minimum=1)
     if lam_adjusted or p_adjusted or niter_adjusted:
         warnings.append(
@@ -373,8 +400,12 @@ def _apply_smoothing(
         )
         return intensity, warnings
 
-    window_length, window_adjusted = _coerce_int(smoothing_params.get("window_length"), 9, minimum=3)
-    polyorder, poly_adjusted = _coerce_int(smoothing_params.get("polyorder"), 2, minimum=1)
+    window_length, window_adjusted = _coerce_int(
+        smoothing_params.get("window_length"), 9, minimum=3
+    )
+    polyorder, poly_adjusted = _coerce_int(
+        smoothing_params.get("polyorder"), 2, minimum=1
+    )
     max_window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
     adjusted = window_adjusted or poly_adjusted
     if window_length > max_window:
@@ -398,7 +429,9 @@ def _apply_smoothing(
             )
         )
 
-    smoothed = savgol_filter(intensity, window_length=window_length, polyorder=polyorder, mode="interp")
+    smoothed = savgol_filter(
+        intensity, window_length=window_length, polyorder=polyorder, mode="interp"
+    )
     processed["smoothed_intensity"] = smoothed
     warnings.append(
         _warning(
@@ -412,7 +445,9 @@ def _apply_smoothing(
     return np.asarray(smoothed, dtype=float), warnings
 
 
-def _detect_spike_candidates(intensity: np.ndarray, parameters: dict[str, Any]) -> tuple[np.ndarray, list[dict[str, Any]]]:
+def _detect_spike_candidates(
+    intensity: np.ndarray, parameters: dict[str, Any]
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
     spike_params = parameters.get("spike_detection", {})
     if not spike_params.get("enabled", False):
         return np.zeros(intensity.size, dtype=bool), []
@@ -428,7 +463,9 @@ def _detect_spike_candidates(intensity: np.ndarray, parameters: dict[str, Any]) 
         )
 
     window, window_adjusted = _coerce_int(spike_params.get("window"), 7, minimum=3)
-    threshold, threshold_adjusted = _coerce_float(spike_params.get("mad_threshold"), 8.0, minimum=1.0)
+    threshold, threshold_adjusted = _coerce_float(
+        spike_params.get("mad_threshold"), 8.0, minimum=1.0
+    )
     if window % 2 == 0:
         window += 1
         window_adjusted = True
@@ -489,12 +526,16 @@ def _detect_spike_candidates(intensity: np.ndarray, parameters: dict[str, Any]) 
     return candidates, warnings
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     intensity = processed["raw_intensity"].to_numpy(dtype=float)
 
-    intensity, baseline_warnings = _apply_baseline_correction(processed, intensity, parameters)
+    intensity, baseline_warnings = _apply_baseline_correction(
+        processed, intensity, parameters
+    )
     warnings.extend(baseline_warnings)
 
     intensity, smoothing_warnings = _apply_smoothing(processed, intensity, parameters)
@@ -508,12 +549,19 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
         max_value = float(np.max(np.abs(intensity)))
         if max_value > 0:
             intensity = intensity / max_value
-        warnings.append(_warning("normalization_applied", "Intensity normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "normalization_applied",
+                "Intensity normalized by processing parameters.",
+            )
+        )
     processed["processed_intensity"] = intensity
     return processed, warnings
 
 
-def _gaussian_with_offset(x: np.ndarray, offset: float, amplitude: float, center: float, sigma: float) -> np.ndarray:
+def _gaussian_with_offset(
+    x: np.ndarray, offset: float, amplitude: float, center: float, sigma: float
+) -> np.ndarray:
     return offset + amplitude * np.exp(-((x - center) ** 2) / (2 * sigma**2))
 
 
@@ -556,9 +604,13 @@ def _fit_peak(
     step = _axis_step(x)
     requested_window = fitting_params.get("window_cm-1", "auto")
     if requested_window == "auto":
-        half_window = max(float(width_cm) * 1.5 if np.isfinite(width_cm) else 0.0, step * 5, 4.0)
+        half_window = max(
+            float(width_cm) * 1.5 if np.isfinite(width_cm) else 0.0, step * 5, 4.0
+        )
     else:
-        half_window, _ = _coerce_float(requested_window, max(step * 5, 4.0), minimum=step)
+        half_window, _ = _coerce_float(
+            requested_window, max(step * 5, 4.0), minimum=step
+        )
     min_points, _ = _coerce_int(fitting_params.get("min_points"), 7, minimum=4)
     mask = np.abs(x - center_guess) <= half_window
     local = processed.loc[mask, ["raman_shift", "processed_intensity"]]
@@ -586,9 +638,20 @@ def _fit_peak(
     y_range = max(float(np.ptp(local_y)), 1e-9)
     offset0 = float(np.percentile(local_y, 10))
     amplitude0 = max(float(y[peak_index] - offset0), y_range * 0.2, 1e-6)
-    sigma0 = max((float(width_cm) / 2.354820045) if np.isfinite(width_cm) and width_cm > 0 else step * 2, step / 2, 1e-6)
+    sigma0 = max(
+        (float(width_cm) / 2.354820045)
+        if np.isfinite(width_cm) and width_cm > 0
+        else step * 2,
+        step / 2,
+        1e-6,
+    )
     lower = [y_min - y_range * 2, 0.0, float(local_x.min()), max(step / 10, 1e-6)]
-    upper = [y_max + y_range * 2, max(y_max + y_range * 2, amplitude0 * 4, 1.0), float(local_x.max()), max(float(np.ptp(local_x)) * 2, step)]
+    upper = [
+        y_max + y_range * 2,
+        max(y_max + y_range * 2, amplitude0 * 4, 1.0),
+        float(local_x.max()),
+        max(float(np.ptp(local_x)) * 2, step),
+    ]
     try:
         popt, _ = curve_fit(
             _gaussian_with_offset,
@@ -614,7 +677,9 @@ def _fit_peak(
             "fit_area": amplitude * sigma * float(np.sqrt(2 * np.pi)),
             "fit_r2": r2,
         }
-    except Exception as exc:  # pragma: no cover - fit failures depend on scipy internals
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - fit failures depend on scipy internals
         return {
             "fit_method": "local_gaussian",
             "fit_status": f"failed:{type(exc).__name__}",
@@ -638,17 +703,34 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     if distance == "auto":
         distance = max(len(y) // 40, 1)
     peaks, properties = find_peaks(y, prominence=prominence, distance=distance)
-    width_result = peak_widths(y, peaks, rel_height=0.5) if len(peaks) else ([], [], [], [])
+    width_result = (
+        peak_widths(y, peaks, rel_height=0.5) if len(peaks) else ([], [], [], [])
+    )
     widths = width_result[0]
     left_ips = width_result[2]
     right_ips = width_result[3]
     rows = []
     for index, peak_index in enumerate(peaks, start=1):
         width = float(widths[index - 1]) if len(widths) else np.nan
-        left_x = _interpolated_x(x, float(left_ips[index - 1])) if len(left_ips) else np.nan
-        right_x = _interpolated_x(x, float(right_ips[index - 1])) if len(right_ips) else np.nan
-        width_cm = float(right_x - left_x) if np.isfinite(left_x) and np.isfinite(right_x) else np.nan
-        fit = _fit_peak(processed, peak_index=int(peak_index), width_cm=width_cm, parameters=parameters)
+        left_x = (
+            _interpolated_x(x, float(left_ips[index - 1])) if len(left_ips) else np.nan
+        )
+        right_x = (
+            _interpolated_x(x, float(right_ips[index - 1]))
+            if len(right_ips)
+            else np.nan
+        )
+        width_cm = (
+            float(right_x - left_x)
+            if np.isfinite(left_x) and np.isfinite(right_x)
+            else np.nan
+        )
+        fit = _fit_peak(
+            processed,
+            peak_index=int(peak_index),
+            width_cm=width_cm,
+            parameters=parameters,
+        )
         rows.append(
             {
                 "peak_id": f"peak-{index:03d}",
@@ -689,7 +771,9 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     return pd.DataFrame(rows, columns=columns)
 
 
-def _analyze_peak_assignments(peaks: pd.DataFrame, root: Path, project_id: str) -> dict[str, Any]:
+def _analyze_peak_assignments(
+    peaks: pd.DataFrame, root: Path, project_id: str
+) -> dict[str, Any]:
     default_columns: dict[str, Any] = {
         "assignment": "",
         "assignment_confidence": "",
@@ -828,14 +912,20 @@ def process_raman_result(
         raise RamanProcessingError(f"File is {inspection.file_kind}, not Raman")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, preprocessing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    processed, preprocessing_warnings = _apply_processing(
+        _confirmed_frame(raw_path, request), parameters
+    )
     peaks = _detect_peaks(processed, parameters)
     peak_analysis = _analyze_peak_assignments(peaks, root, project_id)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="raman", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="raman", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="raman", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="raman", day=day
+        )
     else:
         result_id = next_id(root, "raman_result", day)
         figure_id = None
@@ -871,9 +961,21 @@ def process_raman_result(
             )
         )
     if "x_unit_unknown" in inspection_warning_set and request.x_unit == "unknown":
-        warnings.append(_warning("x_unit_unknown", "Raman x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "x_unit_unknown",
+                "Raman x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     elif request.x_unit == "unknown":
-        warnings.append(_warning("x_unit_unknown", "Raman x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "x_unit_unknown",
+                "Raman x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     raw_sample_refs = list(metadata.get("sample_refs") or [])
     if not sample_refs:
         warnings.append(
@@ -895,7 +997,9 @@ def process_raman_result(
         )
     warnings.extend(preprocessing_warnings)
     if not parameters.get("baseline_correction", {}).get("enabled", False):
-        warnings.append(_warning("baseline_not_corrected", "No baseline correction was applied."))
+        warnings.append(
+            _warning("baseline_not_corrected", "No baseline correction was applied.")
+        )
 
     result = RamanProcessingResult(
         raman_result_id=result_id,
@@ -978,6 +1082,21 @@ def process_raman_result(
             source_data_refs=[
                 processed_csv.relative_to(root).as_posix(),
                 peaks_csv.relative_to(root).as_posix(),
+            ],
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed Raman trace plotted on the main axis.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    peaks_csv.relative_to(root).as_posix(),
+                    role="peak_table",
+                    purpose="Detected and fitted Raman peak annotations.",
+                ),
             ],
         )
     return result_metadata

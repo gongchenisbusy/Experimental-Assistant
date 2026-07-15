@@ -8,8 +8,8 @@ import tomllib
 import yaml
 
 
-EXPECTED_VERSION = "v0.9.7"
-EXPECTED_PACKAGE_VERSION = "0.9.7"
+EXPECTED_VERSION = "v0.9.8"
+EXPECTED_PACKAGE_VERSION = "0.9.8"
 EXPECTED_DISTRIBUTION = "experimental-assistant"
 EXPECTED_PRIMARY_SKILL = "ea"
 EXPECTED_COMPATIBILITY_SKILL = "ea-v0-2"
@@ -36,9 +36,9 @@ FORBIDDEN_STRINGS = [
     "EAv0-2",
     "eav0-2",
     "EA v0.2 Public",
-    "ea-v0-2-0.9.7",
-    "ea-v0.9.7-release-manifest",
-    "ea-v0.9.7-distribution-checklist",
+    "ea-v0-2-0.9.8",
+    "ea-v0.9.8-release-manifest",
+    "ea-v0.9.8-distribution-checklist",
 ]
 
 

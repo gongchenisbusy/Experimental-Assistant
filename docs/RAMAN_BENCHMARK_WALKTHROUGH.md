@@ -1,6 +1,6 @@
 # Raman Benchmark Walkthrough
 
-Raman is a beta capability in v0.9.7. The repository includes a deterministic software golden so maintainers and users can verify that the same reviewed MoS2 fixture produces bounded peak-fitting and assignment outputs.
+Raman is a beta capability in v0.9.8. The repository includes a deterministic software golden so maintainers and users can verify that the same reviewed MoS2 fixture produces bounded peak-fitting and assignment outputs.
 
 Run:
 

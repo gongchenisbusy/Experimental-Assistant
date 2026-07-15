@@ -6,10 +6,16 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from PIL import Image
+
 from ea.batch import run_batch_manifest
 from ea.cli import main
 from ea.projects import initialize_project
-from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
+from ea.raman import (
+    RamanProcessingRequest,
+    default_processing_parameters,
+    process_raman_result,
+)
 from ea.raw_import import import_raw_file
 from ea.references import register_reference
 from ea.reports import generate_raman_report
@@ -17,7 +23,9 @@ from ea.review import write_review_record
 from ea.storage import read_markdown_record, read_yaml, write_yaml
 
 
-FIXTURE_RAW = Path("tests/fixtures/public/test-case-001/raw_data/MoS-2(1).txt").resolve()
+FIXTURE_RAW = Path(
+    "tests/fixtures/public/test-case-001/raw_data/MoS-2(1).txt"
+).resolve()
 
 
 def _json_output(capsys) -> dict:
@@ -62,7 +70,9 @@ def _build_report_project(root: Path) -> dict[str, str]:
         target_type="raman_parameters",
         target_ref=raw_metadata_ref,
         user_response="可以，保存",
-        reviewed_content=json.dumps(default_processing_parameters(), ensure_ascii=False),
+        reviewed_content=json.dumps(
+            default_processing_parameters(), ensure_ascii=False
+        ),
         reviewed_at="2026-06-30T15:11:00",
     )
     result_path = process_raman_result(
@@ -145,7 +155,9 @@ def _build_batch_project(root: Path) -> dict[str, str]:
         target_type="raman_parameters",
         target_ref=raw_metadata_ref,
         user_response="可以，保存",
-        reviewed_content=json.dumps(default_processing_parameters(), ensure_ascii=False),
+        reviewed_content=json.dumps(
+            default_processing_parameters(), ensure_ascii=False
+        ),
         reviewed_at="2026-06-30T16:11:00",
     )
     write_yaml(
@@ -173,7 +185,9 @@ def _build_batch_project(root: Path) -> dict[str, str]:
             }
         },
     )
-    batch = run_batch_manifest(root, Path("batch_manifest.yml"), created_at="2026-06-30T16:20:00")
+    batch = run_batch_manifest(
+        root, Path("batch_manifest.yml"), created_at="2026-06-30T16:20:00"
+    )
     record = read_yaml(Path(batch["record"]))
     report_ref = record["items"][0]["report_ref"]
     report_frontmatter, _ = read_markdown_record(root / report_ref)
@@ -185,10 +199,23 @@ def _build_batch_project(root: Path) -> dict[str, str]:
     }
 
 
-def test_cli_exports_report_bundle_with_traceable_artifacts(tmp_path: Path, capsys) -> None:
+def test_cli_exports_report_bundle_with_traceable_artifacts(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_report_project(tmp_path)
 
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     manifest_path = Path(output["manifest_path"])
     manifest = read_yaml(manifest_path)
@@ -206,16 +233,31 @@ def test_cli_exports_report_bundle_with_traceable_artifacts(tmp_path: Path, caps
     assert manifest["artifacts"]["provenance"]
     assert manifest["provenance_inputs"]
 
-    for group in ["reports", "figures", "source_data", "results", "references", "reference_files", "provenance"]:
+    for group in [
+        "reports",
+        "figures",
+        "source_data",
+        "results",
+        "references",
+        "reference_files",
+        "provenance",
+    ]:
         for artifact in manifest["artifacts"][group]:
             if artifact["copied"]:
                 assert (bundle_dir / artifact["bundle_ref"]).exists(), artifact
 
 
-def test_cli_exports_user_readable_report_html_with_embedded_figure(tmp_path: Path, capsys) -> None:
+def test_cli_exports_user_readable_report_html_with_embedded_figure(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_report_project(tmp_path)
 
-    assert main(["export", "report-html", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    assert (
+        main(
+            ["export", "report-html", str(tmp_path), "--report-id", built["report_id"]]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     html_path = Path(output["html_path"])
     metadata_path = Path(output["metadata_path"])
@@ -231,15 +273,26 @@ def test_cli_exports_user_readable_report_html_with_embedded_figure(tmp_path: Pa
     assert built["report_id"] in html
     assert built["figure_id"] in html
     assert "Raman spectrum with processed intensity and detected peaks" in html
+    assert "Figure source data" in html
+    assert "primary_plotting_dataset" in html
+    assert "raman_processed.csv" in html
     assert "Provenance Summary" in html
     assert output["canonical_report_ref"].startswith("reports/")
     assert metadata["canonical_report_ref"] == output["canonical_report_ref"]
     assert metadata["figures"][0]["figure_id"] == built["figure_id"]
     assert metadata["figures"][0]["embedded"] is True
+    assert metadata["figures"][0]["source_data"][0]["link_status"] == "available"
+    final_figure = Path(metadata["figures"][0]["path"])
+    with Image.open(final_figure) as image:
+        assert image.info["ea_footer"].count("FigID:") == 1
+        assert image.info["ea_footer"].count("Report:") == 1
+        assert "pending" not in image.info["ea_footer"]
     assert metadata["citation_check"]["status"] == "pass"
 
 
-def test_cli_exports_source_backed_report_html_with_references_and_provenance(tmp_path: Path, capsys) -> None:
+def test_cli_exports_source_backed_report_html_with_references_and_provenance(
+    tmp_path: Path, capsys
+) -> None:
     project = tmp_path / "public-ftir"
     shutil.copytree(Path("examples/public-ftir-assignment-project"), project)
     report_id = "rpt-public-ftir-assignment-example-20260604-001"
@@ -272,7 +325,19 @@ def test_cli_exports_source_backed_report_html_with_references_and_provenance(tm
 def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     built = _build_report_project(tmp_path)
 
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--zip",
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     manifest = read_yaml(Path(output["manifest_path"]))
     archive_path = Path(output["archive_path"])
@@ -285,10 +350,17 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     assert manifest["checksum_manifest_bundle_ref"] == "bundle_checksums.yml"
     assert archive_path.exists()
     assert Path(output["archive_checksum_path"]).exists()
-    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[0] == _sha256(archive_path)
+    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[
+        0
+    ] == _sha256(archive_path)
     assert checksum_manifest["algorithm"] == "sha256"
-    assert checksum_entries["bundle_manifest.yml"]["sha256"] == _sha256(Path(output["manifest_path"]))
-    assert checksum_entries["bundle_manifest.yml"]["size_bytes"] == Path(output["manifest_path"]).stat().st_size
+    assert checksum_entries["bundle_manifest.yml"]["sha256"] == _sha256(
+        Path(output["manifest_path"])
+    )
+    assert (
+        checksum_entries["bundle_manifest.yml"]["size_bytes"]
+        == Path(output["manifest_path"]).stat().st_size
+    )
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
@@ -303,7 +375,9 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     assert any(name.startswith("provenance/") for name in names)
 
 
-def test_cli_exports_report_bundle_with_focused_trace_view(tmp_path: Path, capsys) -> None:
+def test_cli_exports_report_bundle_with_focused_trace_view(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_report_project(tmp_path)
 
     assert (
@@ -351,9 +425,23 @@ def test_cli_exports_report_bundle_with_focused_trace_view(tmp_path: Path, capsy
     assert trace_artifact["markdown_bundle_ref"] in names
 
 
-def test_cli_verifies_report_bundle_and_archive_checksums(tmp_path: Path, capsys) -> None:
+def test_cli_verifies_report_bundle_and_archive_checksums(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_report_project(tmp_path)
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--zip",
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     bundle_dir = Path(output["bundle_path"])
     archive_path = Path(output["archive_path"])
@@ -372,11 +460,25 @@ def test_cli_verifies_report_bundle_and_archive_checksums(tmp_path: Path, capsys
 
 def test_cli_verify_bundle_reports_hash_mismatch(tmp_path: Path, capsys) -> None:
     built = _build_report_project(tmp_path)
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     bundle_dir = Path(output["bundle_path"])
     report_file = next((bundle_dir / "reports").iterdir())
-    report_file.write_text(report_file.read_text(encoding="utf-8") + "\nchanged after export\n", encoding="utf-8")
+    report_file.write_text(
+        report_file.read_text(encoding="utf-8") + "\nchanged after export\n",
+        encoding="utf-8",
+    )
 
     assert main(["export", "verify-bundle", str(bundle_dir)]) == 2
     check = _json_output(capsys)
@@ -389,7 +491,18 @@ def test_cli_verify_bundle_reports_hash_mismatch(tmp_path: Path, capsys) -> None
 
 def test_cli_verify_bundle_reports_missing_file(tmp_path: Path, capsys) -> None:
     built = _build_report_project(tmp_path)
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     bundle_dir = Path(output["bundle_path"])
     next((bundle_dir / "figures").iterdir()).unlink()
@@ -403,7 +516,19 @@ def test_cli_verify_bundle_reports_missing_file(tmp_path: Path, capsys) -> None:
 
 def test_cli_verify_archive_reports_hash_mismatch(tmp_path: Path, capsys) -> None:
     built = _build_report_project(tmp_path)
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"], "--zip"]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+                "--zip",
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     archive_path = Path(output["archive_path"])
     archive_path.write_bytes(archive_path.read_bytes() + b"changed after export")
@@ -415,10 +540,25 @@ def test_cli_verify_archive_reports_hash_mismatch(tmp_path: Path, capsys) -> Non
     assert check["failures"][0]["reason"] == "sha256_mismatch"
 
 
-def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, capsys) -> None:
+def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_batch_project(tmp_path)
 
-    assert main(["export", "batch-bundle", str(tmp_path), "--batch-id", built["batch_id"], "--include-trace", "--zip"]) == 0
+    assert (
+        main(
+            [
+                "export",
+                "batch-bundle",
+                str(tmp_path),
+                "--batch-id",
+                built["batch_id"],
+                "--include-trace",
+                "--zip",
+            ]
+        )
+        == 0
+    )
     output = _json_output(capsys)
     manifest = read_yaml(Path(output["manifest_path"]))
     bundle_dir = Path(manifest["bundle_path"])
@@ -434,9 +574,13 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert manifest["trace_export"]["batch_level_trace_included"] is False
     assert archive_path.exists()
     assert Path(output["archive_checksum_path"]).exists()
-    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[0] == _sha256(archive_path)
+    assert Path(output["archive_checksum_path"]).read_text(encoding="utf-8").split()[
+        0
+    ] == _sha256(archive_path)
     assert checksum_manifest["algorithm"] == "sha256"
-    assert checksum_entries["batch_bundle_manifest.yml"]["sha256"] == _sha256(Path(output["manifest_path"]))
+    assert checksum_entries["batch_bundle_manifest.yml"]["sha256"] == _sha256(
+        Path(output["manifest_path"])
+    )
     assert {record["kind"] for record in manifest["artifacts"]["batch_records"]} == {
         "batch_index",
         "batch_run",
@@ -464,7 +608,9 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     nested_checksum_path = bundle_dir / nested["bundle_ref"] / "bundle_checksums.yml"
     nested_checksum = read_yaml(nested_checksum_path)
     nested_entries = {item["path"]: item for item in nested_checksum["files"]}
-    assert nested_entries["bundle_manifest.yml"]["sha256"] == _sha256(bundle_dir / nested["manifest_ref"])
+    assert nested_entries["bundle_manifest.yml"]["sha256"] == _sha256(
+        bundle_dir / nested["manifest_ref"]
+    )
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
@@ -472,39 +618,105 @@ def test_cli_exports_batch_bundle_with_nested_report_bundle_zip(tmp_path: Path, 
     assert "batch_bundle_manifest.yml" in names
     assert "bundle_checksums.yml" in names
     assert any(name.startswith("batch/") for name in names)
-    assert any(name.startswith("report-bundles/") and name.endswith("bundle_manifest.yml") for name in names)
-    assert any(name.startswith("report-bundles/") and name.endswith("bundle_checksums.yml") for name in names)
-    assert any(name.startswith("report-bundles/") and "/figures/" in name for name in names)
-    assert any(name.startswith("report-bundles/") and "/traceability/" in name for name in names)
+    assert any(
+        name.startswith("report-bundles/") and name.endswith("bundle_manifest.yml")
+        for name in names
+    )
+    assert any(
+        name.startswith("report-bundles/") and name.endswith("bundle_checksums.yml")
+        for name in names
+    )
+    assert any(
+        name.startswith("report-bundles/") and "/figures/" in name for name in names
+    )
+    assert any(
+        name.startswith("report-bundles/") and "/traceability/" in name
+        for name in names
+    )
 
 
-def test_export_report_bundle_returns_nonzero_for_unknown_report(tmp_path: Path, capsys) -> None:
+def test_export_report_bundle_returns_nonzero_for_unknown_report(
+    tmp_path: Path, capsys
+) -> None:
     _build_report_project(tmp_path)
 
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", "rpt-missing"]) == 2
+    assert (
+        main(["export", "report-bundle", str(tmp_path), "--report-id", "rpt-missing"])
+        == 2
+    )
     output = _json_output(capsys)
 
     assert output["status"] == "fail"
     assert "Unknown report_id" in output["error"]
 
 
-def test_export_batch_bundle_returns_nonzero_for_unknown_batch(tmp_path: Path, capsys) -> None:
+def test_export_batch_bundle_returns_nonzero_for_unknown_batch(
+    tmp_path: Path, capsys
+) -> None:
     _build_batch_project(tmp_path)
 
-    assert main(["export", "batch-bundle", str(tmp_path), "--batch-id", "batch-missing"]) == 2
+    assert (
+        main(["export", "batch-bundle", str(tmp_path), "--batch-id", "batch-missing"])
+        == 2
+    )
     output = _json_output(capsys)
 
     assert output["status"] == "fail"
     assert "Unknown batch_id" in output["error"]
 
 
-def test_report_bundle_warns_when_linked_reference_file_is_missing(tmp_path: Path, capsys) -> None:
+def test_report_bundle_warns_when_linked_reference_file_is_missing(
+    tmp_path: Path, capsys
+) -> None:
     built = _build_report_project(tmp_path)
     (tmp_path / "literature" / "fulltext" / "lee-2010.pdf").unlink()
 
-    assert main(["export", "report-bundle", str(tmp_path), "--report-id", built["report_id"]]) == 1
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 1
+    )
     output = _json_output(capsys)
 
     assert output["status"] == "warning"
     missing = {(item["kind"], item["reason"]) for item in output["missing_refs"]}
     assert ("reference_file", "missing_source") in missing
+
+
+def test_bundle_verifier_fails_for_outside_figure_source_data(
+    tmp_path: Path, capsys
+) -> None:
+    built = _build_report_project(tmp_path)
+    index_path = tmp_path / "figures" / "index.yml"
+    index = read_yaml(index_path)
+    figure = index["figures"][built["figure_id"]]
+    figure["source_data"][0]["ref"] = "../outside.csv"
+    figure["source_data_refs"][0] = "../outside.csv"
+    write_yaml(index_path, index)
+
+    assert (
+        main(
+            [
+                "export",
+                "report-bundle",
+                str(tmp_path),
+                "--report-id",
+                built["report_id"],
+            ]
+        )
+        == 1
+    )
+    exported = _json_output(capsys)
+    bundle_dir = Path(exported["bundle_path"])
+
+    assert main(["export", "verify-bundle", str(bundle_dir)]) == 2
+    verified = _json_output(capsys)
+    assert verified["status"] == "fail"
+    assert any(item.get("kind") == "source_data" for item in verified["failures"])

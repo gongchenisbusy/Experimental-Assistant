@@ -19,7 +19,7 @@ from ea.identity import DISTRIBUTION_NAME
 from ea.storage.files import atomic_write_bytes, atomic_write_text
 
 
-DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-0.9.7-reproducibility.json"
+DEFAULT_OUTPUT = Path("dist") / "experimental-assistant-0.9.8-reproducibility.json"
 
 
 def _sha256(path: Path) -> str:

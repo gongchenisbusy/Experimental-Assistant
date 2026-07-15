@@ -50,7 +50,7 @@ def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
     assert verified["package_verification"]["status"] == "pass"
 
     sidecar = yaml.safe_load(Path(signed["signature_path"]).read_text(encoding="utf-8"))
-    assert sidecar["payload"]["signature_type"] == "ea_v0_9_7_release_package_signature"
+    assert sidecar["payload"]["signature_type"] == "ea_v0_9_8_release_package_signature"
     assert sidecar["payload"]["algorithm"] == "ed25519"
     assert sidecar["payload"]["public_key"]["key_id"] == "test-key"
     assert sidecar["payload"]["archive"]["filename"] == "release.zip"
