@@ -76,7 +76,7 @@ def test_distribution_checklist_rejects_artifact_replaced_after_reproducibility_
     write_release_package(
         root, output=Path("dist/release.zip"), archive_root="ea-release"
     )
-    (root / "dist" / "experimental_assistant-0.9.7.tar.gz").write_bytes(
+    (root / "dist" / "experimental_assistant-0.9.8.tar.gz").write_bytes(
         b"replaced after check"
     )
 
@@ -141,7 +141,7 @@ def test_distribution_checklist_cli_writes_json_and_markdown(
     assert summary["status"] == "pass"
     assert Path(summary["json_path"]).exists()
     assert Path(summary["markdown_path"]).exists()
-    assert "Experimental Assistant v0.9.7 Distribution Checklist" in Path(
+    assert "Experimental Assistant v0.9.8 Distribution Checklist" in Path(
         summary["markdown_path"]
     ).read_text(encoding="utf-8")
 

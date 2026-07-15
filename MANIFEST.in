@@ -1,0 +1,2 @@
+recursive-include skills/ea *.md *.yml *.yaml *.py
+recursive-include skills/ea-v0-2 *.md *.yml *.yaml *.py

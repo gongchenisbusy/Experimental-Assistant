@@ -8,7 +8,11 @@ from ea.config import doctor_project_config
 from ea.figures import figure_footer, lookup_figure, register_figure
 from ea.literature import ensure_literature_status, recommended_top_n
 from ea.projects import initialize_project
-from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
+from ea.raman import (
+    RamanProcessingRequest,
+    default_processing_parameters,
+    process_raman_result,
+)
 from ea.raw_import import import_raw_file
 from ea.reports import generate_raman_report
 from ea.review import write_review_record
@@ -17,8 +21,13 @@ from ea.standards import format_standard_id, standard_project_id
 from ea.storage import read_markdown_record, read_yaml
 
 
-def test_initialize_project_defaults_to_current_runtime_date(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("ea.projects.service.EARecord.now_iso", staticmethod(lambda: "2026-07-02T12:00:00"))
+def test_initialize_project_defaults_to_current_runtime_date(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "ea.projects.service.EARecord.now_iso",
+        staticmethod(lambda: "2026-07-02T12:00:00"),
+    )
 
     outputs = initialize_project(
         tmp_path,
@@ -64,17 +73,26 @@ def test_v0_2_public_project_init_writes_portable_config(tmp_path: Path) -> None
     assert outputs["literature_status"].exists()
     assert "literature_decision_open_item" not in outputs
     assert literature_status["decision_status"] == "enabled_at_initialization"
-    assert literature_status["recommended_next_command"].startswith("ea literature plan")
-    assert "browser_name_and_profile_if_browser_assist_is_used" in literature_status["environment_settings_required"]
+    assert literature_status["recommended_next_command"].startswith(
+        "ea literature plan"
+    )
+    assert (
+        "browser_name_and_profile_if_browser_assist_is_used"
+        in literature_status["environment_settings_required"]
+    )
 
 
 def test_v0_2_standard_ids_and_figure_index(tmp_path: Path) -> None:
     assert standard_project_id("LM MoS2") == "prj-lm-mos2"
     assert (
-        format_standard_id("raw", "lm-mos2", day="2026-06-30", sequence=14, hash8="a1b2c3d4")
+        format_standard_id(
+            "raw", "lm-mos2", day="2026-06-30", sequence=14, hash8="a1b2c3d4"
+        )
         == "raw-lm-mos2-20260630-014-a1b2c3d4"
     )
-    figure_id = format_standard_id("figure", "lm-mos2", method="raman", day="2026-06-30", sequence=3)
+    figure_id = format_standard_id(
+        "figure", "lm-mos2", method="raman", day="2026-06-30", sequence=3
+    )
     report_id = format_standard_id("report", "lm-mos2", day="2026-06-30", sequence=1)
     assert figure_footer(figure_id, report_id) == (
         "FigID: fig-lm-mos2-raman-20260630-003 | Report: rpt-lm-mos2-20260630-001"
@@ -105,7 +123,9 @@ def test_v0_2_literature_defaults_and_status(tmp_path: Path) -> None:
     assert recommended_top_n("ordinary") == 50
     assert recommended_top_n("review") == (100, 200)
 
-    path = ensure_literature_status(tmp_path, project_id="prj-lm-mos2", scope="ordinary")
+    path = ensure_literature_status(
+        tmp_path, project_id="prj-lm-mos2", scope="ordinary"
+    )
     status = read_yaml(path)
 
     assert status["recommended_top_n"] == 50
@@ -116,11 +136,19 @@ def test_v0_2_literature_defaults_and_status(tmp_path: Path) -> None:
 
 def test_v0_2_source_backed_policy_is_not_user_provided_only() -> None:
     design = Path("docs/EA_PROJECT_DESIGN.md").read_text(encoding="utf-8")
-    report_standard = Path("docs/EA_REPORT_AND_FIGURE_STANDARD.md").read_text(encoding="utf-8")
+    report_standard = Path("docs/EA_REPORT_AND_FIGURE_STANDARD.md").read_text(
+        encoding="utf-8"
+    )
     skill = Path("skills/ea/SKILL.md").read_text(encoding="utf-8")
-    xps_reference = Path("skills/ea/references/xps-workflow.md").read_text(encoding="utf-8")
-    literature_reference = Path("skills/ea/references/local-literature-library.md").read_text(encoding="utf-8")
-    combined = "\n".join([design, report_standard, skill, xps_reference, literature_reference])
+    xps_reference = Path("skills/ea/references/xps-workflow.md").read_text(
+        encoding="utf-8"
+    )
+    literature_reference = Path(
+        "skills/ea/references/local-literature-library.md"
+    ).read_text(encoding="utf-8")
+    combined = "\n".join(
+        [design, report_standard, skill, xps_reference, literature_reference]
+    )
 
     assert "只接受用户明确给出的能量差" not in combined
     assert "谨慎不等于沉默" in design
@@ -178,7 +206,9 @@ def test_v0_2_builtin_raman_manifest_is_valid() -> None:
 
     assert result.ok is True
     assert result.manifest["id"] == "ea.raman-analysis"
-    assert "confirm_interpretation_before_memory_write" in result.manifest["review_gates"]
+    assert (
+        "confirm_interpretation_before_memory_write" in result.manifest["review_gates"]
+    )
 
 
 def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
@@ -203,7 +233,11 @@ def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
     assert result == 0
     out = json.loads(capsys.readouterr().out)
     assert Path(out["config"]).as_posix().endswith(".ea/project_config.yml")
-    assert Path(out["literature_status"]).as_posix().endswith("literature/deployment_status.yml")
+    assert (
+        Path(out["literature_status"])
+        .as_posix()
+        .endswith("literature/deployment_status.yml")
+    )
     status = read_yaml(Path(out["literature_status"]))
     assert status["decision_status"] == "enabled_at_initialization"
 
@@ -212,7 +246,9 @@ def test_v0_2_cli_public_init_and_doctor(tmp_path: Path, capsys) -> None:
     assert doctor["status"] == "pass"
 
 
-def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(tmp_path: Path) -> None:
+def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(
+    tmp_path: Path,
+) -> None:
     outputs = initialize_project(
         tmp_path,
         project_name="MoS2 Raman v02",
@@ -282,9 +318,26 @@ def test_v0_2_raman_workflow_registers_standard_report_and_figure_ids(tmp_path: 
     assert report_frontmatter["report_id"] == "rpt-mos2-raman-v02-20260630-001"
     assert report_frontmatter["figure_ids"] == ["fig-mos2-raman-v02-raman-20260630-001"]
     assert "## References" in report_body
-    assert figures_index["figures"][result["figure_id"]]["report_id"] == report_frontmatter["report_id"]
-    assert figures_index["figures"][result["figure_id"]]["style_profile"] == "nature_like_clean"
-    assert figures_index["figures"][result["figure_id"]]["generation"]["style_profile"] == "nature_like_clean"
-    assert result["outputs"]["processed_csv"] in figures_index["figures"][result["figure_id"]]["source_data_refs"]
-    assert result["outputs"]["peak_table"] in figures_index["figures"][result["figure_id"]]["source_data_refs"]
-    assert reports_index["reports"][report_frontmatter["report_id"]]["figure_ids"] == [result["figure_id"]]
+    assert (
+        figures_index["figures"][result["figure_id"]]["report_id"]
+        == report_frontmatter["report_id"]
+    )
+    assert (
+        figures_index["figures"][result["figure_id"]]["style_profile"]
+        == "nature_like_clean"
+    )
+    assert (
+        figures_index["figures"][result["figure_id"]]["generation"]["style_profile"]
+        == "nature_like_clean"
+    )
+    assert (
+        result["outputs"]["processed_csv"]
+        in figures_index["figures"][result["figure_id"]]["source_data_refs"]
+    )
+    assert (
+        result["outputs"]["peak_table"]
+        in figures_index["figures"][result["figure_id"]]["source_data_refs"]
+    )
+    assert reports_index["reports"][report_frontmatter["report_id"]]["figure_ids"] == [
+        result["figure_id"]
+    ]

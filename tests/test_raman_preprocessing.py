@@ -3,7 +3,11 @@ from pathlib import Path
 import pandas as pd
 
 from ea.projects import initialize_project
-from ea.raman import RamanProcessingRequest, default_processing_parameters, process_raman_result
+from ea.raman import (
+    RamanProcessingRequest,
+    default_processing_parameters,
+    process_raman_result,
+)
 from ea.raw_import import import_raw_file
 from ea.reports import generate_raman_report
 from ea.review import write_review_record
@@ -13,7 +17,9 @@ from ea.storage import read_markdown_record, read_yaml
 PUBLIC_RAW = Path("tests/fixtures/public/test-case-001/raw_data")
 
 
-def _confirmed_request(project: Path, raw_metadata_path: Path, parameters: dict) -> RamanProcessingRequest:
+def _confirmed_request(
+    project: Path, raw_metadata_path: Path, parameters: dict
+) -> RamanProcessingRequest:
     column_review = write_review_record(
         project,
         target_type="raman_columns",
@@ -47,8 +53,12 @@ def test_raman_baseline_and_smoothing_are_recorded(tmp_path: Path) -> None:
         sample_refs=["sample-001"],
     )
     parameters = default_processing_parameters()
-    parameters["baseline_correction"].update({"enabled": True, "lambda": 10000.0, "p": 0.01, "niter": 5})
-    parameters["smoothing"].update({"enabled": True, "window_length": 11, "polyorder": 2})
+    parameters["baseline_correction"].update(
+        {"enabled": True, "lambda": 10000.0, "p": 0.01, "niter": 5}
+    )
+    parameters["smoothing"].update(
+        {"enabled": True, "window_length": 11, "polyorder": 2}
+    )
 
     result_path = process_raman_result(
         project,
@@ -61,9 +71,13 @@ def test_raman_baseline_and_smoothing_are_recorded(tmp_path: Path) -> None:
 
     metadata = read_yaml(result_path)
     processed = pd.read_csv(project / metadata["outputs"]["processed_csv"])
-    assert {"baseline", "baseline_corrected_intensity", "smoothed_intensity", "spike_candidate", "processed_intensity"}.issubset(
-        processed.columns
-    )
+    assert {
+        "baseline",
+        "baseline_corrected_intensity",
+        "smoothed_intensity",
+        "spike_candidate",
+        "processed_intensity",
+    }.issubset(processed.columns)
     assert processed["baseline"].notna().all()
     assert processed["smoothed_intensity"].notna().all()
 
@@ -97,7 +111,9 @@ def test_raman_spike_candidates_are_traceable(tmp_path: Path) -> None:
     )
     parameters = default_processing_parameters()
     parameters["normalization"]["enabled"] = False
-    parameters["spike_detection"].update({"enabled": True, "window": 5, "mad_threshold": 5.0})
+    parameters["spike_detection"].update(
+        {"enabled": True, "window": 5, "mad_threshold": 5.0}
+    )
 
     result_path = process_raman_result(
         project,
@@ -119,7 +135,9 @@ def test_raman_spike_candidates_are_traceable(tmp_path: Path) -> None:
     assert "spike_candidates_detected" in warning_codes
 
 
-def test_raman_peak_fitting_assignment_and_report_interpretation(tmp_path: Path) -> None:
+def test_raman_peak_fitting_assignment_and_report_interpretation(
+    tmp_path: Path,
+) -> None:
     project = tmp_path / "project"
     outputs = initialize_project(
         project,
@@ -146,18 +164,31 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(tmp_path: Path)
         characterization_metadata_path=raw.metadata_path,
         project_id=project_id,
         sample_refs=["sample-fit-001"],
-        request=_confirmed_request(project, raw.metadata_path, default_processing_parameters()),
+        request=_confirmed_request(
+            project, raw.metadata_path, default_processing_parameters()
+        ),
         created_at="2026-06-30T13:10:00",
     )
     metadata = read_yaml(result_path)
     peaks = pd.read_csv(project / metadata["outputs"]["peak_table"])
 
-    assert {"fit_center_cm-1", "fit_fwhm_cm-1", "fit_r2", "assignment", "assignment_confidence"}.issubset(peaks.columns)
+    assert {
+        "fit_center_cm-1",
+        "fit_fwhm_cm-1",
+        "fit_r2",
+        "assignment",
+        "assignment_confidence",
+    }.issubset(peaks.columns)
     assert (peaks["fit_status"] == "success").any()
     assert "peak_analysis" in metadata
     assert metadata["peak_analysis"]["peak_count"] >= 2
-    assert metadata["peak_analysis"]["assignment_source"] == "ea.materials.builtin:mos2:raman:v0.2"
-    assigned_labels = {feature["label"] for feature in metadata["peak_analysis"]["assigned_features"]}
+    assert (
+        metadata["peak_analysis"]["assignment_source"]
+        == "ea.materials.builtin:mos2:raman:v0.2"
+    )
+    assigned_labels = {
+        feature["label"] for feature in metadata["peak_analysis"]["assigned_features"]
+    }
     assert "MoS2 E2g-like" in assigned_labels
     assert "MoS2 A1g-like" in assigned_labels
     assert "assignment_source" in peaks.columns
@@ -176,4 +207,5 @@ def test_raman_peak_fitting_assignment_and_report_interpretation(tmp_path: Path)
     assert "## 拟合峰参数" in body
     assert "## 可能结论与可信度" in body
     assert "MoS2-like Raman pair" in body
-    assert "confidence: `medium`" in body
+    assert "可信度： `medium`" in body
+    assert "confidence:" not in body

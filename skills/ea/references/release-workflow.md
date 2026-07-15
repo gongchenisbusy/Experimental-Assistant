@@ -1,6 +1,6 @@
 # Release Workflow
 
-Use this reference when preparing the Experimental Assistant v0.9.7 repository for public handoff or a release checkpoint.
+Use this reference when preparing the Experimental Assistant v0.9.8 repository for public handoff or a release checkpoint.
 
 For recipient-side artifact verification details in the repository docs, read `docs/RELEASE_VERIFICATION.md`.
 
@@ -16,10 +16,10 @@ ea-release-artifact-smoke
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.7-abcdef0-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.8-abcdef0-release.zip
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/experimental-assistant-0.9.7-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/experimental-assistant-0.9.7-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/experimental-assistant-0.9.8-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/experimental-assistant-0.9.8-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 ea-release-checklist
 ```
 
@@ -29,10 +29,10 @@ Script equivalents:
 python3 scripts/public_release_smoke.py
 python3 scripts/build_release_manifest.py
 python3 scripts/build_release_package.py
-python3 scripts/verify_release_package.py dist/experimental-assistant-0.9.7-abcdef0-release.zip
+python3 scripts/verify_release_package.py dist/experimental-assistant-0.9.8-abcdef0-release.zip
 python3 scripts/generate_release_keypair.py --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/sign_release_package.py dist/experimental-assistant-0.9.7-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-python3 scripts/verify_release_signature.py dist/experimental-assistant-0.9.7-abcdef0-release.zip --public-key /path/to/user-release-public.pem
+python3 scripts/sign_release_package.py dist/experimental-assistant-0.9.8-abcdef0-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+python3 scripts/verify_release_signature.py dist/experimental-assistant-0.9.8-abcdef0-release.zip --public-key /path/to/user-release-public.pem
 python3 scripts/build_distribution_checklist.py
 ```
 
@@ -52,7 +52,7 @@ Release smoke gate:
 
 Release manifest:
 
-- Writes `dist/experimental-assistant-v0.9.7-release-manifest.yml` by default.
+- Writes `dist/experimental-assistant-v0.9.8-release-manifest.yml` by default.
 - Records package metadata from `pyproject.toml`.
 - Records git commit, branch, tags at `HEAD`, and dirty files.
 - Records console script entry points.
@@ -72,10 +72,10 @@ Python distribution and supply chain:
 
 Release package:
 
-- Writes `dist/experimental-assistant-0.9.7-{commit}-release.zip` by default.
+- Writes `dist/experimental-assistant-0.9.8-{commit}-release.zip` by default.
 - Writes a `.zip.sha256` sidecar next to the archive.
 - Stores all archive members under one top-level directory.
-- Includes `experimental-assistant-v0.9.7-release-manifest.yml` inside the archive.
+- Includes `experimental-assistant-v0.9.8-release-manifest.yml` inside the archive.
 - Includes the same selected release inputs covered by the manifest.
 - Uses fixed zip timestamps and sorted input order for deterministic archive metadata.
 
@@ -83,7 +83,7 @@ Release package verification:
 
 - Verifies the `.zip.sha256` sidecar.
 - Verifies that the zip opens successfully.
-- Finds the embedded `experimental-assistant-v0.9.7-release-manifest.yml`.
+- Finds the embedded `experimental-assistant-v0.9.8-release-manifest.yml`.
 - Verifies every release input listed by the manifest exists in the archive.
 - Verifies each listed payload file size and SHA-256.
 - Returns JSON with `status: pass` or `status: fail` and concrete failure records.
@@ -99,7 +99,7 @@ Optional release package signing:
 
 Distribution checklist:
 
-- Writes `dist/experimental-assistant-v0.9.7-distribution-checklist.json` and `dist/experimental-assistant-v0.9.7-distribution-checklist.md` by default.
+- Writes `dist/experimental-assistant-v0.9.8-distribution-checklist.json` and `dist/experimental-assistant-v0.9.8-distribution-checklist.md` by default.
 - Summarizes current package metadata, git state, tags at `HEAD`, wheel/sdist, clean-install, reproducibility, SBOM, vulnerability, repository-package verification, and optional signature state.
 - Reads existing `dist/` artifacts; it does not build packages, scan dependencies, generate keys, sign archives, or upload releases.
 - Treats detached signatures as optional. If a signature is present and the user supplies `--public-key`, the checklist verifies it; otherwise it records that the signature is absent or unverified.

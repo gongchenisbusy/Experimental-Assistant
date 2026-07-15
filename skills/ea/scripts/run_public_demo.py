@@ -194,7 +194,7 @@ def run_demo(workspace: Path, fixture_root: Path, *, force: bool = False) -> dic
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run Experimental Assistant v0.9.7 public fixture demo.")
+    parser = argparse.ArgumentParser(description="Run Experimental Assistant v0.9.8 public fixture demo.")
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--fixture-root", required=True, type=Path)
     parser.add_argument("--force", action="store_true")

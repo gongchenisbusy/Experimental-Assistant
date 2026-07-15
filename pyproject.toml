@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "experimental-assistant"
-version = "0.9.7"
+version = "0.9.8"
 description = "Local-first materials research assistant with review-gated evidence and provenance"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -69,6 +69,7 @@ ea-release-supply-chain = "ea.release_supply_chain:main"
 ea-release-artifact-smoke = "ea.release_artifacts:main"
 ea-release-reproducibility = "ea.release_reproducibility:main"
 ea-install-check = "ea.install_experience:install_check_main"
+ea-release-skill-bundle = "ea.release_skill_bundle:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -78,6 +79,16 @@ where = ["src"]
 "ea.ftir" = ["*.yml"]
 "ea.xps" = ["*.yml"]
 "ea" = ["py.typed"]
+
+[tool.setuptools.data-files]
+"share/experimental-assistant/skills/ea" = ["skills/ea/SKILL.md"]
+"share/experimental-assistant/skills/ea/agents" = ["skills/ea/agents/*.yaml"]
+"share/experimental-assistant/skills/ea/references" = ["skills/ea/references/*.md", "skills/ea/references/*.yml"]
+"share/experimental-assistant/skills/ea/scripts" = ["skills/ea/scripts/*.py"]
+"share/experimental-assistant/skills/ea-v0-2" = ["skills/ea-v0-2/SKILL.md"]
+"share/experimental-assistant/skills/ea-v0-2/agents" = ["skills/ea-v0-2/agents/*.yaml"]
+"share/experimental-assistant/skills/ea-v0-2/scripts" = ["skills/ea-v0-2/scripts/*.py"]
+"share/experimental-assistant/skill-registry" = ["skill-registry/companion-compatibility.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

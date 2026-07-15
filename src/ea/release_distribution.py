@@ -18,14 +18,15 @@ from ea.release_manifest import (
 from ea.release_package import _checksum_sidecar_path, verify_release_package
 from ea.release_reproducibility import DEFAULT_OUTPUT as REPRODUCIBILITY_OUTPUT
 from ea.release_signature import _signature_sidecar_path, verify_release_signature
+from ea.release_skill_bundle import verify_skill_bundle
 from ea.release_supply_chain import DEFAULT_SBOM_OUTPUT, DEFAULT_VULNERABILITY_OUTPUT
 
 
 DEFAULT_JSON_OUTPUT = (
-    Path("dist") / "experimental-assistant-v0.9.7-distribution-checklist.json"
+    Path("dist") / "experimental-assistant-v0.9.8-distribution-checklist.json"
 )
 DEFAULT_MARKDOWN_OUTPUT = (
-    Path("dist") / "experimental-assistant-v0.9.7-distribution-checklist.md"
+    Path("dist") / "experimental-assistant-v0.9.8-distribution-checklist.md"
 )
 
 
@@ -93,7 +94,9 @@ def _discover_archives(
     if not dist_dir.exists():
         return []
     archives = sorted(
-        path.resolve() for path in dist_dir.glob("*.zip") if path.is_file()
+        path.resolve()
+        for path in dist_dir.glob("*.zip")
+        if path.is_file() and not path.name.endswith("-skills.zip")
     )
     if package_name and package_version:
         current_prefix = f"{package_name}-{package_version}-"
@@ -128,6 +131,9 @@ def build_distribution_checklist(
     vulnerability_path = (root / DEFAULT_VULNERABILITY_OUTPUT).resolve()
     install_smoke_path = (root / INSTALL_SMOKE_OUTPUT).resolve()
     reproducibility_path = (root / REPRODUCIBILITY_OUTPUT).resolve()
+    skill_bundle_path = (
+        root / "dist" / f"experimental-assistant-{__version__}-skills.zip"
+    ).resolve()
     constraints_path = (root / "requirements" / "release.txt").resolve()
     normalized = DISTRIBUTION_NAME.replace("-", "_")
     wheel_paths = (
@@ -181,6 +187,7 @@ def build_distribution_checklist(
         and reproducibility.get("version") == __version__
         and reproducible_artifacts_match
     )
+    skill_bundle_verification = verify_skill_bundle(skill_bundle_path)
     archives = _discover_archives(
         root,
         dist_dir,
@@ -234,6 +241,15 @@ def build_distribution_checklist(
             "Current-version sdist is present.",
             "pass" if sdist_paths else "fail",
             evidence={"artifacts": [_display_path(root, path) for path in sdist_paths]},
+        ),
+        _check(
+            "skill_distribution.bundle",
+            "Compact Codex skill bundle and checksum contain $ea and $ea-v0-2.",
+            "pass" if skill_bundle_verification["status"] == "pass" else "fail",
+            evidence={
+                "path": _display_path(root, skill_bundle_path),
+                "verification": skill_bundle_verification,
+            },
         ),
         _check(
             "python_distribution.clean_install_smoke",
@@ -389,6 +405,10 @@ def build_distribution_checklist(
             "archives": archive_records,
             "wheel": [_display_path(root, path) for path in wheel_paths],
             "sdist": [_display_path(root, path) for path in sdist_paths],
+            "skill_bundle": _display_path(root, skill_bundle_path),
+            "skill_bundle_checksum": _display_path(
+                root, skill_bundle_path.with_suffix(".zip.sha256")
+            ),
             "install_smoke": _display_path(root, install_smoke_path),
             "reproducibility": _display_path(root, reproducibility_path),
             "sbom": _display_path(root, sbom_path),
@@ -405,7 +425,7 @@ def build_distribution_checklist(
 
 def render_distribution_markdown(checklist: dict[str, Any]) -> str:
     lines = [
-        "# Experimental Assistant v0.9.7 Distribution Checklist",
+        "# Experimental Assistant v0.9.8 Distribution Checklist",
         "",
         f"- Status: `{checklist['status']}`",
         f"- Package: `{checklist['package']['name']} {checklist['package']['version']}`",
@@ -431,6 +451,12 @@ def render_distribution_markdown(checklist: dict[str, Any]) -> str:
     )
     lines.append(
         f"- sdist: `{', '.join(checklist['release_artifacts']['sdist']) or 'missing'}`"
+    )
+    lines.append(
+        f"- Codex skill bundle: `{checklist['release_artifacts']['skill_bundle']}`"
+    )
+    lines.append(
+        f"- Skill bundle checksum: `{checklist['release_artifacts']['skill_bundle_checksum']}`"
     )
     lines.append(
         f"- Clean-install evidence: `{checklist['release_artifacts']['install_smoke']}`"
@@ -499,7 +525,7 @@ def write_distribution_checklist(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate an Experimental Assistant v0.9.7 package distribution checklist."
+        description="Generate an Experimental Assistant v0.9.8 package distribution checklist."
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))

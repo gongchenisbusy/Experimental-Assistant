@@ -34,6 +34,9 @@ jobs:
           python scripts/check_version_identity.py
           python scripts/check_downloaded_skill_instructions.py
           python scripts/validate_skill_packages.py
+      - name: Native Windows long-path and GBK regressions
+        if: runner.os == 'Windows'
+        run: python -m pytest -q tests/test_windows_release_regressions.py tests/test_install_experience.py::test_windows_gbk_validator_output_decodes_without_mojibake
       - name: Test
         run: python -m pytest -q
 
@@ -60,7 +63,7 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - name: Lint for syntax and undefined names
         run: ruff check src tests scripts --select E9,F63,F7,F82
-      - name: Check formatting of v0.9.7 release surfaces
+      - name: Check formatting of v0.9.8 release surfaces
         run: >-
           ruff format --check
           src/ea/identity.py src/ea/errors.py src/ea/diagnostics.py src/ea/drafts.py
@@ -107,6 +110,7 @@ jobs:
       - run: python -m ea.release_reproducibility
       - run: python -m ea.release_artifacts
       - run: python -m ea.release_supply_chain
+      - run: python -m ea.release_skill_bundle
       - uses: actions/upload-artifact@v6
         with:
           name: release-engineering-evidence
@@ -117,6 +121,8 @@ jobs:
             dist/*-reproducibility.json
             dist/*-sbom.json
             dist/*-vulnerability-report.json
+            dist/*-skills.zip
+            dist/*-skills.zip.sha256
 
   python-314-observation:
     continue-on-error: true

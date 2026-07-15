@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.7 Known Limitations
+# Experimental Assistant v0.9.8 Known Limitations
 
 ## Scientific Boundaries
 
@@ -10,15 +10,18 @@
 ## Literature Evidence Dataset Beta
 
 - Extraction quality depends on searchable full text, table/caption structure, and a sufficiently narrow user-defined schema.
-- Scanned PDFs are marked OCR-required. v0.9.7 does not silently perform or validate OCR inside the core workflow.
+- Scanned PDFs are marked OCR-required. v0.9.8 does not silently perform or validate OCR inside the core workflow.
 - Plot digitization and complex supplementary-file parsing are not general automatic capabilities.
 - Conductivity, resistivity, sheet resistance/conductance, contact resistance, and mobility are never treated as interchangeable. Missing geometry or conditions can make records not comparable.
 - Only accepted or edited records enter datasets and plots; this improves reviewability but does not prove that a paper's reported value is scientifically valid.
+- Default discovery covers Crossref, OpenAlex, and arXiv metadata. Unpaywall is the default OA resolver; CORE, Semantic Scholar, Scopus, Web of Science, CNKI, Wanfang, and publisher/institution-specific adapters are not general built-in coverage.
+- FTS retrieval widens when evidence is weak or conflicting, but poor extraction quality, missing page anchors, multi-column layout, formulas, tables, and scanned pages can still require manual original-PDF review.
 
 ## Integration Boundaries
 
 - EA stores no credentials, cookies, browser profiles, or private account state and does not bypass publisher, SSO, MFA, paywall, or institution controls.
 - Zotero/browser acquisition is an optional companion workflow. Core EA can continue in degraded local mode.
+- Acquisition protocol v2 records Zotero parent/attachment transaction identities, but a real independent five-target Zotero parent-plus-PDF-child transaction remains external companion evidence rather than a stable-core claim.
 - Diagnostics are local-only and do not submit reports automatically.
 
 ## Release Evidence

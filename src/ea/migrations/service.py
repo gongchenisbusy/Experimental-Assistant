@@ -68,7 +68,7 @@ def initialize_project_format(root: Path, *, created_at: str | None = None) -> P
         {
             "schema_version": "1.0",
             "project_format_version": CURRENT_PROJECT_FORMAT_VERSION,
-            "created_with_ea": "0.9.7",
+            "created_with_ea": "0.9.8",
             "created_at": created,
             "updated_at": created,
             "migration_history": [],

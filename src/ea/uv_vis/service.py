@@ -20,10 +20,14 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
-from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.literature.source_packet_manifest import (
+    SourcePacketManifestError,
+    confirmed_source_packet_library,
+)
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
@@ -144,7 +148,9 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
@@ -167,7 +173,9 @@ def _coerce_string_list(value: Any) -> list[str]:
     return [str(value)]
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -177,7 +185,13 @@ def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tupl
     return coerced, False
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -221,7 +235,9 @@ def inspect_uv_vis_file(path: Path) -> UVVisInspection:
     x_max = float(x_values.max())
     metadata_text = _axis_metadata_text(metadata)
     path_text = path.as_posix().upper()
-    looks_like_nm = "nm" in metadata_text or (150 <= x_min <= 1200 and 180 <= x_max <= 2500)
+    looks_like_nm = "nm" in metadata_text or (
+        150 <= x_min <= 1200 and 180 <= x_max <= 2500
+    )
     looks_like_ev = "ev" in metadata_text or (0.5 <= x_min <= 8 and 0.5 <= x_max <= 8)
     looks_like_uv_vis = (
         "UV" in path_text
@@ -230,7 +246,11 @@ def inspect_uv_vis_file(path: Path) -> UVVisInspection:
         or "TRANSMIT" in path_text
         or (looks_like_nm and x_min <= 450 and x_max >= 500)
     )
-    file_kind = "uv_vis" if (looks_like_nm or looks_like_ev) and looks_like_uv_vis else "unknown"
+    file_kind = (
+        "uv_vis"
+        if (looks_like_nm or looks_like_ev) and looks_like_uv_vis
+        else "unknown"
+    )
     if looks_like_nm:
         x_unit = "nm"
     elif looks_like_ev:
@@ -240,7 +260,9 @@ def inspect_uv_vis_file(path: Path) -> UVVisInspection:
     warnings: list[str] = []
     if file_kind == "unknown":
         warnings.append("uv_vis_file_kind_unknown")
-    if x_unit != "unknown" and ("nm" not in metadata_text and "ev" not in metadata_text):
+    if x_unit != "unknown" and (
+        "nm" not in metadata_text and "ev" not in metadata_text
+    ):
         warnings.append("uv_vis_unit_inferred_from_range_or_path")
 
     return UVVisInspection(
@@ -262,14 +284,22 @@ def _numeric_correction_method(parameters: dict[str, Any]) -> str:
     params = parameters.get("numeric_correction", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return ""
-    return str(params.get("method") or "constant_offset").strip().lower().replace("-", "_").replace(" ", "_")
+    return (
+        str(params.get("method") or "constant_offset")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
 
 
 def _numeric_correction_reference_column(parameters: dict[str, Any]) -> str:
     params = parameters.get("numeric_correction", {})
     if not isinstance(params, dict):
         return ""
-    return str(params.get("reference_column") or params.get("background_column") or "").strip()
+    return str(
+        params.get("reference_column") or params.get("background_column") or ""
+    ).strip()
 
 
 def _reviewed_numeric_float(value: Any, name: str, default: float) -> float:
@@ -277,7 +307,9 @@ def _reviewed_numeric_float(value: Any, name: str, default: float) -> float:
         return default
     number = _finite_float(value)
     if number is None:
-        raise UVVisProcessingError(f"UV-Vis numeric_correction.{name} must be a finite number")
+        raise UVVisProcessingError(
+            f"UV-Vis numeric_correction.{name} must be a finite number"
+        )
     return float(number)
 
 
@@ -304,44 +336,68 @@ def _read_uv_vis_full_text_table(path: Path) -> tuple[pd.DataFrame, dict[str, st
         return pd.DataFrame(), metadata
     width = max(len(row) for row in rows)
     normalized_rows = [row + [np.nan] * (width - len(row)) for row in rows]
-    columns = header if header and len(header) == width else [f"col_{index}" for index in range(width)]
+    columns = (
+        header
+        if header and len(header) == width
+        else [f"col_{index}" for index in range(width)]
+    )
     return pd.DataFrame(normalized_rows, columns=columns), metadata
 
 
-def _read_uv_vis_source_frame(path: Path, parameters: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def _read_uv_vis_source_frame(
+    path: Path, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     if _numeric_correction_method(parameters) != "subtract_reference_column":
         return _read_spectrum(path)
     suffix = path.suffix.lower()
     if suffix in {".txt", ".csv"}:
         frame, metadata = _read_uv_vis_full_text_table(path)
         if frame.shape[1] < 3:
-            raise UVVisProcessingError(f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}")
+            raise UVVisProcessingError(
+                f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}"
+            )
         return frame.rename(columns=str), metadata
     if suffix in {".xlsx", ".xlsm"}:
         frame = pd.read_excel(path).rename(columns=str)
         if frame.shape[1] < 3:
-            raise UVVisProcessingError(f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}")
+            raise UVVisProcessingError(
+                f"Need at least three columns for reviewed UV-Vis reference-column correction: {path}"
+            )
         return frame, {}
     return _read_spectrum(path)
 
 
-def _confirmed_frame(path: Path, request: UVVisProcessingRequest, parameters: dict[str, Any] | None = None) -> pd.DataFrame:
+def _confirmed_frame(
+    path: Path,
+    request: UVVisProcessingRequest,
+    parameters: dict[str, Any] | None = None,
+) -> pd.DataFrame:
     frame, _ = _read_uv_vis_source_frame(path, parameters or {})
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise UVVisProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise UVVisProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"nm", "eV", "unknown"}:
-        raise UVVisProcessingError("UV-Vis x_unit must be user-confirmed as nm, eV, or unknown")
+        raise UVVisProcessingError(
+            "UV-Vis x_unit must be user-confirmed as nm, eV, or unknown"
+        )
     if request.signal_mode not in {"absorbance", "transmittance", "reflectance"}:
-        raise UVVisProcessingError("UV-Vis signal_mode must be user-confirmed as absorbance, transmittance, or reflectance")
+        raise UVVisProcessingError(
+            "UV-Vis signal_mode must be user-confirmed as absorbance, transmittance, or reflectance"
+        )
     selected_columns = [request.x_column, request.y_column]
     numeric_method = _numeric_correction_method(parameters or {})
     reference_column = _numeric_correction_reference_column(parameters or {})
     if numeric_method == "subtract_reference_column":
         if not reference_column:
-            raise UVVisProcessingError("UV-Vis subtract_reference_column correction requires numeric_correction.reference_column")
+            raise UVVisProcessingError(
+                "UV-Vis subtract_reference_column correction requires numeric_correction.reference_column"
+            )
         if reference_column not in frame.columns:
-            raise UVVisProcessingError(f"Reviewed UV-Vis reference column is not present in the raw file: {reference_column}")
+            raise UVVisProcessingError(
+                f"Reviewed UV-Vis reference column is not present in the raw file: {reference_column}"
+            )
         selected_columns.append(reference_column)
     data = frame[selected_columns].copy()
     rename_map = {request.x_column: "uv_vis_axis", request.y_column: "raw_signal"}
@@ -351,7 +407,9 @@ def _confirmed_frame(path: Path, request: UVVisProcessingRequest, parameters: di
     data["uv_vis_axis"] = pd.to_numeric(data["uv_vis_axis"], errors="coerce")
     data["raw_signal"] = pd.to_numeric(data["raw_signal"], errors="coerce")
     if "reference_signal" in data.columns:
-        data["reference_signal"] = pd.to_numeric(data["reference_signal"], errors="coerce")
+        data["reference_signal"] = pd.to_numeric(
+            data["reference_signal"], errors="coerce"
+        )
     data = data.dropna().sort_values("uv_vis_axis").reset_index(drop=True)
     if data.empty:
         raise UVVisProcessingError("Confirmed UV-Vis columns contain no numeric data")
@@ -366,13 +424,17 @@ def _confirmed_frame(path: Path, request: UVVisProcessingRequest, parameters: di
     return data
 
 
-def _apply_numeric_correction(processed: pd.DataFrame, parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _apply_numeric_correction(
+    processed: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("numeric_correction", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
     method = _numeric_correction_method(parameters)
     source = str(params.get("source") or "ea.uv_vis.numeric_correction:v0.2")
-    constant_offset = _reviewed_numeric_float(params.get("constant_offset", params.get("offset")), "constant_offset", 0.0)
+    constant_offset = _reviewed_numeric_float(
+        params.get("constant_offset", params.get("offset")), "constant_offset", 0.0
+    )
     warnings: list[dict[str, Any]] = []
     raw_signal = processed["raw_signal"].to_numpy(dtype=float)
     operation_text = ""
@@ -382,13 +444,21 @@ def _apply_numeric_correction(processed: pd.DataFrame, parameters: dict[str, Any
     elif method == "subtract_reference_column":
         reference_column = _numeric_correction_reference_column(parameters)
         if "reference_signal" not in processed.columns:
-            raise UVVisProcessingError("UV-Vis subtract_reference_column correction requires a numeric reference_signal column")
-        reference_scale = _reviewed_numeric_float(params.get("reference_scale"), "reference_scale", 1.0)
+            raise UVVisProcessingError(
+                "UV-Vis subtract_reference_column correction requires a numeric reference_signal column"
+            )
+        reference_scale = _reviewed_numeric_float(
+            params.get("reference_scale"), "reference_scale", 1.0
+        )
         reference_signal = processed["reference_signal"].to_numpy(dtype=float)
         corrected = raw_signal - (reference_scale * reference_signal + constant_offset)
-        operation_text = "raw_signal - (reference_scale * reference_signal + constant_offset)"
+        operation_text = (
+            "raw_signal - (reference_scale * reference_signal + constant_offset)"
+        )
     else:
-        raise UVVisProcessingError(f"Unsupported reviewed UV-Vis numeric correction method: {method}")
+        raise UVVisProcessingError(
+            f"Unsupported reviewed UV-Vis numeric correction method: {method}"
+        )
 
     processed["numeric_corrected_signal"] = np.asarray(corrected, dtype=float)
     warnings.append(
@@ -408,9 +478,16 @@ def _apply_numeric_correction(processed: pd.DataFrame, parameters: dict[str, Any
             "confidence": "low",
             "input_signal_column": "raw_signal",
             "output_signal_column": "numeric_corrected_signal",
-            "reference_signal_column": "reference_signal" if method == "subtract_reference_column" else None,
-            "reviewed_reference_column": _numeric_correction_reference_column(parameters) or None,
-            "reference_scale": _reviewed_numeric_float(params.get("reference_scale"), "reference_scale", 1.0)
+            "reference_signal_column": "reference_signal"
+            if method == "subtract_reference_column"
+            else None,
+            "reviewed_reference_column": _numeric_correction_reference_column(
+                parameters
+            )
+            or None,
+            "reference_scale": _reviewed_numeric_float(
+                params.get("reference_scale"), "reference_scale", 1.0
+            )
             if method == "subtract_reference_column"
             else None,
             "constant_offset": constant_offset,
@@ -423,17 +500,23 @@ def _apply_numeric_correction(processed: pd.DataFrame, parameters: dict[str, Any
     )
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any] | None]:
+def _apply_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any] | None]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
-    numeric_correction, numeric_warnings = _apply_numeric_correction(processed, parameters)
+    numeric_correction, numeric_warnings = _apply_numeric_correction(
+        processed, parameters
+    )
     warnings.extend(numeric_warnings)
     signal_column = "numeric_corrected_signal" if numeric_correction else "raw_signal"
     signal = processed[signal_column].to_numpy(dtype=float)
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 9, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 9, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = signal.size if signal.size % 2 == 1 else signal.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -458,7 +541,15 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
                 )
             )
         if signal.size >= 3 and window_length >= 3:
-            signal = np.asarray(savgol_filter(signal, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            signal = np.asarray(
+                savgol_filter(
+                    signal,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             processed["smoothed_signal"] = signal
             warnings.append(
                 _warning(
@@ -470,13 +561,24 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
                 )
             )
         else:
-            warnings.append(_warning("uv_vis_smoothing_skipped", "UV-Vis smoothing skipped because the spectrum has fewer than three points.", severity="medium"))
+            warnings.append(
+                _warning(
+                    "uv_vis_smoothing_skipped",
+                    "UV-Vis smoothing skipped because the spectrum has fewer than three points.",
+                    severity="medium",
+                )
+            )
 
     if parameters.get("normalization", {}).get("enabled", True):
         max_value = float(np.max(np.abs(signal)))
         if max_value > 0:
             signal = signal / max_value
-        warnings.append(_warning("uv_vis_normalization_applied", "UV-Vis signal normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "uv_vis_normalization_applied",
+                "UV-Vis signal normalized by processing parameters.",
+            )
+        )
     processed["processed_signal"] = signal
     return processed, warnings, numeric_correction
 
@@ -486,7 +588,9 @@ def _detection_signal(processed: pd.DataFrame, signal_mode: str) -> np.ndarray:
     return y if signal_mode == "absorbance" else -y
 
 
-def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str, x_unit: str) -> pd.DataFrame:
+def _detect_features(
+    processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str, x_unit: str
+) -> pd.DataFrame:
     detection_signal = _detection_signal(processed, signal_mode)
     feature_params = parameters.get("feature_detection", {})
     prominence = feature_params.get("prominence", "auto")
@@ -496,9 +600,14 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], signal
         prominence = max(float(np.ptp(detection_signal)) * 0.08, 0.02)
     if distance == "auto":
         distance = max(len(detection_signal) // 100, 1)
-    peaks, properties = find_peaks(detection_signal, prominence=prominence, distance=distance)
+    peaks, properties = find_peaks(
+        detection_signal, prominence=prominence, distance=distance
+    )
     ranked = sorted(
-        [(int(peak), float(properties["prominences"][index])) for index, peak in enumerate(peaks)],
+        [
+            (int(peak), float(properties["prominences"][index]))
+            for index, peak in enumerate(peaks)
+        ],
         key=lambda item: item[1],
         reverse=True,
     )[:max_features]
@@ -555,11 +664,15 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], signal
     )
 
 
-def _estimate_edge(processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str) -> dict[str, Any] | None:
+def _estimate_edge(
+    processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str
+) -> dict[str, Any] | None:
     edge_params = parameters.get("edge_estimate", {})
     if not edge_params.get("enabled", True) or "wavelength_nm" not in processed.columns:
         return None
-    threshold, adjusted = _coerce_float(edge_params.get("threshold_fraction"), 0.5, minimum=0.01, maximum=0.99)
+    threshold, adjusted = _coerce_float(
+        edge_params.get("threshold_fraction"), 0.5, minimum=0.01, maximum=0.99
+    )
     detection_signal = _detection_signal(processed, signal_mode)
     minimum = float(np.nanmin(detection_signal))
     span = float(np.nanmax(detection_signal) - minimum)
@@ -576,7 +689,9 @@ def _estimate_edge(processed: pd.DataFrame, parameters: dict[str, Any], signal_m
         "wavelength_nm": wavelength,
         "energy_eV": float(HC_EV_NM / wavelength) if wavelength > 0 else None,
         "confidence": "low",
-        "assignment_source": str(edge_params.get("source") or "ea.uv_vis.edge_threshold:v0.2"),
+        "assignment_source": str(
+            edge_params.get("source") or "ea.uv_vis.edge_threshold:v0.2"
+        ),
     }
     if adjusted:
         edge["parameter_adjusted"] = True
@@ -603,12 +718,18 @@ def _transition_exponent(params: dict[str, Any]) -> tuple[float, str]:
         "indirect_forbidden": 3.0,
     }
     if transition == "custom":
-        exponent, adjusted = _coerce_float(params.get("exponent"), 2.0, minimum=0.05, maximum=6.0)
+        exponent, adjusted = _coerce_float(
+            params.get("exponent"), 2.0, minimum=0.05, maximum=6.0
+        )
         return exponent, "custom" if not adjusted else "custom_adjusted_to_default"
-    return exponent_map.get(transition, 2.0), transition if transition in exponent_map else "direct_allowed_defaulted"
+    return exponent_map.get(
+        transition, 2.0
+    ), transition if transition in exponent_map else "direct_allowed_defaulted"
 
 
-def _tauc_alpha_proxy(processed: pd.DataFrame, signal_mode: str, params: dict[str, Any]) -> tuple[np.ndarray | None, list[dict[str, Any]], str]:
+def _tauc_alpha_proxy(
+    processed: pd.DataFrame, signal_mode: str, params: dict[str, Any]
+) -> tuple[np.ndarray | None, list[dict[str, Any]], str]:
     warnings: list[dict[str, Any]] = []
     transform = str(params.get("transform") or "absorbance")
     raw = processed["raw_signal"].to_numpy(dtype=float)
@@ -719,7 +840,9 @@ def _run_tauc_analysis(
             },
             [warning],
         )
-    alpha, alpha_warnings, transform_used = _tauc_alpha_proxy(processed, signal_mode, params)
+    alpha, alpha_warnings, transform_used = _tauc_alpha_proxy(
+        processed, signal_mode, params
+    )
     warnings.extend(alpha_warnings)
     if alpha is None:
         return (
@@ -739,7 +862,12 @@ def _run_tauc_analysis(
     energy = processed["energy_eV"].to_numpy(dtype=float)
     with np.errstate(invalid="ignore"):
         tauc_y = np.power(alpha * energy, transition_exponent)
-    fit_mask = np.isfinite(energy) & np.isfinite(tauc_y) & (energy >= fit_window[0]) & (energy <= fit_window[1])
+    fit_mask = (
+        np.isfinite(energy)
+        & np.isfinite(tauc_y)
+        & (energy >= fit_window[0])
+        & (energy <= fit_window[1])
+    )
     processed["tauc_energy_eV"] = energy
     processed["tauc_alpha_proxy"] = alpha
     processed["tauc_y"] = tauc_y
@@ -768,7 +896,9 @@ def _run_tauc_analysis(
         )
         warnings.append(warning)
         return ({**base, "warnings": warnings}, warnings)
-    fit_frame = pd.DataFrame({"energy": energy[fit_mask], "tauc_y": tauc_y[fit_mask]}).sort_values("energy")
+    fit_frame = pd.DataFrame(
+        {"energy": energy[fit_mask], "tauc_y": tauc_y[fit_mask]}
+    ).sort_values("energy")
     x = fit_frame["energy"].to_numpy(dtype=float)
     y = fit_frame["tauc_y"].to_numpy(dtype=float)
     slope, intercept = np.polyfit(x, y, 1)
@@ -777,8 +907,12 @@ def _run_tauc_analysis(
     ss_tot = float(np.sum((y - float(np.mean(y))) ** 2))
     r2 = 1.0 if ss_tot == 0 else 1.0 - ss_res / ss_tot
     intercept_energy = float(-intercept / slope) if slope else None
-    min_r2, _ = _coerce_float(params.get("min_r2_for_low_confidence"), 0.9, minimum=0.0, maximum=1.0)
-    plausible_intercept = intercept_energy is not None and 0.1 <= intercept_energy <= 10.0
+    min_r2, _ = _coerce_float(
+        params.get("min_r2_for_low_confidence"), 0.9, minimum=0.0, maximum=1.0
+    )
+    plausible_intercept = (
+        intercept_energy is not None and 0.1 <= intercept_energy <= 10.0
+    )
     confidence = "low" if r2 >= min_r2 and plausible_intercept else "insufficient"
     if confidence == "insufficient":
         warnings.append(
@@ -807,7 +941,9 @@ def _run_tauc_analysis(
     )
 
 
-def _derivative_axis(processed: pd.DataFrame, params: dict[str, Any]) -> tuple[str | None, str | None, list[dict[str, Any]]]:
+def _derivative_axis(
+    processed: pd.DataFrame, params: dict[str, Any]
+) -> tuple[str | None, str | None, list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     requested = str(params.get("axis") or "auto")
     if requested == "auto":
@@ -837,7 +973,9 @@ def _finite_summary_value(row: pd.Series, column: str) -> float | None:
     return float(value) if pd.notna(value) else None
 
 
-def _derivative_point(row: pd.Series, axis_column: str, axis_unit: str) -> dict[str, Any]:
+def _derivative_point(
+    row: pd.Series, axis_column: str, axis_unit: str
+) -> dict[str, Any]:
     return {
         "axis": axis_column,
         "axis_unit": axis_unit,
@@ -871,7 +1009,11 @@ def _run_derivative_analysis(
         "boundary": "UV-Vis derivative extrema and inflection hints are screening-only; they are not definitive band-gap, transition-type, defect-state, thickness, or mechanism assignments.",
     }
     if axis_column is None or axis_unit is None:
-        return None, {**base, "status": "axis_unavailable", "warnings": warnings}, warnings
+        return (
+            None,
+            {**base, "status": "axis_unavailable", "warnings": warnings},
+            warnings,
+        )
 
     min_points, adjusted = _coerce_int(params.get("min_points"), 8, minimum=3)
     if adjusted:
@@ -885,7 +1027,9 @@ def _run_derivative_analysis(
         )
     frame = processed.copy()
     axis = pd.to_numeric(frame[axis_column], errors="coerce").to_numpy(dtype=float)
-    signal = pd.to_numeric(frame["processed_signal"], errors="coerce").to_numpy(dtype=float)
+    signal = pd.to_numeric(frame["processed_signal"], errors="coerce").to_numpy(
+        dtype=float
+    )
     finite_mask = np.isfinite(axis) & np.isfinite(signal)
     if int(np.count_nonzero(finite_mask)) < min_points:
         warning = _warning(
@@ -896,7 +1040,16 @@ def _run_derivative_analysis(
             min_points=min_points,
         )
         warnings.append(warning)
-        return None, {**base, "status": "insufficient_points", "point_count": int(np.count_nonzero(finite_mask)), "warnings": warnings}, warnings
+        return (
+            None,
+            {
+                **base,
+                "status": "insufficient_points",
+                "point_count": int(np.count_nonzero(finite_mask)),
+                "warnings": warnings,
+            },
+            warnings,
+        )
     finite_axis = axis[finite_mask]
     if np.unique(finite_axis).size < min_points:
         warning = _warning(
@@ -907,13 +1060,19 @@ def _run_derivative_analysis(
             min_points=min_points,
         )
         warnings.append(warning)
-        return None, {**base, "status": "duplicate_axis_values", "warnings": warnings}, warnings
+        return (
+            None,
+            {**base, "status": "duplicate_axis_values", "warnings": warnings},
+            warnings,
+        )
 
     table = pd.DataFrame(
         {
             "derivative_axis": axis,
             "axis_unit": axis_unit,
-            "wavelength_nm": frame["wavelength_nm"] if "wavelength_nm" in frame.columns else np.nan,
+            "wavelength_nm": frame["wavelength_nm"]
+            if "wavelength_nm" in frame.columns
+            else np.nan,
             "energy_eV": frame["energy_eV"] if "energy_eV" in frame.columns else np.nan,
             "processed_signal": signal,
         }
@@ -938,28 +1097,51 @@ def _run_derivative_analysis(
             severity="medium",
         )
         warnings.append(warning)
-        return table, {**base, "status": "no_finite_gradient", "point_count": int(np.count_nonzero(finite_mask)), "warnings": warnings}, warnings
+        return (
+            table,
+            {
+                **base,
+                "status": "no_finite_gradient",
+                "point_count": int(np.count_nonzero(finite_mask)),
+                "warnings": warnings,
+            },
+            warnings,
+        )
 
     derivative_series = pd.Series(first)
     max_positive_idx = int(derivative_series.idxmax())
     min_negative_idx = int(derivative_series.idxmin())
     max_abs_idx = int(pd.Series(np.abs(first)).idxmax())
-    zero_crossings = int(np.count_nonzero(np.diff(np.signbit(first[finite_derivative]))))
+    zero_crossings = int(
+        np.count_nonzero(np.diff(np.signbit(first[finite_derivative])))
+    )
     summary = {
         **base,
         "status": "screening_derivative_recorded",
         "point_count": int(np.count_nonzero(finite_mask)),
         "zero_crossing_count": zero_crossings,
-        "max_positive_slope": _derivative_point(table.iloc[max_positive_idx], axis_column, axis_unit),
-        "min_negative_slope": _derivative_point(table.iloc[min_negative_idx], axis_column, axis_unit),
-        "max_abs_slope": _derivative_point(table.iloc[max_abs_idx], axis_column, axis_unit),
+        "max_positive_slope": _derivative_point(
+            table.iloc[max_positive_idx], axis_column, axis_unit
+        ),
+        "min_negative_slope": _derivative_point(
+            table.iloc[min_negative_idx], axis_column, axis_unit
+        ),
+        "max_abs_slope": _derivative_point(
+            table.iloc[max_abs_idx], axis_column, axis_unit
+        ),
         "confidence": "low",
         "warnings": warnings,
     }
     return table, summary, warnings
 
 
-_CORRECTION_CONTEXT_SECTIONS = ("sample_geometry", "substrate", "reference", "background", "diffuse_reflectance")
+_CORRECTION_CONTEXT_SECTIONS = (
+    "sample_geometry",
+    "substrate",
+    "reference",
+    "background",
+    "diffuse_reflectance",
+)
 
 
 def _has_context_payload(value: Any) -> bool:
@@ -974,7 +1156,9 @@ def _has_context_payload(value: Any) -> bool:
     return True
 
 
-def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+def _context_section(
+    params: dict[str, Any], name: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     value = params.get(name, {})
     if isinstance(value, dict):
         return deepcopy(value), None
@@ -989,7 +1173,9 @@ def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any],
     )
 
 
-def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+def _correction_notes(
+    params: dict[str, Any],
+) -> tuple[list[Any], dict[str, Any] | None]:
     notes = params.get("correction_notes", [])
     if isinstance(notes, list):
         return deepcopy(notes), None
@@ -1007,7 +1193,9 @@ def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
     )
 
 
-def _record_correction_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _record_correction_context(
+    parameters: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("correction_context", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
@@ -1022,7 +1210,9 @@ def _record_correction_context(parameters: dict[str, Any]) -> tuple[dict[str, An
     if notes_warning:
         warnings.append(notes_warning)
 
-    reviewed_fields = [name for name, section in sections.items() if _has_context_payload(section)]
+    reviewed_fields = [
+        name for name, section in sections.items() if _has_context_payload(section)
+    ]
     if _has_context_payload(notes):
         reviewed_fields.append("correction_notes")
     has_reviewed_context = bool(reviewed_fields)
@@ -1038,7 +1228,9 @@ def _record_correction_context(parameters: dict[str, Any]) -> tuple[dict[str, An
     return (
         {
             "enabled": True,
-            "status": "reviewed_correction_context_recorded" if has_reviewed_context else "enabled_without_reviewed_context",
+            "status": "reviewed_correction_context_recorded"
+            if has_reviewed_context
+            else "enabled_without_reviewed_context",
             "method": str(params.get("method") or "reviewed_metadata_record"),
             "assignment_source": source,
             "confidence": "low" if has_reviewed_context else "insufficient",
@@ -1085,20 +1277,28 @@ def _analyze_features(
                 "feature_id": str(row["feature_id"]),
                 "position": float(row["position"]),
                 "position_unit": str(row["position_unit"]),
-                "wavelength_nm": float(row["wavelength_nm"]) if pd.notna(row["wavelength_nm"]) else None,
-                "energy_eV": float(row["energy_eV"]) if pd.notna(row["energy_eV"]) else None,
+                "wavelength_nm": float(row["wavelength_nm"])
+                if pd.notna(row["wavelength_nm"])
+                else None,
+                "energy_eV": float(row["energy_eV"])
+                if pd.notna(row["energy_eV"])
+                else None,
                 "assignment_source": str(row["assignment_source"]),
             }
             for _, row in strongest.iterrows()
         ]
         evidence = [str(value) for value in strongest["feature_id"].head(4)]
-        source_values = [str(value) for value in strongest["assignment_source"] if str(value)]
+        source_values = [
+            str(value) for value in strongest["assignment_source"] if str(value)
+        ]
         analysis["possible_interpretations"].append(
             {
                 "text": "Detected UV-Vis feature(s) are consistent with optical absorption/attenuation structure in the reviewed spectrum; treat them as screening evidence, not a band-gap or mechanism claim.",
                 "confidence": "low",
                 "evidence": evidence,
-                "assignment_source": source_values[0] if source_values else "ea.uv_vis.feature_detection:v0.2",
+                "assignment_source": source_values[0]
+                if source_values
+                else "ea.uv_vis.feature_detection:v0.2",
             }
         )
     if edge:
@@ -1107,7 +1307,9 @@ def _analyze_features(
                 "text": "A threshold-based optical edge estimate was recorded for orientation only; formal band-gap analysis requires user-confirmed method context such as Tauc model, sample geometry, and references.",
                 "confidence": edge.get("confidence", "low"),
                 "evidence": ["edge_estimate"],
-                "assignment_source": edge.get("assignment_source", "ea.uv_vis.edge_threshold:v0.2"),
+                "assignment_source": edge.get(
+                    "assignment_source", "ea.uv_vis.edge_threshold:v0.2"
+                ),
             }
         )
     if tauc and tauc.get("status") == "screening_fit_recorded":
@@ -1121,14 +1323,20 @@ def _analyze_features(
                 ),
                 "confidence": tauc.get("confidence", "low"),
                 "evidence": ["tauc_analysis"],
-                "assignment_source": tauc.get("assignment_source", "ea.uv_vis.tauc_screening:v0.2"),
+                "assignment_source": tauc.get(
+                    "assignment_source", "ea.uv_vis.tauc_screening:v0.2"
+                ),
             }
         )
     if derivative and derivative.get("status") == "screening_derivative_recorded":
         strongest = derivative.get("max_abs_slope", {})
         axis_value = strongest.get("axis_value")
         axis_unit = strongest.get("axis_unit", "unknown")
-        axis_text = f"{float(axis_value):.4g} {axis_unit}" if axis_value is not None else "not available"
+        axis_text = (
+            f"{float(axis_value):.4g} {axis_unit}"
+            if axis_value is not None
+            else "not available"
+        )
         analysis["possible_interpretations"].append(
             {
                 "text": (
@@ -1137,11 +1345,22 @@ def _analyze_features(
                 ),
                 "confidence": derivative.get("confidence", "low"),
                 "evidence": ["derivative_analysis"],
-                "assignment_source": derivative.get("assignment_source", "ea.uv_vis.derivative_screening:v0.2"),
+                "assignment_source": derivative.get(
+                    "assignment_source", "ea.uv_vis.derivative_screening:v0.2"
+                ),
             }
         )
-    if correction_context and correction_context.get("status") == "reviewed_correction_context_recorded":
-        fields = ", ".join(str(value) for value in correction_context.get("reviewed_context_fields", [])) or "correction context"
+    if (
+        correction_context
+        and correction_context.get("status") == "reviewed_correction_context_recorded"
+    ):
+        fields = (
+            ", ".join(
+                str(value)
+                for value in correction_context.get("reviewed_context_fields", [])
+            )
+            or "correction context"
+        )
         analysis["possible_interpretations"].append(
             {
                 "text": (
@@ -1150,10 +1369,15 @@ def _analyze_features(
                 ),
                 "confidence": correction_context.get("confidence", "low"),
                 "evidence": ["correction_context"],
-                "assignment_source": correction_context.get("assignment_source", "ea.uv_vis.correction_context:v0.2"),
+                "assignment_source": correction_context.get(
+                    "assignment_source", "ea.uv_vis.correction_context:v0.2"
+                ),
             }
         )
-    if numeric_correction and numeric_correction.get("status") == "reviewed_numeric_correction_applied":
+    if (
+        numeric_correction
+        and numeric_correction.get("status") == "reviewed_numeric_correction_applied"
+    ):
         analysis["possible_interpretations"].append(
             {
                 "text": (
@@ -1162,7 +1386,9 @@ def _analyze_features(
                 ),
                 "confidence": numeric_correction.get("confidence", "low"),
                 "evidence": ["numeric_correction"],
-                "assignment_source": numeric_correction.get("assignment_source", "ea.uv_vis.numeric_correction:v0.2"),
+                "assignment_source": numeric_correction.get(
+                    "assignment_source", "ea.uv_vis.numeric_correction:v0.2"
+                ),
             }
         )
     return analysis
@@ -1172,7 +1398,12 @@ def _uv_vis_source_candidates(source_packet: Any) -> list[Any]:
     if isinstance(source_packet, list):
         return source_packet
     if isinstance(source_packet, dict):
-        raw_candidates = source_packet.get("candidates") or source_packet.get("source_candidates") or source_packet.get("suggestions") or []
+        raw_candidates = (
+            source_packet.get("candidates")
+            or source_packet.get("source_candidates")
+            or source_packet.get("suggestions")
+            or []
+        )
         return raw_candidates if isinstance(raw_candidates, list) else []
     return []
 
@@ -1232,7 +1463,10 @@ def _builtin_uv_vis_source_libraries() -> dict[str, dict[str, Any]]:
                         "Use only after a reviewed Tauc window or comparable optical-edge evidence exists.",
                         "Direct-allowed assumptions are material- and electronic-structure dependent.",
                     ],
-                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "reference_ids": [
+                        "builtin-uvvis-tauc-1966",
+                        "builtin-uvvis-pankove-1971",
+                    ],
                     "confidence": "low",
                     "caveats": [
                         "Transition-model candidate only; EA does not choose the transition model automatically.",
@@ -1251,7 +1485,10 @@ def _builtin_uv_vis_source_libraries() -> dict[str, dict[str, Any]]:
                         "Use only after a reviewed Tauc window or comparable optical-edge evidence exists.",
                         "Indirect-transition assumptions are not interchangeable with direct-transition assumptions.",
                     ],
-                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "reference_ids": [
+                        "builtin-uvvis-tauc-1966",
+                        "builtin-uvvis-pankove-1971",
+                    ],
                     "confidence": "low",
                     "caveats": [
                         "Transition-model candidate only; EA does not infer the transition type automatically.",
@@ -1271,7 +1508,10 @@ def _builtin_uv_vis_source_libraries() -> dict[str, dict[str, Any]]:
                         "Useful for oxide-semiconductor projects where UV-edge evidence appears around 2.8-3.6 eV.",
                         "Substrate, scattering, thickness, and reference/background treatment can shift or obscure the apparent edge.",
                     ],
-                    "reference_ids": ["builtin-uvvis-tauc-1966", "builtin-uvvis-pankove-1971"],
+                    "reference_ids": [
+                        "builtin-uvvis-tauc-1966",
+                        "builtin-uvvis-pankove-1971",
+                    ],
                     "confidence": "low",
                     "caveats": [
                         "This is not a material-specific band-gap assignment.",
@@ -1330,7 +1570,9 @@ def _normalize_uv_vis_candidate_type(value: Any) -> str:
 
 
 def _uv_vis_candidate_identity(candidate: dict[str, Any]) -> str:
-    return str(candidate.get("candidate_id") or candidate.get("suggestion_id") or "").strip()
+    return str(
+        candidate.get("candidate_id") or candidate.get("suggestion_id") or ""
+    ).strip()
 
 
 def _uv_vis_candidate_matches_filters(
@@ -1340,15 +1582,26 @@ def _uv_vis_candidate_matches_filters(
     candidate_types: set[str],
     optical_targets: set[str],
 ) -> bool:
-    if include_candidates and _uv_vis_candidate_identity(candidate) not in include_candidates:
+    if (
+        include_candidates
+        and _uv_vis_candidate_identity(candidate) not in include_candidates
+    ):
         return False
-    candidate_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+    candidate_type = _normalize_uv_vis_candidate_type(
+        candidate.get("candidate_type") or candidate.get("type")
+    )
     if candidate_types and candidate_type not in candidate_types:
         return False
     if optical_targets:
         target_text = " ".join(
             str(candidate.get(key) or "")
-            for key in ["optical_target", "target", "feature_label", "transition_model", "correction_context_type"]
+            for key in [
+                "optical_target",
+                "target",
+                "feature_label",
+                "transition_model",
+                "correction_context_type",
+            ]
         ).lower()
         if not any(target in target_text for target in optical_targets):
             return False
@@ -1357,14 +1610,22 @@ def _uv_vis_candidate_matches_filters(
 
 def _uv_vis_target_terms(candidate: dict[str, Any]) -> list[str]:
     terms: list[str] = []
-    for key in ["optical_target", "target", "feature_label", "transition_model", "correction_context_type"]:
+    for key in [
+        "optical_target",
+        "target",
+        "feature_label",
+        "transition_model",
+        "correction_context_type",
+    ]:
         value = str(candidate.get(key) or "").strip()
         if value:
             terms.append(value)
     return terms
 
 
-def _axis_window_overlaps(window: list[float] | None, lower: float | None, upper: float | None) -> bool:
+def _axis_window_overlaps(
+    window: list[float] | None, lower: float | None, upper: float | None
+) -> bool:
     if lower is None and upper is None:
         return True
     if window is None or len(window) != 2:
@@ -1377,20 +1638,30 @@ def _axis_window_overlaps(window: list[float] | None, lower: float | None, upper
 
 
 def _uv_vis_candidate_energy_window(candidate: dict[str, Any]) -> list[float] | None:
-    window = _candidate_window(candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV")
+    window = _candidate_window(
+        candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV"
+    )
     if window is not None:
         return window
-    reported = _candidate_number(candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV")
+    reported = _candidate_number(
+        candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV"
+    )
     if reported is None:
         return None
     return [reported, reported]
 
 
-def _uv_vis_candidate_wavelength_window(candidate: dict[str, Any]) -> list[float] | None:
-    window = _candidate_window(candidate, "wavelength_window_nm", "reported_wavelength_window_nm", "window_nm")
+def _uv_vis_candidate_wavelength_window(
+    candidate: dict[str, Any],
+) -> list[float] | None:
+    window = _candidate_window(
+        candidate, "wavelength_window_nm", "reported_wavelength_window_nm", "window_nm"
+    )
     if window is not None:
         return window
-    reported = _candidate_number(candidate, "reported_wavelength_nm", "expected_wavelength_nm", "wavelength_nm")
+    reported = _candidate_number(
+        candidate, "reported_wavelength_nm", "expected_wavelength_nm", "wavelength_nm"
+    )
     if reported is None:
         return None
     return [reported, reported]
@@ -1415,26 +1686,64 @@ def _uv_vis_candidate_range_matches(
     )
 
 
-def _uv_vis_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str, Any]:
+def _uv_vis_discovery_candidate_summary(
+    raw_candidate: dict[str, Any],
+) -> dict[str, Any]:
     return {
         "candidate_id": _uv_vis_candidate_identity(raw_candidate),
-        "candidate_type": _normalize_uv_vis_candidate_type(raw_candidate.get("candidate_type") or raw_candidate.get("type")),
-        "optical_target": str(raw_candidate.get("optical_target") or raw_candidate.get("target") or "").strip() or None,
-        "transition_model": str(raw_candidate.get("transition_model") or "").strip() or None,
-        "transition_assumption": str(raw_candidate.get("transition_assumption") or raw_candidate.get("model_assumption") or "").strip()
+        "candidate_type": _normalize_uv_vis_candidate_type(
+            raw_candidate.get("candidate_type") or raw_candidate.get("type")
+        ),
+        "optical_target": str(
+            raw_candidate.get("optical_target") or raw_candidate.get("target") or ""
+        ).strip()
         or None,
-        "tauc_transform": str(raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or "").strip() or None,
-        "reported_energy_eV": _candidate_number(raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV"),
+        "transition_model": str(raw_candidate.get("transition_model") or "").strip()
+        or None,
+        "transition_assumption": str(
+            raw_candidate.get("transition_assumption")
+            or raw_candidate.get("model_assumption")
+            or ""
+        ).strip()
+        or None,
+        "tauc_transform": str(
+            raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or ""
+        ).strip()
+        or None,
+        "reported_energy_eV": _candidate_number(
+            raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV"
+        ),
         "energy_window_eV": _uv_vis_candidate_energy_window(raw_candidate) or [],
-        "wavelength_window_nm": _uv_vis_candidate_wavelength_window(raw_candidate) or [],
-        "feature_label": str(raw_candidate.get("feature_label") or raw_candidate.get("assignment_label") or "").strip() or None,
-        "expected_feature": _normalize_uv_vis_expected_feature(raw_candidate.get("expected_feature")),
-        "correction_context_type": str(raw_candidate.get("correction_context_type") or raw_candidate.get("correction_type") or "").strip()
+        "wavelength_window_nm": _uv_vis_candidate_wavelength_window(raw_candidate)
+        or [],
+        "feature_label": str(
+            raw_candidate.get("feature_label")
+            or raw_candidate.get("assignment_label")
+            or ""
+        ).strip()
         or None,
-        "correction_method": str(raw_candidate.get("correction_method") or raw_candidate.get("method") or "").strip() or None,
-        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
+        "expected_feature": _normalize_uv_vis_expected_feature(
+            raw_candidate.get("expected_feature")
+        ),
+        "correction_context_type": str(
+            raw_candidate.get("correction_context_type")
+            or raw_candidate.get("correction_type")
+            or ""
+        ).strip()
+        or None,
+        "correction_method": str(
+            raw_candidate.get("correction_method") or raw_candidate.get("method") or ""
+        ).strip()
+        or None,
+        "source_summary": str(
+            raw_candidate.get("source_summary")
+            or raw_candidate.get("reference_summary")
+            or ""
+        ).strip(),
         "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
-        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
+        "applicability_notes": _coerce_string_list(
+            raw_candidate.get("applicability_notes")
+        ),
         "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
         "caveats": _coerce_string_list(raw_candidate.get("caveats")),
         "auto_applied": False,
@@ -1442,8 +1751,14 @@ def _uv_vis_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[s
     }
 
 
-def _uv_vis_discovery_build_source_command(library_id: str, filters: dict[str, Any], candidate_ids: list[str]) -> str:
-    parts = ["ea uv-vis build-source-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+def _uv_vis_discovery_build_source_command(
+    library_id: str, filters: dict[str, Any], candidate_ids: list[str]
+) -> str:
+    parts = [
+        "ea uv-vis build-source-packet /path/to/ea-project --project-id <project-id>",
+        "--builtin-library",
+        library_id,
+    ]
     include_candidates = list(filters["include_candidates"])
     if not include_candidates and (
         filters["energy_min_eV"] is not None
@@ -1475,24 +1790,46 @@ def summarize_uv_vis_source_libraries(
     """Summarize built-in UV-Vis source libraries without creating project artifacts."""
 
     libraries = _builtin_uv_vis_source_libraries()
-    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    requested_library_ids = [
+        str(item).strip() for item in builtin_libraries or [] if str(item).strip()
+    ]
     if requested_library_ids:
-        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        unknown = sorted(
+            {item for item in requested_library_ids if item not in libraries}
+        )
         if unknown:
             available = ", ".join(sorted(libraries)) or "none"
-            raise UVVisProcessingError(f"Unknown built-in UV-Vis source library: {', '.join(unknown)}. Available libraries: {available}")
+            raise UVVisProcessingError(
+                f"Unknown built-in UV-Vis source library: {', '.join(unknown)}. Available libraries: {available}"
+            )
         library_ids = sorted(dict.fromkeys(requested_library_ids))
     else:
         library_ids = sorted(libraries)
 
-    if energy_min_eV is not None and energy_max_eV is not None and energy_min_eV > energy_max_eV:
+    if (
+        energy_min_eV is not None
+        and energy_max_eV is not None
+        and energy_min_eV > energy_max_eV
+    ):
         energy_min_eV, energy_max_eV = energy_max_eV, energy_min_eV
-    if wavelength_min_nm is not None and wavelength_max_nm is not None and wavelength_min_nm > wavelength_max_nm:
+    if (
+        wavelength_min_nm is not None
+        and wavelength_max_nm is not None
+        and wavelength_min_nm > wavelength_max_nm
+    ):
         wavelength_min_nm, wavelength_max_nm = wavelength_max_nm, wavelength_min_nm
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_uv_vis_candidate_type(item) for item in candidate_types or [] if str(item).strip()}
-    target_set = {str(item).strip().lower() for item in optical_targets or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_uv_vis_candidate_type(item)
+        for item in candidate_types or []
+        if str(item).strip()
+    }
+    target_set = {
+        str(item).strip().lower() for item in optical_targets or [] if str(item).strip()
+    }
     filters = {
         "builtin_libraries": library_ids,
         "include_candidates": sorted(include_set),
@@ -1517,7 +1854,11 @@ def summarize_uv_vis_source_libraries(
 
     for library_id in library_ids:
         library = libraries[library_id]
-        raw_candidates = [candidate for candidate in _uv_vis_source_candidates(library) if isinstance(candidate, dict)]
+        raw_candidates = [
+            candidate
+            for candidate in _uv_vis_source_candidates(library)
+            if isinstance(candidate, dict)
+        ]
         total_candidate_count += len(raw_candidates)
         matching_raw_candidates = [
             candidate
@@ -1536,7 +1877,10 @@ def summarize_uv_vis_source_libraries(
                 wavelength_max_nm=wavelength_max_nm,
             )
         ]
-        candidate_summaries = [_uv_vis_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        candidate_summaries = [
+            _uv_vis_discovery_candidate_summary(candidate)
+            for candidate in matching_raw_candidates
+        ]
         matching_candidate_count += len(candidate_summaries)
         type_counts: dict[str, int] = {}
         library_optical_targets: set[str] = set()
@@ -1545,7 +1889,9 @@ def summarize_uv_vis_source_libraries(
         library_wavelength_min: float | None = None
         library_wavelength_max: float | None = None
         for candidate in raw_candidates:
-            candidate_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+            candidate_type = _normalize_uv_vis_candidate_type(
+                candidate.get("candidate_type") or candidate.get("type")
+            )
             if candidate_type:
                 type_counts[candidate_type] = type_counts.get(candidate_type, 0) + 1
                 all_candidate_types.add(candidate_type)
@@ -1554,30 +1900,62 @@ def summarize_uv_vis_source_libraries(
                 all_optical_targets.add(target)
             energy_window = _uv_vis_candidate_energy_window(candidate)
             if energy_window is not None:
-                library_energy_min = energy_window[0] if library_energy_min is None else min(library_energy_min, energy_window[0])
-                library_energy_max = energy_window[1] if library_energy_max is None else max(library_energy_max, energy_window[1])
-                global_energy_min = energy_window[0] if global_energy_min is None else min(global_energy_min, energy_window[0])
-                global_energy_max = energy_window[1] if global_energy_max is None else max(global_energy_max, energy_window[1])
+                library_energy_min = (
+                    energy_window[0]
+                    if library_energy_min is None
+                    else min(library_energy_min, energy_window[0])
+                )
+                library_energy_max = (
+                    energy_window[1]
+                    if library_energy_max is None
+                    else max(library_energy_max, energy_window[1])
+                )
+                global_energy_min = (
+                    energy_window[0]
+                    if global_energy_min is None
+                    else min(global_energy_min, energy_window[0])
+                )
+                global_energy_max = (
+                    energy_window[1]
+                    if global_energy_max is None
+                    else max(global_energy_max, energy_window[1])
+                )
             wavelength_window = _uv_vis_candidate_wavelength_window(candidate)
             if wavelength_window is not None:
                 library_wavelength_min = (
-                    wavelength_window[0] if library_wavelength_min is None else min(library_wavelength_min, wavelength_window[0])
+                    wavelength_window[0]
+                    if library_wavelength_min is None
+                    else min(library_wavelength_min, wavelength_window[0])
                 )
                 library_wavelength_max = (
-                    wavelength_window[1] if library_wavelength_max is None else max(library_wavelength_max, wavelength_window[1])
+                    wavelength_window[1]
+                    if library_wavelength_max is None
+                    else max(library_wavelength_max, wavelength_window[1])
                 )
                 global_wavelength_min = (
-                    wavelength_window[0] if global_wavelength_min is None else min(global_wavelength_min, wavelength_window[0])
+                    wavelength_window[0]
+                    if global_wavelength_min is None
+                    else min(global_wavelength_min, wavelength_window[0])
                 )
                 global_wavelength_max = (
-                    wavelength_window[1] if global_wavelength_max is None else max(global_wavelength_max, wavelength_window[1])
+                    wavelength_window[1]
+                    if global_wavelength_max is None
+                    else max(global_wavelength_max, wavelength_window[1])
                 )
         candidate_reference_ids = {
-            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+            reference_id
+            for candidate in matching_raw_candidates
+            for reference_id in _coerce_string_list(candidate.get("reference_ids"))
         }
         matching_reference_ids.update(candidate_reference_ids)
-        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
-        matching_reference_seed_ids = sorted(set(reference_seed_ids) & candidate_reference_ids)
+        reference_seed_ids = (
+            sorted((library.get("reference_seeds") or {}).keys())
+            if isinstance(library.get("reference_seeds"), dict)
+            else []
+        )
+        matching_reference_seed_ids = sorted(
+            set(reference_seed_ids) & candidate_reference_ids
+        )
         summaries.append(
             {
                 "library_id": library_id,
@@ -1591,18 +1969,23 @@ def summarize_uv_vis_source_libraries(
                 if library_energy_min is not None and library_energy_max is not None
                 else [],
                 "wavelength_range_nm": [library_wavelength_min, library_wavelength_max]
-                if library_wavelength_min is not None and library_wavelength_max is not None
+                if library_wavelength_min is not None
+                and library_wavelength_max is not None
                 else [],
                 "reference_seed_count": len(reference_seed_ids),
                 "reference_seed_ids": reference_seed_ids,
                 "matching_reference_seed_ids": matching_reference_seed_ids,
-                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidate_ids": [
+                    candidate["candidate_id"] for candidate in candidate_summaries
+                ],
                 "candidates": candidate_summaries,
             }
         )
 
     build_source_commands = [
-        _uv_vis_discovery_build_source_command(summary["library_id"], filters, summary["candidate_ids"])
+        _uv_vis_discovery_build_source_command(
+            summary["library_id"], filters, summary["candidate_ids"]
+        )
         for summary in summaries
         if summary["matching_candidate_count"] > 0
     ]
@@ -1697,10 +2080,14 @@ def _uv_vis_source_packet_template_candidates() -> list[dict[str, Any]]:
             "transition_assumption": "TODO: summarize the source-backed model assumption and when it applies.",
             "tauc_transform": "TODO: absorbance, absorption_coefficient_proxy, Kubelka-Munk, or not_applicable",
             "source_summary": "TODO: summarize the reference that supports this UV-Vis model context.",
-            "applicability_notes": ["TODO: describe sample geometry, film thickness/scattering/substrate assumptions, and signal mode."],
+            "applicability_notes": [
+                "TODO: describe sample geometry, film thickness/scattering/substrate assumptions, and signal mode."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; fill source metadata and model assumptions before using in future UV-Vis suggestions."],
+            "caveats": [
+                "Template candidate only; fill source metadata and model assumptions before using in future UV-Vis suggestions."
+            ],
         },
         {
             "candidate_id": "uvvis-template-optical-gap-candidate",
@@ -1710,10 +2097,14 @@ def _uv_vis_source_packet_template_candidates() -> list[dict[str, Any]]:
             "energy_window_eV": [None, None],
             "transition_assumption": "TODO: source-backed transition assumption for the reported gap/window.",
             "source_summary": "TODO: summarize the source that reports or justifies this optical-gap candidate.",
-            "applicability_notes": ["TODO: describe comparable material, processing, thickness, substrate/background, and measurement mode."],
+            "applicability_notes": [
+                "TODO: describe comparable material, processing, thickness, substrate/background, and measurement mode."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; do not treat the gap/window as a project result without reviewed data and references."],
+            "caveats": [
+                "Template candidate only; do not treat the gap/window as a project result without reviewed data and references."
+            ],
         },
         {
             "candidate_id": "uvvis-template-optical-feature-assignment",
@@ -1724,10 +2115,14 @@ def _uv_vis_source_packet_template_candidates() -> list[dict[str, Any]]:
             "wavelength_window_nm": [None, None],
             "expected_feature": "TODO: absorbance_maximum, shoulder, reflectance_minimum, derivative_extremum, etc.",
             "source_summary": "TODO: summarize the source that supports this feature assignment candidate.",
-            "applicability_notes": ["TODO: describe material state, sample form, and overlapping feature/correction risks."],
+            "applicability_notes": [
+                "TODO: describe material state, sample form, and overlapping feature/correction risks."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; a spectral feature match alone does not prove mechanism or material state."],
+            "caveats": [
+                "Template candidate only; a spectral feature match alone does not prove mechanism or material state."
+            ],
         },
         {
             "candidate_id": "uvvis-template-correction-context",
@@ -1736,10 +2131,14 @@ def _uv_vis_source_packet_template_candidates() -> list[dict[str, Any]]:
             "correction_context_type": "TODO: substrate, baseline, reference, scattering, diffuse_reflectance, or background",
             "correction_method": "TODO: source-backed correction or interpretation context; no automatic correction is applied here",
             "source_summary": "TODO: summarize the source that supports this correction-context candidate.",
-            "applicability_notes": ["TODO: describe when this context applies and what user confirmation is required."],
+            "applicability_notes": [
+                "TODO: describe when this context applies and what user confirmation is required."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; this packet does not apply numeric corrections or prove correction validity."],
+            "caveats": [
+                "Template candidate only; this packet does not apply numeric corrections or prove correction validity."
+            ],
         },
     ]
 
@@ -1758,13 +2157,21 @@ def build_uv_vis_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    selected_source_count = sum(
+        bool(value)
+        for value in [library_path, builtin_library, literature_manifest_path, template]
+    )
     if selected_source_count != 1:
         raise UVVisProcessingError(
             "Use exactly one of --library-file, --builtin-library, --literature-manifest, or --write-template for UV-Vis source-packet generation"
         )
 
-    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
+    template_mode = (
+        template
+        and library_path is None
+        and builtin_library is None
+        and literature_manifest_path is None
+    )
     builtin_mode = bool(builtin_library)
     literature_mode = literature_manifest_path is not None
     day = _created_day(created_at)
@@ -1774,7 +2181,13 @@ def build_uv_vis_source_packet(
         if template_mode:
             output_path = root / "templates" / "uv_vis_source_packet.yml"
         else:
-            output_path = root / "suggestions" / "uv_vis" / "source-packets" / f"{source_packet_id}.yml"
+            output_path = (
+                root
+                / "suggestions"
+                / "uv_vis"
+                / "source-packets"
+                / f"{source_packet_id}.yml"
+            )
     elif not output_path.is_absolute():
         output_path = root / output_path
     assert_not_raw_output_path(root, output_path)
@@ -1790,15 +2203,25 @@ def build_uv_vis_source_packet(
         library_id = str(builtin_library or "").strip()
         if library_id not in libraries:
             available = ", ".join(sorted(libraries)) or "none"
-            raise UVVisProcessingError(f"Unknown built-in UV-Vis source library: {library_id}. Available libraries: {available}")
+            raise UVVisProcessingError(
+                f"Unknown built-in UV-Vis source library: {library_id}. Available libraries: {available}"
+            )
         source_library = deepcopy(libraries[library_id])
         raw_candidates = _uv_vis_source_candidates(source_library)
         library_ref = f"builtin:{library_id}"
         library_kind = "builtin_source_library"
     elif literature_mode:
-        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        source_path = (
+            literature_manifest_path
+            if literature_manifest_path and literature_manifest_path.is_absolute()
+            else root / literature_manifest_path
+            if literature_manifest_path
+            else None
+        )
         if source_path is None:
-            raise UVVisProcessingError("UV-Vis literature manifest path was not supplied")
+            raise UVVisProcessingError(
+                "UV-Vis literature manifest path was not supplied"
+            )
         try:
             source_library, manifest_warnings = confirmed_source_packet_library(
                 root,
@@ -1821,16 +2244,32 @@ def build_uv_vis_source_packet(
         library_ref = _relative_to_root(root, source_path)
         library_kind = "confirmed_literature_manifest"
     else:
-        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        source_path = (
+            library_path
+            if library_path and library_path.is_absolute()
+            else root / library_path
+            if library_path
+            else None
+        )
         if source_path is None or not source_path.exists():
-            raise UVVisProcessingError(f"UV-Vis source library file not found: {library_path}")
+            raise UVVisProcessingError(
+                f"UV-Vis source library file not found: {library_path}"
+            )
         library_ref = _relative_to_root(root, source_path)
         source_library = read_yaml(source_path)
         raw_candidates = _uv_vis_source_candidates(source_library)
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_uv_vis_candidate_type(item) for item in candidate_types or [] if str(item).strip()}
-    target_set = {str(item).strip().lower() for item in optical_targets or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_uv_vis_candidate_type(item)
+        for item in candidate_types or []
+        if str(item).strip()
+    }
+    target_set = {
+        str(item).strip().lower() for item in optical_targets or [] if str(item).strip()
+    }
     selected: list[dict[str, Any]] = []
     for index, raw_candidate in enumerate(raw_candidates, start=1):
         if not isinstance(raw_candidate, dict):
@@ -1851,7 +2290,9 @@ def build_uv_vis_source_packet(
         ):
             continue
         candidate = deepcopy(raw_candidate)
-        normalized_type = _normalize_uv_vis_candidate_type(candidate.get("candidate_type") or candidate.get("type"))
+        normalized_type = _normalize_uv_vis_candidate_type(
+            candidate.get("candidate_type") or candidate.get("type")
+        )
         if normalized_type:
             candidate["candidate_type"] = normalized_type
         selected.append(candidate)
@@ -1873,8 +2314,16 @@ def build_uv_vis_source_packet(
             )
         )
 
-    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
-    guidance_reference_ids = _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+    candidate_reference_ids = {
+        reference_id
+        for candidate in selected
+        for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+    }
+    guidance_reference_ids = (
+        _coerce_string_list(source_library.get("guidance_reference_ids"))
+        if isinstance(source_library, dict)
+        else []
+    )
     reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
     reference_seeds = _uv_vis_source_reference_seeds(
         source_library,
@@ -1882,7 +2331,15 @@ def build_uv_vis_source_packet(
         warnings=warnings,
     )
     packet_ref = _relative_to_root(root, output_path)
-    status = "template_requires_user_edit" if template_mode else ("staged_for_future_uv_vis_suggestions" if selected else "no_matching_candidates")
+    status = (
+        "template_requires_user_edit"
+        if template_mode
+        else (
+            "staged_for_future_uv_vis_suggestions"
+            if selected
+            else "no_matching_candidates"
+        )
+    )
     packet = {
         "schema_version": "0.2",
         "source_packet_id": source_packet_id,
@@ -1893,11 +2350,17 @@ def build_uv_vis_source_packet(
         "source": "ea.uv_vis.source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
-        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
-        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
+        "source_manifest_ref": source_library.get("source_manifest_ref")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
+        "confirmation_status": source_library.get("confirmation_status")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
         "reference_seed_count": len(reference_seeds),
         "reference_seeds": reference_seeds,
-        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes"))
+        if isinstance(source_library, dict)
+        else [],
         "guidance_reference_ids": guidance_reference_ids,
         "candidate_count": len(selected),
         "candidates": selected,
@@ -1988,7 +2451,10 @@ def _candidate_window(value: Any, *names: str) -> list[float] | None:
         if raw is None:
             continue
         if isinstance(raw, str):
-            raw = [part.strip() for part in raw.replace(" to ", ",").replace("-", ",").split(",")]
+            raw = [
+                part.strip()
+                for part in raw.replace(" to ", ",").replace("-", ",").split(",")
+            ]
         if isinstance(raw, dict):
             low_raw = raw.get("min", raw.get("lower", raw.get("low", raw.get("start"))))
             high_raw = raw.get("max", raw.get("upper", raw.get("high", raw.get("end"))))
@@ -2038,7 +2504,9 @@ def _normalize_uv_vis_expected_feature(value: Any) -> str:
 def _feature_type_matches(expected_feature: str, feature_type: str) -> bool:
     if expected_feature in {"", "any"}:
         return True
-    return expected_feature == str(feature_type or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return expected_feature == str(feature_type or "").strip().lower().replace(
+        "-", "_"
+    ).replace(" ", "_")
 
 
 def _match_uv_vis_features(
@@ -2057,7 +2525,9 @@ def _match_uv_vis_features(
         feature_type = str(row.get("feature_type") or "")
         if energy_window is not None and not _value_in_window(energy, energy_window):
             continue
-        if wavelength_window is not None and not _value_in_window(wavelength, wavelength_window):
+        if wavelength_window is not None and not _value_in_window(
+            wavelength, wavelength_window
+        ):
             continue
         if energy_window is None and wavelength_window is None:
             continue
@@ -2068,7 +2538,9 @@ def _match_uv_vis_features(
                 "feature_id": str(row.get("feature_id") or ""),
                 "energy_eV": float(energy) if pd.notna(energy) else None,
                 "wavelength_nm": float(wavelength) if pd.notna(wavelength) else None,
-                "prominence": float(row.get("prominence", 0.0)) if pd.notna(row.get("prominence", np.nan)) else None,
+                "prominence": float(row.get("prominence", 0.0))
+                if pd.notna(row.get("prominence", np.nan))
+                else None,
                 "feature_type": feature_type,
                 "assignment_source": str(row.get("assignment_source") or ""),
             }
@@ -2117,8 +2589,16 @@ def _uv_vis_gap_evidence(
     expected_feature: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     evidence: list[dict[str, Any]] = []
-    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
-    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
+    peak_analysis = (
+        metadata.get("peak_analysis")
+        if isinstance(metadata.get("peak_analysis"), dict)
+        else {}
+    )
+    tauc = (
+        peak_analysis.get("tauc_analysis")
+        if isinstance(peak_analysis.get("tauc_analysis"), dict)
+        else {}
+    )
     intercept = tauc.get("intercept_energy_eV")
     if _value_in_window(intercept, energy_window):
         evidence.append(
@@ -2130,7 +2610,11 @@ def _uv_vis_gap_evidence(
                 "confidence": tauc.get("confidence"),
             }
         )
-    edge = peak_analysis.get("edge_estimate") if isinstance(peak_analysis.get("edge_estimate"), dict) else {}
+    edge = (
+        peak_analysis.get("edge_estimate")
+        if isinstance(peak_analysis.get("edge_estimate"), dict)
+        else {}
+    )
     edge_energy = edge.get("energy_eV")
     if _value_in_window(edge_energy, energy_window):
         evidence.append(
@@ -2157,8 +2641,16 @@ def _uv_vis_gap_evidence(
                 "feature_type": match.get("feature_type"),
             }
         )
-    derivative = peak_analysis.get("derivative_analysis") if isinstance(peak_analysis.get("derivative_analysis"), dict) else {}
-    max_slope = derivative.get("max_abs_slope") if isinstance(derivative.get("max_abs_slope"), dict) else {}
+    derivative = (
+        peak_analysis.get("derivative_analysis")
+        if isinstance(peak_analysis.get("derivative_analysis"), dict)
+        else {}
+    )
+    max_slope = (
+        derivative.get("max_abs_slope")
+        if isinstance(derivative.get("max_abs_slope"), dict)
+        else {}
+    )
     derivative_energy = max_slope.get("energy_eV")
     if _value_in_window(derivative_energy, energy_window):
         evidence.append(
@@ -2172,13 +2664,29 @@ def _uv_vis_gap_evidence(
     return evidence, feature_matches
 
 
-def _uv_vis_transition_evidence(metadata: dict[str, Any], transition_model: str) -> list[dict[str, Any]]:
+def _uv_vis_transition_evidence(
+    metadata: dict[str, Any], transition_model: str
+) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
-    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
-    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
+    peak_analysis = (
+        metadata.get("peak_analysis")
+        if isinstance(metadata.get("peak_analysis"), dict)
+        else {}
+    )
+    tauc = (
+        peak_analysis.get("tauc_analysis")
+        if isinstance(peak_analysis.get("tauc_analysis"), dict)
+        else {}
+    )
     if tauc:
-        tauc_transition = str(tauc.get("transition") or "").strip().lower().replace("-", "_")
-        relation = "matching_tauc_transition" if transition_model and transition_model == tauc_transition else "available_tauc_analysis"
+        tauc_transition = (
+            str(tauc.get("transition") or "").strip().lower().replace("-", "_")
+        )
+        relation = (
+            "matching_tauc_transition"
+            if transition_model and transition_model == tauc_transition
+            else "available_tauc_analysis"
+        )
         evidence.append(
             {
                 "evidence_type": "tauc_analysis",
@@ -2192,14 +2700,33 @@ def _uv_vis_transition_evidence(metadata: dict[str, Any], transition_model: str)
     return evidence
 
 
-def _uv_vis_correction_evidence(metadata: dict[str, Any], correction_context_type: str) -> list[dict[str, Any]]:
-    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
-    correction = peak_analysis.get("correction_context") if isinstance(peak_analysis.get("correction_context"), dict) else {}
+def _uv_vis_correction_evidence(
+    metadata: dict[str, Any], correction_context_type: str
+) -> list[dict[str, Any]]:
+    peak_analysis = (
+        metadata.get("peak_analysis")
+        if isinstance(metadata.get("peak_analysis"), dict)
+        else {}
+    )
+    correction = (
+        peak_analysis.get("correction_context")
+        if isinstance(peak_analysis.get("correction_context"), dict)
+        else {}
+    )
     if not correction:
         return []
-    reviewed_fields = [str(item).strip().lower() for item in correction.get("reviewed_context_fields", [])]
-    normalized_type = correction_context_type.strip().lower().replace("-", "_").replace(" ", "_")
-    relation = "matching_correction_context" if normalized_type and normalized_type in reviewed_fields else "available_correction_context"
+    reviewed_fields = [
+        str(item).strip().lower()
+        for item in correction.get("reviewed_context_fields", [])
+    ]
+    normalized_type = (
+        correction_context_type.strip().lower().replace("-", "_").replace(" ", "_")
+    )
+    relation = (
+        "matching_correction_context"
+        if normalized_type and normalized_type in reviewed_fields
+        else "available_correction_context"
+    )
     return [
         {
             "evidence_type": "correction_context",
@@ -2240,25 +2767,77 @@ def _normalize_uv_vis_interpretation_candidate(
             "missing_fields": ["candidate_mapping"],
         }
 
-    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("suggestion_id") or f"{suggestion_id}-cand-{number:03d}")
-    candidate_type = _normalize_uv_vis_candidate_type(raw_candidate.get("candidate_type") or raw_candidate.get("type"))
+    candidate_id = str(
+        raw_candidate.get("candidate_id")
+        or raw_candidate.get("suggestion_id")
+        or f"{suggestion_id}-cand-{number:03d}"
+    )
+    candidate_type = _normalize_uv_vis_candidate_type(
+        raw_candidate.get("candidate_type") or raw_candidate.get("type")
+    )
     reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
     applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
     caveats = _coerce_string_list(raw_candidate.get("caveats"))
-    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    source_summary = str(
+        raw_candidate.get("source_summary")
+        or raw_candidate.get("reference_summary")
+        or ""
+    ).strip()
     confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
-    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
-    optical_target = str(raw_candidate.get("optical_target") or raw_candidate.get("target") or "").strip()
-    reported_energy = _candidate_number(raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV")
-    energy_window = _candidate_window(raw_candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV")
-    wavelength_window = _candidate_window(raw_candidate, "wavelength_window_nm", "reported_wavelength_window_nm", "window_nm")
-    transition_model = str(raw_candidate.get("transition_model") or "").strip().lower().replace("-", "_").replace(" ", "_")
-    transition_assumption = str(raw_candidate.get("transition_assumption") or raw_candidate.get("model_assumption") or "").strip()
-    tauc_transform = str(raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or "").strip() or None
-    feature_label = str(raw_candidate.get("feature_label") or raw_candidate.get("assignment_label") or "").strip()
-    expected_feature = _normalize_uv_vis_expected_feature(raw_candidate.get("expected_feature"))
-    correction_context_type = str(raw_candidate.get("correction_context_type") or raw_candidate.get("correction_type") or "").strip()
-    correction_method = str(raw_candidate.get("correction_method") or raw_candidate.get("method") or "").strip()
+    unresolved_reference_ids = [
+        reference_id
+        for reference_id in reference_ids
+        if reference_id not in registered_references
+    ]
+    optical_target = str(
+        raw_candidate.get("optical_target") or raw_candidate.get("target") or ""
+    ).strip()
+    reported_energy = _candidate_number(
+        raw_candidate, "reported_energy_eV", "expected_energy_eV", "energy_eV"
+    )
+    energy_window = _candidate_window(
+        raw_candidate, "energy_window_eV", "reported_energy_window_eV", "gap_window_eV"
+    )
+    wavelength_window = _candidate_window(
+        raw_candidate,
+        "wavelength_window_nm",
+        "reported_wavelength_window_nm",
+        "window_nm",
+    )
+    transition_model = (
+        str(raw_candidate.get("transition_model") or "")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    transition_assumption = str(
+        raw_candidate.get("transition_assumption")
+        or raw_candidate.get("model_assumption")
+        or ""
+    ).strip()
+    tauc_transform = (
+        str(
+            raw_candidate.get("tauc_transform") or raw_candidate.get("transform") or ""
+        ).strip()
+        or None
+    )
+    feature_label = str(
+        raw_candidate.get("feature_label")
+        or raw_candidate.get("assignment_label")
+        or ""
+    ).strip()
+    expected_feature = _normalize_uv_vis_expected_feature(
+        raw_candidate.get("expected_feature")
+    )
+    correction_context_type = str(
+        raw_candidate.get("correction_context_type")
+        or raw_candidate.get("correction_type")
+        or ""
+    ).strip()
+    correction_method = str(
+        raw_candidate.get("correction_method") or raw_candidate.get("method") or ""
+    ).strip()
 
     missing_fields: list[str] = []
     if candidate_type not in {
@@ -2301,7 +2880,11 @@ def _normalize_uv_vis_interpretation_candidate(
         requires_direct_match = True
         if not optical_target and not feature_label:
             missing_fields.append("optical_target_or_feature_label")
-        if energy_window is None and wavelength_window is None and reported_energy is None:
+        if (
+            energy_window is None
+            and wavelength_window is None
+            and reported_energy is None
+        ):
             missing_fields.append("energy_or_wavelength_window")
         matched_features = _match_uv_vis_features(
             features,
@@ -2324,7 +2907,9 @@ def _normalize_uv_vis_interpretation_candidate(
             missing_fields.append("optical_target")
         if not correction_context_type and not correction_method:
             missing_fields.append("correction_context_type_or_method")
-        evidence_matches = _uv_vis_correction_evidence(metadata, correction_context_type)
+        evidence_matches = _uv_vis_correction_evidence(
+            metadata, correction_context_type
+        )
 
     if missing_fields:
         status = "invalid_missing_required_metadata"
@@ -2335,7 +2920,11 @@ def _normalize_uv_vis_interpretation_candidate(
     else:
         status = "ready_for_user_review"
 
-    evidence_refs = [str(item.get("evidence_ref")) for item in evidence_matches if item.get("evidence_ref")]
+    evidence_refs = [
+        str(item.get("evidence_ref"))
+        for item in evidence_matches
+        if item.get("evidence_ref")
+    ]
     candidate = {
         "candidate_id": candidate_id,
         "candidate_type": candidate_type or "unknown",
@@ -2343,12 +2932,24 @@ def _normalize_uv_vis_interpretation_candidate(
         "requires_user_review": True,
         "auto_applied": False,
         "optical_target": optical_target or None,
-        "evidence_status": "matched_processed_evidence" if evidence_matches else "source_context_only",
+        "evidence_status": "matched_processed_evidence"
+        if evidence_matches
+        else "source_context_only",
         "evidence_matches": evidence_matches,
         "evidence_refs": evidence_refs,
-        "matched_feature_ids": [match["feature_id"] for match in matched_features if match.get("feature_id")],
-        "matched_energies_eV": [match["energy_eV"] for match in matched_features if match.get("energy_eV") is not None],
-        "matched_wavelengths_nm": [match["wavelength_nm"] for match in matched_features if match.get("wavelength_nm") is not None],
+        "matched_feature_ids": [
+            match["feature_id"] for match in matched_features if match.get("feature_id")
+        ],
+        "matched_energies_eV": [
+            match["energy_eV"]
+            for match in matched_features
+            if match.get("energy_eV") is not None
+        ],
+        "matched_wavelengths_nm": [
+            match["wavelength_nm"]
+            for match in matched_features
+            if match.get("wavelength_nm") is not None
+        ],
         "reported_energy_eV": reported_energy,
         "energy_window_eV": energy_window,
         "wavelength_window_nm": wavelength_window,
@@ -2409,19 +3010,37 @@ def suggest_uv_vis_interpretations(
     related_records: list[str] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_metadata_path = uv_vis_metadata_path if uv_vis_metadata_path.is_absolute() else root / uv_vis_metadata_path
-    resolved_source_path = source_path if source_path.is_absolute() else root / source_path
+    resolved_metadata_path = (
+        uv_vis_metadata_path
+        if uv_vis_metadata_path.is_absolute()
+        else root / uv_vis_metadata_path
+    )
+    resolved_source_path = (
+        source_path if source_path.is_absolute() else root / source_path
+    )
     uv_vis_metadata = read_yaml(resolved_metadata_path)
     source_packet = read_yaml(resolved_source_path)
     metadata_project_id = str(uv_vis_metadata.get("project_id") or "").strip()
-    source_project_id = str(source_packet.get("project_id") or "").strip() if isinstance(source_packet, dict) else ""
+    source_project_id = (
+        str(source_packet.get("project_id") or "").strip()
+        if isinstance(source_packet, dict)
+        else ""
+    )
     if metadata_project_id and project_id and metadata_project_id != project_id:
-        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis metadata has {metadata_project_id}, request has {project_id}")
+        raise UVVisProcessingError(
+            f"Project ID mismatch: UV-Vis metadata has {metadata_project_id}, request has {project_id}"
+        )
     if source_project_id and project_id and source_project_id != project_id:
-        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis source packet has {source_project_id}, request has {project_id}")
+        raise UVVisProcessingError(
+            f"Project ID mismatch: UV-Vis source packet has {source_project_id}, request has {project_id}"
+        )
 
     raw_candidates = _uv_vis_source_candidates(source_packet)
-    peak_table_ref = uv_vis_metadata.get("outputs", {}).get("peak_table") if isinstance(uv_vis_metadata.get("outputs"), dict) else None
+    peak_table_ref = (
+        uv_vis_metadata.get("outputs", {}).get("peak_table")
+        if isinstance(uv_vis_metadata.get("outputs"), dict)
+        else None
+    )
     features = pd.DataFrame()
     warnings: list[dict[str, Any]] = []
     if peak_table_ref:
@@ -2476,7 +3095,9 @@ def suggest_uv_vis_interpretations(
         )
         for index, candidate in enumerate(raw_candidates, start=1)
     ]
-    table = pd.DataFrame(candidates, columns=_uv_vis_interpretation_suggestion_columns())
+    table = pd.DataFrame(
+        candidates, columns=_uv_vis_interpretation_suggestion_columns()
+    )
     for column in [
         "evidence_refs",
         "matched_feature_ids",
@@ -2491,12 +3112,32 @@ def suggest_uv_vis_interpretations(
         "caveats",
     ]:
         if column in table.columns:
-            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+            table[column] = table[column].apply(
+                lambda value: (
+                    "; ".join(str(item) for item in value)
+                    if isinstance(value, list)
+                    else value
+                )
+            )
 
-    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
-    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
-    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_evidence_match")
-    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    ready_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "ready_for_user_review"
+    )
+    unresolved_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "needs_reference_registration"
+    )
+    no_match_count = sum(
+        1 for candidate in candidates if candidate.get("status") == "no_evidence_match"
+    )
+    invalid_count = sum(
+        1
+        for candidate in candidates
+        if str(candidate.get("status", "")).startswith("invalid")
+    )
     if ready_count:
         status = "ready_for_user_review"
     elif unresolved_count:
@@ -2511,7 +3152,11 @@ def suggest_uv_vis_interpretations(
     record_ref = _relative_to_root(root, record_path)
     table_ref = _relative_to_root(root, table_path)
     related_records = related_records or []
-    output_refs = uv_vis_metadata.get("outputs") if isinstance(uv_vis_metadata.get("outputs"), dict) else {}
+    output_refs = (
+        uv_vis_metadata.get("outputs")
+        if isinstance(uv_vis_metadata.get("outputs"), dict)
+        else {}
+    )
     evidence_files = [
         str(ref)
         for ref in [
@@ -2522,7 +3167,13 @@ def suggest_uv_vis_interpretations(
         ]
         if ref
     ]
-    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    all_reference_ids = sorted(
+        {
+            reference_id
+            for candidate in candidates
+            for reference_id in candidate.get("reference_ids", [])
+        }
+    )
     record = {
         "schema_version": "0.2",
         "suggestion_id": suggestion_id,
@@ -2562,7 +3213,10 @@ def suggest_uv_vis_interpretations(
     provenance_path = write_provenance_entry(
         root,
         workflow="uv_vis_interpretation_suggestion",
-        inputs={"records": [source_ref, metadata_ref, *related_records], "files": evidence_files},
+        inputs={
+            "records": [source_ref, metadata_ref, *related_records],
+            "files": evidence_files,
+        },
         outputs={"records": [record_ref, table_ref], "files": []},
         parameters={"candidate_count": len(candidates), "auto_applied": False},
         warnings=warnings,
@@ -2610,9 +3264,16 @@ def _review_value(value: Any) -> str:
     if value in (None, "", [], {}):
         return "not recorded"
     if isinstance(value, list | tuple):
-        return ", ".join(str(item) for item in value if str(item).strip()) or "not recorded"
+        return (
+            ", ".join(str(item) for item in value if str(item).strip())
+            or "not recorded"
+        )
     if isinstance(value, dict):
-        parts = [f"{key}={item}" for key, item in value.items() if item not in (None, "", [], {})]
+        parts = [
+            f"{key}={item}"
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        ]
         return "; ".join(parts) or "not recorded"
     return str(value)
 
@@ -2629,8 +3290,16 @@ def _uv_vis_candidate_parameter_values_text(candidate: dict[str, Any]) -> str:
         ("correction_context_type", candidate.get("correction_context_type")),
         ("correction_method", candidate.get("correction_method")),
     ]
-    parts = [f"{name}={_review_value(value)}" for name, value in fields if value not in (None, "", [], {})]
-    return "; ".join(parts) if parts else "no supported UV-Vis interpretation values recorded"
+    parts = [
+        f"{name}={_review_value(value)}"
+        for name, value in fields
+        if value not in (None, "", [], {})
+    ]
+    return (
+        "; ".join(parts)
+        if parts
+        else "no supported UV-Vis interpretation values recorded"
+    )
 
 
 def _memory_confidence(value: Any) -> str:
@@ -2655,7 +3324,9 @@ def _normalize_review_target_ref(root: Path, value: Any) -> str:
     return _relative_to_root(root, root / target_path)
 
 
-def _uv_vis_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready: bool) -> tuple[bool, list[str]]:
+def _uv_vis_candidate_is_valid_for_memory(
+    candidate: dict[str, Any], *, allow_non_ready: bool
+) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     status = str(candidate.get("status") or "")
     candidate_type = str(candidate.get("candidate_type") or "")
@@ -2680,9 +3351,14 @@ def _uv_vis_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_no
         reasons.append("missing_source_summary")
     if not _coerce_string_list(candidate.get("applicability_notes")):
         reasons.append("missing_applicability_notes")
-    if not str(candidate.get("optical_target") or candidate.get("feature_label") or "").strip():
+    if not str(
+        candidate.get("optical_target") or candidate.get("feature_label") or ""
+    ).strip():
         reasons.append("missing_optical_target_or_feature_label")
-    if candidate_type in {"optical_gap_candidate", "optical_feature_assignment"} and not _coerce_string_list(candidate.get("evidence_refs")):
+    if candidate_type in {
+        "optical_gap_candidate",
+        "optical_feature_assignment",
+    } and not _coerce_string_list(candidate.get("evidence_refs")):
         reasons.append("missing_evidence_refs")
 
     if not allow_non_ready:
@@ -2695,24 +3371,45 @@ def _uv_vis_candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_no
         "missing_applicability_notes",
         "missing_optical_target_or_feature_label",
     }
-    return not any(reason in hard_blockers or reason.startswith("status:invalid") for reason in reasons), reasons
+    return not any(
+        reason in hard_blockers or reason.startswith("status:invalid")
+        for reason in reasons
+    ), reasons
 
 
-def _format_uv_vis_interpretation_memory_text(candidate: dict[str, Any], *, suggestion_id: str, review_ref: str) -> str:
+def _format_uv_vis_interpretation_memory_text(
+    candidate: dict[str, Any], *, suggestion_id: str, review_ref: str
+) -> str:
     candidate_id = str(candidate.get("candidate_id") or "unknown")
     candidate_type = str(candidate.get("candidate_type") or "unknown")
     status = str(candidate.get("status") or "unknown")
     optical_target = str(candidate.get("optical_target") or "not recorded")
     feature_label = str(candidate.get("feature_label") or "not recorded")
-    evidence_refs = _format_memory_list(_coerce_string_list(candidate.get("evidence_refs")))
-    matched_feature_ids = _format_memory_list(_coerce_string_list(candidate.get("matched_feature_ids")))
-    matched_energies = _format_memory_list(_coerce_string_list(candidate.get("matched_energies_eV")))
-    matched_wavelengths = _format_memory_list(_coerce_string_list(candidate.get("matched_wavelengths_nm")))
-    reference_ids = _format_memory_list(_coerce_string_list(candidate.get("reference_ids")))
-    applicability = _format_memory_list(_coerce_string_list(candidate.get("applicability_notes")))
+    evidence_refs = _format_memory_list(
+        _coerce_string_list(candidate.get("evidence_refs"))
+    )
+    matched_feature_ids = _format_memory_list(
+        _coerce_string_list(candidate.get("matched_feature_ids"))
+    )
+    matched_energies = _format_memory_list(
+        _coerce_string_list(candidate.get("matched_energies_eV"))
+    )
+    matched_wavelengths = _format_memory_list(
+        _coerce_string_list(candidate.get("matched_wavelengths_nm"))
+    )
+    reference_ids = _format_memory_list(
+        _coerce_string_list(candidate.get("reference_ids"))
+    )
+    applicability = _format_memory_list(
+        _coerce_string_list(candidate.get("applicability_notes"))
+    )
     caveats = _format_memory_list(_coerce_string_list(candidate.get("caveats")))
-    unresolved = _format_memory_list(_coerce_string_list(candidate.get("unresolved_reference_ids")))
-    source_summary = str(candidate.get("source_summary") or "No source summary recorded.").strip()
+    unresolved = _format_memory_list(
+        _coerce_string_list(candidate.get("unresolved_reference_ids"))
+    )
+    source_summary = str(
+        candidate.get("source_summary") or "No source summary recorded."
+    ).strip()
     confidence = _memory_confidence(candidate.get("confidence"))
     parameter_values = _uv_vis_candidate_parameter_values_text(candidate)
     return (
@@ -2749,15 +3446,21 @@ def propose_uv_vis_interpretation_memory_candidates(
     allow_non_ready: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.uv_vis.interpretation_suggestions:v0.2":
-        raise UVVisProcessingError(f"Not a UV-Vis interpretation suggestion record: {suggestion_path}")
+        raise UVVisProcessingError(
+            f"Not a UV-Vis interpretation suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise UVVisProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise UVVisProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
     review = require_confirmed_review(root, review_ref)
     review_target_ref = _normalize_review_target_ref(root, review.get("target_ref"))
@@ -2771,10 +3474,22 @@ def propose_uv_vis_interpretation_memory_candidates(
             f"ReviewRecord {review_ref} target_type is {review_target_type}, not uv_vis_interpretation_suggestions"
         )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
     skipped: list[dict[str, Any]] = [
         {"candidate_id": candidate_id, "reason": "candidate_id_not_found"}
@@ -2803,21 +3518,35 @@ def propose_uv_vis_interpretation_memory_candidates(
     provenance_refs = [str(suggestion.get("provenance_ref") or "").strip()]
     provenance_refs = [ref for ref in provenance_refs if ref]
     if not provenance_refs:
-        raise UVVisProcessingError("UV-Vis interpretation suggestion record lacks provenance_ref")
+        raise UVVisProcessingError(
+            "UV-Vis interpretation suggestion record lacks provenance_ref"
+        )
 
     proposed: list[dict[str, Any]] = []
     output_refs: list[str] = []
     for candidate in selected:
         candidate_id = str(candidate.get("candidate_id") or "")
-        candidate_allow_non_ready = bool(allow_non_ready and requested_set and candidate_id in requested_set)
-        eligible, reasons = _uv_vis_candidate_is_valid_for_memory(candidate, allow_non_ready=candidate_allow_non_ready)
+        candidate_allow_non_ready = bool(
+            allow_non_ready and requested_set and candidate_id in requested_set
+        )
+        eligible, reasons = _uv_vis_candidate_is_valid_for_memory(
+            candidate, allow_non_ready=candidate_allow_non_ready
+        )
         if not eligible:
-            skipped.append({"candidate_id": candidate_id, "reason": "not_memory_candidate_eligible", "details": reasons})
+            skipped.append(
+                {
+                    "candidate_id": candidate_id,
+                    "reason": "not_memory_candidate_eligible",
+                    "details": reasons,
+                }
+            )
             continue
 
         candidate_text = _format_uv_vis_interpretation_memory_text(
             candidate,
-            suggestion_id=str(suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name),
+            suggestion_id=str(
+                suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name
+            ),
             review_ref=review_ref,
         )
         rationale = (
@@ -2828,7 +3557,8 @@ def propose_uv_vis_interpretation_memory_candidates(
             root,
             project_id=project_id or suggestion_project_id,
             candidate_text=candidate_text,
-            source_refs=source_refs + _coerce_string_list(candidate.get("reference_ids")),
+            source_refs=source_refs
+            + _coerce_string_list(candidate.get("reference_ids")),
             provenance_refs=provenance_refs,
             category="interpretation",
             confidence=_memory_confidence(candidate.get("confidence")),
@@ -2855,7 +3585,10 @@ def propose_uv_vis_interpretation_memory_candidates(
             root,
             workflow="uv_vis_interpretation_memory_candidate_proposal",
             inputs={"records": [suggestion_ref], "files": []},
-            outputs={"records": output_refs + ["memory/candidates/index.yml"], "files": []},
+            outputs={
+                "records": output_refs + ["memory/candidates/index.yml"],
+                "files": [],
+            },
             parameters={
                 "suggestion_id": suggestion.get("suggestion_id"),
                 "requested_candidate_ids": requested_ids,
@@ -2871,7 +3604,9 @@ def propose_uv_vis_interpretation_memory_candidates(
         bridge_provenance = _relative_to_root(root, bridge_provenance_path)
 
     return {
-        "status": "memory_candidates_proposed" if proposed else "no_memory_candidates_proposed",
+        "status": "memory_candidates_proposed"
+        if proposed
+        else "no_memory_candidates_proposed",
         "suggestion_id": suggestion.get("suggestion_id"),
         "suggestion_ref": suggestion_ref,
         "review_ref": review_ref,
@@ -2920,15 +3655,25 @@ def _uv_vis_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any
         "confidence": str(candidate.get("confidence") or "low"),
         "evidence_status": str(candidate.get("evidence_status") or "not recorded"),
         "evidence_refs": _coerce_string_list(candidate.get("evidence_refs")),
-        "matched_feature_ids": _coerce_string_list(candidate.get("matched_feature_ids")),
-        "matched_energies_eV": _coerce_string_list(candidate.get("matched_energies_eV")),
-        "matched_wavelengths_nm": _coerce_string_list(candidate.get("matched_wavelengths_nm")),
+        "matched_feature_ids": _coerce_string_list(
+            candidate.get("matched_feature_ids")
+        ),
+        "matched_energies_eV": _coerce_string_list(
+            candidate.get("matched_energies_eV")
+        ),
+        "matched_wavelengths_nm": _coerce_string_list(
+            candidate.get("matched_wavelengths_nm")
+        ),
         "parameter_values": _uv_vis_candidate_parameter_values_text(candidate),
         "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
-        "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
+        "unresolved_reference_ids": _coerce_string_list(
+            candidate.get("unresolved_reference_ids")
+        ),
         "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
         "source_summary": str(candidate.get("source_summary") or "not recorded"),
-        "applicability_notes": _coerce_string_list(candidate.get("applicability_notes")),
+        "applicability_notes": _coerce_string_list(
+            candidate.get("applicability_notes")
+        ),
         "caveats": _coerce_string_list(candidate.get("caveats")),
         "recommended_action": action,
     }
@@ -2999,22 +3744,42 @@ def prepare_uv_vis_interpretation_review_package(
     candidate_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.uv_vis.interpretation_suggestions:v0.2":
-        raise UVVisProcessingError(f"Not a UV-Vis interpretation suggestion record: {suggestion_path}")
+        raise UVVisProcessingError(
+            f"Not a UV-Vis interpretation suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise UVVisProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise UVVisProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
-    missing_candidate_ids = [candidate_id for candidate_id in requested_ids if candidate_id not in found_ids]
+    missing_candidate_ids = [
+        candidate_id for candidate_id in requested_ids if candidate_id not in found_ids
+    ]
     warnings: list[dict[str, Any]] = [
         _warning(
             "uv_vis_review_package_candidate_not_found",
@@ -3034,10 +3799,26 @@ def prepare_uv_vis_interpretation_review_package(
         "other": "Inspect manually before downstream use.",
     }
     groups = []
-    for group_name in ["ready_for_user_review", "needs_reference_registration", "no_evidence_match", "invalid_or_incomplete", "other"]:
-        ids = [summary["candidate_id"] for summary in summaries if summary["review_group"] == group_name]
+    for group_name in [
+        "ready_for_user_review",
+        "needs_reference_registration",
+        "no_evidence_match",
+        "invalid_or_incomplete",
+        "other",
+    ]:
+        ids = [
+            summary["candidate_id"]
+            for summary in summaries
+            if summary["review_group"] == group_name
+        ]
         if ids:
-            groups.append({"group": group_name, "candidate_ids": ids, "recommended_action": group_actions[group_name]})
+            groups.append(
+                {
+                    "group": group_name,
+                    "candidate_ids": ids,
+                    "recommended_action": group_actions[group_name],
+                }
+            )
 
     package_dir = resolved_suggestion_path.parent
     package_path = package_dir / "review_package.yml"
@@ -3074,13 +3855,25 @@ def prepare_uv_vis_interpretation_review_package(
         "selected_status_counts": _review_status_counts(selected),
         "groups": groups,
         "candidate_summaries": summaries,
-        "reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("reference_ids", [])}),
-        "unresolved_reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("unresolved_reference_ids", [])}),
+        "reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("reference_ids", [])
+            }
+        ),
+        "unresolved_reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("unresolved_reference_ids", [])
+            }
+        ),
         "recommended_commands": {
             "create_review_record": (
                 "ea review add /path/to/ea-project --target-type uv_vis_interpretation_suggestions "
-                f"--target-ref {suggestion_ref} --user-response \"可以，保存\" "
-                "--reviewed-content \"User reviewed the listed UV-Vis interpretation candidates; record accepted/rejected/edited candidate IDs.\""
+                f'--target-ref {suggestion_ref} --user-response "可以，保存" '
+                '--reviewed-content "User reviewed the listed UV-Vis interpretation candidates; record accepted/rejected/edited candidate IDs."'
             ),
             "rerun_after_reference_registration": (
                 "ea uv-vis suggest-interpretations /path/to/ea-project --metadata <uv_vis_metadata.yml> "
@@ -3103,7 +3896,9 @@ def prepare_uv_vis_interpretation_review_package(
         "warnings": warnings,
     }
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_uv_vis_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_uv_vis_review_package_markdown(package), encoding="utf-8"
+    )
     provenance_path = write_provenance_entry(
         root,
         workflow="uv_vis_interpretation_review_package",
@@ -3121,7 +3916,9 @@ def prepare_uv_vis_interpretation_review_package(
     )
     package["provenance_ref"] = _relative_to_root(root, provenance_path)
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_uv_vis_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_uv_vis_review_package_markdown(package), encoding="utf-8"
+    )
     return {
         "status": package["status"],
         "review_package": str(package_path),
@@ -3168,7 +3965,9 @@ def _read_uv_vis_feature_table(
     metadata_ref: str,
     warnings: list[dict[str, Any]],
 ) -> pd.DataFrame:
-    outputs = metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
+    outputs = (
+        metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
+    )
     peak_table_ref = outputs.get("peak_table")
     if not peak_table_ref:
         warnings.append(
@@ -3194,7 +3993,9 @@ def _read_uv_vis_feature_table(
         return pd.DataFrame()
     try:
         return pd.read_csv(peak_table_path)
-    except Exception as exc:  # pragma: no cover - defensive guard for malformed user CSVs
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - defensive guard for malformed user CSVs
         warnings.append(
             _warning(
                 "uv_vis_comparison_feature_table_unreadable",
@@ -3222,7 +4023,9 @@ def _feature_values(features: pd.DataFrame, column: str) -> list[float]:
 def _feature_ids(features: pd.DataFrame) -> list[str]:
     if features.empty or "feature_id" not in features.columns:
         return []
-    return [str(value) for value in features["feature_id"].tolist() if str(value).strip()]
+    return [
+        str(value) for value in features["feature_id"].tolist() if str(value).strip()
+    ]
 
 
 def _feature_records(features: pd.DataFrame) -> list[dict[str, Any]]:
@@ -3254,22 +4057,64 @@ def _uv_vis_comparison_entry(
     metadata = read_yaml(metadata_path)
     metadata_project_id = str(metadata.get("project_id") or "").strip()
     if metadata_project_id and project_id and metadata_project_id != project_id:
-        raise UVVisProcessingError(f"Project ID mismatch: UV-Vis metadata {metadata_ref} has {metadata_project_id}, request has {project_id}")
+        raise UVVisProcessingError(
+            f"Project ID mismatch: UV-Vis metadata {metadata_ref} has {metadata_project_id}, request has {project_id}"
+        )
     if not metadata.get("uv_vis_result_id") and not metadata.get("result_id"):
-        raise UVVisProcessingError(f"Not a UV-Vis processed metadata record: {metadata_ref}")
+        raise UVVisProcessingError(
+            f"Not a UV-Vis processed metadata record: {metadata_ref}"
+        )
 
-    outputs = metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
-    peak_analysis = metadata.get("peak_analysis") if isinstance(metadata.get("peak_analysis"), dict) else {}
-    edge = peak_analysis.get("edge_estimate") if isinstance(peak_analysis.get("edge_estimate"), dict) else {}
-    tauc = peak_analysis.get("tauc_analysis") if isinstance(peak_analysis.get("tauc_analysis"), dict) else {}
-    derivative = peak_analysis.get("derivative_analysis") if isinstance(peak_analysis.get("derivative_analysis"), dict) else {}
-    correction = peak_analysis.get("correction_context") if isinstance(peak_analysis.get("correction_context"), dict) else {}
-    processing_parameters = metadata.get("processing_parameters") if isinstance(metadata.get("processing_parameters"), dict) else {}
-    feature_parameters = processing_parameters.get("feature_detection") if isinstance(processing_parameters.get("feature_detection"), dict) else {}
-    features = _read_uv_vis_feature_table(root, metadata=metadata, metadata_ref=metadata_ref, warnings=warnings)
-    feature_count = metadata.get("peak_analysis", {}).get("feature_count") if isinstance(metadata.get("peak_analysis"), dict) else None
+    outputs = (
+        metadata.get("outputs") if isinstance(metadata.get("outputs"), dict) else {}
+    )
+    peak_analysis = (
+        metadata.get("peak_analysis")
+        if isinstance(metadata.get("peak_analysis"), dict)
+        else {}
+    )
+    edge = (
+        peak_analysis.get("edge_estimate")
+        if isinstance(peak_analysis.get("edge_estimate"), dict)
+        else {}
+    )
+    tauc = (
+        peak_analysis.get("tauc_analysis")
+        if isinstance(peak_analysis.get("tauc_analysis"), dict)
+        else {}
+    )
+    derivative = (
+        peak_analysis.get("derivative_analysis")
+        if isinstance(peak_analysis.get("derivative_analysis"), dict)
+        else {}
+    )
+    correction = (
+        peak_analysis.get("correction_context")
+        if isinstance(peak_analysis.get("correction_context"), dict)
+        else {}
+    )
+    processing_parameters = (
+        metadata.get("processing_parameters")
+        if isinstance(metadata.get("processing_parameters"), dict)
+        else {}
+    )
+    feature_parameters = (
+        processing_parameters.get("feature_detection")
+        if isinstance(processing_parameters.get("feature_detection"), dict)
+        else {}
+    )
+    features = _read_uv_vis_feature_table(
+        root, metadata=metadata, metadata_ref=metadata_ref, warnings=warnings
+    )
+    feature_count = (
+        metadata.get("peak_analysis", {}).get("feature_count")
+        if isinstance(metadata.get("peak_analysis"), dict)
+        else None
+    )
     try:
-        feature_count_value = int(feature_count) if feature_count is not None else int(len(features))
+        feature_count_value = (
+            int(feature_count) if feature_count is not None else int(len(features))
+        )
     except (TypeError, ValueError):
         feature_count_value = int(len(features))
 
@@ -3288,8 +4133,12 @@ def _uv_vis_comparison_entry(
         "entry_index": index,
         "metadata_ref": metadata_ref,
         "result_id": str(metadata.get("result_id") or ""),
-        "uv_vis_result_id": str(metadata.get("uv_vis_result_id") or metadata.get("result_id") or ""),
-        "characterization_file_ref": str(metadata.get("characterization_file_ref") or ""),
+        "uv_vis_result_id": str(
+            metadata.get("uv_vis_result_id") or metadata.get("result_id") or ""
+        ),
+        "characterization_file_ref": str(
+            metadata.get("characterization_file_ref") or ""
+        ),
         "sample_refs": _coerce_string_list(metadata.get("sample_refs")),
         "status": str(metadata.get("status") or "unknown"),
         "x_unit": str(metadata.get("x_unit") or "unknown"),
@@ -3310,7 +4159,9 @@ def _uv_vis_comparison_entry(
         "tauc_confidence": str(tauc.get("confidence") or "not_recorded"),
         "derivative_available": bool(outputs.get("derivative_table") or derivative),
         "derivative_status": str(derivative.get("status") or "not_recorded"),
-        "correction_context_available": bool(outputs.get("correction_context") or correction),
+        "correction_context_available": bool(
+            outputs.get("correction_context") or correction
+        ),
         "correction_context_status": str(correction.get("status") or "not_recorded"),
         "warning_codes": _warning_codes(metadata.get("warnings")),
         "review_refs": _coerce_string_list(metadata.get("review_refs")),
@@ -3327,7 +4178,9 @@ def _csv_join(value: Any) -> Any:
     return value
 
 
-def _basis_values(entries: list[dict[str, Any]], value_key: str, basis_keys: list[str]) -> list[dict[str, Any]]:
+def _basis_values(
+    entries: list[dict[str, Any]], value_key: str, basis_keys: list[str]
+) -> list[dict[str, Any]]:
     basis: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     for entry in entries:
@@ -3337,11 +4190,15 @@ def _basis_values(entries: list[dict[str, Any]], value_key: str, basis_keys: lis
         if key in seen:
             continue
         seen.add(key)
-        basis.append({basis_key: key[index] for index, basis_key in enumerate(basis_keys)})
+        basis.append(
+            {basis_key: key[index] for index, basis_key in enumerate(basis_keys)}
+        )
     return basis
 
 
-def _numeric_missing_data(entries: list[dict[str, Any]], value_key: str, metric: str) -> list[dict[str, str]]:
+def _numeric_missing_data(
+    entries: list[dict[str, Any]], value_key: str, metric: str
+) -> list[dict[str, str]]:
     missing: list[dict[str, str]] = []
     for entry in entries:
         if entry.get(value_key) is not None:
@@ -3407,7 +4264,9 @@ def _positive_match_tolerance(value: float | None, label: str) -> float | None:
         return None
     number = _finite_float(value)
     if number is None or number <= 0:
-        raise UVVisProcessingError(f"{label} must be a positive finite number when feature matching is requested")
+        raise UVVisProcessingError(
+            f"{label} must be a positive finite number when feature matching is requested"
+        )
     return number
 
 
@@ -3422,7 +4281,9 @@ def _feature_group_statistics(values: list[float]) -> dict[str, Any]:
     }
 
 
-def _feature_match_members(entries: list[dict[str, Any]], axis_key: str) -> list[dict[str, Any]]:
+def _feature_match_members(
+    entries: list[dict[str, Any]], axis_key: str
+) -> list[dict[str, Any]]:
     members: list[dict[str, Any]] = []
     for entry in entries:
         for feature in entry.get("features", []):
@@ -3453,14 +4314,35 @@ def _feature_match_group_record(
     warnings: list[dict[str, Any]],
 ) -> dict[str, Any]:
     values = [float(member["axis_value"]) for member in members]
-    metadata_refs = sorted({str(member.get("metadata_ref") or "") for member in members if member.get("metadata_ref")})
-    result_ids = sorted({str(member.get("result_id") or "") for member in members if member.get("result_id")})
-    sample_refs = sorted({sample_ref for member in members for sample_ref in _coerce_string_list(member.get("sample_refs"))})
+    metadata_refs = sorted(
+        {
+            str(member.get("metadata_ref") or "")
+            for member in members
+            if member.get("metadata_ref")
+        }
+    )
+    result_ids = sorted(
+        {
+            str(member.get("result_id") or "")
+            for member in members
+            if member.get("result_id")
+        }
+    )
+    sample_refs = sorted(
+        {
+            sample_ref
+            for member in members
+            for sample_ref in _coerce_string_list(member.get("sample_refs"))
+        }
+    )
     duplicate_metadata_refs = sorted(
         {
             metadata_ref
             for metadata_ref in metadata_refs
-            if sum(1 for member in members if member.get("metadata_ref") == metadata_ref) > 1
+            if sum(
+                1 for member in members if member.get("metadata_ref") == metadata_ref
+            )
+            > 1
         }
     )
     if duplicate_metadata_refs:
@@ -3474,15 +4356,25 @@ def _feature_match_group_record(
             )
         )
     distinct_record_count = len(metadata_refs)
-    status = "multi_record_candidate_match" if distinct_record_count >= 2 else "single_record_context"
-    confidence = "low" if distinct_record_count >= 2 else "insufficient_replicate_context"
+    status = (
+        "multi_record_candidate_match"
+        if distinct_record_count >= 2
+        else "single_record_context"
+    )
+    confidence = (
+        "low" if distinct_record_count >= 2 else "insufficient_replicate_context"
+    )
     return {
         "group_id": group_id,
         "axis_key": axis_key,
         "status": status,
         "confidence": confidence,
         "confidence_reason": "Grouped by reviewed numeric tolerance only; not an optical feature assignment or transition proof.",
-        "feature_ids": [str(member.get("feature_id") or "") for member in members if member.get("feature_id")],
+        "feature_ids": [
+            str(member.get("feature_id") or "")
+            for member in members
+            if member.get("feature_id")
+        ],
         "metadata_refs": metadata_refs,
         "result_ids": result_ids,
         "sample_refs": sample_refs,
@@ -3523,7 +4415,9 @@ def _feature_match_axis_groups(
             continue
         if current_center is not None and abs(axis_value - current_center) <= tolerance:
             current.append(member)
-            current_center = float(np.mean([float(item["axis_value"]) for item in current]))
+            current_center = float(
+                np.mean([float(item["axis_value"]) for item in current])
+            )
         else:
             pending_groups.append(current)
             current = [member]
@@ -3550,7 +4444,9 @@ def _feature_match_axis_groups(
         "confidence_reason": "Feature grouping uses a user-reviewed numeric tolerance and existing feature tables only.",
         "member_count": len(members),
         "group_count": len(groups),
-        "multi_record_group_count": sum(1 for group in groups if group["status"] == "multi_record_candidate_match"),
+        "multi_record_group_count": sum(
+            1 for group in groups if group["status"] == "multi_record_candidate_match"
+        ),
         "groups": groups,
         "boundary": "Axis-specific feature grouping is advisory and does not assign optical transitions or prove band gaps.",
     }
@@ -3574,7 +4470,12 @@ def _build_feature_matching_record(
 
     axes: dict[str, Any] = {}
     if energy_tolerance_eV is not None:
-        axes["energy_eV"] = _feature_match_axis_groups(entries, axis_key="energy_eV", tolerance=energy_tolerance_eV, warnings=warnings)
+        axes["energy_eV"] = _feature_match_axis_groups(
+            entries,
+            axis_key="energy_eV",
+            tolerance=energy_tolerance_eV,
+            warnings=warnings,
+        )
     if wavelength_tolerance_nm is not None:
         axes["wavelength_nm"] = _feature_match_axis_groups(
             entries,
@@ -3583,7 +4484,9 @@ def _build_feature_matching_record(
             warnings=warnings,
         )
     group_count = sum(int(axis.get("group_count") or 0) for axis in axes.values())
-    status = "reviewed_feature_matching_recorded" if group_count else "no_matchable_features"
+    status = (
+        "reviewed_feature_matching_recorded" if group_count else "no_matchable_features"
+    )
     return {
         "enabled": True,
         "status": status,
@@ -3596,7 +4499,9 @@ def _build_feature_matching_record(
         },
         "axes": axes,
         "group_count": group_count,
-        "multi_record_group_count": sum(int(axis.get("multi_record_group_count") or 0) for axis in axes.values()),
+        "multi_record_group_count": sum(
+            int(axis.get("multi_record_group_count") or 0) for axis in axes.values()
+        ),
         "confidence": "low",
         "confidence_reason": "Feature matching is based on explicit reviewed tolerance parameters and existing feature tables.",
         "boundaries": [
@@ -3619,23 +4524,38 @@ def compare_uv_vis_replicates(
     created_at: str | None = None,
 ) -> dict[str, Any]:
     if len(metadata_paths) < 2:
-        raise UVVisProcessingError("UV-Vis replicate comparison requires at least two --metadata records")
+        raise UVVisProcessingError(
+            "UV-Vis replicate comparison requires at least two --metadata records"
+        )
 
-    energy_tolerance_eV = _positive_match_tolerance(feature_match_tolerance_eV, "feature_match_tolerance_eV")
-    wavelength_tolerance_nm = _positive_match_tolerance(feature_match_tolerance_nm, "feature_match_tolerance_nm")
-    feature_matching_requested = energy_tolerance_eV is not None or wavelength_tolerance_nm is not None
+    energy_tolerance_eV = _positive_match_tolerance(
+        feature_match_tolerance_eV, "feature_match_tolerance_eV"
+    )
+    wavelength_tolerance_nm = _positive_match_tolerance(
+        feature_match_tolerance_nm, "feature_match_tolerance_nm"
+    )
+    feature_matching_requested = (
+        energy_tolerance_eV is not None or wavelength_tolerance_nm is not None
+    )
     feature_match_review: dict[str, Any] | None = None
     if feature_matching_requested:
         if not feature_match_review_ref:
-            raise UVVisProcessingError("Reviewed UV-Vis feature matching requires --feature-match-review-ref")
+            raise UVVisProcessingError(
+                "Reviewed UV-Vis feature matching requires --feature-match-review-ref"
+            )
         feature_match_review = require_confirmed_review(root, feature_match_review_ref)
         review_target_type = str(feature_match_review.get("target_type") or "")
-        if review_target_type and review_target_type not in {"uv_vis_feature_matching", "uv_vis_replicate_feature_matching"}:
+        if review_target_type and review_target_type not in {
+            "uv_vis_feature_matching",
+            "uv_vis_replicate_feature_matching",
+        }:
             raise UVVisProcessingError(
                 f"ReviewRecord {feature_match_review_ref} target_type is {review_target_type}, not uv_vis_feature_matching"
             )
     elif feature_match_review_ref:
-        raise UVVisProcessingError("--feature-match-review-ref was provided, but no feature-match tolerance was set")
+        raise UVVisProcessingError(
+            "--feature-match-review-ref was provided, but no feature-match tolerance was set"
+        )
 
     day = _created_day(created_at)
     timestamp = created_at or EARecord.now_iso()
@@ -3652,7 +4572,9 @@ def compare_uv_vis_replicates(
     input_files: list[str] = []
     seen_metadata_refs: set[str] = set()
     for index, metadata_path in enumerate(metadata_paths, start=1):
-        resolved_path = metadata_path if metadata_path.is_absolute() else root / metadata_path
+        resolved_path = (
+            metadata_path if metadata_path.is_absolute() else root / metadata_path
+        )
         metadata_ref = _relative_to_root(root, resolved_path)
         if metadata_ref in seen_metadata_refs:
             warnings.append(
@@ -3685,8 +4607,18 @@ def compare_uv_vis_replicates(
         warnings=warnings,
     )
     statistics = {
-        "edge_energy_eV": _descriptive_statistics(entries, metric="edge_energy_eV", value_key="edge_energy_eV", basis_keys=["signal_mode"]),
-        "edge_wavelength_nm": _descriptive_statistics(entries, metric="edge_wavelength_nm", value_key="edge_wavelength_nm", basis_keys=["signal_mode"]),
+        "edge_energy_eV": _descriptive_statistics(
+            entries,
+            metric="edge_energy_eV",
+            value_key="edge_energy_eV",
+            basis_keys=["signal_mode"],
+        ),
+        "edge_wavelength_nm": _descriptive_statistics(
+            entries,
+            metric="edge_wavelength_nm",
+            value_key="edge_wavelength_nm",
+            basis_keys=["signal_mode"],
+        ),
         "tauc_intercept_energy_eV": _descriptive_statistics(
             entries,
             metric="tauc_intercept_energy_eV",
@@ -3700,9 +4632,13 @@ def compare_uv_vis_replicates(
             basis_keys=["signal_mode", "feature_detection_method"],
         ),
         "feature_positions": {
-            "status": "reviewed_feature_matching_recorded" if feature_matching["enabled"] else "not_statistically_matched",
+            "status": "reviewed_feature_matching_recorded"
+            if feature_matching["enabled"]
+            else "not_statistically_matched",
             "review_ref": feature_match_review_ref,
-            "axes": sorted(feature_matching.get("axes", {}).keys()) if feature_matching["enabled"] else [],
+            "axes": sorted(feature_matching.get("axes", {}).keys())
+            if feature_matching["enabled"]
+            else [],
             "group_count": feature_matching.get("group_count", 0),
             "reason": (
                 "Detected feature positions were grouped only on axes with explicit reviewed tolerances."
@@ -3715,7 +4651,9 @@ def compare_uv_vis_replicates(
     missing_data = {
         "edge_energy_eV": statistics["edge_energy_eV"]["missing_data"],
         "edge_wavelength_nm": statistics["edge_wavelength_nm"]["missing_data"],
-        "tauc_intercept_energy_eV": statistics["tauc_intercept_energy_eV"]["missing_data"],
+        "tauc_intercept_energy_eV": statistics["tauc_intercept_energy_eV"][
+            "missing_data"
+        ],
         "feature_count": statistics["feature_count"]["missing_data"],
     }
     table_rows = [
@@ -3754,8 +4692,12 @@ def compare_uv_vis_replicates(
     pd.DataFrame(table_rows).to_csv(table_path, index=False)
     record_ref = _relative_to_root(root, record_path)
     table_ref = _relative_to_root(root, table_path)
-    review_refs = sorted({review_ref for entry in entries for review_ref in entry.get("review_refs", [])})
-    source_refs = sorted({source_ref for entry in entries for source_ref in entry.get("source_refs", [])})
+    review_refs = sorted(
+        {review_ref for entry in entries for review_ref in entry.get("review_refs", [])}
+    )
+    source_refs = sorted(
+        {source_ref for entry in entries for source_ref in entry.get("source_refs", [])}
+    )
     comparison_record = {
         "schema_version": "0.2",
         "comparison_id": comparison_id,
@@ -3778,7 +4720,12 @@ def compare_uv_vis_replicates(
             "table": table_ref,
         },
         "warnings": warnings,
-        "review_refs": sorted({*review_refs, *([feature_match_review_ref] if feature_match_review_ref else [])}),
+        "review_refs": sorted(
+            {
+                *review_refs,
+                *([feature_match_review_ref] if feature_match_review_ref else []),
+            }
+        ),
         "source_refs": source_refs,
         "boundaries": [
             "UV-Vis replicate comparison reads existing processed UV-Vis metadata and output tables only.",
@@ -3832,24 +4779,61 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_uv_vis(processed: pd.DataFrame, features: pd.DataFrame, output: Path, x_unit: str, signal_mode: str, *, footer: str | None = None) -> None:
+def _plot_uv_vis(
+    processed: pd.DataFrame,
+    features: pd.DataFrame,
+    output: Path,
+    x_unit: str,
+    signal_mode: str,
+    *,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    x_column = "wavelength_nm" if x_unit == "nm" and "wavelength_nm" in processed.columns else "uv_vis_axis"
-    feature_x = "wavelength_nm" if x_column == "wavelength_nm" and "wavelength_nm" in features.columns else "position"
-    ax.plot(processed[x_column], processed["processed_signal"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed signal")
+    x_column = (
+        "wavelength_nm"
+        if x_unit == "nm" and "wavelength_nm" in processed.columns
+        else "uv_vis_axis"
+    )
+    feature_x = (
+        "wavelength_nm"
+        if x_column == "wavelength_nm" and "wavelength_nm" in features.columns
+        else "position"
+    )
+    ax.plot(
+        processed[x_column],
+        processed["processed_signal"],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=1.2,
+        label="Processed signal",
+    )
     if not features.empty:
-        ax.scatter(features[feature_x], features["processed_signal"], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected features", zorder=3)
-        for _, feature in features.sort_values("prominence", ascending=False).head(8).iterrows():
+        ax.scatter(
+            features[feature_x],
+            features["processed_signal"],
+            color=NATURE_LIKE_COLORS["black"],
+            s=18,
+            label="Detected features",
+            zorder=3,
+        )
+        for _, feature in (
+            features.sort_values("prominence", ascending=False).head(8).iterrows()
+        ):
             label_value = feature.get(feature_x)
             ax.annotate(
-                f"{float(label_value):.0f}" if x_unit == "nm" else f"{float(label_value):.2f}",
+                f"{float(label_value):.0f}"
+                if x_unit == "nm"
+                else f"{float(label_value):.2f}",
                 (float(feature[feature_x]), float(feature["processed_signal"])),
                 textcoords="offset points",
                 xytext=(0, 6),
                 ha="center",
                 fontsize=7,
             )
-    xlabel = "Wavelength (nm)" if x_unit == "nm" else ("Energy (eV)" if x_unit == "eV" else "UV-Vis axis (unknown unit)")
+    xlabel = (
+        "Wavelength (nm)"
+        if x_unit == "nm"
+        else ("Energy (eV)" if x_unit == "eV" else "UV-Vis axis (unknown unit)")
+    )
     ylabel = {
         "absorbance": "Absorbance (a.u.)",
         "transmittance": "Transmittance (a.u.)",
@@ -3877,18 +4861,37 @@ def process_uv_vis_result(
         raise UVVisProcessingError(f"File is {inspection.file_kind}, not UV-Vis")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings, numeric_correction = _apply_processing(_confirmed_frame(raw_path, request, parameters), parameters)
-    features = _detect_features(processed, parameters, request.signal_mode, request.x_unit)
+    processed, processing_warnings, numeric_correction = _apply_processing(
+        _confirmed_frame(raw_path, request, parameters), parameters
+    )
+    features = _detect_features(
+        processed, parameters, request.signal_mode, request.x_unit
+    )
     edge = _estimate_edge(processed, parameters, request.signal_mode)
-    tauc_analysis, tauc_warnings = _run_tauc_analysis(processed, parameters, request.signal_mode)
-    derivative_table, derivative_analysis, derivative_warnings = _run_derivative_analysis(processed, parameters)
+    tauc_analysis, tauc_warnings = _run_tauc_analysis(
+        processed, parameters, request.signal_mode
+    )
+    derivative_table, derivative_analysis, derivative_warnings = (
+        _run_derivative_analysis(processed, parameters)
+    )
     correction_context, correction_warnings = _record_correction_context(parameters)
-    feature_analysis = _analyze_features(features, edge, tauc_analysis, derivative_analysis, correction_context, numeric_correction)
+    feature_analysis = _analyze_features(
+        features,
+        edge,
+        tauc_analysis,
+        derivative_analysis,
+        correction_context,
+        numeric_correction,
+    )
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="uv_vis", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="uv_vis", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="uv_vis", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="uv_vis", day=day
+        )
     else:
         result_id = next_id(root, "uv_vis_result", day)
         figure_id = None
@@ -3903,7 +4906,16 @@ def process_uv_vis_result(
     figure_name = f"{figure_id}.png" if figure_id else "uv_vis_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "uv_vis_metadata.yml"
-    for output in [processed_csv, features_csv, tauc_csv, derivative_csv, correction_context_yml, numeric_correction_yml, figure, result_metadata]:
+    for output in [
+        processed_csv,
+        features_csv,
+        tauc_csv,
+        derivative_csv,
+        correction_context_yml,
+        numeric_correction_yml,
+        figure,
+        result_metadata,
+    ]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -3911,7 +4923,12 @@ def process_uv_vis_result(
     features.to_csv(features_csv, index=False)
     tauc_output_ref: str | None = None
     if tauc_analysis and "tauc_y" in processed.columns:
-        tauc_columns = ["tauc_energy_eV", "tauc_alpha_proxy", "tauc_y", "tauc_fit_window"]
+        tauc_columns = [
+            "tauc_energy_eV",
+            "tauc_alpha_proxy",
+            "tauc_y",
+            "tauc_fit_window",
+        ]
         processed[tauc_columns].to_csv(tauc_csv, index=False)
         tauc_output_ref = tauc_csv.relative_to(root).as_posix()
         feature_analysis["tauc_analysis"]["table_ref"] = tauc_output_ref
@@ -3927,19 +4944,36 @@ def process_uv_vis_result(
         correction_context["record_ref"] = correction_context_ref
         write_yaml(correction_context_yml, correction_context)
         if feature_analysis.get("correction_context"):
-            feature_analysis["correction_context"]["record_ref"] = correction_context_ref
+            feature_analysis["correction_context"]["record_ref"] = (
+                correction_context_ref
+            )
     numeric_correction_ref: str | None = None
     if numeric_correction is not None:
         numeric_correction_ref = numeric_correction_yml.relative_to(root).as_posix()
         numeric_correction["record_ref"] = numeric_correction_ref
         write_yaml(numeric_correction_yml, numeric_correction)
         if feature_analysis.get("numeric_correction"):
-            feature_analysis["numeric_correction"]["record_ref"] = numeric_correction_ref
-    _plot_uv_vis(processed, features, figure, request.x_unit, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
+            feature_analysis["numeric_correction"]["record_ref"] = (
+                numeric_correction_ref
+            )
+    _plot_uv_vis(
+        processed,
+        features,
+        figure,
+        request.x_unit,
+        request.signal_mode,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("uv_vis_x_unit_unknown", "UV-Vis x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "uv_vis_x_unit_unknown",
+                "UV-Vis x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     warnings.extend(processing_warnings)
     warnings.extend(tauc_warnings)
     warnings.extend(derivative_warnings)
@@ -4050,5 +5084,68 @@ def process_uv_vis_result(
             + ([derivative_output_ref] if derivative_output_ref else [])
             + ([correction_context_ref] if correction_context_ref else [])
             + ([numeric_correction_ref] if numeric_correction_ref else []),
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed UV-Vis trace plotted in the spectrum figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    features_csv.relative_to(root).as_posix(),
+                    role="feature_table",
+                    purpose="Detected optical feature annotations.",
+                ),
+            ]
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        tauc_output_ref,
+                        role="fit_table",
+                        purpose="Reviewed Tauc-fit results.",
+                    )
+                ]
+                if tauc_output_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        derivative_output_ref,
+                        role="derived_plotting_dataset",
+                        purpose="Derivative trace used for reviewed feature screening.",
+                    )
+                ]
+                if derivative_output_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        correction_context_ref,
+                        role="correction_context",
+                        purpose="Reviewed optical correction context.",
+                    )
+                ]
+                if correction_context_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        numeric_correction_ref,
+                        role="correction_record",
+                        purpose="Applied numeric correction record.",
+                    )
+                ]
+                if numeric_correction_ref
+                else []
+            ),
         )
     return result_metadata

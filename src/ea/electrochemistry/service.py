@@ -21,6 +21,7 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
@@ -229,13 +230,17 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -245,7 +250,13 @@ def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tupl
     return coerced, False
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -278,9 +289,20 @@ def _mode_candidate(text: str) -> str:
 
 
 def _x_unit_candidate(text: str) -> str:
-    if "ohm" in text or "zreal" in text or "z_real" in text or "impedance" in text or "nyquist" in text:
+    if (
+        "ohm" in text
+        or "zreal" in text
+        or "z_real" in text
+        or "impedance" in text
+        or "nyquist" in text
+    ):
         return "ohm"
-    if "x_unit = s" in text or "x_unit=s" in text or "time_s" in text or "time (s" in text:
+    if (
+        "x_unit = s" in text
+        or "x_unit=s" in text
+        or "time_s" in text
+        or "time (s" in text
+    ):
         return "s"
     if "mv" in text:
         return "mV"
@@ -305,7 +327,9 @@ def inspect_electrochemistry_file(path: Path) -> ElectrochemistryInspection:
     frame, metadata = _read_spectrum(path)
     columns = [str(column) for column in frame.columns]
     if frame.empty or len(columns) < 2:
-        raise ElectrochemistryProcessingError(f"No two-column numeric electrochemistry data found in {path}")
+        raise ElectrochemistryProcessingError(
+            f"No two-column numeric electrochemistry data found in {path}"
+        )
     x_values = pd.to_numeric(frame.iloc[:, 0], errors="coerce").dropna()
     y_values = pd.to_numeric(frame.iloc[:, 1], errors="coerce").dropna()
     x_min = float(x_values.min())
@@ -340,7 +364,13 @@ def inspect_electrochemistry_file(path: Path) -> ElectrochemistryInspection:
         x_unit_candidate=x_unit,
         current_unit_candidate=current_unit,
         measurement_mode_candidate=mode,
-        metadata={**metadata, "x_min": x_min, "x_max": x_max, "y_min": y_min, "y_max": y_max},
+        metadata={
+            **metadata,
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+        },
         warnings=warnings,
         requires_user_confirmation=True,
     )
@@ -356,17 +386,27 @@ def _current_to_mA(values: np.ndarray, current_unit: str) -> np.ndarray:
     return values
 
 
-def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> pd.DataFrame:
+def _confirmed_frame(
+    path: Path, request: ElectrochemistryProcessingRequest
+) -> pd.DataFrame:
     frame, _ = _read_spectrum(path)
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise ElectrochemistryProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise ElectrochemistryProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"V", "mV", "s", "ohm", "unknown"}:
-        raise ElectrochemistryProcessingError("Electrochemistry x_unit must be user-confirmed as V, mV, s, ohm, or unknown")
+        raise ElectrochemistryProcessingError(
+            "Electrochemistry x_unit must be user-confirmed as V, mV, s, ohm, or unknown"
+        )
     if request.current_unit not in {"A", "mA", "uA", "µA", "unknown"}:
-        raise ElectrochemistryProcessingError("Electrochemistry current_unit must be user-confirmed as A, mA, uA, µA, or unknown")
+        raise ElectrochemistryProcessingError(
+            "Electrochemistry current_unit must be user-confirmed as A, mA, uA, µA, or unknown"
+        )
     if request.measurement_mode not in {"cv", "lsv", "chrono", "gcd", "eis", "unknown"}:
-        raise ElectrochemistryProcessingError("Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, eis, or unknown")
+        raise ElectrochemistryProcessingError(
+            "Electrochemistry measurement_mode must be cv, lsv, chrono, gcd, eis, or unknown"
+        )
     data = frame[[request.x_column, request.y_column]].copy()
     if request.measurement_mode == "eis":
         data.columns = ["z_real_raw", "z_imag_raw"]
@@ -374,7 +414,9 @@ def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> 
         data["z_imag_raw"] = pd.to_numeric(data["z_imag_raw"], errors="coerce")
         data = data.dropna().reset_index(drop=True)
         if data.empty:
-            raise ElectrochemistryProcessingError("Confirmed EIS columns contain no numeric data")
+            raise ElectrochemistryProcessingError(
+                "Confirmed EIS columns contain no numeric data"
+            )
         imag = data["z_imag_raw"].to_numpy(dtype=float)
         if float(np.nanmedian(imag)) >= 0:
             data["z_imag_ohm"] = -imag
@@ -383,23 +425,32 @@ def _confirmed_frame(path: Path, request: ElectrochemistryProcessingRequest) -> 
         else:
             data["z_imag_ohm"] = imag
             data["neg_z_imag_ohm"] = -imag
-            data["imaginary_convention"] = "imaginary_negative_values_converted_to_positive"
+            data["imaginary_convention"] = (
+                "imaginary_negative_values_converted_to_positive"
+            )
         data["z_real_ohm"] = data["z_real_raw"]
-        data["impedance_magnitude_ohm"] = np.sqrt(data["z_real_ohm"].to_numpy(dtype=float) ** 2 + data["z_imag_ohm"].to_numpy(dtype=float) ** 2)
+        data["impedance_magnitude_ohm"] = np.sqrt(
+            data["z_real_ohm"].to_numpy(dtype=float) ** 2
+            + data["z_imag_ohm"].to_numpy(dtype=float) ** 2
+        )
         return data
     data.columns = ["axis_raw", "current_raw"]
     data["axis_raw"] = pd.to_numeric(data["axis_raw"], errors="coerce")
     data["current_raw"] = pd.to_numeric(data["current_raw"], errors="coerce")
     data = data.dropna().reset_index(drop=True)
     if data.empty:
-        raise ElectrochemistryProcessingError("Confirmed electrochemistry columns contain no numeric data")
+        raise ElectrochemistryProcessingError(
+            "Confirmed electrochemistry columns contain no numeric data"
+        )
     if request.x_unit == "V":
         data["potential_V"] = data["axis_raw"]
     elif request.x_unit == "mV":
         data["potential_V"] = data["axis_raw"] / 1000.0
     elif request.x_unit == "s":
         data["time_s"] = data["axis_raw"]
-    current_mA = _current_to_mA(data["current_raw"].to_numpy(dtype=float), request.current_unit)
+    current_mA = _current_to_mA(
+        data["current_raw"].to_numpy(dtype=float), request.current_unit
+    )
     data["current_mA"] = current_mA
     area = request.electrode_area_cm2
     if area is not None and area > 0:
@@ -434,26 +485,43 @@ def _read_raw_numeric_table(path: Path) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     width = len(header) if header else max_width
-    normalized_rows = [row[:width] + [np.nan] * max(width - len(row), 0) for row in rows]
-    columns = header[:width] if header and len(header) >= width else [f"col_{index}" for index in range(width)]
+    normalized_rows = [
+        row[:width] + [np.nan] * max(width - len(row), 0) for row in rows
+    ]
+    columns = (
+        header[:width]
+        if header and len(header) >= width
+        else [f"col_{index}" for index in range(width)]
+    )
     return pd.DataFrame(normalized_rows, columns=columns)
 
 
-def _apply_eis_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_eis_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     if not parameters.get("eis_summary", {}).get("enabled", True):
-        warnings.append(_warning("electrochemistry_eis_summary_disabled", "EIS Nyquist screening summary was disabled by processing parameters."))
+        warnings.append(
+            _warning(
+                "electrochemistry_eis_summary_disabled",
+                "EIS Nyquist screening summary was disabled by processing parameters.",
+            )
+        )
     return processed, warnings
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     current = processed["current_mA"].to_numpy(dtype=float)
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 9, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 9, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = current.size if current.size % 2 == 1 else current.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -469,7 +537,15 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
             polyorder = max(1, window_length - 1)
             adjusted = True
         if current.size >= 3 and window_length >= 3:
-            current = np.asarray(savgol_filter(current, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            current = np.asarray(
+                savgol_filter(
+                    current,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             warnings.append(
                 _warning(
                     "electrochemistry_smoothing_applied",
@@ -494,7 +570,12 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
         raw_current = processed["current_mA"].to_numpy(dtype=float)
         density = processed["current_density_mA_cm-2"].to_numpy(dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.divide(current, raw_current, out=np.ones_like(current), where=np.abs(raw_current) > 0)
+            ratio = np.divide(
+                current,
+                raw_current,
+                out=np.ones_like(current),
+                where=np.abs(raw_current) > 0,
+            )
         processed["processed_current_density_mA_cm-2"] = density * ratio
     return processed, warnings
 
@@ -507,7 +588,14 @@ def _feature_axis(row: pd.Series) -> tuple[float, str]:
     return float(row["axis_raw"]), "unknown"
 
 
-def _feature_row(feature_id: str, feature_type: str, row: pd.Series, prominence: float | None, source: str, method: str) -> dict[str, Any]:
+def _feature_row(
+    feature_id: str,
+    feature_type: str,
+    row: pd.Series,
+    prominence: float | None,
+    source: str,
+    method: str,
+) -> dict[str, Any]:
     axis, unit = _feature_axis(row)
     density = row.get("processed_current_density_mA_cm-2")
     return {
@@ -515,8 +603,12 @@ def _feature_row(feature_id: str, feature_type: str, row: pd.Series, prominence:
         "feature_type": feature_type,
         "axis_value": axis,
         "axis_unit": unit,
-        "potential_V": float(row["potential_V"]) if "potential_V" in row.index and pd.notna(row.get("potential_V")) else np.nan,
-        "time_s": float(row["time_s"]) if "time_s" in row.index and pd.notna(row.get("time_s")) else np.nan,
+        "potential_V": float(row["potential_V"])
+        if "potential_V" in row.index and pd.notna(row.get("potential_V"))
+        else np.nan,
+        "time_s": float(row["time_s"])
+        if "time_s" in row.index and pd.notna(row.get("time_s"))
+        else np.nan,
         "current_mA": float(row["processed_current_mA"]),
         "current_density_mA_cm-2": float(density) if pd.notna(density) else np.nan,
         "prominence": float(prominence) if prominence is not None else np.nan,
@@ -527,14 +619,22 @@ def _feature_row(feature_id: str, feature_type: str, row: pd.Series, prominence:
     }
 
 
-def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], measurement_mode: str) -> pd.DataFrame:
+def _detect_features(
+    processed: pd.DataFrame, parameters: dict[str, Any], measurement_mode: str
+) -> pd.DataFrame:
     if measurement_mode == "eis":
         return _detect_eis_features(processed, parameters)
     current = processed["processed_current_mA"].to_numpy(dtype=float)
     rows: list[dict[str, Any]] = []
     feature_params = parameters.get("feature_detection", {})
-    source = str(feature_params.get("source") or "ea.electrochemistry.feature_detection:v0.2")
-    if feature_params.get("enabled", True) and measurement_mode in {"cv", "lsv", "unknown"} and len(current) >= 3:
+    source = str(
+        feature_params.get("source") or "ea.electrochemistry.feature_detection:v0.2"
+    )
+    if (
+        feature_params.get("enabled", True)
+        and measurement_mode in {"cv", "lsv", "unknown"}
+        and len(current) >= 3
+    ):
         prominence = feature_params.get("prominence", "auto")
         distance = feature_params.get("distance", "auto")
         max_features, _ = _coerce_int(feature_params.get("max_features"), 12, minimum=1)
@@ -542,8 +642,12 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], measur
             prominence = max(float(np.ptp(current)) * 0.08, 0.001)
         if distance == "auto":
             distance = max(len(current) // 120, 1)
-        positive, positive_props = find_peaks(current, prominence=prominence, distance=distance)
-        negative, negative_props = find_peaks(-current, prominence=prominence, distance=distance)
+        positive, positive_props = find_peaks(
+            current, prominence=prominence, distance=distance
+        )
+        negative, negative_props = find_peaks(
+            -current, prominence=prominence, distance=distance
+        )
         ranked: list[tuple[int, float, str]] = [
             (int(peak), float(positive_props["prominences"][index]), "anodic_peak")
             for index, peak in enumerate(positive)
@@ -554,16 +658,45 @@ def _detect_features(processed: pd.DataFrame, parameters: dict[str, Any], measur
         )
         ranked = sorted(ranked, key=lambda item: item[1], reverse=True)[:max_features]
         ranked.sort(key=lambda item: float(processed.iloc[item[0]]["axis_raw"]))
-        for index, (peak_index, feature_prominence, feature_type) in enumerate(ranked, start=1):
-            rows.append(_feature_row(f"ec-feature-{index:03d}", feature_type, processed.iloc[peak_index], feature_prominence, source, "scipy_find_peaks"))
+        for index, (peak_index, feature_prominence, feature_type) in enumerate(
+            ranked, start=1
+        ):
+            rows.append(
+                _feature_row(
+                    f"ec-feature-{index:03d}",
+                    feature_type,
+                    processed.iloc[peak_index],
+                    feature_prominence,
+                    source,
+                    "scipy_find_peaks",
+                )
+            )
     threshold_params = parameters.get("threshold_summary", {})
-    if threshold_params.get("enabled", True) and measurement_mode in {"lsv", "cv", "unknown"} and len(current) >= 3:
-        fraction, _ = _coerce_float(threshold_params.get("fraction"), 0.1, minimum=0.001, maximum=1.0)
+    if (
+        threshold_params.get("enabled", True)
+        and measurement_mode in {"lsv", "cv", "unknown"}
+        and len(current) >= 3
+    ):
+        fraction, _ = _coerce_float(
+            threshold_params.get("fraction"), 0.1, minimum=0.001, maximum=1.0
+        )
         threshold = float(np.nanmax(np.abs(current))) * fraction
         candidates = np.where(np.abs(current) >= threshold)[0]
         if candidates.size:
-            threshold_source = str(threshold_params.get("source") or "ea.electrochemistry.threshold_summary:v0.2")
-            rows.append(_feature_row("ec-threshold-001", "threshold_current", processed.iloc[int(candidates[0])], None, threshold_source, "absolute_current_fraction"))
+            threshold_source = str(
+                threshold_params.get("source")
+                or "ea.electrochemistry.threshold_summary:v0.2"
+            )
+            rows.append(
+                _feature_row(
+                    "ec-threshold-001",
+                    "threshold_current",
+                    processed.iloc[int(candidates[0])],
+                    None,
+                    threshold_source,
+                    "absolute_current_fraction",
+                )
+            )
     return pd.DataFrame(
         rows,
         columns=[
@@ -606,7 +739,9 @@ def _eis_feature_row(
         "z_imag_ohm": float(row["z_imag_ohm"]),
         "neg_z_imag_ohm": float(row["neg_z_imag_ohm"]),
         "impedance_magnitude_ohm": float(row["impedance_magnitude_ohm"]),
-        "screening_resistance_ohm": float(screening_resistance_ohm) if screening_resistance_ohm is not None else np.nan,
+        "screening_resistance_ohm": float(screening_resistance_ohm)
+        if screening_resistance_ohm is not None
+        else np.nan,
         "method": "nyquist_screening",
         "assignment_confidence": "low",
         "assignment_source": source,
@@ -614,9 +749,13 @@ def _eis_feature_row(
     }
 
 
-def _detect_eis_features(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
+def _detect_eis_features(
+    processed: pd.DataFrame, parameters: dict[str, Any]
+) -> pd.DataFrame:
     summary_params = parameters.get("eis_summary", {})
-    source = str(summary_params.get("source") or "ea.electrochemistry.eis_nyquist_screening:v0.2")
+    source = str(
+        summary_params.get("source") or "ea.electrochemistry.eis_nyquist_screening:v0.2"
+    )
     if not summary_params.get("enabled", True) or processed.empty:
         return pd.DataFrame(columns=_eis_feature_columns())
     z_real = processed["z_real_ohm"].to_numpy(dtype=float)
@@ -626,9 +765,25 @@ def _detect_eis_features(processed: pd.DataFrame, parameters: dict[str, Any]) ->
     apex_index = int(np.nanargmax(neg_imag))
     span = float(z_real[max_index] - z_real[min_index])
     rows = [
-        _eis_feature_row("eis-rs-001", "high_frequency_intercept_screening", processed.iloc[min_index], source),
-        _eis_feature_row("eis-apex-001", "nyquist_arc_apex_screening", processed.iloc[apex_index], source),
-        _eis_feature_row("eis-span-001", "real_axis_span_screening", processed.iloc[max_index], source, screening_resistance_ohm=span),
+        _eis_feature_row(
+            "eis-rs-001",
+            "high_frequency_intercept_screening",
+            processed.iloc[min_index],
+            source,
+        ),
+        _eis_feature_row(
+            "eis-apex-001",
+            "nyquist_arc_apex_screening",
+            processed.iloc[apex_index],
+            source,
+        ),
+        _eis_feature_row(
+            "eis-span-001",
+            "real_axis_span_screening",
+            processed.iloc[max_index],
+            source,
+            screening_resistance_ohm=span,
+        ),
     ]
     return pd.DataFrame(rows, columns=_eis_feature_columns())
 
@@ -676,7 +831,9 @@ def _has_correction_payload(value: Any) -> bool:
     return True
 
 
-def _correction_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+def _correction_section(
+    params: dict[str, Any], name: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     value = params.get(name, {})
     if isinstance(value, dict):
         return deepcopy(value), None
@@ -691,7 +848,9 @@ def _correction_section(params: dict[str, Any], name: str) -> tuple[dict[str, An
     )
 
 
-def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
+def _correction_notes(
+    params: dict[str, Any],
+) -> tuple[list[Any], dict[str, Any] | None]:
     notes = params.get("correction_notes", [])
     if isinstance(notes, list):
         return deepcopy(notes), None
@@ -709,7 +868,9 @@ def _correction_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
     )
 
 
-def _record_correction(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _record_correction(
+    parameters: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("correction_record", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
@@ -724,7 +885,9 @@ def _record_correction(parameters: dict[str, Any]) -> tuple[dict[str, Any] | Non
     if notes_warning:
         warnings.append(notes_warning)
 
-    reviewed_fields = [name for name, section in sections.items() if _has_correction_payload(section)]
+    reviewed_fields = [
+        name for name, section in sections.items() if _has_correction_payload(section)
+    ]
     if _has_correction_payload(notes):
         reviewed_fields.append("correction_notes")
     has_reviewed_context = bool(reviewed_fields)
@@ -740,7 +903,9 @@ def _record_correction(parameters: dict[str, Any]) -> tuple[dict[str, Any] | Non
     return (
         {
             "enabled": True,
-            "status": "reviewed_correction_recorded" if has_reviewed_context else "enabled_without_reviewed_correction",
+            "status": "reviewed_correction_recorded"
+            if has_reviewed_context
+            else "enabled_without_reviewed_correction",
             "method": str(params.get("method") or "reviewed_metadata_record"),
             "assignment_source": source,
             "confidence": "low" if has_reviewed_context else "insufficient",
@@ -754,10 +919,21 @@ def _record_correction(parameters: dict[str, Any]) -> tuple[dict[str, Any] | Non
     )
 
 
-def _append_correction_interpretation(analysis: dict[str, Any], correction_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_correction_interpretation(
+    analysis: dict[str, Any], correction_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["correction_record"] = correction_record
-    if correction_record and correction_record.get("status") == "reviewed_correction_recorded":
-        fields = ", ".join(str(value) for value in correction_record.get("reviewed_correction_fields", [])) or "correction record"
+    if (
+        correction_record
+        and correction_record.get("status") == "reviewed_correction_recorded"
+    ):
+        fields = (
+            ", ".join(
+                str(value)
+                for value in correction_record.get("reviewed_correction_fields", [])
+            )
+            or "correction record"
+        )
         analysis.setdefault("possible_interpretations", []).append(
             {
                 "text": (
@@ -766,13 +942,17 @@ def _append_correction_interpretation(analysis: dict[str, Any], correction_recor
                 ),
                 "confidence": correction_record.get("confidence", "low"),
                 "evidence": ["correction_record"],
-                "assignment_source": correction_record.get("assignment_source", "ea.electrochemistry.correction_record:v0.2"),
+                "assignment_source": correction_record.get(
+                    "assignment_source", "ea.electrochemistry.correction_record:v0.2"
+                ),
             }
         )
     return analysis
 
 
-def _conversion_mapping(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+def _conversion_mapping(
+    params: dict[str, Any], name: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     value = params.get(name, {})
     if isinstance(value, dict):
         return deepcopy(value), None
@@ -787,7 +967,9 @@ def _conversion_mapping(params: dict[str, Any], name: str) -> tuple[dict[str, An
     )
 
 
-def _conversion_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+def _conversion_list(
+    params: dict[str, Any], name: str
+) -> tuple[list[Any], dict[str, Any] | None]:
     value = params.get(name, [])
     if isinstance(value, list):
         return deepcopy(value), None
@@ -824,13 +1006,15 @@ def _apply_potential_conversion(
 
     converted = processed.copy()
     warnings: list[dict[str, Any]] = []
-    source = str(params.get("source") or "ea.electrochemistry.potential_conversion:v0.2")
+    source = str(
+        params.get("source") or "ea.electrochemistry.potential_conversion:v0.2"
+    )
     method = str(params.get("method") or "reviewed_offset_conversion")
     if method != "reviewed_offset_conversion":
         warnings.append(
             _warning(
                 "electrochemistry_potential_conversion_method_unsupported",
-                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.7 workflow.",
+                "Only reviewed_offset_conversion is supported for electrochemistry potential conversion in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -846,7 +1030,9 @@ def _apply_potential_conversion(
                 severity="medium",
             )
         )
-    input_scale = str(params.get("input_scale") or params.get("source_scale") or "").strip()
+    input_scale = str(
+        params.get("input_scale") or params.get("source_scale") or ""
+    ).strip()
     target_scale = str(params.get("target_scale") or "").strip()
     if not input_scale:
         warnings.append(
@@ -865,7 +1051,9 @@ def _apply_potential_conversion(
             )
         )
 
-    reference_electrode, reference_warning = _conversion_mapping(params, "reference_electrode")
+    reference_electrode, reference_warning = _conversion_mapping(
+        params, "reference_electrode"
+    )
     if reference_warning:
         warnings.append(reference_warning)
     reference_ids, reference_ids_warning = _conversion_list(params, "reference_ids")
@@ -911,11 +1099,26 @@ def _apply_potential_conversion(
             )
         )
     else:
-        converted[output_column] = converted[input_column].to_numpy(dtype=float) + offset
+        converted[output_column] = (
+            converted[input_column].to_numpy(dtype=float) + offset
+        )
         applied = True
 
-    status = "reviewed_potential_conversion_applied" if applied else "enabled_without_potential_conversion"
-    confidence = str(params.get("confidence") or ("medium" if applied and input_scale and target_scale else "low" if applied else "insufficient"))
+    status = (
+        "reviewed_potential_conversion_applied"
+        if applied
+        else "enabled_without_potential_conversion"
+    )
+    confidence = str(
+        params.get("confidence")
+        or (
+            "medium"
+            if applied and input_scale and target_scale
+            else "low"
+            if applied
+            else "insufficient"
+        )
+    )
     record = {
         "enabled": True,
         "status": status,
@@ -941,11 +1144,15 @@ def _apply_potential_conversion(
     return converted, record, warnings
 
 
-def _append_potential_conversion_interpretation(analysis: dict[str, Any], conversion_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_potential_conversion_interpretation(
+    analysis: dict[str, Any], conversion_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["potential_conversion"] = conversion_record
     if conversion_record and conversion_record.get("applied_to_processed_data"):
         target_scale = conversion_record.get("target_scale") or "converted scale"
-        output_column = conversion_record.get("output_column") or "converted potential column"
+        output_column = (
+            conversion_record.get("output_column") or "converted potential column"
+        )
         analysis.setdefault("possible_interpretations", []).append(
             {
                 "text": (
@@ -954,13 +1161,17 @@ def _append_potential_conversion_interpretation(analysis: dict[str, Any], conver
                 ),
                 "confidence": conversion_record.get("confidence", "low"),
                 "evidence": ["potential_conversion"],
-                "assignment_source": conversion_record.get("assignment_source", "ea.electrochemistry.potential_conversion:v0.2"),
+                "assignment_source": conversion_record.get(
+                    "assignment_source", "ea.electrochemistry.potential_conversion:v0.2"
+                ),
             }
         )
     return analysis
 
 
-def _ir_correction_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+def _ir_correction_list(
+    params: dict[str, Any], name: str
+) -> tuple[list[Any], dict[str, Any] | None]:
     value = params.get(name, [])
     if isinstance(value, list):
         return deepcopy(value), None
@@ -981,7 +1192,9 @@ def _ir_correction_list(params: dict[str, Any], name: str) -> tuple[list[Any], d
     )
 
 
-def _required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+def _required_float(
+    value: Any, name: str
+) -> tuple[float | None, dict[str, Any] | None]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -1007,7 +1220,9 @@ def _required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any]
     return coerced, None
 
 
-def _current_series_to_a(series: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+def _current_series_to_a(
+    series: pd.Series, unit: str
+) -> tuple[np.ndarray, dict[str, Any] | None]:
     values = series.to_numpy(dtype=float)
     normalized = unit.strip()
     if normalized == "A":
@@ -1027,11 +1242,17 @@ def _current_series_to_a(series: pd.Series, unit: str) -> tuple[np.ndarray, dict
     )
 
 
-def _available_potential_input_column(processed: pd.DataFrame, params: dict[str, Any], potential_conversion_record: dict[str, Any] | None) -> str | None:
+def _available_potential_input_column(
+    processed: pd.DataFrame,
+    params: dict[str, Any],
+    potential_conversion_record: dict[str, Any] | None,
+) -> str | None:
     requested = str(params.get("potential_input_column") or "").strip()
     if requested:
         return requested if requested in processed.columns else None
-    if potential_conversion_record and potential_conversion_record.get("applied_to_processed_data"):
+    if potential_conversion_record and potential_conversion_record.get(
+        "applied_to_processed_data"
+    ):
         candidate = potential_conversion_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             return candidate
@@ -1063,7 +1284,7 @@ def _apply_ir_drop_correction(
         warnings.append(
             _warning(
                 "electrochemistry_ir_drop_correction_method_unsupported",
-                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.7 workflow.",
+                "Only reviewed_ir_drop_correction is supported for iR drop correction in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1083,7 +1304,9 @@ def _apply_ir_drop_correction(
             )
         )
         ru_ohm = None
-    fraction, fraction_adjusted = _coerce_float(params.get("compensation_fraction"), 1.0, minimum=0.0, maximum=1.0)
+    fraction, fraction_adjusted = _coerce_float(
+        params.get("compensation_fraction"), 1.0, minimum=0.0, maximum=1.0
+    )
     if fraction_adjusted:
         warnings.append(
             _warning(
@@ -1105,15 +1328,27 @@ def _apply_ir_drop_correction(
         )
         sign_convention = "subtract_i_ru"
 
-    potential_input_column = _available_potential_input_column(corrected, params, potential_conversion_record)
+    potential_input_column = _available_potential_input_column(
+        corrected, params, potential_conversion_record
+    )
     requested_potential_input = str(params.get("potential_input_column") or "").strip()
-    current_input_column = str(params.get("current_input_column") or "processed_current_mA").strip() or "processed_current_mA"
+    current_input_column = (
+        str(params.get("current_input_column") or "processed_current_mA").strip()
+        or "processed_current_mA"
+    )
     current_unit = str(params.get("current_unit") or "mA")
     output_column = _ir_output_column_name(params, "output_column")
     drop_column = _ir_output_column_name(params, "drop_column")
-    for column_name, label in [(output_column, "output_column"), (drop_column, "drop_column")]:
+    for column_name, label in [
+        (output_column, "output_column"),
+        (drop_column, "drop_column"),
+    ]:
         if column_name in corrected.columns:
-            adjusted = f"{column_name}_ir_corrected" if label == "output_column" else f"{column_name}_calculated"
+            adjusted = (
+                f"{column_name}_ir_corrected"
+                if label == "output_column"
+                else f"{column_name}_calculated"
+            )
             warnings.append(
                 _warning(
                     "electrochemistry_ir_drop_correction_output_column_adjusted",
@@ -1167,7 +1402,9 @@ def _apply_ir_drop_correction(
             )
         )
     elif ru_ohm is not None:
-        current_a, current_warning = _current_series_to_a(corrected[current_input_column], current_unit)
+        current_a, current_warning = _current_series_to_a(
+            corrected[current_input_column], current_unit
+        )
         if current_warning:
             warnings.append(current_warning)
         potential = corrected[potential_input_column].to_numpy(dtype=float)
@@ -1181,20 +1418,33 @@ def _apply_ir_drop_correction(
         applied = True
         if potential_input_column == "potential_V":
             potential_offset = 0.0
-        elif potential_conversion_record and potential_input_column == potential_conversion_record.get("output_column"):
+        elif (
+            potential_conversion_record
+            and potential_input_column
+            == potential_conversion_record.get("output_column")
+        ):
             potential_offset = float(potential_conversion_record.get("offset_V") or 0.0)
 
-    status = "reviewed_ir_drop_correction_applied" if applied else "enabled_without_ir_drop_correction"
+    status = (
+        "reviewed_ir_drop_correction_applied"
+        if applied
+        else "enabled_without_ir_drop_correction"
+    )
     record = {
         "enabled": True,
         "status": status,
         "method": method,
         "assignment_source": source,
-        "confidence": str(params.get("confidence") or ("medium" if applied else "insufficient")),
+        "confidence": str(
+            params.get("confidence") or ("medium" if applied else "insufficient")
+        ),
         "ru_ohm": ru_ohm,
         "compensation_fraction": fraction,
         "sign_convention": sign_convention,
-        "formula": str(params.get("formula") or "E_corrected = E_input - I_A * Ru_ohm * compensation_fraction"),
+        "formula": str(
+            params.get("formula")
+            or "E_corrected = E_input - I_A * Ru_ohm * compensation_fraction"
+        ),
         "potential_input_column": potential_input_column,
         "current_input_column": current_input_column,
         "current_unit": current_unit,
@@ -1213,10 +1463,14 @@ def _apply_ir_drop_correction(
     return corrected, record, warnings
 
 
-def _append_ir_drop_correction_interpretation(analysis: dict[str, Any], ir_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_ir_drop_correction_interpretation(
+    analysis: dict[str, Any], ir_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["ir_drop_correction"] = ir_record
     if ir_record and ir_record.get("applied_to_processed_data"):
-        output_column = ir_record.get("output_column") or "iR-corrected potential column"
+        output_column = (
+            ir_record.get("output_column") or "iR-corrected potential column"
+        )
         analysis.setdefault("possible_interpretations", []).append(
             {
                 "text": (
@@ -1225,13 +1479,17 @@ def _append_ir_drop_correction_interpretation(analysis: dict[str, Any], ir_recor
                 ),
                 "confidence": ir_record.get("confidence", "low"),
                 "evidence": ["ir_drop_correction"],
-                "assignment_source": ir_record.get("assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2"),
+                "assignment_source": ir_record.get(
+                    "assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2"
+                ),
             }
         )
     return analysis
 
 
-def _tafel_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+def _tafel_list(
+    params: dict[str, Any], name: str
+) -> tuple[list[Any], dict[str, Any] | None]:
     value = params.get(name, [])
     if isinstance(value, list):
         return deepcopy(value), None
@@ -1252,7 +1510,9 @@ def _tafel_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str,
     )
 
 
-def _tafel_required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+def _tafel_required_float(
+    value: Any, name: str
+) -> tuple[float | None, dict[str, Any] | None]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -1285,7 +1545,9 @@ def _mapping_first_present(mapping: dict[str, Any], keys: tuple[str, ...]) -> An
     return None
 
 
-def _tafel_fit_window(params: dict[str, Any]) -> tuple[tuple[float | None, float | None], list[dict[str, Any]]]:
+def _tafel_fit_window(
+    params: dict[str, Any],
+) -> tuple[tuple[float | None, float | None], list[dict[str, Any]]]:
     window = params.get("fit_window_V") or params.get("kinetic_window_V") or {}
     warnings: list[dict[str, Any]] = []
     if not isinstance(window, dict):
@@ -1297,8 +1559,14 @@ def _tafel_fit_window(params: dict[str, Any]) -> tuple[tuple[float | None, float
             )
         )
         return (None, None), warnings
-    lower, lower_warning = _tafel_required_float(_mapping_first_present(window, ("min", "lower", "start", "from")), "fit_window_V.min")
-    upper, upper_warning = _tafel_required_float(_mapping_first_present(window, ("max", "upper", "end", "to")), "fit_window_V.max")
+    lower, lower_warning = _tafel_required_float(
+        _mapping_first_present(window, ("min", "lower", "start", "from")),
+        "fit_window_V.min",
+    )
+    upper, upper_warning = _tafel_required_float(
+        _mapping_first_present(window, ("max", "upper", "end", "to")),
+        "fit_window_V.max",
+    )
     for warning in (lower_warning, upper_warning):
         if warning:
             warnings.append(warning)
@@ -1316,24 +1584,32 @@ def _tafel_potential_column(
     requested = str(params.get("potential_input_column") or "").strip()
     if requested:
         return requested if requested in processed.columns else None
-    if ir_drop_correction_record and ir_drop_correction_record.get("applied_to_processed_data"):
+    if ir_drop_correction_record and ir_drop_correction_record.get(
+        "applied_to_processed_data"
+    ):
         candidate = ir_drop_correction_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             return candidate
-    if potential_conversion_record and potential_conversion_record.get("applied_to_processed_data"):
+    if potential_conversion_record and potential_conversion_record.get(
+        "applied_to_processed_data"
+    ):
         candidate = potential_conversion_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             return candidate
     return "potential_V" if "potential_V" in processed.columns else None
 
 
-def _tafel_current_column(processed: pd.DataFrame, params: dict[str, Any]) -> str | None:
+def _tafel_current_column(
+    processed: pd.DataFrame, params: dict[str, Any]
+) -> str | None:
     requested = str(params.get("current_input_column") or "").strip()
     if requested:
         return requested if requested in processed.columns else None
     if "processed_current_density_mA_cm-2" in processed.columns:
         return "processed_current_density_mA_cm-2"
-    return "processed_current_mA" if "processed_current_mA" in processed.columns else None
+    return (
+        "processed_current_mA" if "processed_current_mA" in processed.columns else None
+    )
 
 
 def _tafel_current_unit(params: dict[str, Any], current_column: str | None) -> str:
@@ -1356,7 +1632,13 @@ def _tafel_log_column_name(params: dict[str, Any], current_column: str | None) -
     return "tafel_log10_abs_current"
 
 
-def _unique_processed_column(processed: pd.DataFrame, requested: str, suffix: str, warnings: list[dict[str, Any]], code: str) -> str:
+def _unique_processed_column(
+    processed: pd.DataFrame,
+    requested: str,
+    suffix: str,
+    warnings: list[dict[str, Any]],
+    code: str,
+) -> str:
     column = requested.strip() or suffix
     if column not in processed.columns:
         return column
@@ -1396,7 +1678,7 @@ def _apply_tafel_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_tafel_analysis_method_unsupported",
-                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.7 workflow.",
+                "Only reviewed_tafel_linear_fit is supported for Tafel analysis in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1405,7 +1687,9 @@ def _apply_tafel_analysis(
 
     fit_window, window_warnings = _tafel_fit_window(params)
     warnings.extend(window_warnings)
-    potential_column = _tafel_potential_column(analyzed, params, potential_conversion_record, ir_drop_correction_record)
+    potential_column = _tafel_potential_column(
+        analyzed, params, potential_conversion_record, ir_drop_correction_record
+    )
     current_column = _tafel_current_column(analyzed, params)
     current_unit = _tafel_current_unit(params, current_column)
     log_column = _unique_processed_column(
@@ -1443,7 +1727,9 @@ def _apply_tafel_analysis(
     overpotential_reference: float | None = None
     overpotential_reference_raw = params.get("overpotential_reference_V")
     if overpotential_reference_raw not in (None, ""):
-        overpotential_reference, overpotential_warning = _tafel_required_float(overpotential_reference_raw, "overpotential_reference_V")
+        overpotential_reference, overpotential_warning = _tafel_required_float(
+            overpotential_reference_raw, "overpotential_reference_V"
+        )
         if overpotential_warning:
             warnings.append(overpotential_warning)
 
@@ -1464,7 +1750,9 @@ def _apply_tafel_analysis(
                 "electrochemistry_tafel_analysis_no_potential_column",
                 "Tafel analysis was enabled but no reviewed potential input column was available in the processed electrochemistry table.",
                 severity="medium",
-                requested_potential_input_column=str(params.get("potential_input_column") or "auto"),
+                requested_potential_input_column=str(
+                    params.get("potential_input_column") or "auto"
+                ),
             )
         )
     elif current_column is None:
@@ -1473,14 +1761,18 @@ def _apply_tafel_analysis(
                 "electrochemistry_tafel_analysis_no_current_column",
                 "Tafel analysis was enabled but no reviewed current/current-density input column was available in the processed electrochemistry table.",
                 severity="medium",
-                requested_current_input_column=str(params.get("current_input_column") or "auto"),
+                requested_current_input_column=str(
+                    params.get("current_input_column") or "auto"
+                ),
             )
         )
     else:
         potential = analyzed[potential_column].to_numpy(dtype=float)
         current = analyzed[current_column].to_numpy(dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
-            log_current = np.where(np.abs(current) > 0, np.log10(np.abs(current)), np.nan)
+            log_current = np.where(
+                np.abs(current) > 0, np.log10(np.abs(current)), np.nan
+            )
         analyzed[log_column] = log_current
         if overpotential_reference is not None:
             analyzed[overpotential_column] = potential - overpotential_reference
@@ -1514,7 +1806,9 @@ def _apply_tafel_analysis(
                 x = log_current[in_window]
                 y = potential[in_window]
                 log_span = float(np.nanmax(x) - np.nanmin(x))
-                min_log_span, _ = _coerce_float(params.get("minimum_log_span_decades"), 0.2, minimum=0.0)
+                min_log_span, _ = _coerce_float(
+                    params.get("minimum_log_span_decades"), 0.2, minimum=0.0
+                )
                 if log_span < min_log_span:
                     warnings.append(
                         _warning(
@@ -1542,25 +1836,33 @@ def _apply_tafel_analysis(
                     "potential_max_V": float(np.nanmax(y)),
                     "tafel_slope_V_decade": float(slope_v_decade),
                     "tafel_slope_mV_decade": float(slope_v_decade * 1000.0),
-                    "absolute_tafel_slope_mV_decade": float(abs(slope_v_decade * 1000.0)),
+                    "absolute_tafel_slope_mV_decade": float(
+                        abs(slope_v_decade * 1000.0)
+                    ),
                     "intercept_V": float(intercept_v),
                     "r_squared": float(r_squared),
                 }
                 fit_applied = True
 
-    status = "reviewed_tafel_fit_applied" if fit_applied else "enabled_without_tafel_fit"
+    status = (
+        "reviewed_tafel_fit_applied" if fit_applied else "enabled_without_tafel_fit"
+    )
     record = {
         "enabled": True,
         "status": status,
         "method": method,
         "assignment_source": source,
-        "confidence": str(params.get("confidence") or ("medium" if fit_applied else "insufficient")),
+        "confidence": str(
+            params.get("confidence") or ("medium" if fit_applied else "insufficient")
+        ),
         "potential_input_column": potential_column,
         "current_input_column": current_column,
         "current_unit": current_unit,
         "current_input_is_density": bool(current_unit and "cm" in current_unit),
         "fit_window_V": {"min": fit_window[0], "max": fit_window[1]},
-        "log_current_column": log_column if current_column is not None and measurement_mode != "eis" else None,
+        "log_current_column": log_column
+        if current_column is not None and measurement_mode != "eis"
+        else None,
         "fit_potential_column": fit_column if fit_applied else None,
         "overpotential_reference_V": overpotential_reference,
         "overpotential_column": overpotential_column if overpotential_applied else None,
@@ -1578,7 +1880,9 @@ def _apply_tafel_analysis(
     return analyzed, record, warnings
 
 
-def _append_tafel_analysis_interpretation(analysis: dict[str, Any], tafel_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_tafel_analysis_interpretation(
+    analysis: dict[str, Any], tafel_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["tafel_analysis"] = tafel_record
     if tafel_record and tafel_record.get("status") == "reviewed_tafel_fit_applied":
         stats = tafel_record.get("fit_statistics") or {}
@@ -1593,13 +1897,17 @@ def _append_tafel_analysis_interpretation(analysis: dict[str, Any], tafel_record
                 ),
                 "confidence": tafel_record.get("confidence", "low"),
                 "evidence": ["tafel_analysis"],
-                "assignment_source": tafel_record.get("assignment_source", "ea.electrochemistry.tafel_analysis:v0.2"),
+                "assignment_source": tafel_record.get(
+                    "assignment_source", "ea.electrochemistry.tafel_analysis:v0.2"
+                ),
             }
         )
     return analysis
 
 
-def _gcd_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+def _gcd_list(
+    params: dict[str, Any], name: str
+) -> tuple[list[Any], dict[str, Any] | None]:
     value = params.get(name, [])
     if isinstance(value, list):
         return deepcopy(value), None
@@ -1620,7 +1928,9 @@ def _gcd_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, A
     )
 
 
-def _gcd_required_float(value: Any, name: str) -> tuple[float | None, dict[str, Any] | None]:
+def _gcd_required_float(
+    value: Any, name: str
+) -> tuple[float | None, dict[str, Any] | None]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -1664,8 +1974,12 @@ def _gcd_window(
             )
         )
         return (None, None), warnings
-    lower, lower_warning = _gcd_required_float(_mapping_first_present(window, lower_keys), f"{field}.lower")
-    upper, upper_warning = _gcd_required_float(_mapping_first_present(window, upper_keys), f"{field}.upper")
+    lower, lower_warning = _gcd_required_float(
+        _mapping_first_present(window, lower_keys), f"{field}.lower"
+    )
+    upper, upper_warning = _gcd_required_float(
+        _mapping_first_present(window, upper_keys), f"{field}.upper"
+    )
     for warning in (lower_warning, upper_warning):
         if warning:
             warnings.append(warning)
@@ -1674,7 +1988,9 @@ def _gcd_window(
     return (lower, upper), warnings
 
 
-def _gcd_voltage_to_v(series: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+def _gcd_voltage_to_v(
+    series: pd.Series, unit: str
+) -> tuple[np.ndarray, dict[str, Any] | None]:
     values = series.to_numpy(dtype=float)
     normalized = unit.strip()
     if normalized == "V":
@@ -1692,7 +2008,9 @@ def _gcd_voltage_to_v(series: pd.Series, unit: str) -> tuple[np.ndarray, dict[st
     )
 
 
-def _gcd_input_column(processed: pd.DataFrame, params: dict[str, Any], field: str, fallback: str) -> str | None:
+def _gcd_input_column(
+    processed: pd.DataFrame, params: dict[str, Any], field: str, fallback: str
+) -> str | None:
     requested = str(params.get(field) or "").strip()
     if requested:
         return requested if requested in processed.columns else None
@@ -1715,11 +2033,20 @@ def _gcd_normalization_metrics(
     if params.get("area_cm2") not in (None, ""):
         area_cm2, area_warning = _gcd_required_float(params.get("area_cm2"), "area_cm2")
     if params.get("active_material_loading_mg_cm2") not in (None, ""):
-        loading_mg_cm2, loading_warning = _gcd_required_float(params.get("active_material_loading_mg_cm2"), "active_material_loading_mg_cm2")
+        loading_mg_cm2, loading_warning = _gcd_required_float(
+            params.get("active_material_loading_mg_cm2"),
+            "active_material_loading_mg_cm2",
+        )
     for warning in (mass_warning, area_warning, loading_warning):
         if warning:
             warnings.append(warning)
-    if (mass_mg is None or mass_mg <= 0) and area_cm2 and area_cm2 > 0 and loading_mg_cm2 and loading_mg_cm2 > 0:
+    if (
+        (mass_mg is None or mass_mg <= 0)
+        and area_cm2
+        and area_cm2 > 0
+        and loading_mg_cm2
+        and loading_mg_cm2 > 0
+    ):
         mass_mg = area_cm2 * loading_mg_cm2
     metrics: dict[str, Any] = {
         "mass_mg": mass_mg,
@@ -1772,7 +2099,7 @@ def _apply_gcd_analysis(
         warnings.append(
             _warning(
                 "electrochemistry_gcd_analysis_method_unsupported",
-                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.7 workflow.",
+                "Only reviewed_gcd_discharge_metrics is supported for GCD analysis in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -1780,7 +2107,9 @@ def _apply_gcd_analysis(
         method = "reviewed_gcd_discharge_metrics"
 
     time_column = _gcd_input_column(analyzed, params, "time_input_column", "time_s")
-    voltage_column = _gcd_input_column(analyzed, params, "voltage_input_column", "current_raw")
+    voltage_column = _gcd_input_column(
+        analyzed, params, "voltage_input_column", "current_raw"
+    )
     voltage_unit = str(params.get("voltage_unit") or "V")
     voltage_output_column = _unique_processed_column(
         analyzed,
@@ -1796,11 +2125,23 @@ def _apply_gcd_analysis(
         warnings,
         "electrochemistry_gcd_analysis_segment_column_adjusted",
     )
-    time_window, time_warnings = _gcd_window(params, "discharge_time_window_s", ("start", "min", "lower", "from"), ("end", "max", "upper", "to"))
-    voltage_window, voltage_warnings = _gcd_window(params, "voltage_window_V", ("min", "lower", "start", "from"), ("max", "upper", "end", "to"))
+    time_window, time_warnings = _gcd_window(
+        params,
+        "discharge_time_window_s",
+        ("start", "min", "lower", "from"),
+        ("end", "max", "upper", "to"),
+    )
+    voltage_window, voltage_warnings = _gcd_window(
+        params,
+        "voltage_window_V",
+        ("min", "lower", "start", "from"),
+        ("max", "upper", "end", "to"),
+    )
     warnings.extend(time_warnings)
     warnings.extend(voltage_warnings)
-    discharge_current_mA, current_warning = _gcd_required_float(params.get("discharge_current_mA"), "discharge_current_mA")
+    discharge_current_mA, current_warning = _gcd_required_float(
+        params.get("discharge_current_mA"), "discharge_current_mA"
+    )
     if current_warning:
         warnings.append(current_warning)
     if discharge_current_mA is not None and discharge_current_mA < 0:
@@ -1840,7 +2181,9 @@ def _apply_gcd_analysis(
                 "electrochemistry_gcd_analysis_no_time_column",
                 "GCD analysis was enabled but no reviewed time input column was available.",
                 severity="medium",
-                requested_time_input_column=str(params.get("time_input_column") or "time_s"),
+                requested_time_input_column=str(
+                    params.get("time_input_column") or "time_s"
+                ),
             )
         )
     elif voltage_column is None:
@@ -1849,7 +2192,9 @@ def _apply_gcd_analysis(
                 "electrochemistry_gcd_analysis_no_voltage_column",
                 "GCD analysis was enabled but no reviewed voltage signal column was available.",
                 severity="medium",
-                requested_voltage_input_column=str(params.get("voltage_input_column") or "current_raw"),
+                requested_voltage_input_column=str(
+                    params.get("voltage_input_column") or "current_raw"
+                ),
             )
         )
     elif discharge_current_mA is None:
@@ -1862,14 +2207,21 @@ def _apply_gcd_analysis(
         )
     else:
         time_values = analyzed[time_column].to_numpy(dtype=float)
-        voltage_values, voltage_warning = _gcd_voltage_to_v(analyzed[voltage_column], voltage_unit)
+        voltage_values, voltage_warning = _gcd_voltage_to_v(
+            analyzed[voltage_column], voltage_unit
+        )
         if voltage_warning:
             warnings.append(voltage_warning)
         analyzed[voltage_output_column] = voltage_values
         analyzed[segment_column] = False
         time_start, time_end = time_window
         voltage_min, voltage_max = voltage_window
-        if time_start is None or time_end is None or voltage_min is None or voltage_max is None:
+        if (
+            time_start is None
+            or time_end is None
+            or voltage_min is None
+            or voltage_max is None
+        ):
             warnings.append(
                 _warning(
                     "electrochemistry_gcd_analysis_window_missing",
@@ -1879,7 +2231,13 @@ def _apply_gcd_analysis(
             )
         else:
             finite = np.isfinite(time_values) & np.isfinite(voltage_values)
-            in_window = finite & (time_values >= time_start) & (time_values <= time_end) & (voltage_values >= voltage_min) & (voltage_values <= voltage_max)
+            in_window = (
+                finite
+                & (time_values >= time_start)
+                & (time_values <= time_end)
+                & (voltage_values >= voltage_min)
+                & (voltage_values <= voltage_max)
+            )
             minimum_points, _ = _coerce_int(params.get("minimum_points"), 3, minimum=2)
             point_count = int(np.count_nonzero(in_window))
             if point_count < minimum_points:
@@ -1894,7 +2252,9 @@ def _apply_gcd_analysis(
                 )
             else:
                 analyzed.loc[in_window, segment_column] = True
-                selected = analyzed.loc[in_window, [time_column, voltage_output_column]].copy()
+                selected = analyzed.loc[
+                    in_window, [time_column, voltage_output_column]
+                ].copy()
                 selected = selected.sort_values(time_column)
                 selected_time = selected[time_column].to_numpy(dtype=float)
                 selected_voltage = selected[voltage_output_column].to_numpy(dtype=float)
@@ -1928,25 +2288,44 @@ def _apply_gcd_analysis(
                         "capacity_mAh": capacity_mAh,
                         "capacitance_F": capacitance_f,
                     }
-                    metrics.update(_gcd_normalization_metrics(charge_c=charge_c, capacity_mAh=capacity_mAh, capacitance_f=capacitance_f, params=params, warnings=warnings))
+                    metrics.update(
+                        _gcd_normalization_metrics(
+                            charge_c=charge_c,
+                            capacity_mAh=capacity_mAh,
+                            capacitance_f=capacitance_f,
+                            params=params,
+                            warnings=warnings,
+                        )
+                    )
                     applied = True
 
-    status = "reviewed_gcd_metrics_applied" if applied else "enabled_without_gcd_metrics"
+    status = (
+        "reviewed_gcd_metrics_applied" if applied else "enabled_without_gcd_metrics"
+    )
     record = {
         "enabled": True,
         "status": status,
         "method": method,
         "assignment_source": source,
-        "confidence": str(params.get("confidence") or ("medium" if applied else "insufficient")),
+        "confidence": str(
+            params.get("confidence") or ("medium" if applied else "insufficient")
+        ),
         "time_input_column": time_column,
         "voltage_input_column": voltage_column,
         "voltage_unit": voltage_unit,
-        "voltage_output_column": voltage_output_column if measurement_mode == "gcd" and voltage_column is not None else None,
-        "segment_column": segment_column if measurement_mode == "gcd" and voltage_column is not None else None,
+        "voltage_output_column": voltage_output_column
+        if measurement_mode == "gcd" and voltage_column is not None
+        else None,
+        "segment_column": segment_column
+        if measurement_mode == "gcd" and voltage_column is not None
+        else None,
         "discharge_time_window_s": {"start": time_window[0], "end": time_window[1]},
         "voltage_window_V": {"min": voltage_window[0], "max": voltage_window[1]},
         "discharge_current_mA": discharge_current_mA,
-        "current_sign_convention": str(params.get("current_sign_convention") or "reviewed_discharge_current_magnitude"),
+        "current_sign_convention": str(
+            params.get("current_sign_convention")
+            or "reviewed_discharge_current_magnitude"
+        ),
         "metrics": metrics,
         "applied_to_processed_data": applied,
         "applied_to_plot_axis": applied,
@@ -1960,7 +2339,9 @@ def _apply_gcd_analysis(
     return analyzed, record, warnings
 
 
-def _append_gcd_analysis_interpretation(analysis: dict[str, Any], gcd_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_gcd_analysis_interpretation(
+    analysis: dict[str, Any], gcd_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["gcd_analysis"] = gcd_record
     if gcd_record and gcd_record.get("status") == "reviewed_gcd_metrics_applied":
         metrics = gcd_record.get("metrics") or {}
@@ -1973,7 +2354,9 @@ def _append_gcd_analysis_interpretation(analysis: dict[str, Any], gcd_record: di
                 ),
                 "confidence": gcd_record.get("confidence", "low"),
                 "evidence": ["gcd_analysis"],
-                "assignment_source": gcd_record.get("assignment_source", "ea.electrochemistry.gcd_analysis:v0.2"),
+                "assignment_source": gcd_record.get(
+                    "assignment_source", "ea.electrochemistry.gcd_analysis:v0.2"
+                ),
             }
         )
     return analysis
@@ -1982,7 +2365,9 @@ def _append_gcd_analysis_interpretation(analysis: dict[str, Any], gcd_record: di
 _EIS_CIRCUIT_PARAMETERS = ("rs_ohm", "rct_ohm", "c_dl_F")
 
 
-def _eis_fit_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[str, Any] | None]:
+def _eis_fit_list(
+    params: dict[str, Any], name: str
+) -> tuple[list[Any], dict[str, Any] | None]:
     value = params.get(name, [])
     if isinstance(value, list):
         return deepcopy(value), None
@@ -2003,7 +2388,9 @@ def _eis_fit_list(params: dict[str, Any], name: str) -> tuple[list[Any], dict[st
     )
 
 
-def _eis_fit_required_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+def _eis_fit_required_float(
+    value: Any, field: str
+) -> tuple[float | None, dict[str, Any] | None]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -2029,7 +2416,9 @@ def _eis_fit_required_float(value: Any, field: str) -> tuple[float | None, dict[
     return coerced, None
 
 
-def _eis_fit_optional_float(value: Any, field: str) -> tuple[float | None, dict[str, Any] | None]:
+def _eis_fit_optional_float(
+    value: Any, field: str
+) -> tuple[float | None, dict[str, Any] | None]:
     if value in (None, ""):
         return None, None
     try:
@@ -2057,7 +2446,9 @@ def _eis_fit_optional_float(value: Any, field: str) -> tuple[float | None, dict[
     return coerced, None
 
 
-def _eis_fit_column_name(params: dict[str, Any], key: str, fallback: str, frame: pd.DataFrame) -> tuple[str, dict[str, Any] | None]:
+def _eis_fit_column_name(
+    params: dict[str, Any], key: str, fallback: str, frame: pd.DataFrame
+) -> tuple[str, dict[str, Any] | None]:
     requested = str(params.get(key) or fallback).strip() or fallback
     column = requested
     warning: dict[str, Any] | None = None
@@ -2073,7 +2464,9 @@ def _eis_fit_column_name(params: dict[str, Any], key: str, fallback: str, frame:
     return column, warning
 
 
-def _eis_frequency_to_hz(values: pd.Series, unit: str) -> tuple[np.ndarray, dict[str, Any] | None]:
+def _eis_frequency_to_hz(
+    values: pd.Series, unit: str
+) -> tuple[np.ndarray, dict[str, Any] | None]:
     frequency = values.to_numpy(dtype=float)
     normalized = unit.strip()
     if normalized == "Hz":
@@ -2095,7 +2488,9 @@ def _eis_frequency_to_hz(values: pd.Series, unit: str) -> tuple[np.ndarray, dict
     )
 
 
-def _eis_imaginary_series(processed: pd.DataFrame, column: str, convention: str) -> tuple[np.ndarray | None, dict[str, Any] | None]:
+def _eis_imaginary_series(
+    processed: pd.DataFrame, column: str, convention: str
+) -> tuple[np.ndarray | None, dict[str, Any] | None]:
     if column not in processed.columns:
         return (
             None,
@@ -2110,7 +2505,11 @@ def _eis_imaginary_series(processed: pd.DataFrame, column: str, convention: str)
     normalized = convention.strip() or "signed_z_imag_ohm"
     if normalized in {"signed_z_imag_ohm", "signed", "z_imag_ohm"}:
         return values, None
-    if normalized in {"neg_z_imag_positive", "negative_imaginary_plotted_positive", "plotted_negative_imaginary"}:
+    if normalized in {
+        "neg_z_imag_positive",
+        "negative_imaginary_plotted_positive",
+        "plotted_negative_imaginary",
+    }:
         return -values, None
     return (
         values,
@@ -2123,7 +2522,9 @@ def _eis_imaginary_series(processed: pd.DataFrame, column: str, convention: str)
     )
 
 
-def _eis_initial_values(params: dict[str, Any]) -> tuple[dict[str, float], list[dict[str, Any]]]:
+def _eis_initial_values(
+    params: dict[str, Any],
+) -> tuple[dict[str, float], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     values = params.get("initial_values", {})
     if not isinstance(values, dict):
@@ -2137,7 +2538,9 @@ def _eis_initial_values(params: dict[str, Any]) -> tuple[dict[str, float], list[
         )
     parsed: dict[str, float] = {}
     for name in _EIS_CIRCUIT_PARAMETERS:
-        value, warning = _eis_fit_required_float(values.get(name), f"initial_values.{name}")
+        value, warning = _eis_fit_required_float(
+            values.get(name), f"initial_values.{name}"
+        )
         if warning:
             warnings.append(warning)
         if value is not None:
@@ -2145,7 +2548,9 @@ def _eis_initial_values(params: dict[str, Any]) -> tuple[dict[str, float], list[
     return parsed, warnings
 
 
-def _eis_bounds(params: dict[str, Any]) -> tuple[dict[str, dict[str, float | None]], list[dict[str, Any]]]:
+def _eis_bounds(
+    params: dict[str, Any],
+) -> tuple[dict[str, dict[str, float | None]], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     bounds = params.get("bounds", {})
     if not isinstance(bounds, dict):
@@ -2170,8 +2575,12 @@ def _eis_bounds(params: dict[str, Any]) -> tuple[dict[str, dict[str, float | Non
                     parameter=name,
                 )
             )
-        lower, lower_warning = _eis_fit_optional_float(entry.get("min", 0.0), f"bounds.{name}.min")
-        upper, upper_warning = _eis_fit_optional_float(entry.get("max"), f"bounds.{name}.max")
+        lower, lower_warning = _eis_fit_optional_float(
+            entry.get("min", 0.0), f"bounds.{name}.min"
+        )
+        upper, upper_warning = _eis_fit_optional_float(
+            entry.get("max"), f"bounds.{name}.max"
+        )
         if lower_warning:
             warnings.append(lower_warning)
         if upper_warning:
@@ -2182,7 +2591,9 @@ def _eis_bounds(params: dict[str, Any]) -> tuple[dict[str, dict[str, float | Non
     return parsed, warnings
 
 
-def _eis_thresholds(params: dict[str, Any]) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
+def _eis_thresholds(
+    params: dict[str, Any],
+) -> tuple[dict[str, float | None], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     thresholds = params.get("fit_quality_thresholds", {})
     if not isinstance(thresholds, dict):
@@ -2198,14 +2609,18 @@ def _eis_thresholds(params: dict[str, Any]) -> tuple[dict[str, float | None], li
         )
     parsed: dict[str, float | None] = {}
     for name in ["max_reduced_chi_square_ohm2", "min_r_squared_complex"]:
-        value, warning = _eis_fit_optional_float(thresholds.get(name), f"fit_quality_thresholds.{name}")
+        value, warning = _eis_fit_optional_float(
+            thresholds.get(name), f"fit_quality_thresholds.{name}"
+        )
         if warning:
             warnings.append(warning)
         parsed[name] = value
     return parsed, warnings
 
 
-def _series_r_rc_impedance(frequency_hz: np.ndarray, rs_ohm: float, rct_ohm: float, c_dl_F: float) -> tuple[np.ndarray, np.ndarray]:
+def _series_r_rc_impedance(
+    frequency_hz: np.ndarray, rs_ohm: float, rct_ohm: float, c_dl_F: float
+) -> tuple[np.ndarray, np.ndarray]:
     omega = 2.0 * np.pi * frequency_hz
     rct = max(float(rct_ohm), 1e-30)
     cdl = max(float(c_dl_F), 0.0)
@@ -2236,23 +2651,35 @@ def _eis_fit_quality(
         "residual_sum_squares_ohm2": rss,
         "rmse_ohm": float(np.sqrt(rss / max(observed.size, 1))),
         "reduced_chi_square_ohm2": float(rss / dof),
-        "r_squared_complex": float(1.0 - rss / sst_complex) if sst_complex > 0 else None,
-        "r_squared_real": float(1.0 - np.sum(real_residual**2) / sst_real) if sst_real > 0 else None,
-        "r_squared_imag": float(1.0 - np.sum(imag_residual**2) / sst_imag) if sst_imag > 0 else None,
+        "r_squared_complex": float(1.0 - rss / sst_complex)
+        if sst_complex > 0
+        else None,
+        "r_squared_real": float(1.0 - np.sum(real_residual**2) / sst_real)
+        if sst_real > 0
+        else None,
+        "r_squared_imag": float(1.0 - np.sum(imag_residual**2) / sst_imag)
+        if sst_imag > 0
+        else None,
         "max_abs_real_residual_ohm": float(np.max(np.abs(real_residual))),
         "max_abs_imag_residual_ohm": float(np.max(np.abs(imag_residual))),
         "mean_abs_complex_residual_ohm": float(np.mean(np.abs(observed - fitted))),
     }
 
 
-def _eis_quality_checks(metrics: dict[str, float | None], thresholds: dict[str, float | None]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _eis_quality_checks(
+    metrics: dict[str, float | None], thresholds: dict[str, float | None]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     checks: dict[str, Any] = {}
     warnings: list[dict[str, Any]] = []
     max_chi = thresholds.get("max_reduced_chi_square_ohm2")
     if max_chi is not None:
         value = metrics.get("reduced_chi_square_ohm2")
         passed = value is not None and float(value) <= float(max_chi)
-        checks["max_reduced_chi_square_ohm2"] = {"threshold": max_chi, "value": value, "passed": bool(passed)}
+        checks["max_reduced_chi_square_ohm2"] = {
+            "threshold": max_chi,
+            "value": value,
+            "passed": bool(passed),
+        }
         if not passed:
             warnings.append(
                 _warning(
@@ -2268,7 +2695,11 @@ def _eis_quality_checks(metrics: dict[str, float | None], thresholds: dict[str, 
     if min_r2 is not None:
         value = metrics.get("r_squared_complex")
         passed = value is not None and float(value) >= float(min_r2)
-        checks["min_r_squared_complex"] = {"threshold": min_r2, "value": value, "passed": bool(passed)}
+        checks["min_r_squared_complex"] = {
+            "threshold": min_r2,
+            "value": value,
+            "passed": bool(passed),
+        }
         if not passed:
             warnings.append(
                 _warning(
@@ -2301,7 +2732,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_method_unsupported",
-                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.7 workflow.",
+                "Only reviewed_eis_circuit_fit is supported for EIS circuit fitting in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 requested_method=method,
             )
@@ -2313,7 +2744,7 @@ def _apply_eis_circuit_fit(
         warnings.append(
             _warning(
                 "electrochemistry_eis_circuit_fit_model_unsupported",
-                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.7 workflow.",
+                "Only a reviewed series_r_rc EIS circuit-fit screening model is supported in this Experimental Assistant v0.9.8 workflow.",
                 severity="medium",
                 circuit_model=circuit_model,
             )
@@ -2336,16 +2767,24 @@ def _apply_eis_circuit_fit(
     warnings.extend(bounds_warnings)
     thresholds, threshold_warnings = _eis_thresholds(params)
     warnings.extend(threshold_warnings)
-    perturbation_mV, perturbation_warning = _eis_fit_optional_float(params.get("perturbation_amplitude_mV"), "perturbation_amplitude_mV")
+    perturbation_mV, perturbation_warning = _eis_fit_optional_float(
+        params.get("perturbation_amplitude_mV"), "perturbation_amplitude_mV"
+    )
     if perturbation_warning:
         warnings.append(perturbation_warning)
 
-    frequency_column = str(params.get("frequency_input_column") or "frequency_Hz").strip()
+    frequency_column = str(
+        params.get("frequency_input_column") or "frequency_Hz"
+    ).strip()
     frequency_unit = str(params.get("frequency_unit") or "Hz").strip()
     z_real_column = str(params.get("z_real_input_column") or "z_real_ohm").strip()
     z_imag_column = str(params.get("z_imag_input_column") or "z_imag_ohm").strip()
-    imaginary_convention = str(params.get("imaginary_input_convention") or "signed_z_imag_ohm").strip()
-    minimum_points, minimum_adjusted = _coerce_int(params.get("minimum_points"), 8, minimum=3)
+    imaginary_convention = str(
+        params.get("imaginary_input_convention") or "signed_z_imag_ohm"
+    ).strip()
+    minimum_points, minimum_adjusted = _coerce_int(
+        params.get("minimum_points"), 8, minimum=3
+    )
     if minimum_adjusted:
         warnings.append(
             _warning(
@@ -2384,7 +2823,9 @@ def _apply_eis_circuit_fit(
             )
         )
     else:
-        z_imag, imag_warning = _eis_imaginary_series(fitted, z_imag_column, imaginary_convention)
+        z_imag, imag_warning = _eis_imaginary_series(
+            fitted, z_imag_column, imaginary_convention
+        )
         if imag_warning:
             warnings.append(imag_warning)
         if z_imag is not None and len(initial_values) == len(_EIS_CIRCUIT_PARAMETERS):
@@ -2400,8 +2841,14 @@ def _apply_eis_circuit_fit(
                     )
                 )
             else:
-                frequency_raw = pd.to_numeric(raw_frame[frequency_column], errors="coerce").dropna().reset_index(drop=True)
-                frequency_hz, frequency_warning = _eis_frequency_to_hz(frequency_raw, frequency_unit)
+                frequency_raw = (
+                    pd.to_numeric(raw_frame[frequency_column], errors="coerce")
+                    .dropna()
+                    .reset_index(drop=True)
+                )
+                frequency_hz, frequency_warning = _eis_frequency_to_hz(
+                    frequency_raw, frequency_unit
+                )
                 if frequency_warning:
                     warnings.append(frequency_warning)
                 if len(frequency_hz) != len(fitted):
@@ -2443,7 +2890,11 @@ def _apply_eis_circuit_fit(
                         upper = bounds[name]["max"]
                         lower_value = float(lower if lower is not None else 0.0)
                         upper_value = float(upper) if upper is not None else np.inf
-                        if upper_value <= lower_value or initial < lower_value or initial > upper_value:
+                        if (
+                            upper_value <= lower_value
+                            or initial < lower_value
+                            or initial > upper_value
+                        ):
                             bounds_valid = False
                             warnings.append(
                                 _warning(
@@ -2470,9 +2921,13 @@ def _apply_eis_circuit_fit(
                                 float(values[1]),
                                 float(values[2]),
                             )
-                            return np.concatenate([model_real - observed_real, model_imag - observed_imag])
+                            return np.concatenate(
+                                [model_real - observed_real, model_imag - observed_imag]
+                            )
 
-                        max_nfev, max_nfev_adjusted = _coerce_int(params.get("max_nfev"), 10000, minimum=100)
+                        max_nfev, max_nfev_adjusted = _coerce_int(
+                            params.get("max_nfev"), 10000, minimum=100
+                        )
                         if max_nfev_adjusted:
                             warnings.append(
                                 _warning(
@@ -2485,7 +2940,10 @@ def _apply_eis_circuit_fit(
                             result = least_squares(
                                 residual,
                                 np.asarray(x0, dtype=float),
-                                bounds=(np.asarray(lower_bounds, dtype=float), np.asarray(upper_bounds, dtype=float)),
+                                bounds=(
+                                    np.asarray(lower_bounds, dtype=float),
+                                    np.asarray(upper_bounds, dtype=float),
+                                ),
                                 max_nfev=max_nfev,
                             )
                         except ValueError as exc:
@@ -2504,10 +2962,20 @@ def _apply_eis_circuit_fit(
                                 float(result.x[1]),
                                 float(result.x[2]),
                             )
-                            fit_metrics = _eis_fit_quality(observed_real, observed_imag, model_real, model_imag, len(_EIS_CIRCUIT_PARAMETERS))
-                            quality_checks, quality_warnings = _eis_quality_checks(fit_metrics, thresholds)
+                            fit_metrics = _eis_fit_quality(
+                                observed_real,
+                                observed_imag,
+                                model_real,
+                                model_imag,
+                                len(_EIS_CIRCUIT_PARAMETERS),
+                            )
+                            quality_checks, quality_warnings = _eis_quality_checks(
+                                fit_metrics, thresholds
+                            )
                             warnings.extend(quality_warnings)
-                            for name, value in zip(_EIS_CIRCUIT_PARAMETERS, result.x, strict=True):
+                            for name, value in zip(
+                                _EIS_CIRCUIT_PARAMETERS, result.x, strict=True
+                            ):
                                 fitted_parameters[name] = float(value)
                             optimizer_status = {
                                 "success": bool(result.success),
@@ -2518,16 +2986,36 @@ def _apply_eis_circuit_fit(
                             }
                             applied = bool(result.success)
                             if result.success:
-                                frequency_output_column, warning = _eis_fit_column_name(params, "frequency_output_column", "frequency_Hz", fitted)
+                                frequency_output_column, warning = _eis_fit_column_name(
+                                    params,
+                                    "frequency_output_column",
+                                    "frequency_Hz",
+                                    fitted,
+                                )
                                 if warning:
                                     warnings.append(warning)
-                                fit_z_real_column, warning = _eis_fit_column_name(params, "fit_z_real_column", "eis_fit_z_real_ohm", fitted)
+                                fit_z_real_column, warning = _eis_fit_column_name(
+                                    params,
+                                    "fit_z_real_column",
+                                    "eis_fit_z_real_ohm",
+                                    fitted,
+                                )
                                 if warning:
                                     warnings.append(warning)
-                                fit_z_imag_column, warning = _eis_fit_column_name(params, "fit_z_imag_column", "eis_fit_z_imag_ohm", fitted)
+                                fit_z_imag_column, warning = _eis_fit_column_name(
+                                    params,
+                                    "fit_z_imag_column",
+                                    "eis_fit_z_imag_ohm",
+                                    fitted,
+                                )
                                 if warning:
                                     warnings.append(warning)
-                                fit_neg_z_imag_column, warning = _eis_fit_column_name(params, "fit_neg_z_imag_column", "eis_fit_neg_z_imag_ohm", fitted)
+                                fit_neg_z_imag_column, warning = _eis_fit_column_name(
+                                    params,
+                                    "fit_neg_z_imag_column",
+                                    "eis_fit_neg_z_imag_ohm",
+                                    fitted,
+                                )
                                 if warning:
                                     warnings.append(warning)
                                 fitted[frequency_output_column] = frequency_hz
@@ -2561,13 +3049,23 @@ def _apply_eis_circuit_fit(
             )
         )
 
-    status = "reviewed_eis_circuit_fit_applied" if applied else "enabled_without_eis_circuit_fit"
-    failed_quality = any(isinstance(item, dict) and item.get("passed") is False for item in quality_checks.values())
+    status = (
+        "reviewed_eis_circuit_fit_applied"
+        if applied
+        else "enabled_without_eis_circuit_fit"
+    )
+    failed_quality = any(
+        isinstance(item, dict) and item.get("passed") is False
+        for item in quality_checks.values()
+    )
     confidence = str(
         params.get("confidence")
         or (
             "medium"
-            if applied and not failed_quality and bool(params.get("frequency_order_reviewed", False)) and perturbation_mV is not None
+            if applied
+            and not failed_quality
+            and bool(params.get("frequency_order_reviewed", False))
+            and perturbation_mV is not None
             else "low"
             if applied
             else "insufficient"
@@ -2611,7 +3109,9 @@ def _apply_eis_circuit_fit(
     return fitted, record, warnings
 
 
-def _append_eis_circuit_fit_interpretation(analysis: dict[str, Any], fit_record: dict[str, Any] | None) -> dict[str, Any]:
+def _append_eis_circuit_fit_interpretation(
+    analysis: dict[str, Any], fit_record: dict[str, Any] | None
+) -> dict[str, Any]:
     analysis["eis_circuit_fit"] = fit_record
     if fit_record and fit_record.get("status") == "reviewed_eis_circuit_fit_applied":
         parameters = fit_record.get("fitted_parameters") or {}
@@ -2625,7 +3125,9 @@ def _append_eis_circuit_fit_interpretation(analysis: dict[str, Any], fit_record:
                 ),
                 "confidence": fit_record.get("confidence", "low"),
                 "evidence": ["eis_circuit_fit"],
-                "assignment_source": fit_record.get("assignment_source", "ea.electrochemistry.eis_circuit_fit:v0.2"),
+                "assignment_source": fit_record.get(
+                    "assignment_source", "ea.electrochemistry.eis_circuit_fit:v0.2"
+                ),
             }
         )
     return analysis
@@ -2644,7 +3146,11 @@ def _eis_summary(
     apex_index = int(np.nanargmax(neg_imag))
     span = float(z_real[max_index] - z_real[min_index])
     source = "ea.electrochemistry.eis_nyquist_screening:v0.2"
-    convention = str(processed["imaginary_convention"].iloc[0]) if "imaginary_convention" in processed.columns and not processed.empty else "unknown"
+    convention = (
+        str(processed["imaginary_convention"].iloc[0])
+        if "imaginary_convention" in processed.columns and not processed.empty
+        else "unknown"
+    )
     analysis = {
         "measurement_mode": request.measurement_mode,
         "context_summary": request.context_summary,
@@ -2667,7 +3173,9 @@ def _eis_summary(
             {
                 "text": "EIS Nyquist screening features summarize impedance-arc shape in the reviewed dataset; treat high-frequency intercept and real-axis span as orientation values only, not equivalent-circuit parameters.",
                 "confidence": "low",
-                "evidence": [str(value) for value in features["feature_id"].head(3)] if not features.empty else [],
+                "evidence": [str(value) for value in features["feature_id"].head(3)]
+                if not features.empty
+                else [],
                 "assignment_source": source,
             }
         ],
@@ -2686,7 +3194,11 @@ def _summary(
     current = processed["processed_current_mA"].to_numpy(dtype=float)
     start_current = float(current[0])
     end_current = float(current[-1])
-    retention = float(end_current / start_current * 100.0) if abs(start_current) > 1e-12 else None
+    retention = (
+        float(end_current / start_current * 100.0)
+        if abs(start_current) > 1e-12
+        else None
+    )
     max_index = int(np.nanargmax(current))
     min_index = int(np.nanargmin(current))
     analysis: dict[str, Any] = {
@@ -2702,8 +3214,22 @@ def _summary(
             "min_current_mA": float(current[min_index]),
         },
         "extrema": [
-            _feature_row("ec-extrema-max", "maximum_current", processed.iloc[max_index], None, "ea.electrochemistry.summary:v0.2", "summary_extrema"),
-            _feature_row("ec-extrema-min", "minimum_current", processed.iloc[min_index], None, "ea.electrochemistry.summary:v0.2", "summary_extrema"),
+            _feature_row(
+                "ec-extrema-max",
+                "maximum_current",
+                processed.iloc[max_index],
+                None,
+                "ea.electrochemistry.summary:v0.2",
+                "summary_extrema",
+            ),
+            _feature_row(
+                "ec-extrema-min",
+                "minimum_current",
+                processed.iloc[min_index],
+                None,
+                "ea.electrochemistry.summary:v0.2",
+                "summary_extrema",
+            ),
         ],
         "possible_interpretations": [],
     }
@@ -2759,9 +3285,24 @@ def _plot_electrochemistry(
 ) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     if measurement_mode == "eis":
-        ax.plot(processed["z_real_ohm"], processed["neg_z_imag_ohm"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, marker="o", markersize=2.5, label="Nyquist trace")
+        ax.plot(
+            processed["z_real_ohm"],
+            processed["neg_z_imag_ohm"],
+            color=NATURE_LIKE_COLORS["blue"],
+            linewidth=1.2,
+            marker="o",
+            markersize=2.5,
+            label="Nyquist trace",
+        )
         if not features.empty and "z_real_ohm" in features.columns:
-            ax.scatter(features["z_real_ohm"], features["neg_z_imag_ohm"], color=NATURE_LIKE_COLORS["black"], s=22, label="Screening features", zorder=3)
+            ax.scatter(
+                features["z_real_ohm"],
+                features["neg_z_imag_ohm"],
+                color=NATURE_LIKE_COLORS["black"],
+                s=22,
+                label="Screening features",
+                zorder=3,
+            )
             for _, feature in features.head(6).iterrows():
                 ax.annotate(
                     str(feature["feature_id"]).replace("eis-", ""),
@@ -2771,10 +3312,17 @@ def _plot_electrochemistry(
                     ha="center",
                     fontsize=7,
                 )
-        if eis_circuit_fit_record and eis_circuit_fit_record.get("applied_to_plot_axis"):
+        if eis_circuit_fit_record and eis_circuit_fit_record.get(
+            "applied_to_plot_axis"
+        ):
             fit_real = eis_circuit_fit_record.get("fit_z_real_column")
             fit_neg_imag = eis_circuit_fit_record.get("fit_neg_z_imag_column")
-            if isinstance(fit_real, str) and isinstance(fit_neg_imag, str) and fit_real in processed.columns and fit_neg_imag in processed.columns:
+            if (
+                isinstance(fit_real, str)
+                and isinstance(fit_neg_imag, str)
+                and fit_real in processed.columns
+                and fit_neg_imag in processed.columns
+            ):
                 ax.plot(
                     processed[fit_real],
                     processed[fit_neg_imag],
@@ -2783,15 +3331,35 @@ def _plot_electrochemistry(
                     linestyle="--",
                     label="Reviewed circuit fit",
                 )
-        style_axis(ax, title="Electrochemistry EIS Nyquist screening", xlabel="Z real (ohm)", ylabel="-Z imag (ohm)")
+        style_axis(
+            ax,
+            title="Electrochemistry EIS Nyquist screening",
+            xlabel="Z real (ohm)",
+            ylabel="-Z imag (ohm)",
+        )
         ax.set_aspect("equal", adjustable="datalim")
         save_styled_figure(fig, output, footer=footer)
         return
-    if measurement_mode == "gcd" and gcd_analysis_record and gcd_analysis_record.get("applied_to_plot_axis"):
+    if (
+        measurement_mode == "gcd"
+        and gcd_analysis_record
+        and gcd_analysis_record.get("applied_to_plot_axis")
+    ):
         time_column = gcd_analysis_record.get("time_input_column")
         voltage_column = gcd_analysis_record.get("voltage_output_column")
-        if isinstance(time_column, str) and isinstance(voltage_column, str) and time_column in processed.columns and voltage_column in processed.columns:
-            ax.plot(processed[time_column], processed[voltage_column], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Reviewed GCD voltage")
+        if (
+            isinstance(time_column, str)
+            and isinstance(voltage_column, str)
+            and time_column in processed.columns
+            and voltage_column in processed.columns
+        ):
+            ax.plot(
+                processed[time_column],
+                processed[voltage_column],
+                color=NATURE_LIKE_COLORS["blue"],
+                linewidth=1.2,
+                label="Reviewed GCD voltage",
+            )
             segment_column = gcd_analysis_record.get("segment_column")
             if isinstance(segment_column, str) and segment_column in processed.columns:
                 segment = processed[segment_column].astype(bool)
@@ -2804,16 +3372,25 @@ def _plot_electrochemistry(
                         label="Reviewed discharge window",
                         zorder=3,
                     )
-            style_axis(ax, title="Electrochemistry GCD discharge screening", xlabel="Time (s)", ylabel="Voltage (V)")
+            style_axis(
+                ax,
+                title="Electrochemistry GCD discharge screening",
+                xlabel="Time (s)",
+                ylabel="Voltage (V)",
+            )
             save_styled_figure(fig, output, footer=footer)
             return
     ir_column = None
-    if ir_drop_correction_record and ir_drop_correction_record.get("applied_to_plot_axis"):
+    if ir_drop_correction_record and ir_drop_correction_record.get(
+        "applied_to_plot_axis"
+    ):
         candidate = ir_drop_correction_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             ir_column = candidate
     conversion_column = None
-    if potential_conversion_record and potential_conversion_record.get("applied_to_plot_axis"):
+    if potential_conversion_record and potential_conversion_record.get(
+        "applied_to_plot_axis"
+    ):
         candidate = potential_conversion_record.get("output_column")
         if isinstance(candidate, str) and candidate in processed.columns:
             conversion_column = candidate
@@ -2822,7 +3399,9 @@ def _plot_electrochemistry(
         xlabel = "iR-corrected potential (V)"
     elif conversion_column:
         x = processed[conversion_column]
-        target_scale = potential_conversion_record.get("target_scale") or "converted scale"
+        target_scale = (
+            potential_conversion_record.get("target_scale") or "converted scale"
+        )
         xlabel = f"Potential vs {target_scale} (V)"
     elif "potential_V" in processed.columns:
         x = processed["potential_V"]
@@ -2833,15 +3412,38 @@ def _plot_electrochemistry(
     else:
         x = processed["axis_raw"]
         xlabel = "Electrochemistry axis"
-    y_column = "processed_current_density_mA_cm-2" if "processed_current_density_mA_cm-2" in processed.columns else "processed_current_mA"
-    ylabel = "Current density (mA cm^-2)" if y_column == "processed_current_density_mA_cm-2" else "Current (mA)"
-    ax.plot(x, processed[y_column], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed current")
+    y_column = (
+        "processed_current_density_mA_cm-2"
+        if "processed_current_density_mA_cm-2" in processed.columns
+        else "processed_current_mA"
+    )
+    ylabel = (
+        "Current density (mA cm^-2)"
+        if y_column == "processed_current_density_mA_cm-2"
+        else "Current (mA)"
+    )
+    ax.plot(
+        x,
+        processed[y_column],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=1.2,
+        label="Processed current",
+    )
     if not features.empty:
-        feature_y = "current_density_mA_cm-2" if y_column == "processed_current_density_mA_cm-2" else "current_mA"
+        feature_y = (
+            "current_density_mA_cm-2"
+            if y_column == "processed_current_density_mA_cm-2"
+            else "current_mA"
+        )
         if ir_column and "potential_V" in features.columns:
-            offset = float(ir_drop_correction_record.get("potential_input_offset_from_potential_V") or 0.0)
+            offset = float(
+                ir_drop_correction_record.get("potential_input_offset_from_potential_V")
+                or 0.0
+            )
             ru_ohm = float(ir_drop_correction_record.get("ru_ohm") or 0.0)
-            fraction = float(ir_drop_correction_record.get("compensation_fraction") or 1.0)
+            fraction = float(
+                ir_drop_correction_record.get("compensation_fraction") or 1.0
+            )
             feature_current_a = features["current_mA"] / 1000.0
             feature_drop = feature_current_a * ru_ohm * fraction
             if ir_drop_correction_record.get("sign_convention") == "add_i_ru":
@@ -2849,23 +3451,53 @@ def _plot_electrochemistry(
             else:
                 feature_x = features["potential_V"] + offset - feature_drop
         elif conversion_column and "potential_V" in features.columns:
-            feature_x = features["potential_V"] + float(potential_conversion_record.get("offset_V", 0.0))
+            feature_x = features["potential_V"] + float(
+                potential_conversion_record.get("offset_V", 0.0)
+            )
         else:
             feature_x = features["axis_value"]
-        ax.scatter(feature_x, features[feature_y], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected features", zorder=3)
+        ax.scatter(
+            feature_x,
+            features[feature_y],
+            color=NATURE_LIKE_COLORS["black"],
+            s=18,
+            label="Detected features",
+            zorder=3,
+        )
         for _, feature in features.head(8).iterrows():
             feature_x_value = float(feature["axis_value"])
-            if ir_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
-                offset = float(ir_drop_correction_record.get("potential_input_offset_from_potential_V") or 0.0)
+            if (
+                ir_column
+                and "potential_V" in feature.index
+                and pd.notna(feature.get("potential_V"))
+            ):
+                offset = float(
+                    ir_drop_correction_record.get(
+                        "potential_input_offset_from_potential_V"
+                    )
+                    or 0.0
+                )
                 ru_ohm = float(ir_drop_correction_record.get("ru_ohm") or 0.0)
-                fraction = float(ir_drop_correction_record.get("compensation_fraction") or 1.0)
+                fraction = float(
+                    ir_drop_correction_record.get("compensation_fraction") or 1.0
+                )
                 feature_drop = float(feature["current_mA"]) / 1000.0 * ru_ohm * fraction
                 if ir_drop_correction_record.get("sign_convention") == "add_i_ru":
-                    feature_x_value = float(feature["potential_V"]) + offset + feature_drop
+                    feature_x_value = (
+                        float(feature["potential_V"]) + offset + feature_drop
+                    )
                 else:
-                    feature_x_value = float(feature["potential_V"]) + offset - feature_drop
-            elif conversion_column and "potential_V" in feature.index and pd.notna(feature.get("potential_V")):
-                feature_x_value = float(feature["potential_V"]) + float(potential_conversion_record.get("offset_V", 0.0))
+                    feature_x_value = (
+                        float(feature["potential_V"]) + offset - feature_drop
+                    )
+            elif (
+                conversion_column
+                and "potential_V" in feature.index
+                and pd.notna(feature.get("potential_V"))
+            ):
+                feature_x_value = float(feature["potential_V"]) + float(
+                    potential_conversion_record.get("offset_V", 0.0)
+                )
             ax.annotate(
                 str(feature["feature_id"]).replace("ec-", ""),
                 (feature_x_value, float(feature[feature_y])),
@@ -2874,7 +3506,12 @@ def _plot_electrochemistry(
                 ha="center",
                 fontsize=7,
             )
-    style_axis(ax, title=f"Electrochemistry {measurement_mode.upper()} trace", xlabel=xlabel, ylabel=ylabel)
+    style_axis(
+        ax,
+        title=f"Electrochemistry {measurement_mode.upper()} trace",
+        xlabel=xlabel,
+        ylabel=ylabel,
+    )
     save_styled_figure(fig, output, footer=footer)
 
 
@@ -2894,7 +3531,9 @@ def process_electrochemistry_result(
     raw_path = root / metadata["project_raw_path"]
     inspection = inspect_electrochemistry_file(raw_path)
     if inspection.file_kind != "electrochemistry":
-        raise ElectrochemistryProcessingError(f"File is {inspection.file_kind}, not electrochemistry")
+        raise ElectrochemistryProcessingError(
+            f"File is {inspection.file_kind}, not electrochemistry"
+        )
 
     parameters = _merge_parameters(request.processing_parameters)
     confirmed = _confirmed_frame(raw_path, request)
@@ -2902,8 +3541,14 @@ def process_electrochemistry_result(
         processed, processing_warnings = _apply_eis_processing(confirmed, parameters)
     else:
         processed, processing_warnings = _apply_processing(confirmed, parameters)
-    processed, potential_conversion_record, potential_conversion_warnings = _apply_potential_conversion(processed, parameters, request.measurement_mode)
-    processed, ir_drop_correction_record, ir_drop_correction_warnings = _apply_ir_drop_correction(processed, parameters, request.measurement_mode, potential_conversion_record)
+    processed, potential_conversion_record, potential_conversion_warnings = (
+        _apply_potential_conversion(processed, parameters, request.measurement_mode)
+    )
+    processed, ir_drop_correction_record, ir_drop_correction_warnings = (
+        _apply_ir_drop_correction(
+            processed, parameters, request.measurement_mode, potential_conversion_record
+        )
+    )
     processed, tafel_analysis_record, tafel_analysis_warnings = _apply_tafel_analysis(
         processed,
         parameters,
@@ -2911,21 +3556,35 @@ def process_electrochemistry_result(
         potential_conversion_record,
         ir_drop_correction_record,
     )
-    processed, gcd_analysis_record, gcd_analysis_warnings = _apply_gcd_analysis(processed, parameters, request.measurement_mode)
-    processed, eis_circuit_fit_record, eis_circuit_fit_warnings = _apply_eis_circuit_fit(processed, parameters, request.measurement_mode, raw_path)
+    processed, gcd_analysis_record, gcd_analysis_warnings = _apply_gcd_analysis(
+        processed, parameters, request.measurement_mode
+    )
+    processed, eis_circuit_fit_record, eis_circuit_fit_warnings = (
+        _apply_eis_circuit_fit(
+            processed, parameters, request.measurement_mode, raw_path
+        )
+    )
     features = _detect_features(processed, parameters, request.measurement_mode)
     correction_record, correction_warnings = _record_correction(parameters)
     analysis = _summary(processed, features, request, correction_record)
-    analysis = _append_potential_conversion_interpretation(analysis, potential_conversion_record)
-    analysis = _append_ir_drop_correction_interpretation(analysis, ir_drop_correction_record)
+    analysis = _append_potential_conversion_interpretation(
+        analysis, potential_conversion_record
+    )
+    analysis = _append_ir_drop_correction_interpretation(
+        analysis, ir_drop_correction_record
+    )
     analysis = _append_tafel_analysis_interpretation(analysis, tafel_analysis_record)
     analysis = _append_gcd_analysis_interpretation(analysis, gcd_analysis_record)
     analysis = _append_eis_circuit_fit_interpretation(analysis, eis_circuit_fit_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="electrochemistry", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="electrochemistry", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="electrochemistry", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="electrochemistry", day=day
+        )
     else:
         result_id = next_id(root, "electrochemistry_result", day)
         figure_id = None
@@ -2942,7 +3601,18 @@ def process_electrochemistry_result(
     figure_name = f"{figure_id}.png" if figure_id else "electrochemistry_plot.png"
     figure = output_dir / figure_name
     result_metadata = output_dir / "electrochemistry_metadata.yml"
-    for output in [processed_csv, features_csv, correction_yml, potential_conversion_yml, ir_drop_correction_yml, tafel_analysis_yml, gcd_analysis_yml, eis_circuit_fit_yml, figure, result_metadata]:
+    for output in [
+        processed_csv,
+        features_csv,
+        correction_yml,
+        potential_conversion_yml,
+        ir_drop_correction_yml,
+        tafel_analysis_yml,
+        gcd_analysis_yml,
+        eis_circuit_fit_yml,
+        figure,
+        result_metadata,
+    ]:
         assert_not_raw_output_path(root, output)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -3004,12 +3674,33 @@ def process_electrochemistry_result(
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        message = "EIS impedance unit remains unknown after confirmation." if request.measurement_mode == "eis" else "Electrochemistry x unit remains unknown after confirmation."
-        warnings.append(_warning("electrochemistry_x_unit_unknown", message, severity="medium"))
-    if request.current_unit == "unknown" and request.measurement_mode not in {"eis", "gcd"}:
-        warnings.append(_warning("electrochemistry_current_unit_unknown", "Electrochemistry current unit remains unknown after confirmation.", severity="medium"))
+        message = (
+            "EIS impedance unit remains unknown after confirmation."
+            if request.measurement_mode == "eis"
+            else "Electrochemistry x unit remains unknown after confirmation."
+        )
+        warnings.append(
+            _warning("electrochemistry_x_unit_unknown", message, severity="medium")
+        )
+    if request.current_unit == "unknown" and request.measurement_mode not in {
+        "eis",
+        "gcd",
+    }:
+        warnings.append(
+            _warning(
+                "electrochemistry_current_unit_unknown",
+                "Electrochemistry current unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     if not request.context_summary:
-        warnings.append(_warning("electrochemistry_context_missing", "Electrode/electrolyte context summary is empty.", severity="medium"))
+        warnings.append(
+            _warning(
+                "electrochemistry_context_missing",
+                "Electrode/electrolyte context summary is empty.",
+                severity="medium",
+            )
+        )
     warnings.extend(processing_warnings)
     warnings.extend(correction_warnings)
     warnings.extend(potential_conversion_warnings)
@@ -3055,7 +3746,11 @@ def process_electrochemistry_result(
         peak_analysis=analysis,
         figure_id=figure_id,
         warnings=warnings,
-        review_refs=[request.column_review_ref, request.context_review_ref, request.parameter_review_ref],
+        review_refs=[
+            request.column_review_ref,
+            request.context_review_ref,
+            request.parameter_review_ref,
+        ],
         created_at=created_at or EARecord.now_iso(),
         updated_at=created_at or EARecord.now_iso(),
     )
@@ -3098,7 +3793,11 @@ def process_electrochemistry_result(
             "electrode_area_cm2": request.electrode_area_cm2,
             "processing_parameters": parameters,
         },
-        review_refs=[request.column_review_ref, request.context_review_ref, request.parameter_review_ref],
+        review_refs=[
+            request.column_review_ref,
+            request.context_review_ref,
+            request.parameter_review_ref,
+        ],
         warnings=warnings,
         scripts=[{"path": "src/ea/electrochemistry/service.py", "version": "0.2.0"}],
         created_at=created_at,
@@ -3148,5 +3847,92 @@ def process_electrochemistry_result(
             + ([tafel_analysis_ref] if tafel_analysis_ref else [])
             + ([gcd_analysis_ref] if gcd_analysis_ref else [])
             + ([eis_circuit_fit_ref] if eis_circuit_fit_ref else []),
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed electrochemistry trace plotted in the figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    features_csv.relative_to(root).as_posix(),
+                    role="feature_table",
+                    purpose="Screening features annotated in the figure.",
+                ),
+            ]
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        correction_ref,
+                        role="correction_record",
+                        purpose="Applied correction record.",
+                    )
+                ]
+                if correction_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        potential_conversion_ref,
+                        role="potential_conversion",
+                        purpose="Reviewed potential-scale conversion.",
+                    )
+                ]
+                if potential_conversion_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        ir_drop_correction_ref,
+                        role="ir_drop_correction",
+                        purpose="Reviewed iR-drop correction values.",
+                    )
+                ]
+                if ir_drop_correction_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        tafel_analysis_ref,
+                        role="fit_table",
+                        purpose="Reviewed Tafel-fit results.",
+                    )
+                ]
+                if tafel_analysis_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        gcd_analysis_ref,
+                        role="statistics",
+                        purpose="Reviewed GCD analysis results.",
+                    )
+                ]
+                if gcd_analysis_ref
+                else []
+            )
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        eis_circuit_fit_ref,
+                        role="fit_table",
+                        purpose="Reviewed EIS circuit-fit results.",
+                    )
+                ]
+                if eis_circuit_fit_ref
+                else []
+            ),
         )
     return result_metadata

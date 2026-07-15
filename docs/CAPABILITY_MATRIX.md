@@ -1,6 +1,6 @@
 # Experimental Assistant Capability Matrix
 
-This matrix is the public maturity contract for v0.9.7. A product release may contain beta or experimental modules, but those modules do not inherit stable guarantees.
+This matrix is the public maturity contract for v0.9.8. A product release may contain beta or experimental modules, but those modules do not inherit stable guarantees.
 
 Run `ea capabilities` for the installed machine-readable contract.
 
@@ -15,7 +15,7 @@ Run `ea capabilities` for the installed machine-readable contract.
 | Health, evaluation, brief, trace | compact status with full local audit records | read-only and output-budget tests |
 | Reports and exports | HTML reports and checksum-verified bundles | public examples and package verification |
 
-Raman moves into this table only after its independent golden benchmark, tolerance, walkthrough, and scientific reviewer record pass. The v0.9.7 internal reproducibility golden is machine-tested under `benchmarks/raman-v1/`, but its external reviewer record remains pending.
+Raman moves into this table only after its independent golden benchmark, tolerance, walkthrough, and scientific reviewer record pass. The v0.9.8 internal reproducibility golden is machine-tested under `benchmarks/raman-v1/`, but its external reviewer record remains pending.
 
 ## Beta
 

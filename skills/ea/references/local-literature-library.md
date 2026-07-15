@@ -1,118 +1,57 @@
-# Local Literature Library
+# Local Literature Library Router
 
-Use this reference when initializing or updating project literature.
+Use this router when a task concerns literature planning, metadata discovery, acquisition, Zotero, reconciliation, cache use, or evidence datasets. Load only the reference for the current stage.
 
-The literature library is recommended during project initialization but must be user-confirmed before bulk search or full-text acquisition. If `ea init-project` is run without `--enable-literature`, EA writes an `open-items/` record with `item_type: literature_library_decision`; read that open item and ask the user whether to deploy a local literature library. If `--enable-literature` is supplied, EA creates `literature/deployment_status.yml` and records `decision_status: enabled_at_initialization`, but scope, access mode, selected top N, and all Zotero/browser/cache/institution settings still require user confirmation.
+## Non-negotiable boundaries
 
-Store project state under `literature/`:
+- Planning, metadata search, acquisition, and scientific interpretation are separate stages.
+- Bulk search or full-text acquisition requires a user-confirmed scope. Use `ea estimate workflow` for large work.
+- Treat public metadata coverage as source- and query-limited; never claim exhaustive search.
+- Use source-verified venue metrics when available; never present an inferred or stale metric as verified.
+- For impact-factor filtering, do not invent IF values; record the source and retrieval date or leave the metric unknown.
+- A metadata-only step must not look up or invent journal impact factors without a verified, dated source.
+- Do not infer accounts, credentials, browser profiles, institution access, Zotero libraries, or private cache locations.
+- Do not bypass paywalls, CAPTCHA, SSO, MFA, license terms, robots controls, or publisher access controls.
+- Keep private full text and caches local. Reports and exports contain citations, hashes, evidence anchors, and permitted source-data—not restricted PDFs.
+- Scientific conclusions, plots, and durable memory remain review-gated.
 
-```text
-literature/
-├── library_manifest.yml
-├── deployment_status.yml
-├── search_queries.yml
-├── search_log.md
-├── candidates.csv
-├── ranking.csv
-├── acquisition_handoff.yml
-├── acquisition_handoff.md
-├── acquisition_request.yml
-├── zotero_codex_queries.jsonl
-├── zotero_codex_targets.jsonl
-├── zotero_codex_batch_status.json
-├── acquisition_manifest.yml
-├── acquisition_status_update.yml
-├── zotero_codex_readiness.yml
-├── zotero_codex_readiness.md
-├── origin_thread_sync.yml
-├── selected_items.yml
-├── draft_<method>_source_candidates.yml
-├── confirmed_<method>_source_candidates.yml
-├── <method>_source_candidates_preflight.yml
-├── references.bib
-├── notes/
-└── cache_index.yml
-```
+## Route by stage
 
-Ranking model:
+| Current task | Load next |
+|---|---|
+| Plan a library, confirm scope, query Crossref/OpenAlex/arXiv, rank metadata | `references/literature-metadata-discovery.md` |
+| Resolve lawful OA copies, validate PDFs, or run a resumable acquisition | `references/literature-oa-acquisition.md` |
+| Prepare or inspect Zotero/browser/institution companion handoff | `references/literature-zotero-handoff.md` |
+| Import status/manifests, reconcile partial work, or render acceptance state | `references/literature-reconciliation.md` |
+| Inspect local cached full text, targeted chunks, quality, or evidence anchors | `references/literature-cache-reading.md` |
+| Extract/review/plot cross-paper property data | `references/literature-data-extraction.md` plus `references/literature-cache-reading.md` |
 
-```text
-score = 0.45*project_relevance + 0.20*venue_authority + 0.15*recency + 0.10*citation_or_influence + 0.10*fulltext_availability_and_usefulness
-```
+Do not preload all stage references. Return here only when the state moves to a different stage.
 
-Recommended top N: narrow project 30, ordinary project 50, review/broad direction 100-200 in batches.
+## Stable compatibility anchors
 
-Treat "full web search" as systematic multi-source coverage with a search log, not a guarantee of no omissions. Use journal impact factors or venue metrics when the user provides a reliable source, a dedicated user-confirmed literature workflow records a sourced value, or another verified source is available. Otherwise use labeled venue/citation proxies and state their source; do not invent IF values.
+- Initialization records `decision_status: enabled_at_initialization` or creates a scoped item under `open-items/`.
+- Metadata commands remain `search-public`, `rank-candidates`, `prepare-source-candidates`, and `preflight-source-candidates`.
+- Method handoff remains available through `ea uv-vis build-source-packet`; `optical_gap_candidate` stays advisory and review-gated.
+- Audit artifacts retain `source_candidates_preflight.yml`, `institution_access_guidance.yml`, `zotero_codex_bridge.yml`, `zotero_codex_status_import.yml`, `acquisition_reconciliation.yml`, `acquisition_reconciliation.md`, and `acceptance_checklist.yml`.
+- A rejected candidate remains explicit as `include_in_source_packet: false`; unresolved setup is reported under `questions_for_user`.
 
-Use the planning commands before any bulk search or full-text acquisition:
+## Compact continuation
+
+Start from these small state surfaces before opening broad artifacts:
 
 ```bash
-ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type" --enable-literature
-ea literature plan /path/to/ea-project --scope ordinary --access-mode open_access_only --keyword strain
-ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "User confirmed top 50."
-ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1
-ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
-ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed FTIR source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method ftir --manifest literature/confirmed_ftir_source_candidates.yml
-ea literature prepare-source-candidates /path/to/ea-project --method uv_vis --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed UV-Vis source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method uv_vis --manifest literature/confirmed_uv_vis_source_candidates.yml
-ea uv-vis build-source-packet /path/to/ea-project --literature-manifest literature/confirmed_uv_vis_source_candidates.yml --output suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis suggest-interpretations /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --source-file suggestions/uv_vis/source-packets/uv_vis_source_packet.yml
-ea uv-vis prepare-review /path/to/ea-project --suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml
-ea review add /path/to/ea-project --target-type uv_vis_interpretation_suggestions --target-ref suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --user-response "可以，保存" --reviewed-content "reviewed UV-Vis interpretation suggestion candidates"
-ea uv-vis report /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --interpretation-suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --interpretation-review-ref review-20260630-011
-ea uv-vis propose-memory /path/to/ea-project --suggestion suggestions/uv_vis/suggestion-20260630-001/uv_vis_interpretation_suggestions.yml --review-ref review-20260630-011
-ea uv-vis compare-replicates /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --metadata processed/sample-002/uv_vis/res-project-uv-vis-20260630-002/uv_vis_metadata.yml --comparison-label "replicate set"
-ea review add /path/to/ea-project --target-type uv_vis_feature_matching --target-ref processed/comparisons/uv_vis --user-response "可以，保存" --reviewed-content "feature_match_tolerance_eV=0.05 for this replicate set"
-ea uv-vis compare-replicates /path/to/ea-project --metadata processed/sample-001/uv_vis/res-project-uv-vis-20260630-001/uv_vis_metadata.yml --metadata processed/sample-002/uv_vis/res-project-uv-vis-20260630-002/uv_vis_metadata.yml --comparison-label "replicate set with reviewed feature matching" --feature-match-tolerance-ev 0.05 --feature-match-review-ref review-20260630-012
-ea literature prepare-source-candidates /path/to/ea-project --method xps --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "User confirmed XPS source-candidate manifest staging."
-ea literature preflight-source-candidates /path/to/ea-project --method xps --manifest literature/confirmed_xps_source_candidates.yml
-ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
-ea literature acquisition-request /path/to/ea-project
-ea literature institution-access-guide /path/to/ea-project --institution-name "Institution" --access-method library_proxy --access-url https://library.example.edu/login --browser-name Chrome --browser-profile browser-profiles/project
-ea literature zotero-bridge /path/to/ea-project --zotero-config config/zotero-codex.json --project-collection "Project collection"
-ea literature zotero-readiness /path/to/ea-project
-ea literature import-zotero-status /path/to/ea-project --batch-status literature/zotero_codex_batch_status.json --sidecar-verification literature/zotero_codex_sidecars_verify.json
-ea literature import-acquisition /path/to/ea-project --manifest literature/acquisition_manifest.yml
-ea literature reconcile-acquisition /path/to/ea-project
-ea literature render-reconciliation /path/to/ea-project --reconciliation literature/acquisition_reconciliation.yml
-ea literature acceptance-checklist /path/to/ea-project
-ea literature sync-status /path/to/ea-project --update literature/acquisition_status_update.yml
-ea references import-bibtex /path/to/ea-project /path/to/user-exported-references.bib
+ea literature status /path/to/project
+ea literature search-public /path/to/project --resume
+ea literature zotero-readiness /path/to/project
+ea literature reconcile-acquisition /path/to/project
+ea brief project /path/to/project --no-write
 ```
 
-`plan` writes `search_queries.yml`, `search_log.md`, empty `candidates.csv`, empty `ranking.csv`, and `confirmation_request.yml`. It does not run web searches, open Zotero, use browser profiles, or download PDFs. `confirm` records the user's selected top N and moves the deployment state to `confirmed_awaiting_acquisition`.
+Default CLI output is compact. Use `--json-full` or the artifact refs only when audit detail is needed. Never paste complete metadata, full-text chunks, or nested state into the conversation by default.
 
-`search-public` explicitly queries public metadata APIs such as Crossref, OpenAlex, and arXiv, writes `public_search_candidates.yml`, `search_coverage.yml`, `public_search_state.yml`, appends `search_log.md`, and feeds the same ranking workflow. Use `--page-limit`, `--delay-seconds`, and `--resume` for longer resumable runs. It does not use Zotero, browser profiles, institution login, credentials, paywall access, DOI full-text resolution, or PDF download. Treat the result as source-limited metadata coverage, not exhaustive web coverage.
+## Project state
 
-`rank-candidates` consumes a user- or dedicated-workflow-supplied CSV/YAML/JSON candidate file, de-duplicates by DOI/URL/title, scores project relevance, venue authority, recency, citation/influence, and full-text availability, writes `ranking.csv`, and refreshes `selected_items.yml`. It can score supplied or source-verified venue metrics, but it does not itself run live web search, look up or invent journal impact factors, use Zotero/browser access, log into institutions, or download PDFs.
+EA owns the project-side records under `literature/`: query plan, candidates, ranking, selected items, acquisition request/handoff, imported companion status, reconciliation, local reference records, cache index, evidence datasets, and origin-thread summary. A literature companion may own browser/Zotero/OA execution, but must return a versioned, redacted, resumable status artifact that EA can import.
 
-`prepare-source-candidates` converts local selected literature items into editable FTIR/UV-Vis/XPS source-candidate manifests. It prefers `library_manifest.yml` when it contains items, otherwise `selected_items.yml`, unless `--source-items` is supplied. Without confirmation it writes `draft_<method>_source_candidates.yml`; with `--confirm-for-source-packet --user-response ...` it writes `confirmed_<method>_source_candidates.yml` and records user confirmation metadata. Candidate stubs include `reference_seeds` derived from local item metadata but remain disabled with `include_in_source_packet: false` until a user or agent fills source summary, applicability, caveats, method-specific fields, and explicitly enables the candidate. UV-Vis stubs can stage `optical_transition_model`, `optical_gap_candidate`, `optical_feature_assignment`, or `correction_context_candidate` records without adding built-in numeric constants.
-
-`preflight-source-candidates` checks a confirmed FTIR/UV-Vis/XPS source-candidate manifest before the user builds or stages a source packet. It verifies confirmation, included candidates, required method fields, reference IDs, and available `reference_seeds`, then writes `<method>_source_candidates_preflight.yml`. A ready preflight means the manifest can be passed to `ea ftir build-assignment-packet --literature-manifest ...`, `ea uv-vis build-source-packet --literature-manifest ...`, or `ea xps build-source-packet --literature-manifest ...`. A reviewed UV-Vis source packet can then feed `ea uv-vis suggest-interpretations` to create advisory interpretation_suggestions from processed UV-Vis metadata, including feature/Tauc/edge/derivative/correction-context/numeric-correction evidence where present; `ea uv-vis prepare-review` can group those candidates for user decisions, `ea uv-vis report --interpretation-suggestion ... --interpretation-review-ref ...` can include confirmed reviewed candidates with registered references while unresolved IDs remain visible, and `ea uv-vis propose-memory --suggestion ... --review-ref ...` can create draft interpretation memory candidates from ready reviewed suggestions. Separately, `ea uv-vis compare-replicates` can summarize two or more processed UV-Vis metadata records under `processed/comparisons/uv_vis/`; feature matching remains disabled unless the user supplies reviewed eV and/or nm tolerances plus a confirmed `uv_vis_feature_matching` ReviewRecord. UV-Vis preflight, source-packet building, suggestion records, review packages, reviewed numeric correction, and reviewed feature matching remain source-backed or review-gated aids; they do not register references, inject report citations, create ReviewRecords, choose reference/background columns automatically, apply optical models, download or parse full text, write memory, prove band gaps/transition assignments/correction validity, silently match features, or rank samples. The report and memory proposal steps read an existing confirmed ReviewRecord and registered references; they do not create either, memory proposal does not commit confirmed memory, and comparison does not reprocess raw data or infer hidden replicate groups.
-
-`handoff` writes an acquisition packet for a dedicated literature workflow after confirmation. It records selected top N, access mode, input/output refs, forbidden actions, and the sync contract. It does not run search, browser automation, Zotero calls, institution login, or PDF downloads.
-
-`acquisition-request` writes `acquisition_request.yml`, `zotero_codex_queries.jsonl`, and `zotero_codex_targets.jsonl` after confirmed top-N selection. If `selected_items.yml` or `ranking.csv` contains selected candidates, the target JSONL is suitable for a dedicated Zotero-Codex workflow to consume with `batch_acquire.py`. If no selected targets exist yet, EA writes only query requests and marks the request as `awaiting_search_results`. This command never runs Zotero, browser automation, live search, DOI resolution, or PDF download.
-
-`institution-access-guide` writes `institution_access_guidance.yml` and `institution_access_guidance.md` for user-managed authenticated acquisition. It records user-supplied institution name, access method, access URL or manual instructions, browser name/profile, Zotero-Codex config, cache root, authorization status, required inputs, safe manual steps, and next EA commands. It does not open browsers, operate Zotero, run Zotero-Codex scripts, store credentials, probe URLs, resolve DOI pages, download PDFs, parse full text, or assume developer-machine settings.
-
-`zotero-bridge` reads `acquisition_request.yml` and writes `zotero_codex_bridge.yml`, `zotero_codex_bridge.md`, and `zotero_codex_settings_request.yml`. It records user-supplied or user-confirmed Zotero-Codex config, cache root, project collection, browser assist, browser profile, and institution access settings, then emits safe commands for `literature_doctor.py`, `batch_acquire.py`, status rendering, sidecar writing/verification, and EA sync/import. It does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, store credentials, or assume developer-machine accounts.
-
-`zotero-readiness` reads local EA literature artifacts and writes `zotero_codex_readiness.yml` plus `zotero_codex_readiness.md`. Use it before handing work to the `zotero-codex-literature` companion skill and after importing status. It reports statuses such as `ready_for_zotero_codex_handoff`, `needs_zotero_codex_settings`, `acquisition_attention_required`, `needs_acquisition_reconciliation`, or `zotero_codex_results_integrated`; records the target manifest, batch status path, doctor/batch/render/sidecar/import commands; lists missing user settings; summarizes login/blocker/cache counts; and always includes no-Zotero degraded-mode commands for user-supplied metadata/BibTeX/manifest workflows. It is a local readiness summary only: it does not run Zotero-Codex scripts, operate Zotero, open browsers, inspect credentials or sessions, resolve DOI pages, download PDFs, parse full text, import references, or repair records.
-
-`import-zotero-status` reads `zotero_codex_batch_status.json` plus optional sidecar verification and rendered status refs, writes `zotero_codex_status_import.yml` and `acquisition_status_update.yml`, then syncs `deployment_status.yml` and `origin_thread_sync.yml`. It normalizes cached/downloaded counts, login needs, and blocked items. It imports status artifacts only; it does not run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
-
-In v0.9.7 the same command also writes `external_acquisition_state.yml` and `acquisition_status_compact.md` using handoff schema `1.0`. The import works without a local literature deployment; `brief`, `eval`, and `zotero-readiness` then distinguish external cache use from an unconfigured local library. Current-task blockers, optional capabilities, and stale global state remain separate, and normal output removes signed URL queries, session IDs, browser profile paths, and DevTools metadata. See `docs/LITERATURE_ACQUISITION_HANDOFF.md` in the public repository for the companion browser-download-event fallback contract.
-
-`reconcile-acquisition` writes `acquisition_reconciliation.yml` and `acquisition_reconciliation.md` by comparing acquisition manifest, Zotero-Codex status import, library manifest, cache index, reference index, deployment status, and origin-thread sync records when present. It reports pass/warnings/fail with finding codes, source refs, per-finding `repair_suggestion`, top-level `repair_actions`, and `questions_for_user` for uncertainties that affect the next repair step. It reads local artifacts only; it does not auto-repair records, run Zotero-Codex scripts, operate Zotero, open browsers, resolve DOI pages, download PDFs, parse full text, or store credentials.
-
-`render-reconciliation` regenerates `acquisition_reconciliation.md` from an existing reconciliation YAML. Use it when a user or future agent needs a readable audit view of current findings, repair actions, questions, and boundaries. It is local artifact rendering only and does not repair records or perform Zotero/browser/DOI/PDF/full-text/credential work.
-
-`acceptance-checklist` writes `acceptance_checklist.yml` and `acceptance_checklist.md` as a public-user walkthrough of the full literature path: initialization, planning, selection, public metadata search or supplied-candidate ranking, optional FTIR/UV-Vis/XPS source-candidate preflight, acquisition request, institution guidance, Zotero bridge, acquisition import, library/cache/reference state, reconciliation, and public boundaries. It reports ready/missing/not-applicable steps and questions for the user, but it does not run search, operate Zotero, open browsers, inspect credentials or sessions, download PDFs, parse full text, repair records, register references, or prove exhaustive literature coverage.
-
-`import-acquisition` imports a dedicated literature workflow's `acquisition_manifest.yml` into EA. It updates `library_manifest.yml`, `cache_index.yml`, `deployment_status.yml`, and `origin_thread_sync.yml`, and registers reusable project references under `literature/references/` while de-duplicating by DOI, URL, title, or citation. The manifest can include `title`, `authors`, `year`, `venue`, `doi`, `url`, `local_path`, `cache_path`, `zotero_item_key`, and acquisition `status`.
-
-`sync-status` reads `literature/acquisition_status_update.yml` (or `--update`) and merges acquisition progress into `deployment_status.yml` plus `origin_thread_sync.yml`. Use it so the origin project knows candidate counts, deduped counts, downloaded/cached full text, login needs, blockers, and a short status summary.
-
-When the user or a dedicated literature workflow exports references as BibTeX, import them with `ea references import-bibtex`. This registers reusable references under `literature/references/` and de-duplicates by DOI, URL, normalized title, or normalized citation. It is not a Zotero database reader and must not infer local accounts or browser settings.
+Prefer DOI, then canonical URL, then normalized title for identity. Preserve versions and supplementary relationships instead of silently deleting them.

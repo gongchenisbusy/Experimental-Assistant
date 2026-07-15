@@ -10,11 +10,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from ea.figures import NATURE_LIKE_STYLE_PROFILE, register_figure
+from ea.figures import NATURE_LIKE_STYLE_PROFILE, register_figure, source_data_entry
 from ea.figures.style import apply_figure_style
 from ea.provenance import write_provenance_entry
 from ea.schema.models import EARecord
-from ea.storage.files import atomic_write_bytes, atomic_write_text, read_yaml, write_yaml
+from ea.storage.files import (
+    atomic_write_bytes,
+    atomic_write_text,
+    read_yaml,
+    write_yaml,
+)
 
 
 DATASET_SCHEMA_VERSION = "1.0"
@@ -35,7 +40,13 @@ PROPERTY_ALIASES = {
     "sheet_resistance": ["sheet resistance", "sheet resistivity", "方块电阻"],
     "sheet_conductance": ["sheet conductance", "面电导"],
     "contact_resistance": ["contact resistance", "接触电阻"],
-    "mobility": ["carrier mobility", "electron mobility", "hole mobility", "mobility", "迁移率"],
+    "mobility": [
+        "carrier mobility",
+        "electron mobility",
+        "hole mobility",
+        "mobility",
+        "迁移率",
+    ],
 }
 
 UNIT_RULES: dict[str, dict[str, tuple[str, float, str]]] = {
@@ -96,7 +107,9 @@ def _slug(value: str) -> str:
 
 def _dataset_root(root: Path, dataset_id: str) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", dataset_id):
-        raise ValueError("dataset_id must use only letters, numbers, dot, underscore, or hyphen")
+        raise ValueError(
+            "dataset_id must use only letters, numbers, dot, underscore, or hyphen"
+        )
     return root / "literature" / "data-extractions" / dataset_id
 
 
@@ -168,7 +181,8 @@ def _discover_acquisition_sources(root: Path) -> list[dict[str, Any]]:
                 "path": path,
                 "title": item.get("title") or result.get("title"),
                 "doi": item.get("doi") or result.get("doi"),
-                "zotero_item_key": item.get("zotero_item_key") or result.get("item_key"),
+                "zotero_item_key": item.get("zotero_item_key")
+                or result.get("item_key"),
             }
         )
     return discovered
@@ -192,15 +206,23 @@ def _source_records(root: Path, sources: Iterable[Path]) -> list[dict[str, Any]]
         records.append(
             {
                 "source_id": f"source-{len(records) + 1:03d}",
-                "source_type": "cache" if path.is_dir() else "pdf" if path.suffix.lower() == ".pdf" else "searchable_text",
+                "source_type": "cache"
+                if path.is_dir()
+                else "pdf"
+                if path.suffix.lower() == ".pdf"
+                else "searchable_text",
                 "source_path": str(path.resolve()),
                 "source_hash": _sha256(path),
                 "availability": "available" if path.exists() else "missing",
                 "title": entry.get("title") or metadata.get("title") or path.stem,
                 "doi": entry.get("doi") or metadata.get("doi"),
                 "reference_id": metadata.get("reference_id"),
-                "zotero_item_key": entry.get("zotero_item_key") or metadata.get("item_key") or metadata.get("zotero_item_key"),
-                "cache_identity": metadata.get("pdf_sha256") or metadata.get("source_hash") or _sha256(path),
+                "zotero_item_key": entry.get("zotero_item_key")
+                or metadata.get("item_key")
+                or metadata.get("zotero_item_key"),
+                "cache_identity": metadata.get("pdf_sha256")
+                or metadata.get("source_hash")
+                or _sha256(path),
             }
         )
     return records
@@ -226,24 +248,38 @@ def plan_literature_data_extraction(
     dataset_root = _dataset_root(root, dataset_id)
     source_records = _source_records(root, sources)
     preview = {
-        "status": "ready_to_create" if source_records else "scope_defined_needs_sources",
+        "status": "ready_to_create"
+        if source_records
+        else "scope_defined_needs_sources",
         "maturity": "beta",
         "dataset_id": dataset_id,
         "property_kind": property_kind,
         "material_name": material_name,
         "source_count": len(source_records),
         "requires_confirmation": not confirmed,
-        "next_action": "Confirm creation, then run data-extract." if source_records else "Add searchable PDF/cache sources.",
+        "next_action": "Confirm creation, then run data-extract."
+        if source_records
+        else "Add searchable PDF/cache sources.",
     }
     if not confirmed:
         return preview
     spec_path = dataset_root / "extraction_spec.yml"
     if spec_path.exists():
         existing = read_yaml(spec_path)
-        if existing.get("property_kind") != property_kind or existing.get("material_name") != material_name:
-            raise ValueError(f"Dataset already exists with a different scope: {dataset_id}")
+        if (
+            existing.get("property_kind") != property_kind
+            or existing.get("material_name") != material_name
+        ):
+            raise ValueError(
+                f"Dataset already exists with a different scope: {dataset_id}"
+            )
         state = read_yaml(dataset_root / "extraction_state.compact.yml")
-        return {**preview, "status": "existing_plan_reused", "state": state.get("status"), "dataset_ref": _relative(root, dataset_root)}
+        return {
+            **preview,
+            "status": "existing_plan_reused",
+            "state": state.get("status"),
+            "dataset_ref": _relative(root, dataset_root),
+        }
     dataset_root.mkdir(parents=True, exist_ok=True)
     (dataset_root / "evidence").mkdir(exist_ok=True)
     (dataset_root / "plots").mkdir(exist_ok=True)
@@ -258,7 +294,9 @@ def plan_literature_data_extraction(
         "required_conditions": list(dict.fromkeys(required_conditions)),
         "comparability_rules": list(dict.fromkeys(comparability_rules)),
         "accepted_reported_units": list(UNIT_RULES[property_kind]),
-        "normalized_units": sorted({rule[0] for rule in UNIT_RULES[property_kind].values()}),
+        "normalized_units": sorted(
+            {rule[0] for rule in UNIT_RULES[property_kind].values()}
+        ),
         "boundaries": [
             "Only lawful user-provided or verified cached full text may be processed.",
             "Automatic values are candidates until explicit record review.",
@@ -278,18 +316,32 @@ def plan_literature_data_extraction(
         "status": "sources_selected" if source_records else "scope_defined",
         "updated_at": created_at,
         "checkpoints": {},
-        "metrics": {"papers_processed": 0, "pages_read": 0, "chunks_read": 0, "candidate_count": 0, "output_bytes": 0, "artifact_bytes": 0},
+        "metrics": {
+            "papers_processed": 0,
+            "pages_read": 0,
+            "chunks_read": 0,
+            "candidate_count": 0,
+            "output_bytes": 0,
+            "artifact_bytes": 0,
+        },
         "next_action": "Run `ea literature data-extract`.",
     }
     write_yaml(spec_path, spec)
     write_yaml(dataset_root / "source_manifest.yml", source_manifest)
     write_yaml(dataset_root / "extraction_state.compact.yml", state)
-    return {**preview, "status": state["status"], "requires_confirmation": False, "dataset_ref": _relative(root, dataset_root)}
+    return {
+        **preview,
+        "status": state["status"],
+        "requires_confirmation": False,
+        "dataset_ref": _relative(root, dataset_root),
+    }
 
 
 def _documents_from_jsonl(path: Path) -> list[dict[str, Any]]:
     docs: list[dict[str, Any]] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for index, line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         if not line.strip():
             continue
         try:
@@ -314,7 +366,9 @@ def _documents_from_jsonl(path: Path) -> list[dict[str, Any]]:
                 "table": item.get("table") or item.get("table_id") or NOT_REPORTED,
                 "figure": item.get("figure") or item.get("figure_id") or NOT_REPORTED,
                 "caption": caption or NOT_REPORTED,
-                "chunk_id": item.get("chunk_id") or item.get("id") or f"chunk-{index:04d}",
+                "chunk_id": item.get("chunk_id")
+                or item.get("id")
+                or f"chunk-{index:04d}",
             }
         )
     return docs
@@ -324,7 +378,9 @@ def _documents_from_pdf(path: Path) -> list[dict[str, Any]]:
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover - package dependency provides pypdf
-        raise RuntimeError("pypdf is required for direct PDF input; alternatively provide a verified searchable cache") from exc
+        raise RuntimeError(
+            "pypdf is required for direct PDF input; alternatively provide a verified searchable cache"
+        ) from exc
     reader = PdfReader(str(path))
     return [
         {
@@ -350,7 +406,9 @@ def _source_documents(source: dict[str, Any]) -> list[dict[str, Any]]:
             return _documents_from_jsonl(chunks)
         paper = path / "paper.md"
         if not paper.exists():
-            raise FileNotFoundError(f"Searchable cache has no chunks.jsonl or paper.md: {path}")
+            raise FileNotFoundError(
+                f"Searchable cache has no chunks.jsonl or paper.md: {path}"
+            )
         path = paper
     if path.suffix.lower() == ".pdf":
         return _documents_from_pdf(path)
@@ -381,19 +439,32 @@ def _parse_number(value: str) -> float:
 def _unit_match(text: str, property_kind: str) -> tuple[float, str] | None:
     units = sorted(UNIT_RULES[property_kind], key=len, reverse=True)
     unit_pattern = "|".join(re.escape(unit) for unit in units)
-    match = re.search(VALUE_PATTERN.pattern + rf"\s*(?P<unit>{unit_pattern})(?![A-Za-z0-9])", text, flags=re.I)
+    match = re.search(
+        VALUE_PATTERN.pattern + rf"\s*(?P<unit>{unit_pattern})(?![A-Za-z0-9])",
+        text,
+        flags=re.I,
+    )
     if not match:
         return None
     return _parse_number(match.group("value")), match.group("unit")
 
 
-def _normalize_unit(property_kind: str, value: float, reported_unit: str) -> tuple[float | None, str | None, str, str]:
-    key = re.sub(r"\s+", " ", reported_unit.strip().lower().replace("Ω", "ω").replace("Ω", "ω"))
+def _normalize_unit(
+    property_kind: str, value: float, reported_unit: str
+) -> tuple[float | None, str | None, str, str]:
+    key = re.sub(
+        r"\s+", " ", reported_unit.strip().lower().replace("Ω", "ω").replace("Ω", "ω")
+    )
     rule = UNIT_RULES[property_kind].get(key)
     if not rule:
         return None, None, "unsupported", "not_available"
     normalized_unit, factor, formula = rule
-    return value * factor, normalized_unit, "converted" if factor != 1.0 else "identity", formula
+    return (
+        value * factor,
+        normalized_unit,
+        "converted" if factor != 1.0 else "identity",
+        formula,
+    )
 
 
 def _context_value(pattern: str, text: str, group: int | str = 1) -> Any:
@@ -403,14 +474,34 @@ def _context_value(pattern: str, text: str, group: int | str = 1) -> Any:
 
 def _conditions(text: str) -> dict[str, Any]:
     temperature = re.search(r"([+-]?\d+(?:\.\d+)?)\s*(K|°C|C)\b", text, flags=re.I)
-    method = "four_probe" if re.search(r"four[- ]?probe|4[- ]?probe", text, re.I) else "two_probe" if re.search(r"two[- ]?probe|2[- ]?probe", text, re.I) else NOT_REPORTED
-    direction = "in_plane" if re.search(r"in[- ]?plane", text, re.I) else "out_of_plane" if re.search(r"out[- ]?of[- ]?plane|cross[- ]?plane", text, re.I) else NOT_REPORTED
+    method = (
+        "four_probe"
+        if re.search(r"four[- ]?probe|4[- ]?probe", text, re.I)
+        else "two_probe"
+        if re.search(r"two[- ]?probe|2[- ]?probe", text, re.I)
+        else NOT_REPORTED
+    )
+    direction = (
+        "in_plane"
+        if re.search(r"in[- ]?plane", text, re.I)
+        else "out_of_plane"
+        if re.search(r"out[- ]?of[- ]?plane|cross[- ]?plane", text, re.I)
+        else NOT_REPORTED
+    )
     return {
-        "temperature": f"{temperature.group(1)} {temperature.group(2)}" if temperature else NOT_REPORTED,
-        "pressure": _context_value(r"([+-]?\d+(?:\.\d+)?\s*(?:Pa|kPa|MPa|GPa|bar|atm))\b", text),
-        "frequency": _context_value(r"([+-]?\d+(?:\.\d+)?\s*(?:Hz|kHz|MHz|GHz))\b", text),
+        "temperature": f"{temperature.group(1)} {temperature.group(2)}"
+        if temperature
+        else NOT_REPORTED,
+        "pressure": _context_value(
+            r"([+-]?\d+(?:\.\d+)?\s*(?:Pa|kPa|MPa|GPa|bar|atm))\b", text
+        ),
+        "frequency": _context_value(
+            r"([+-]?\d+(?:\.\d+)?\s*(?:Hz|kHz|MHz|GHz))\b", text
+        ),
         "direction": direction,
-        "geometry": _context_value(r"\b(van der pauw|hall bar|transmission line|TLM)\b", text),
+        "geometry": _context_value(
+            r"\b(van der pauw|hall bar|transmission line|TLM)\b", text
+        ),
         "instrument_or_method": method,
         "sample_count": _context_value(r"\bn\s*=\s*(\d+)\b", text),
     }
@@ -429,7 +520,9 @@ def _identity_context(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
     context = {
         "preparation": NOT_REPORTED,
         "substrate": _context_value(r"(?:on|substrate[: ]+)\s*([A-Za-z0-9_-]+)", text),
-        "contacts": _context_value(r"\b(Au|Ti/Au|Cr/Au|Pt|Ag|graphene)\s+contacts?\b", text),
+        "contacts": _context_value(
+            r"\b(Au|Ti/Au|Cr/Au|Pt|Ag|graphene)\s+contacts?\b", text
+        ),
         "doping": _context_value(r"\b([np])[- ]?doped\b", text),
         "defects": NOT_REPORTED,
         "strain": _context_value(r"([+-]?\d+(?:\.\d+)?\s*%\s*strain)\b", text),
@@ -441,10 +534,17 @@ def _identity_context(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
 def _property_sentences(text: str, property_kind: str) -> list[str]:
     aliases = PROPERTY_ALIASES[property_kind]
     sentences = re.split(r"(?<=[.!?。！？])\s+|[\r\n]+", text)
-    return [sentence.strip() for sentence in sentences if sentence.strip() and any(alias.lower() in sentence.lower() for alias in aliases)]
+    return [
+        sentence.strip()
+        for sentence in sentences
+        if sentence.strip()
+        and any(alias.lower() in sentence.lower() for alias in aliases)
+    ]
 
 
-def _extract_source_records(source: dict[str, Any], spec: dict[str, Any], docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _extract_source_records(
+    source: dict[str, Any], spec: dict[str, Any], docs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     property_kind = spec["property_kind"]
     for doc in docs:
@@ -453,14 +553,25 @@ def _extract_source_records(source: dict[str, Any], spec: dict[str, Any], docs: 
             warnings: list[str] = []
             if unit_match:
                 reported_value, reported_unit = unit_match
-                normalized_value, normalized_unit, conversion_status, formula = _normalize_unit(property_kind, reported_value, reported_unit)
+                normalized_value, normalized_unit, conversion_status, formula = (
+                    _normalize_unit(property_kind, reported_value, reported_unit)
+                )
             else:
-                loose = re.search(r"(?:was|is|of|=|为)\s*" + VALUE_PATTERN.pattern, sentence, flags=re.I)
+                loose = re.search(
+                    r"(?:was|is|of|=|为)\s*" + VALUE_PATTERN.pattern,
+                    sentence,
+                    flags=re.I,
+                )
                 if not loose:
                     continue
                 reported_value = _parse_number(loose.group("value"))
                 reported_unit = NOT_REPORTED
-                normalized_value, normalized_unit, conversion_status, formula = None, None, "missing_unit", "not_available"
+                normalized_value, normalized_unit, conversion_status, formula = (
+                    None,
+                    None,
+                    "missing_unit",
+                    "not_available",
+                )
                 warnings.append("missing_reported_unit")
             identity, context = _identity_context(sentence)
             conditions = _conditions(sentence)
@@ -486,8 +597,10 @@ def _extract_source_records(source: dict[str, Any], spec: dict[str, Any], docs: 
                     "source": {
                         "doi": source.get("doi") or NOT_REPORTED,
                         "reference_id": source.get("reference_id") or NOT_REPORTED,
-                        "zotero_item_key": source.get("zotero_item_key") or NOT_REPORTED,
-                        "cache_identity": source.get("cache_identity") or source["source_hash"],
+                        "zotero_item_key": source.get("zotero_item_key")
+                        or NOT_REPORTED,
+                        "cache_identity": source.get("cache_identity")
+                        or source["source_hash"],
                         "source_hash": source["source_hash"],
                         "paper_title": source.get("title") or NOT_REPORTED,
                         "source_id": source["source_id"],
@@ -527,12 +640,25 @@ def _mark_duplicates_and_conflicts(records: list[dict[str, Any]]) -> None:
         if len(grouped) < 2:
             continue
         for record in grouped:
-            peers = [peer for peer in grouped if peer["record_id"] != record["record_id"]]
-            same = [peer["record_id"] for peer in peers if peer.get("reported_value") == record.get("reported_value") and peer.get("reported_unit") == record.get("reported_unit")]
-            conflicts = [peer["record_id"] for peer in peers if peer["record_id"] not in same]
+            peers = [
+                peer for peer in grouped if peer["record_id"] != record["record_id"]
+            ]
+            same = [
+                peer["record_id"]
+                for peer in peers
+                if peer.get("reported_value") == record.get("reported_value")
+                and peer.get("reported_unit") == record.get("reported_unit")
+            ]
+            conflicts = [
+                peer["record_id"] for peer in peers if peer["record_id"] not in same
+            ]
             record["audit"]["duplicate_refs"] = same
             record["audit"]["conflict_refs"] = conflicts
-            if conflicts and "duplicate_doi_conflicting_evidence" not in record["audit"]["warnings"]:
+            if (
+                conflicts
+                and "duplicate_doi_conflicting_evidence"
+                not in record["audit"]["warnings"]
+            ):
                 record["audit"]["warnings"].append("duplicate_doi_conflicting_evidence")
 
 
@@ -604,8 +730,14 @@ def _write_csv(path: Path, records: list[dict[str, Any]]) -> None:
     atomic_write_text(path, buffer.getvalue())
 
 
-def _review_package(dataset_root: Path, records: list[dict[str, Any]], updated_at: str) -> None:
-    pending = [record for record in records if record["audit"]["review_state"] in {"candidate", "deferred"}]
+def _review_package(
+    dataset_root: Path, records: list[dict[str, Any]], updated_at: str
+) -> None:
+    pending = [
+        record
+        for record in records
+        if record["audit"]["review_state"] in {"candidate", "deferred"}
+    ]
     package = {
         "schema_version": DATASET_SCHEMA_VERSION,
         "dataset_id": dataset_root.name,
@@ -627,7 +759,9 @@ def _review_package(dataset_root: Path, records: list[dict[str, Any]], updated_a
             for record in records
         ],
         "allowed_decisions": sorted(REVIEW_DECISIONS),
-        "boundaries": ["Only accepted or edited records can enter the reviewed dataset; plot eligibility also requires comparability."],
+        "boundaries": [
+            "Only accepted or edited records can enter the reviewed dataset; plot eligibility also requires comparability."
+        ],
     }
     write_yaml(dataset_root / "review_package.yml", package)
     lines = [
@@ -650,13 +784,27 @@ def _review_package(dataset_root: Path, records: list[dict[str, Any]], updated_a
             record["audit"]["review_state"],
             ", ".join(record["audit"]["warnings"]) or "-",
         ]
-        lines.append("| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in values) + " |")
-    lines.extend(["", "Unreviewed candidates cannot enter plots, statistics, reports, or durable memory.", ""])
+        lines.append(
+            "| "
+            + " | ".join(
+                str(value).replace("|", "\\|").replace("\n", " ") for value in values
+            )
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "Unreviewed candidates cannot enter plots, statistics, reports, or durable memory.",
+            "",
+        ]
+    )
     atomic_write_text(dataset_root / "review_package.md", "\n".join(lines))
 
 
 def _artifact_bytes(dataset_root: Path) -> int:
-    return sum(path.stat().st_size for path in dataset_root.rglob("*") if path.is_file())
+    return sum(
+        path.stat().st_size for path in dataset_root.rglob("*") if path.is_file()
+    )
 
 
 def extract_literature_data(
@@ -668,7 +816,11 @@ def extract_literature_data(
     extracted_at: str | None = None,
 ) -> dict[str, Any]:
     if not confirmed:
-        return {"status": "needs_confirmation", "dataset_id": dataset_id, "next_action": "Rerun with explicit confirmation."}
+        return {
+            "status": "needs_confirmation",
+            "dataset_id": dataset_id,
+            "next_action": "Rerun with explicit confirmation.",
+        }
     extracted_at = extracted_at or EARecord.now_iso()
     dataset_root = _dataset_root(root, dataset_id)
     spec = read_yaml(dataset_root / "extraction_spec.yml")
@@ -676,7 +828,11 @@ def extract_literature_data(
     state_path = dataset_root / "extraction_state.compact.yml"
     state = read_yaml(state_path)
     candidate_path = dataset_root / "candidate_records.yml"
-    records = (read_yaml(candidate_path).get("records") or []) if candidate_path.exists() else []
+    records = (
+        (read_yaml(candidate_path).get("records") or [])
+        if candidate_path.exists()
+        else []
+    )
     processed_now = 0
     attempted_now = 0
     skipped = 0
@@ -688,16 +844,25 @@ def extract_literature_data(
             break
         source_hash = _sha256(Path(source["source_path"]))
         checkpoint = checkpoints.get(source["source_id"]) or {}
-        if checkpoint.get("status") == "completed" and checkpoint.get("source_hash") == source_hash:
+        if (
+            checkpoint.get("status") == "completed"
+            and checkpoint.get("source_hash") == source_hash
+        ):
             skipped += 1
             continue
-        records = [record for record in records if record["source"]["source_id"] != source["source_id"]]
+        records = [
+            record
+            for record in records
+            if record["source"]["source_id"] != source["source_id"]
+        ]
         attempted_now += 1
         try:
             docs = _source_documents({**source, "source_hash": source_hash})
             if not any(str(doc.get("text") or "").strip() for doc in docs):
                 raise RuntimeError("source_has_no_searchable_text_ocr_required")
-            source_records = _extract_source_records({**source, "source_hash": source_hash}, spec, docs)
+            source_records = _extract_source_records(
+                {**source, "source_hash": source_hash}, spec, docs
+            )
             records.extend(source_records)
             write_yaml(
                 dataset_root / "evidence" / f"{source['source_id']}.yml",
@@ -728,28 +893,47 @@ def extract_literature_data(
                 "candidate_count": len(source_records),
             }
             processed_now += 1
-            state["metrics"]["pages_read"] = int(state["metrics"].get("pages_read", 0)) + len({str(doc.get("page")) for doc in docs})
-            state["metrics"]["chunks_read"] = int(state["metrics"].get("chunks_read", 0)) + len(docs)
+            state["metrics"]["pages_read"] = int(
+                state["metrics"].get("pages_read", 0)
+            ) + len({str(doc.get("page")) for doc in docs})
+            state["metrics"]["chunks_read"] = int(
+                state["metrics"].get("chunks_read", 0)
+            ) + len(docs)
         except Exception as exc:
             error_text = str(exc)
             checkpoints[source["source_id"]] = {
                 "status": "failed",
                 "source_hash": source_hash,
                 "processed_at": extracted_at,
-                "error_code": "ocr_required" if "ocr_required" in error_text else "source_unreadable_or_unsearchable",
+                "error_code": "ocr_required"
+                if "ocr_required" in error_text
+                else "source_unreadable_or_unsearchable",
                 "error": error_text[:300],
                 "safe_to_retry": True,
             }
             failures += 1
         _mark_duplicates_and_conflicts(records)
-        write_yaml(candidate_path, {"schema_version": DATASET_SCHEMA_VERSION, "dataset_id": dataset_id, "records": records})
+        write_yaml(
+            candidate_path,
+            {
+                "schema_version": DATASET_SCHEMA_VERSION,
+                "dataset_id": dataset_id,
+                "records": records,
+            },
+        )
         _write_csv(dataset_root / "candidate_records.csv", records)
         _review_package(dataset_root, records, extracted_at)
         state["updated_at"] = extracted_at
-        state["metrics"]["papers_processed"] = sum(item.get("status") == "completed" for item in checkpoints.values())
+        state["metrics"]["papers_processed"] = sum(
+            item.get("status") == "completed" for item in checkpoints.values()
+        )
         state["metrics"]["candidate_count"] = len(records)
         state["status"] = "needs_review" if records else "fulltext_ready"
-        state["next_action"] = "Review candidate records with `ea literature data-review`." if records else "Resolve source failures or add sources."
+        state["next_action"] = (
+            "Review candidate records with `ea literature data-review`."
+            if records
+            else "Resolve source failures or add sources."
+        )
         state["metrics"]["artifact_bytes"] = _artifact_bytes(dataset_root)
         write_yaml(state_path, state)
     provenance = None
@@ -757,14 +941,34 @@ def extract_literature_data(
         provenance = write_provenance_entry(
             root,
             workflow="literature_data_extraction_beta",
-            inputs={"records": [], "files": [_relative(root, dataset_root / "source_manifest.yml")]},
-            outputs={"records": [record["record_id"] for record in records], "files": [_relative(root, candidate_path)]},
-            parameters={"dataset_id": dataset_id, "property_kind": spec["property_kind"], "max_sources": max_sources},
-            warnings=[checkpoint for checkpoint in checkpoints.values() if checkpoint.get("status") == "failed"],
+            inputs={
+                "records": [],
+                "files": [_relative(root, dataset_root / "source_manifest.yml")],
+            },
+            outputs={
+                "records": [record["record_id"] for record in records],
+                "files": [_relative(root, candidate_path)],
+            },
+            parameters={
+                "dataset_id": dataset_id,
+                "property_kind": spec["property_kind"],
+                "max_sources": max_sources,
+            },
+            warnings=[
+                checkpoint
+                for checkpoint in checkpoints.values()
+                if checkpoint.get("status") == "failed"
+            ],
             created_at=extracted_at,
         )
     state["metrics"]["output_bytes"] = sum(
-        path.stat().st_size for path in (candidate_path, dataset_root / "candidate_records.csv", dataset_root / "review_package.yml") if path.exists()
+        path.stat().st_size
+        for path in (
+            candidate_path,
+            dataset_root / "candidate_records.csv",
+            dataset_root / "review_package.yml",
+        )
+        if path.exists()
     )
     state["metrics"]["artifact_bytes"] = _artifact_bytes(dataset_root)
     write_yaml(state_path, state)
@@ -787,9 +991,16 @@ def extract_literature_data(
 def _comparison_status(record: dict[str, Any], spec: dict[str, Any]) -> str:
     if record["audit"]["review_state"] == "not_comparable":
         return "not_comparable_by_review"
-    if record.get("normalized_value") is None or record.get("normalized_unit") in {None, NOT_REPORTED}:
+    if record.get("normalized_value") is None or record.get("normalized_unit") in {
+        None,
+        NOT_REPORTED,
+    }:
         return "not_comparable_missing_normalized_value"
-    missing = [name for name in spec.get("required_conditions") or [] if record.get("conditions", {}).get(name, NOT_REPORTED) == NOT_REPORTED]
+    missing = [
+        name
+        for name in spec.get("required_conditions") or []
+        if record.get("conditions", {}).get(name, NOT_REPORTED) == NOT_REPORTED
+    ]
     if missing:
         return "not_comparable_missing_conditions:" + ",".join(missing)
     if record["audit"].get("conflict_refs"):
@@ -798,7 +1009,11 @@ def _comparison_status(record: dict[str, Any], spec: dict[str, Any]) -> str:
 
 
 def _reviewed_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [record for record in records if record["audit"]["review_state"] in {"accepted", "edited"}]
+    return [
+        record
+        for record in records
+        if record["audit"]["review_state"] in {"accepted", "edited"}
+    ]
 
 
 def review_literature_data(
@@ -820,7 +1035,12 @@ def review_literature_data(
     if decision not in REVIEW_DECISIONS:
         raise ValueError(f"Unsupported review decision: {decision}")
     if not confirmed:
-        return {"status": "needs_confirmation", "dataset_id": dataset_id, "record_id": record_id, "decision": decision}
+        return {
+            "status": "needs_confirmation",
+            "dataset_id": dataset_id,
+            "record_id": record_id,
+            "decision": decision,
+        }
     reviewed_at = reviewed_at or EARecord.now_iso()
     dataset_root = _dataset_root(root, dataset_id)
     spec = read_yaml(dataset_root / "extraction_spec.yml")
@@ -832,7 +1052,15 @@ def review_literature_data(
     except StopIteration as exc:
         raise KeyError(f"Unknown literature data record: {record_id}") from exc
     if decision == "edit":
-        edited_value_or_unit = any(value is not None for value in (reported_value, reported_unit, normalized_value, normalized_unit))
+        edited_value_or_unit = any(
+            value is not None
+            for value in (
+                reported_value,
+                reported_unit,
+                normalized_value,
+                normalized_unit,
+            )
+        )
         if reported_value is not None:
             record["reported_value"] = reported_value
         if reported_unit is not None:
@@ -843,13 +1071,23 @@ def review_literature_data(
             record["normalized_unit"] = normalized_unit
         if conditions:
             record["conditions"].update(conditions)
-        if record.get("normalized_value") is None or record.get("normalized_unit") in {None, NOT_REPORTED}:
-            raise ValueError("Edited records need a reviewed normalized value and unit before acceptance")
+        if record.get("normalized_value") is None or record.get("normalized_unit") in {
+            None,
+            NOT_REPORTED,
+        }:
+            raise ValueError(
+                "Edited records need a reviewed normalized value and unit before acceptance"
+            )
         record["conversion_status"] = "reviewer_edited"
         if edited_value_or_unit:
             record["conversion_formula"] = "reviewer_supplied_or_verified"
-    if decision == "accept" and (record.get("normalized_value") is None or record.get("normalized_unit") in {None, NOT_REPORTED}):
-        raise ValueError("A record with no reviewed normalized value/unit cannot be accepted; edit, defer, reject, or mark not-comparable")
+    if decision == "accept" and (
+        record.get("normalized_value") is None
+        or record.get("normalized_unit") in {None, NOT_REPORTED}
+    ):
+        raise ValueError(
+            "A record with no reviewed normalized value/unit cannot be accepted; edit, defer, reject, or mark not-comparable"
+        )
     state_map = {
         "accept": "accepted",
         "reject": "rejected",
@@ -864,19 +1102,33 @@ def review_literature_data(
     write_yaml(candidate_path, payload)
     _write_csv(dataset_root / "candidate_records.csv", records)
     reviewed = _reviewed_records(records)
-    write_yaml(dataset_root / "reviewed_dataset.yml", {"schema_version": DATASET_SCHEMA_VERSION, "dataset_id": dataset_id, "records": reviewed})
+    write_yaml(
+        dataset_root / "reviewed_dataset.yml",
+        {
+            "schema_version": DATASET_SCHEMA_VERSION,
+            "dataset_id": dataset_id,
+            "records": reviewed,
+        },
+    )
     _write_csv(dataset_root / "reviewed_dataset.csv", reviewed)
     _review_package(dataset_root, records, reviewed_at)
-    pending = sum(record["audit"]["review_state"] in {"candidate", "deferred"} for record in records)
+    pending = sum(
+        record["audit"]["review_state"] in {"candidate", "deferred"}
+        for record in records
+    )
     state_path = dataset_root / "extraction_state.compact.yml"
     state = read_yaml(state_path)
     state.update(
         {
-            "status": "reviewed_dataset_ready" if reviewed and not pending else "needs_review",
+            "status": "reviewed_dataset_ready"
+            if reviewed and not pending
+            else "needs_review",
             "updated_at": reviewed_at,
             "reviewed_count": len(reviewed),
             "pending_review_count": pending,
-            "next_action": "Run data-validate; plot/export only comparable reviewed records." if reviewed else "Continue reviewing candidates.",
+            "next_action": "Run data-validate; plot/export only comparable reviewed records."
+            if reviewed
+            else "Continue reviewing candidates.",
         }
     )
     write_yaml(state_path, state)
@@ -905,28 +1157,73 @@ def validate_literature_data(
     spec = read_yaml(dataset_root / "extraction_spec.yml")
     candidates = read_yaml(dataset_root / "candidate_records.yml").get("records") or []
     reviewed_path = dataset_root / "reviewed_dataset.yml"
-    reviewed = read_yaml(reviewed_path).get("records") or [] if reviewed_path.exists() else []
+    reviewed = (
+        read_yaml(reviewed_path).get("records") or [] if reviewed_path.exists() else []
+    )
     findings: list[dict[str, Any]] = []
     record_ids = {record["record_id"] for record in candidates}
     for record in candidates:
         evidence = record.get("evidence") or {}
-        if evidence.get("page") in {None, NOT_REPORTED} and evidence.get("chunk_anchor") in {None, NOT_REPORTED}:
-            findings.append({"severity": "error", "code": "missing_evidence_anchor", "record_id": record["record_id"]})
+        if evidence.get("page") in {None, NOT_REPORTED} and evidence.get(
+            "chunk_anchor"
+        ) in {None, NOT_REPORTED}:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "missing_evidence_anchor",
+                    "record_id": record["record_id"],
+                }
+            )
         for ref in record.get("audit", {}).get("conflict_refs") or []:
             if ref not in record_ids:
-                findings.append({"severity": "error", "code": "missing_conflict_reference", "record_id": record["record_id"], "ref": ref})
+                findings.append(
+                    {
+                        "severity": "error",
+                        "code": "missing_conflict_reference",
+                        "record_id": record["record_id"],
+                        "ref": ref,
+                    }
+                )
         if record["audit"]["review_state"] in {"accepted", "edited"}:
-            if record.get("normalized_value") is None or record.get("normalized_unit") in {None, NOT_REPORTED}:
-                findings.append({"severity": "error", "code": "reviewed_record_missing_normalized_value", "record_id": record["record_id"]})
+            if record.get("normalized_value") is None or record.get(
+                "normalized_unit"
+            ) in {None, NOT_REPORTED}:
+                findings.append(
+                    {
+                        "severity": "error",
+                        "code": "reviewed_record_missing_normalized_value",
+                        "record_id": record["record_id"],
+                    }
+                )
             if record["property_kind"] != spec["property_kind"]:
-                findings.append({"severity": "error", "code": "property_kind_mismatch", "record_id": record["record_id"]})
+                findings.append(
+                    {
+                        "severity": "error",
+                        "code": "property_kind_mismatch",
+                        "record_id": record["record_id"],
+                    }
+                )
             if record["comparison_status"] != "comparable":
-                findings.append({"severity": "warning", "code": record["comparison_status"], "record_id": record["record_id"]})
+                findings.append(
+                    {
+                        "severity": "warning",
+                        "code": record["comparison_status"],
+                        "record_id": record["record_id"],
+                    }
+                )
         elif record["audit"]["review_state"] in {"candidate", "deferred"}:
-            findings.append({"severity": "info", "code": "record_not_yet_reviewed", "record_id": record["record_id"]})
+            findings.append(
+                {
+                    "severity": "info",
+                    "code": "record_not_yet_reviewed",
+                    "record_id": record["record_id"],
+                }
+            )
     error_count = sum(item["severity"] == "error" for item in findings)
     warning_count = sum(item["severity"] == "warning" for item in findings)
-    comparable_count = sum(record.get("comparison_status") == "comparable" for record in reviewed)
+    comparable_count = sum(
+        record.get("comparison_status") == "comparable" for record in reviewed
+    )
     status = "fail" if error_count else "warnings" if warning_count else "pass"
     validation = {
         "schema_version": DATASET_SCHEMA_VERSION,
@@ -955,12 +1252,21 @@ def plot_literature_data(
     created_at: str | None = None,
 ) -> dict[str, Any]:
     if not confirmed:
-        return {"status": "needs_confirmation", "dataset_id": dataset_id, "next_action": "Confirm reviewed-only plotting."}
+        return {
+            "status": "needs_confirmation",
+            "dataset_id": dataset_id,
+            "next_action": "Confirm reviewed-only plotting.",
+        }
     created_at = created_at or EARecord.now_iso()
     dataset_root = _dataset_root(root, dataset_id)
     spec = read_yaml(dataset_root / "extraction_spec.yml")
     reviewed = read_yaml(dataset_root / "reviewed_dataset.yml").get("records") or []
-    eligible = [record for record in reviewed if record.get("comparison_status") == "comparable" and record.get("normalized_value") is not None]
+    eligible = [
+        record
+        for record in reviewed
+        if record.get("comparison_status") == "comparable"
+        and record.get("normalized_value") is not None
+    ]
     if not eligible:
         raise ValueError("No reviewed, comparable records are eligible for plotting")
     units = {record["normalized_unit"] for record in eligible}
@@ -976,10 +1282,20 @@ def plot_literature_data(
     apply_figure_style()
     import matplotlib.pyplot as plt
 
-    labels = [str(record["source"]["paper_title"])[:28] or record["record_id"] for record in eligible]
+    labels = [
+        str(record["source"]["paper_title"])[:28] or record["record_id"]
+        for record in eligible
+    ]
     values = [float(record["normalized_value"]) for record in eligible]
     fig, ax = plt.subplots(figsize=(max(6.2, len(values) * 0.62), 4.4))
-    ax.scatter(range(len(values)), values, color="#007C91", edgecolor="#222222", linewidth=0.5, s=42)
+    ax.scatter(
+        range(len(values)),
+        values,
+        color="#007C91",
+        edgecolor="#222222",
+        linewidth=0.5,
+        s=42,
+    )
     ax.set_xticks(range(len(values)), labels, rotation=35, ha="right")
     ax.set_ylabel(f"{spec['property_name']} ({next(iter(units))})")
     ax.set_title(f"Reviewed {spec['property_name']} evidence")
@@ -997,7 +1313,9 @@ def plot_literature_data(
         "source_data_ref": _relative(root, source_data),
         "normalized_unit": next(iter(units)),
         "reviewed_only": True,
-        "limitations": ["Records marked not comparable, conflicting, deferred, rejected, or unreviewed are excluded."],
+        "limitations": [
+            "Records marked not comparable, conflicting, deferred, rejected, or unreviewed are excluded."
+        ],
     }
     metadata_path = plots / f"{figure_id}.yml"
     write_yaml(metadata_path, metadata)
@@ -1009,11 +1327,33 @@ def plot_literature_data(
         result_id=dataset_id,
         raw_data_ids=[],
         sample_ids=[],
-        generation={"workflow": "literature_data_plot_beta", "created_at": created_at, "reviewed_only": True},
+        generation={
+            "workflow": "literature_data_plot_beta",
+            "created_at": created_at,
+            "reviewed_only": True,
+        },
         caption=f"Reviewed {spec['property_name']} records from the literature evidence dataset.",
         purpose="cross-paper reviewed property comparison",
         style_profile=NATURE_LIKE_STYLE_PROFILE,
-        source_data_refs=[_relative(root, source_data), _relative(root, dataset_root / "reviewed_dataset.yml")],
+        source_data_refs=[
+            _relative(root, source_data),
+            _relative(root, dataset_root / "reviewed_dataset.yml"),
+        ],
+        source_data=[
+            source_data_entry(
+                root,
+                _relative(root, source_data),
+                role="primary_plotting_dataset",
+                purpose="Reviewed, normalized cross-paper values plotted in the comparison figure.",
+                primary=True,
+            ),
+            source_data_entry(
+                root,
+                _relative(root, dataset_root / "reviewed_dataset.yml"),
+                role="reviewed_dataset_manifest",
+                purpose="Review decisions and record provenance for the plotted values.",
+            ),
+        ],
     )
     return {
         "status": "plot_ready",
@@ -1028,7 +1368,9 @@ def plot_literature_data(
     }
 
 
-def _report_markdown(spec: dict[str, Any], validation: dict[str, Any], reviewed: list[dict[str, Any]]) -> str:
+def _report_markdown(
+    spec: dict[str, Any], validation: dict[str, Any], reviewed: list[dict[str, Any]]
+) -> str:
     lines = [
         f"# Reviewed Literature Dataset: {spec['dataset_id']}",
         "",
@@ -1051,7 +1393,13 @@ def _report_markdown(spec: dict[str, Any], validation: dict[str, Any], reviewed:
             f"p.{record['evidence']['page']} / {record['evidence']['chunk_anchor']}",
             record["comparison_status"],
         ]
-        lines.append("| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in values) + " |")
+        lines.append(
+            "| "
+            + " | ".join(
+                str(value).replace("|", "\\|").replace("\n", " ") for value in values
+            )
+            + " |"
+        )
     lines.extend(
         [
             "",
@@ -1074,14 +1422,22 @@ def export_literature_data(
     exported_at: str | None = None,
 ) -> dict[str, Any]:
     if not confirmed:
-        return {"status": "needs_confirmation", "dataset_id": dataset_id, "next_action": "Confirm reviewed dataset export."}
+        return {
+            "status": "needs_confirmation",
+            "dataset_id": dataset_id,
+            "next_action": "Confirm reviewed dataset export.",
+        }
     exported_at = exported_at or EARecord.now_iso()
     dataset_root = _dataset_root(root, dataset_id)
     spec = read_yaml(dataset_root / "extraction_spec.yml")
     reviewed = read_yaml(dataset_root / "reviewed_dataset.yml").get("records") or []
-    validation = validate_literature_data(root, dataset_id=dataset_id, write_report=True, validated_at=exported_at)
+    validation = validate_literature_data(
+        root, dataset_id=dataset_id, write_report=True, validated_at=exported_at
+    )
     if validation["error_count"]:
-        raise ValueError("Reviewed dataset has validation errors; repair them before export")
+        raise ValueError(
+            "Reviewed dataset has validation errors; repair them before export"
+        )
     report_path = dataset_root / "report.md"
     atomic_write_text(report_path, _report_markdown(spec, validation, reviewed))
     files = [
@@ -1099,10 +1455,22 @@ def export_literature_data(
         "exported_at": exported_at,
         "maturity": "beta",
         "reviewed_record_count": len(reviewed),
-        "files": [{"path": path.relative_to(dataset_root).as_posix(), "sha256": _sha256(path)} for path in files],
-        "excluded": ["raw PDFs", "private full text", "cookies", "credentials", "absolute source paths", "unreviewed candidate records"],
+        "files": [
+            {"path": path.relative_to(dataset_root).as_posix(), "sha256": _sha256(path)}
+            for path in files
+        ],
+        "excluded": [
+            "raw PDFs",
+            "private full text",
+            "cookies",
+            "credentials",
+            "absolute source paths",
+            "unreviewed candidate records",
+        ],
     }
-    manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+    manifest_bytes = (
+        json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+    )
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", manifest_bytes)
@@ -1112,7 +1480,9 @@ def export_literature_data(
     archive_path = export_dir / f"{dataset_id}-reviewed.zip"
     atomic_write_bytes(archive_path, buffer.getvalue())
     checksum = hashlib.sha256(buffer.getvalue()).hexdigest()
-    atomic_write_text(archive_path.with_suffix(".zip.sha256"), f"{checksum}  {archive_path.name}\n")
+    atomic_write_text(
+        archive_path.with_suffix(".zip.sha256"), f"{checksum}  {archive_path.name}\n"
+    )
     return {
         "status": "export_ready",
         "maturity": "beta",

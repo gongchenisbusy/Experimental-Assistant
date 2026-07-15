@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.7
+# Experimental Assistant v0.9.8
 
 Experimental Assistant (EA) is a local-first materials-research assistant. It helps organize projects, protect imported raw data, run review-gated characterization workflows, trace reports back to evidence, and coordinate literature work without assuming developer-machine accounts or paths.
 
@@ -8,7 +8,7 @@ Naming note: `$ea-v0-2` is a deprecated compatibility identifier retained throug
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
-Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.7>
+Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.8>
 
 中文用户可直接阅读 [docs/QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md)。稳定错误码与处理建议见 [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md)。
 
@@ -17,7 +17,7 @@ Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/
 Python 3.11, 3.12, or 3.13 is supported. Python 3.12 is recommended.
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.7
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.8
 ea setup
 ea doctor
 ```
@@ -115,7 +115,7 @@ Confirmed source-candidate manifests such as `confirmed_ftir_source_candidates.y
 
 ### Evidence Dataset Beta
 
-The v0.9.7 beta can extract narrowly defined values from lawfully available full text, keep reported and normalized values separate, review each candidate, validate the reviewed dataset, make a source-data-backed plot, and export a privacy-scoped bundle.
+The v0.9.8 beta can extract narrowly defined values from lawfully available full text, keep reported and normalized values separate, review each candidate, validate the reviewed dataset, make a source-data-backed plot, and export a privacy-scoped bundle.
 
 ```bash
 ea literature data-plan /path/to/project --help
@@ -159,7 +159,7 @@ Existing `$ea-v0-2` installs continue to route to `$ea` during v1.0.x. Historica
 ea migrate status /path/to/project
 ea migrate plan /path/to/project
 ea update
-ea rollback --release-ref v0.9.6
+ea rollback --release-ref v0.9.7
 ea uninstall
 ```
 
@@ -177,7 +177,7 @@ python3 scripts/public_release_smoke.py
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.7-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.8-COMMIT-release.zip
 ea-release-checklist
 ```
 

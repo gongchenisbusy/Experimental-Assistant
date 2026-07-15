@@ -167,12 +167,12 @@ ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.7-abcdef0-release.zip
+ea-verify-release-package dist/experimental-assistant-0.9.8-abcdef0-release.zip
 ```
 
 The smoke gate includes tests, skill validation, CLI help checks, public-user portability scanning, and sensitive-value scanning for accidental credential-like assignments or token literals in release-facing files.
 
-Use the smoke check before publishing or handing off the Experimental Assistant v0.9.7 repository itself, then generate and verify the release manifest/package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, verifies package payload integrity, and scans for portability plus accidental sensitive values without relying on Zotero, browser profiles, institution access, or developer-machine paths.
+Use the smoke check before publishing or handing off the Experimental Assistant v0.9.8 repository itself, then generate and verify the release manifest/package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, verifies package payload integrity, and scans for portability plus accidental sensitive values without relying on Zotero, browser profiles, institution access, or developer-machine paths.
 
 Report bundle export:
 

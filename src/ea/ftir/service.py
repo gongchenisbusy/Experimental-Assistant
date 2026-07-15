@@ -22,10 +22,14 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
-from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
+from ea.literature.source_packet_manifest import (
+    SourcePacketManifestError,
+    confirmed_source_packet_library,
+)
 from ea.memory import propose_memory_candidate
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
@@ -73,7 +77,11 @@ BUILTIN_FTIR_ASSIGNMENT_LIBRARY_DEFAULT = "generic_materials"
 
 @lru_cache(maxsize=1)
 def _builtin_ftir_assignment_libraries() -> dict[str, Any]:
-    text = resources.files("ea.ftir").joinpath("assignment_libraries.yml").read_text(encoding="utf-8")
+    text = (
+        resources.files("ea.ftir")
+        .joinpath("assignment_libraries.yml")
+        .read_text(encoding="utf-8")
+    )
     loaded = yaml.safe_load(text) or {}
     libraries = loaded.get("libraries")
     if not isinstance(libraries, dict):
@@ -89,7 +97,9 @@ def _builtin_ftir_assignment_library(name: str) -> dict[str, Any]:
     libraries = _builtin_ftir_assignment_libraries()
     if name not in libraries:
         available = ", ".join(sorted(libraries)) or "none"
-        raise FTIRProcessingError(f"Unknown built-in FTIR assignment library: {name}. Available libraries: {available}")
+        raise FTIRProcessingError(
+            f"Unknown built-in FTIR assignment library: {name}. Available libraries: {available}"
+        )
     return deepcopy(libraries[name])
 
 
@@ -208,13 +218,17 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -224,7 +238,13 @@ def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tupl
     return coerced, False
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -309,8 +329,15 @@ def inspect_ftir_file(path: Path) -> FTIRInspection:
     x_max = float(x_values.max())
     metadata_text = _axis_metadata_text(metadata)
     path_text = path.as_posix().upper()
-    looks_like_wavenumber = "cm" in metadata_text or (350 <= x_min <= 4500 and 350 <= x_max <= 4500)
-    looks_like_ftir = "FTIR" in path_text or "INFRARED" in path_text or "/IR/" in path_text or (x_min <= 800 and x_max >= 2500)
+    looks_like_wavenumber = "cm" in metadata_text or (
+        350 <= x_min <= 4500 and 350 <= x_max <= 4500
+    )
+    looks_like_ftir = (
+        "FTIR" in path_text
+        or "INFRARED" in path_text
+        or "/IR/" in path_text
+        or (x_min <= 800 and x_max >= 2500)
+    )
     file_kind = "ftir" if looks_like_wavenumber and looks_like_ftir else "unknown"
     x_unit = "cm^-1" if "cm" in metadata_text or looks_like_wavenumber else "unknown"
     warnings: list[str] = []
@@ -338,7 +365,12 @@ def _ftir_assignment_source_candidates(source_packet: Any) -> list[Any]:
     if isinstance(source_packet, list):
         return source_packet
     if isinstance(source_packet, dict):
-        raw_candidates = source_packet.get("candidates") or source_packet.get("assignments") or source_packet.get("suggestions") or []
+        raw_candidates = (
+            source_packet.get("candidates")
+            or source_packet.get("assignments")
+            or source_packet.get("suggestions")
+            or []
+        )
         return raw_candidates if isinstance(raw_candidates, list) else []
     return []
 
@@ -355,20 +387,35 @@ def _ftir_assignment_template_candidates() -> list[dict[str, Any]]:
             "wavenumber_window_cm1": [None, None],
             "expected_feature": "absorbance_maximum",
             "source_summary": "TODO: summarize the reference spectrum, table, or literature source for this band window.",
-            "applicability_notes": ["TODO: describe when this window applies and known overlaps."],
+            "applicability_notes": [
+                "TODO: describe when this window applies and known overlaps."
+            ],
             "reference_ids": ["TODO-registered-reference-id"],
             "confidence": "low",
-            "caveats": ["Template candidate only; fill band window and source metadata before running suggest-assignments."],
+            "caveats": [
+                "Template candidate only; fill band window and source metadata before running suggest-assignments."
+            ],
         }
     ]
 
 
 def _candidate_identity(candidate: dict[str, Any]) -> str:
-    return str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or "").strip()
+    return str(
+        candidate.get("candidate_id")
+        or candidate.get("assignment_id")
+        or candidate.get("suggestion_id")
+        or ""
+    ).strip()
 
 
 def _normalize_assignment_type(value: Any) -> str:
-    return str(value or "functional_group").strip().lower().replace("-", "_").replace(" ", "_")
+    return (
+        str(value or "functional_group")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
 
 
 def _normalize_expected_feature(value: Any) -> str:
@@ -397,7 +444,13 @@ def _candidate_matches_filters(
 ) -> bool:
     if include_candidates and _candidate_identity(candidate) not in include_candidates:
         return False
-    if assignment_types and _normalize_assignment_type(candidate.get("assignment_type") or candidate.get("type")) not in assignment_types:
+    if (
+        assignment_types
+        and _normalize_assignment_type(
+            candidate.get("assignment_type") or candidate.get("type")
+        )
+        not in assignment_types
+    ):
         return False
     if material_scopes:
         material_scope = str(candidate.get("material_scope") or "").strip().lower()
@@ -416,7 +469,9 @@ def _material_scope_terms(value: Any) -> list[str]:
     return terms
 
 
-def _candidate_window_overlaps(candidate: dict[str, Any], lower: float | None, upper: float | None) -> bool:
+def _candidate_window_overlaps(
+    candidate: dict[str, Any], lower: float | None, upper: float | None
+) -> bool:
     if lower is None and upper is None:
         return True
     candidate_lower, candidate_upper = _candidate_window(candidate)
@@ -433,7 +488,9 @@ def _ftir_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str
     lower, upper = _candidate_window(raw_candidate)
     return {
         "candidate_id": _candidate_identity(raw_candidate),
-        "assignment_type": _normalize_assignment_type(raw_candidate.get("assignment_type") or raw_candidate.get("type")),
+        "assignment_type": _normalize_assignment_type(
+            raw_candidate.get("assignment_type") or raw_candidate.get("type")
+        ),
         "assignment_label": str(
             raw_candidate.get("assignment_label")
             or raw_candidate.get("functional_group")
@@ -441,14 +498,32 @@ def _ftir_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str
             or ""
         ).strip()
         or None,
-        "band_label": str(raw_candidate.get("band_label") or raw_candidate.get("assignment_label") or "").strip() or None,
-        "wavenumber_window_cm1": [lower, upper] if lower is not None and upper is not None else [],
-        "expected_feature": _normalize_expected_feature(raw_candidate.get("expected_feature")),
-        "source_summary": str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip(),
+        "band_label": str(
+            raw_candidate.get("band_label")
+            or raw_candidate.get("assignment_label")
+            or ""
+        ).strip()
+        or None,
+        "wavenumber_window_cm1": [lower, upper]
+        if lower is not None and upper is not None
+        else [],
+        "expected_feature": _normalize_expected_feature(
+            raw_candidate.get("expected_feature")
+        ),
+        "source_summary": str(
+            raw_candidate.get("source_summary")
+            or raw_candidate.get("reference_summary")
+            or ""
+        ).strip(),
         "reference_ids": _coerce_string_list(raw_candidate.get("reference_ids")),
-        "applicability_notes": _coerce_string_list(raw_candidate.get("applicability_notes")),
-        "material_scope": str(raw_candidate.get("material_scope") or "").strip() or None,
-        "material_scope_terms": _material_scope_terms(raw_candidate.get("material_scope")),
+        "applicability_notes": _coerce_string_list(
+            raw_candidate.get("applicability_notes")
+        ),
+        "material_scope": str(raw_candidate.get("material_scope") or "").strip()
+        or None,
+        "material_scope_terms": _material_scope_terms(
+            raw_candidate.get("material_scope")
+        ),
         "sample_scope": str(raw_candidate.get("sample_scope") or "").strip() or None,
         "confidence": str(raw_candidate.get("confidence") or "low").strip().lower(),
         "caveats": _coerce_string_list(raw_candidate.get("caveats")),
@@ -457,10 +532,19 @@ def _ftir_discovery_candidate_summary(raw_candidate: dict[str, Any]) -> dict[str
     }
 
 
-def _ftir_discovery_build_source_command(library_id: str, filters: dict[str, Any], candidate_ids: list[str]) -> str:
-    parts = ["ea ftir build-assignment-packet /path/to/ea-project --project-id <project-id>", "--builtin-library", library_id]
+def _ftir_discovery_build_source_command(
+    library_id: str, filters: dict[str, Any], candidate_ids: list[str]
+) -> str:
+    parts = [
+        "ea ftir build-assignment-packet /path/to/ea-project --project-id <project-id>",
+        "--builtin-library",
+        library_id,
+    ]
     include_candidates = list(filters["include_candidates"])
-    if not include_candidates and (filters["wavenumber_min_cm1"] is not None or filters["wavenumber_max_cm1"] is not None):
+    if not include_candidates and (
+        filters["wavenumber_min_cm1"] is not None
+        or filters["wavenumber_max_cm1"] is not None
+    ):
         include_candidates = list(candidate_ids)
     for candidate_id in include_candidates:
         parts.extend(["--include-candidate", candidate_id])
@@ -483,24 +567,42 @@ def summarize_ftir_assignment_libraries(
     """Summarize built-in FTIR assignment libraries without creating project artifacts."""
 
     libraries = _builtin_ftir_assignment_libraries()
-    requested_library_ids = [str(item).strip() for item in builtin_libraries or [] if str(item).strip()]
+    requested_library_ids = [
+        str(item).strip() for item in builtin_libraries or [] if str(item).strip()
+    ]
     if requested_library_ids:
-        unknown = sorted({item for item in requested_library_ids if item not in libraries})
+        unknown = sorted(
+            {item for item in requested_library_ids if item not in libraries}
+        )
         if unknown:
             available = ", ".join(sorted(libraries)) or "none"
-            raise FTIRProcessingError(f"Unknown built-in FTIR assignment library: {', '.join(unknown)}. Available libraries: {available}")
+            raise FTIRProcessingError(
+                f"Unknown built-in FTIR assignment library: {', '.join(unknown)}. Available libraries: {available}"
+            )
         library_ids = sorted(dict.fromkeys(requested_library_ids))
     else:
         library_ids = sorted(libraries)
 
     range_lower = wavenumber_min_cm1
     range_upper = wavenumber_max_cm1
-    if range_lower is not None and range_upper is not None and range_lower > range_upper:
+    if (
+        range_lower is not None
+        and range_upper is not None
+        and range_lower > range_upper
+    ):
         range_lower, range_upper = range_upper, range_lower
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_assignment_type(item) for item in assignment_types or [] if str(item).strip()}
-    material_set = {str(item).strip().lower() for item in material_scopes or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_assignment_type(item)
+        for item in assignment_types or []
+        if str(item).strip()
+    }
+    material_set = {
+        str(item).strip().lower() for item in material_scopes or [] if str(item).strip()
+    }
     filters = {
         "builtin_libraries": library_ids,
         "include_candidates": sorted(include_set),
@@ -521,7 +623,11 @@ def summarize_ftir_assignment_libraries(
 
     for library_id in library_ids:
         library = libraries[library_id]
-        raw_candidates = [candidate for candidate in _ftir_assignment_source_candidates(library) if isinstance(candidate, dict)]
+        raw_candidates = [
+            candidate
+            for candidate in _ftir_assignment_source_candidates(library)
+            if isinstance(candidate, dict)
+        ]
         total_candidate_count += len(raw_candidates)
         matching_raw_candidates = [
             candidate
@@ -534,14 +640,19 @@ def summarize_ftir_assignment_libraries(
             )
             and _candidate_window_overlaps(candidate, range_lower, range_upper)
         ]
-        candidate_summaries = [_ftir_discovery_candidate_summary(candidate) for candidate in matching_raw_candidates]
+        candidate_summaries = [
+            _ftir_discovery_candidate_summary(candidate)
+            for candidate in matching_raw_candidates
+        ]
         matching_candidate_count += len(candidate_summaries)
         type_counts: dict[str, int] = {}
         library_material_scopes: set[str] = set()
         library_min: float | None = None
         library_max: float | None = None
         for candidate in raw_candidates:
-            assignment_type = _normalize_assignment_type(candidate.get("assignment_type") or candidate.get("type"))
+            assignment_type = _normalize_assignment_type(
+                candidate.get("assignment_type") or candidate.get("type")
+            )
             if assignment_type:
                 type_counts[assignment_type] = type_counts.get(assignment_type, 0) + 1
                 all_assignment_types.add(assignment_type)
@@ -555,11 +666,19 @@ def summarize_ftir_assignment_libraries(
                 global_min = lower if global_min is None else min(global_min, lower)
                 global_max = upper if global_max is None else max(global_max, upper)
         candidate_reference_ids = {
-            reference_id for candidate in matching_raw_candidates for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+            reference_id
+            for candidate in matching_raw_candidates
+            for reference_id in _coerce_string_list(candidate.get("reference_ids"))
         }
         matching_reference_ids.update(candidate_reference_ids)
-        reference_seed_ids = sorted((library.get("reference_seeds") or {}).keys()) if isinstance(library.get("reference_seeds"), dict) else []
-        matching_reference_seed_ids = sorted(set(reference_seed_ids) & candidate_reference_ids)
+        reference_seed_ids = (
+            sorted((library.get("reference_seeds") or {}).keys())
+            if isinstance(library.get("reference_seeds"), dict)
+            else []
+        )
+        matching_reference_seed_ids = sorted(
+            set(reference_seed_ids) & candidate_reference_ids
+        )
         summaries.append(
             {
                 "library_id": library_id,
@@ -569,17 +688,23 @@ def summarize_ftir_assignment_libraries(
                 "matching_candidate_count": len(candidate_summaries),
                 "assignment_type_counts": dict(sorted(type_counts.items())),
                 "material_scopes": sorted(library_material_scopes),
-                "wavenumber_range_cm1": [library_min, library_max] if library_min is not None and library_max is not None else [],
+                "wavenumber_range_cm1": [library_min, library_max]
+                if library_min is not None and library_max is not None
+                else [],
                 "reference_seed_count": len(reference_seed_ids),
                 "reference_seed_ids": reference_seed_ids,
                 "matching_reference_seed_ids": matching_reference_seed_ids,
-                "candidate_ids": [candidate["candidate_id"] for candidate in candidate_summaries],
+                "candidate_ids": [
+                    candidate["candidate_id"] for candidate in candidate_summaries
+                ],
                 "candidates": candidate_summaries,
             }
         )
 
     build_source_commands = [
-        _ftir_discovery_build_source_command(summary["library_id"], filters, summary["candidate_ids"])
+        _ftir_discovery_build_source_command(
+            summary["library_id"], filters, summary["candidate_ids"]
+        )
         for summary in summaries
         if summary["matching_candidate_count"] > 0
     ]
@@ -593,7 +718,9 @@ def summarize_ftir_assignment_libraries(
         "matching_candidate_count": matching_candidate_count,
         "available_assignment_types": sorted(all_assignment_types),
         "available_material_scopes": sorted(all_material_scopes),
-        "available_wavenumber_range_cm1": [global_min, global_max] if global_min is not None and global_max is not None else [],
+        "available_wavenumber_range_cm1": [global_min, global_max]
+        if global_min is not None and global_max is not None
+        else [],
         "matching_reference_ids": sorted(matching_reference_ids),
         "filters": filters,
         "libraries": summaries,
@@ -664,7 +791,10 @@ def build_ftir_assignment_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    selected_source_count = sum(
+        bool(value)
+        for value in [library_path, builtin_library, literature_manifest_path, template]
+    )
     if selected_source_count > 1:
         raise FTIRProcessingError(
             "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for FTIR assignment source-packet generation"
@@ -672,7 +802,12 @@ def build_ftir_assignment_source_packet(
     if not library_path and not literature_manifest_path and not template:
         builtin_library = builtin_library or BUILTIN_FTIR_ASSIGNMENT_LIBRARY_DEFAULT
 
-    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
+    template_mode = (
+        template
+        and library_path is None
+        and builtin_library is None
+        and literature_manifest_path is None
+    )
     builtin_mode = builtin_library is not None
     literature_mode = literature_manifest_path is not None
     day = _created_day(created_at)
@@ -682,7 +817,13 @@ def build_ftir_assignment_source_packet(
         if template_mode:
             output_path = root / "templates" / "ftir_assignment_source_packet.yml"
         else:
-            output_path = root / "suggestions" / "ftir" / "source-packets" / f"{source_packet_id}.yml"
+            output_path = (
+                root
+                / "suggestions"
+                / "ftir"
+                / "source-packets"
+                / f"{source_packet_id}.yml"
+            )
     elif not output_path.is_absolute():
         output_path = root / output_path
     assert_not_raw_output_path(root, output_path)
@@ -701,7 +842,13 @@ def build_ftir_assignment_source_packet(
         library_ref = f"builtin:{builtin_library}"
         library_kind = "built_in"
     elif literature_mode:
-        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        source_path = (
+            literature_manifest_path
+            if literature_manifest_path and literature_manifest_path.is_absolute()
+            else root / literature_manifest_path
+            if literature_manifest_path
+            else None
+        )
         if source_path is None:
             raise FTIRProcessingError("FTIR literature manifest path was not supplied")
         try:
@@ -709,7 +856,12 @@ def build_ftir_assignment_source_packet(
                 root,
                 manifest_path=source_path,
                 method="ftir",
-                method_aliases={"ftir", "infrared", "ftir_assignment", "ftir_assignment_source_packet"},
+                method_aliases={
+                    "ftir",
+                    "infrared",
+                    "ftir_assignment",
+                    "ftir_assignment_source_packet",
+                },
             )
         except SourcePacketManifestError as exc:
             raise FTIRProcessingError(str(exc)) from exc
@@ -718,16 +870,32 @@ def build_ftir_assignment_source_packet(
         library_ref = _relative_to_root(root, source_path)
         library_kind = "confirmed_literature_manifest"
     else:
-        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        source_path = (
+            library_path
+            if library_path and library_path.is_absolute()
+            else root / library_path
+            if library_path
+            else None
+        )
         if source_path is None or not source_path.exists():
-            raise FTIRProcessingError(f"FTIR assignment library file not found: {library_path}")
+            raise FTIRProcessingError(
+                f"FTIR assignment library file not found: {library_path}"
+            )
         library_ref = _relative_to_root(root, source_path)
         source_library = read_yaml(source_path)
         raw_candidates = _ftir_assignment_source_candidates(source_library)
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
-    type_set = {_normalize_assignment_type(item) for item in assignment_types or [] if str(item).strip()}
-    material_set = {str(item).strip().lower() for item in material_scopes or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
+    type_set = {
+        _normalize_assignment_type(item)
+        for item in assignment_types or []
+        if str(item).strip()
+    }
+    material_set = {
+        str(item).strip().lower() for item in material_scopes or [] if str(item).strip()
+    }
     selected: list[dict[str, Any]] = []
     for index, raw_candidate in enumerate(raw_candidates, start=1):
         if not isinstance(raw_candidate, dict):
@@ -766,7 +934,13 @@ def build_ftir_assignment_source_packet(
             )
         )
 
-    reference_ids = sorted({reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))})
+    reference_ids = sorted(
+        {
+            reference_id
+            for candidate in selected
+            for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+        }
+    )
     if not builtin_mode:
         reference_seeds = _source_reference_seeds(
             source_library,
@@ -774,7 +948,11 @@ def build_ftir_assignment_source_packet(
             warnings=warnings,
         )
     packet_ref = _relative_to_root(root, output_path)
-    status = "template_requires_user_edit" if template_mode else ("ready_for_suggest_assignments" if selected else "no_matching_candidates")
+    status = (
+        "template_requires_user_edit"
+        if template_mode
+        else ("ready_for_suggest_assignments" if selected else "no_matching_candidates")
+    )
     packet = {
         "schema_version": "0.2",
         "source_packet_id": source_packet_id,
@@ -785,8 +963,12 @@ def build_ftir_assignment_source_packet(
         "source": "ea.ftir.assignment_source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
-        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode else None,
-        "confirmation_status": source_library.get("confirmation_status") if literature_mode else None,
+        "source_manifest_ref": source_library.get("source_manifest_ref")
+        if literature_mode
+        else None,
+        "confirmation_status": source_library.get("confirmation_status")
+        if literature_mode
+        else None,
         "reference_seeds": reference_seeds,
         "reference_seed_count": len(reference_seeds),
         "candidate_count": len(selected),
@@ -869,16 +1051,25 @@ def _ftir_assignment_columns() -> list[str]:
 
 
 def _candidate_window(candidate: dict[str, Any]) -> tuple[float | None, float | None]:
-    window = candidate.get("wavenumber_window_cm1", candidate.get("wavenumber_window_cm-1", candidate.get("window_cm1")))
+    window = candidate.get(
+        "wavenumber_window_cm1",
+        candidate.get("wavenumber_window_cm-1", candidate.get("window_cm1")),
+    )
     if isinstance(window, list | tuple) and len(window) >= 2:
         lower = _candidate_number({"lower": window[0]}, "lower")
         upper = _candidate_number({"upper": window[1]}, "upper")
     elif isinstance(window, dict):
-        lower = _candidate_number(window, "min", "lower", "low", "start_cm1", "from_cm1")
+        lower = _candidate_number(
+            window, "min", "lower", "low", "start_cm1", "from_cm1"
+        )
         upper = _candidate_number(window, "max", "upper", "high", "end_cm1", "to_cm1")
     else:
-        lower = _candidate_number(candidate, "wavenumber_min_cm1", "min_cm1", "lower_cm1")
-        upper = _candidate_number(candidate, "wavenumber_max_cm1", "max_cm1", "upper_cm1")
+        lower = _candidate_number(
+            candidate, "wavenumber_min_cm1", "min_cm1", "lower_cm1"
+        )
+        upper = _candidate_number(
+            candidate, "wavenumber_max_cm1", "max_cm1", "upper_cm1"
+        )
     if lower is None or upper is None:
         return None, None
     return (min(lower, upper), max(lower, upper))
@@ -894,7 +1085,9 @@ def _expected_feature_matches(expected_feature: str, band_type: str) -> bool:
     return False
 
 
-def _match_ftir_bands(bands: pd.DataFrame, lower: float, upper: float, expected_feature: str) -> list[dict[str, Any]]:
+def _match_ftir_bands(
+    bands: pd.DataFrame, lower: float, upper: float, expected_feature: str
+) -> list[dict[str, Any]]:
     matches: list[dict[str, Any]] = []
     if bands.empty:
         return matches
@@ -904,7 +1097,9 @@ def _match_ftir_bands(bands: pd.DataFrame, lower: float, upper: float, expected_
         except (KeyError, TypeError, ValueError):
             continue
         band_type = str(row.get("band_type") or "")
-        if lower <= wavenumber <= upper and _expected_feature_matches(expected_feature, band_type):
+        if lower <= wavenumber <= upper and _expected_feature_matches(
+            expected_feature, band_type
+        ):
             matches.append(
                 {
                     "band_id": str(row.get("band_id") or ""),
@@ -945,18 +1140,39 @@ def _normalize_ftir_assignment_candidate(
             "missing_fields": ["candidate_mapping"],
         }
 
-    candidate_id = str(raw_candidate.get("candidate_id") or raw_candidate.get("assignment_id") or f"{suggestion_id}-cand-{number:03d}")
-    assignment_type = _normalize_assignment_type(raw_candidate.get("assignment_type") or raw_candidate.get("type"))
-    assignment_label = str(raw_candidate.get("assignment_label") or raw_candidate.get("functional_group") or raw_candidate.get("band_assignment") or "").strip()
+    candidate_id = str(
+        raw_candidate.get("candidate_id")
+        or raw_candidate.get("assignment_id")
+        or f"{suggestion_id}-cand-{number:03d}"
+    )
+    assignment_type = _normalize_assignment_type(
+        raw_candidate.get("assignment_type") or raw_candidate.get("type")
+    )
+    assignment_label = str(
+        raw_candidate.get("assignment_label")
+        or raw_candidate.get("functional_group")
+        or raw_candidate.get("band_assignment")
+        or ""
+    ).strip()
     band_label = str(raw_candidate.get("band_label") or assignment_label).strip()
     reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
     applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
     caveats = _coerce_string_list(raw_candidate.get("caveats"))
-    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    source_summary = str(
+        raw_candidate.get("source_summary")
+        or raw_candidate.get("reference_summary")
+        or ""
+    ).strip()
     confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
-    expected_feature = _normalize_expected_feature(raw_candidate.get("expected_feature"))
+    expected_feature = _normalize_expected_feature(
+        raw_candidate.get("expected_feature")
+    )
     lower, upper = _candidate_window(raw_candidate)
-    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    unresolved_reference_ids = [
+        reference_id
+        for reference_id in reference_ids
+        if reference_id not in registered_references
+    ]
     missing_fields: list[str] = []
     if not assignment_label:
         missing_fields.append("assignment_label")
@@ -971,7 +1187,11 @@ def _normalize_ftir_assignment_candidate(
     if expected_feature not in {"any", "absorbance_maximum", "transmittance_minimum"}:
         missing_fields.append("expected_feature")
 
-    matches = _match_ftir_bands(bands, lower, upper, expected_feature) if lower is not None and upper is not None else []
+    matches = (
+        _match_ftir_bands(bands, lower, upper, expected_feature)
+        if lower is not None and upper is not None
+        else []
+    )
     if missing_fields:
         status = "invalid_missing_required_metadata"
     elif unresolved_reference_ids:
@@ -989,16 +1209,21 @@ def _normalize_ftir_assignment_candidate(
         "status": status,
         "requires_user_review": True,
         "auto_applied": False,
-        "wavenumber_window_cm1": [lower, upper] if lower is not None and upper is not None else [],
+        "wavenumber_window_cm1": [lower, upper]
+        if lower is not None and upper is not None
+        else [],
         "expected_feature": expected_feature,
         "matched_bands": matches,
-        "matched_band_ids": [match["band_id"] for match in matches if match.get("band_id")],
+        "matched_band_ids": [
+            match["band_id"] for match in matches if match.get("band_id")
+        ],
         "matched_wavenumbers_cm-1": [match["wavenumber_cm-1"] for match in matches],
         "source_summary": source_summary,
         "reference_ids": reference_ids,
         "unresolved_reference_ids": unresolved_reference_ids,
         "applicability_notes": applicability_notes,
-        "material_scope": str(raw_candidate.get("material_scope") or "").strip() or None,
+        "material_scope": str(raw_candidate.get("material_scope") or "").strip()
+        or None,
         "sample_scope": str(raw_candidate.get("sample_scope") or "").strip() or None,
         "confidence": confidence,
         "missing_fields": missing_fields,
@@ -1051,7 +1276,9 @@ def suggest_ftir_assignments(
     ftir_metadata = read_yaml(ftir_metadata_path)
     peak_table_ref = ftir_metadata.get("outputs", {}).get("peak_table")
     if not peak_table_ref:
-        raise FTIRProcessingError("FTIR metadata does not include outputs.peak_table for assignment matching")
+        raise FTIRProcessingError(
+            "FTIR metadata does not include outputs.peak_table for assignment matching"
+        )
     peak_table_path = root / str(peak_table_ref)
     if not peak_table_path.exists():
         raise FTIRProcessingError(f"FTIR peak table not found: {peak_table_ref}")
@@ -1099,12 +1326,32 @@ def suggest_ftir_assignments(
         "caveats",
     ]:
         if column in table.columns:
-            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+            table[column] = table[column].apply(
+                lambda value: (
+                    "; ".join(str(item) for item in value)
+                    if isinstance(value, list)
+                    else value
+                )
+            )
 
-    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
-    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
-    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_feature_match")
-    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    ready_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "ready_for_user_review"
+    )
+    unresolved_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "needs_reference_registration"
+    )
+    no_match_count = sum(
+        1 for candidate in candidates if candidate.get("status") == "no_feature_match"
+    )
+    invalid_count = sum(
+        1
+        for candidate in candidates
+        if str(candidate.get("status", "")).startswith("invalid")
+    )
     if ready_count:
         status = "ready_for_user_review"
     elif unresolved_count:
@@ -1119,7 +1366,13 @@ def suggest_ftir_assignments(
     record_ref = _relative_to_root(root, record_path)
     table_ref = _relative_to_root(root, table_path)
     related_records = related_records or []
-    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    all_reference_ids = sorted(
+        {
+            reference_id
+            for candidate in candidates
+            for reference_id in candidate.get("reference_ids", [])
+        }
+    )
     record = {
         "schema_version": "0.2",
         "suggestion_id": suggestion_id,
@@ -1157,7 +1410,10 @@ def suggest_ftir_assignments(
     provenance_path = write_provenance_entry(
         root,
         workflow="ftir_assignment_suggestion",
-        inputs={"records": [source_ref, metadata_ref, *related_records], "files": [str(peak_table_ref)]},
+        inputs={
+            "records": [source_ref, metadata_ref, *related_records],
+            "files": [str(peak_table_ref)],
+        },
         outputs={"records": [record_ref, table_ref], "files": []},
         parameters={"candidate_count": len(candidates), "auto_applied": False},
         warnings=warnings,
@@ -1204,9 +1460,16 @@ def _review_value(value: Any) -> str:
     if value in (None, "", [], {}):
         return "not recorded"
     if isinstance(value, list | tuple):
-        return ", ".join(str(item) for item in value if str(item).strip()) or "not recorded"
+        return (
+            ", ".join(str(item) for item in value if str(item).strip())
+            or "not recorded"
+        )
     if isinstance(value, dict):
-        parts = [f"{key}={item}" for key, item in value.items() if item not in (None, "", [], {})]
+        parts = [
+            f"{key}={item}"
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        ]
         return "; ".join(parts) or "not recorded"
     return str(value)
 
@@ -1232,13 +1495,19 @@ def _ftir_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "band_label": str(candidate.get("band_label") or "not recorded"),
         "confidence": str(candidate.get("confidence") or "low"),
         "matched_band_ids": _coerce_string_list(candidate.get("matched_band_ids")),
-        "matched_wavenumbers_cm-1": _coerce_string_list(candidate.get("matched_wavenumbers_cm-1")),
+        "matched_wavenumbers_cm-1": _coerce_string_list(
+            candidate.get("matched_wavenumbers_cm-1")
+        ),
         "wavenumber_window_cm1": candidate.get("wavenumber_window_cm1") or [],
         "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
-        "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
+        "unresolved_reference_ids": _coerce_string_list(
+            candidate.get("unresolved_reference_ids")
+        ),
         "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
         "source_summary": str(candidate.get("source_summary") or "not recorded"),
-        "applicability_notes": _coerce_string_list(candidate.get("applicability_notes")),
+        "applicability_notes": _coerce_string_list(
+            candidate.get("applicability_notes")
+        ),
         "caveats": _coerce_string_list(candidate.get("caveats")),
         "recommended_action": action,
     }
@@ -1303,22 +1572,42 @@ def prepare_ftir_assignment_review_package(
     candidate_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.ftir.assignment_suggestions:v0.2":
-        raise FTIRProcessingError(f"Not an FTIR assignment suggestion record: {suggestion_path}")
+        raise FTIRProcessingError(
+            f"Not an FTIR assignment suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise FTIRProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise FTIRProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
-    missing_candidate_ids = [candidate_id for candidate_id in requested_ids if candidate_id not in found_ids]
+    missing_candidate_ids = [
+        candidate_id for candidate_id in requested_ids if candidate_id not in found_ids
+    ]
     warnings: list[dict[str, Any]] = [
         _warning(
             "ftir_review_package_candidate_not_found",
@@ -1338,10 +1627,26 @@ def prepare_ftir_assignment_review_package(
         "other": "Inspect manually before downstream use.",
     }
     groups = []
-    for group_name in ["ready_for_user_review", "needs_reference_registration", "no_feature_match", "invalid_or_incomplete", "other"]:
-        ids = [summary["candidate_id"] for summary in summaries if summary["review_group"] == group_name]
+    for group_name in [
+        "ready_for_user_review",
+        "needs_reference_registration",
+        "no_feature_match",
+        "invalid_or_incomplete",
+        "other",
+    ]:
+        ids = [
+            summary["candidate_id"]
+            for summary in summaries
+            if summary["review_group"] == group_name
+        ]
         if ids:
-            groups.append({"group": group_name, "candidate_ids": ids, "recommended_action": group_actions[group_name]})
+            groups.append(
+                {
+                    "group": group_name,
+                    "candidate_ids": ids,
+                    "recommended_action": group_actions[group_name],
+                }
+            )
 
     package_dir = resolved_suggestion_path.parent
     package_path = package_dir / "review_package.yml"
@@ -1376,13 +1681,25 @@ def prepare_ftir_assignment_review_package(
         "selected_status_counts": _review_status_counts(selected),
         "groups": groups,
         "candidate_summaries": summaries,
-        "reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("reference_ids", [])}),
-        "unresolved_reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("unresolved_reference_ids", [])}),
+        "reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("reference_ids", [])
+            }
+        ),
+        "unresolved_reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("unresolved_reference_ids", [])
+            }
+        ),
         "recommended_commands": {
             "create_review_record": (
                 "ea review add /path/to/ea-project --target-type ftir_assignment_suggestions "
-                f"--target-ref {suggestion_ref} --user-response \"可以，保存\" "
-                "--reviewed-content \"User reviewed the listed FTIR assignment candidates; record accepted/rejected/edited candidate IDs.\""
+                f'--target-ref {suggestion_ref} --user-response "可以，保存" '
+                '--reviewed-content "User reviewed the listed FTIR assignment candidates; record accepted/rejected/edited candidate IDs."'
             ),
             "report_with_suggestion": (
                 "ea ftir report /path/to/ea-project --metadata <ftir_metadata.yml> "
@@ -1405,7 +1722,9 @@ def prepare_ftir_assignment_review_package(
         "warnings": warnings,
     }
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_ftir_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_ftir_review_package_markdown(package), encoding="utf-8"
+    )
     provenance_path = write_provenance_entry(
         root,
         workflow="ftir_assignment_review_package",
@@ -1423,7 +1742,9 @@ def prepare_ftir_assignment_review_package(
     )
     package["provenance_ref"] = _relative_to_root(root, provenance_path)
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_ftir_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_ftir_review_package_markdown(package), encoding="utf-8"
+    )
     return {
         "status": package["status"],
         "review_package": str(package_path),
@@ -1452,7 +1773,9 @@ def _normalize_review_target_ref(root: Path, value: Any) -> str:
     return _relative_to_root(root, root / target_path)
 
 
-def _candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready: bool) -> tuple[bool, list[str]]:
+def _candidate_is_valid_for_memory(
+    candidate: dict[str, Any], *, allow_non_ready: bool
+) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     status = str(candidate.get("status") or "")
     if status != "ready_for_user_review":
@@ -1480,7 +1803,10 @@ def _candidate_is_valid_for_memory(candidate: dict[str, Any], *, allow_non_ready
         "missing_assignment_label",
         "missing_source_summary",
     }
-    return not any(reason in hard_blockers or reason.startswith("status:invalid") for reason in reasons), reasons
+    return not any(
+        reason in hard_blockers or reason.startswith("status:invalid")
+        for reason in reasons
+    ), reasons
 
 
 def _memory_confidence(value: Any) -> str:
@@ -1495,16 +1821,28 @@ def _format_memory_list(items: list[Any]) -> str:
     return ", ".join(values) if values else "none recorded"
 
 
-def _format_ftir_assignment_memory_text(candidate: dict[str, Any], *, suggestion_id: str, review_ref: str) -> str:
+def _format_ftir_assignment_memory_text(
+    candidate: dict[str, Any], *, suggestion_id: str, review_ref: str
+) -> str:
     candidate_id = str(candidate.get("candidate_id") or "unknown")
     assignment_label = str(candidate.get("assignment_label") or "unknown assignment")
     assignment_type = str(candidate.get("assignment_type") or "unknown")
-    matched_band_ids = _format_memory_list(_coerce_string_list(candidate.get("matched_band_ids")))
-    matched_wavenumbers = _format_memory_list(_coerce_string_list(candidate.get("matched_wavenumbers_cm-1")))
-    reference_ids = _format_memory_list(_coerce_string_list(candidate.get("reference_ids")))
-    applicability = _format_memory_list(_coerce_string_list(candidate.get("applicability_notes")))
+    matched_band_ids = _format_memory_list(
+        _coerce_string_list(candidate.get("matched_band_ids"))
+    )
+    matched_wavenumbers = _format_memory_list(
+        _coerce_string_list(candidate.get("matched_wavenumbers_cm-1"))
+    )
+    reference_ids = _format_memory_list(
+        _coerce_string_list(candidate.get("reference_ids"))
+    )
+    applicability = _format_memory_list(
+        _coerce_string_list(candidate.get("applicability_notes"))
+    )
     caveats = _format_memory_list(_coerce_string_list(candidate.get("caveats")))
-    source_summary = str(candidate.get("source_summary") or "No source summary recorded.").strip()
+    source_summary = str(
+        candidate.get("source_summary") or "No source summary recorded."
+    ).strip()
     confidence = _memory_confidence(candidate.get("confidence"))
     status = str(candidate.get("status") or "unknown")
     material_scope = str(candidate.get("material_scope") or "not specified").strip()
@@ -1538,15 +1876,21 @@ def propose_ftir_assignment_memory_candidates(
     allow_non_ready: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.ftir.assignment_suggestions:v0.2":
-        raise FTIRProcessingError(f"Not an FTIR assignment suggestion record: {suggestion_path}")
+        raise FTIRProcessingError(
+            f"Not an FTIR assignment suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise FTIRProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise FTIRProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
     review = require_confirmed_review(root, review_ref)
     review_target_ref = _normalize_review_target_ref(root, review.get("target_ref"))
@@ -1555,10 +1899,22 @@ def propose_ftir_assignment_memory_candidates(
             f"ReviewRecord {review_ref} targets {review.get('target_ref')}, not FTIR assignment suggestion {suggestion_ref}"
         )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
     skipped: list[dict[str, Any]] = [
         {"candidate_id": candidate_id, "reason": "candidate_id_not_found"}
@@ -1586,21 +1942,35 @@ def propose_ftir_assignment_memory_candidates(
     provenance_refs = [str(suggestion.get("provenance_ref") or "").strip()]
     provenance_refs = [ref for ref in provenance_refs if ref]
     if not provenance_refs:
-        raise FTIRProcessingError("FTIR assignment suggestion record lacks provenance_ref")
+        raise FTIRProcessingError(
+            "FTIR assignment suggestion record lacks provenance_ref"
+        )
 
     proposed: list[dict[str, Any]] = []
     output_refs: list[str] = []
     for candidate in selected:
         candidate_id = str(candidate.get("candidate_id") or "")
-        candidate_allow_non_ready = bool(allow_non_ready and requested_set and candidate_id in requested_set)
-        eligible, reasons = _candidate_is_valid_for_memory(candidate, allow_non_ready=candidate_allow_non_ready)
+        candidate_allow_non_ready = bool(
+            allow_non_ready and requested_set and candidate_id in requested_set
+        )
+        eligible, reasons = _candidate_is_valid_for_memory(
+            candidate, allow_non_ready=candidate_allow_non_ready
+        )
         if not eligible:
-            skipped.append({"candidate_id": candidate_id, "reason": "not_memory_candidate_eligible", "details": reasons})
+            skipped.append(
+                {
+                    "candidate_id": candidate_id,
+                    "reason": "not_memory_candidate_eligible",
+                    "details": reasons,
+                }
+            )
             continue
 
         candidate_text = _format_ftir_assignment_memory_text(
             candidate,
-            suggestion_id=str(suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name),
+            suggestion_id=str(
+                suggestion.get("suggestion_id") or resolved_suggestion_path.parent.name
+            ),
             review_ref=review_ref,
         )
         rationale = (
@@ -1611,7 +1981,8 @@ def propose_ftir_assignment_memory_candidates(
             root,
             project_id=project_id or suggestion_project_id,
             candidate_text=candidate_text,
-            source_refs=source_refs + _coerce_string_list(candidate.get("reference_ids")),
+            source_refs=source_refs
+            + _coerce_string_list(candidate.get("reference_ids")),
             provenance_refs=provenance_refs,
             category="interpretation",
             confidence=_memory_confidence(candidate.get("confidence")),
@@ -1637,7 +2008,10 @@ def propose_ftir_assignment_memory_candidates(
             root,
             workflow="ftir_assignment_memory_candidate_proposal",
             inputs={"records": [suggestion_ref], "files": []},
-            outputs={"records": output_refs + ["memory/candidates/index.yml"], "files": []},
+            outputs={
+                "records": output_refs + ["memory/candidates/index.yml"],
+                "files": [],
+            },
             parameters={
                 "suggestion_id": suggestion.get("suggestion_id"),
                 "requested_candidate_ids": requested_ids,
@@ -1653,7 +2027,9 @@ def propose_ftir_assignment_memory_candidates(
         bridge_provenance = _relative_to_root(root, bridge_provenance_path)
 
     return {
-        "status": "memory_candidates_proposed" if proposed else "no_memory_candidates_proposed",
+        "status": "memory_candidates_proposed"
+        if proposed
+        else "no_memory_candidates_proposed",
         "suggestion_id": suggestion.get("suggestion_id"),
         "suggestion_ref": suggestion_ref,
         "review_ref": review_ref,
@@ -1677,11 +2053,17 @@ def _confirmed_frame(path: Path, request: FTIRProcessingRequest) -> pd.DataFrame
     frame, _ = _read_spectrum(path)
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise FTIRProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise FTIRProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"cm^-1", "unknown"}:
-        raise FTIRProcessingError("FTIR x_unit must be user-confirmed as cm^-1 or unknown")
+        raise FTIRProcessingError(
+            "FTIR x_unit must be user-confirmed as cm^-1 or unknown"
+        )
     if request.signal_mode not in {"absorbance", "transmittance"}:
-        raise FTIRProcessingError("FTIR signal_mode must be user-confirmed as absorbance or transmittance")
+        raise FTIRProcessingError(
+            "FTIR signal_mode must be user-confirmed as absorbance or transmittance"
+        )
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["wavenumber_cm-1", "raw_signal"]
     data["wavenumber_cm-1"] = pd.to_numeric(data["wavenumber_cm-1"], errors="coerce")
@@ -1692,10 +2074,16 @@ def _confirmed_frame(path: Path, request: FTIRProcessingRequest) -> pd.DataFrame
     return data
 
 
-def _rolling_quantile_baseline(signal: np.ndarray, parameters: dict[str, Any]) -> tuple[np.ndarray, list[dict[str, Any]]]:
+def _rolling_quantile_baseline(
+    signal: np.ndarray, parameters: dict[str, Any]
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
     baseline = parameters.get("baseline_correction", {})
-    window_points, window_adjusted = _coerce_int(baseline.get("window_points"), 101, minimum=3)
-    quantile, quantile_adjusted = _coerce_float(baseline.get("quantile"), 0.05, minimum=0.0, maximum=1.0)
+    window_points, window_adjusted = _coerce_int(
+        baseline.get("window_points"), 101, minimum=3
+    )
+    quantile, quantile_adjusted = _coerce_float(
+        baseline.get("quantile"), 0.05, minimum=0.0, maximum=1.0
+    )
     adjusted = window_adjusted or quantile_adjusted
     if window_points > signal.size:
         window_points = signal.size
@@ -1714,10 +2102,20 @@ def _rolling_quantile_baseline(signal: np.ndarray, parameters: dict[str, Any]) -
             )
         )
     if signal.size < 3:
-        warnings.append(_warning("ftir_baseline_skipped", "FTIR baseline correction skipped because the spectrum has fewer than three points.", severity="medium"))
+        warnings.append(
+            _warning(
+                "ftir_baseline_skipped",
+                "FTIR baseline correction skipped because the spectrum has fewer than three points.",
+                severity="medium",
+            )
+        )
         return np.zeros_like(signal), warnings
     series = pd.Series(signal)
-    baseline_values = series.rolling(window_points, center=True, min_periods=1).quantile(quantile).to_numpy(dtype=float)
+    baseline_values = (
+        series.rolling(window_points, center=True, min_periods=1)
+        .quantile(quantile)
+        .to_numpy(dtype=float)
+    )
     warnings.append(
         _warning(
             "ftir_baseline_applied",
@@ -1747,7 +2145,9 @@ def _apply_processing(
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 9, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 9, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = signal.size if signal.size % 2 == 1 else signal.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -1772,7 +2172,15 @@ def _apply_processing(
                 )
             )
         if signal.size >= 3 and window_length >= 3:
-            signal = np.asarray(savgol_filter(signal, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            signal = np.asarray(
+                savgol_filter(
+                    signal,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             processed["smoothed_signal"] = signal
             warnings.append(
                 _warning(
@@ -1784,37 +2192,61 @@ def _apply_processing(
                 )
             )
         else:
-            warnings.append(_warning("ftir_smoothing_skipped", "FTIR smoothing skipped because the spectrum has fewer than three points.", severity="medium"))
+            warnings.append(
+                _warning(
+                    "ftir_smoothing_skipped",
+                    "FTIR smoothing skipped because the spectrum has fewer than three points.",
+                    severity="medium",
+                )
+            )
 
     if parameters.get("normalization", {}).get("enabled", True):
         max_value = float(np.max(np.abs(signal)))
         if max_value > 0:
             signal = signal / max_value
-        warnings.append(_warning("ftir_normalization_applied", "FTIR signal normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "ftir_normalization_applied",
+                "FTIR signal normalized by processing parameters.",
+            )
+        )
     processed["processed_signal"] = signal
     return processed, warnings
 
 
 def _band_family(wavenumber: float, parameters: dict[str, Any]) -> dict[str, str]:
     if not parameters.get("band_assignment", {}).get("enabled", True):
-        return {"family": "", "confidence": "", "source": "", "notes": "band assignment disabled by processing parameters"}
+        return {
+            "family": "",
+            "confidence": "",
+            "source": "",
+            "notes": "band assignment disabled by processing parameters",
+        }
     for window in FTIR_BAND_WINDOWS:
         if float(window["min"]) <= wavenumber <= float(window["max"]):
             return {
                 "family": str(window["family"]),
                 "confidence": "low",
-                "source": str(parameters.get("band_assignment", {}).get("source") or "ea.ftir.builtin_band_windows:v0.2"),
+                "source": str(
+                    parameters.get("band_assignment", {}).get("source")
+                    or "ea.ftir.builtin_band_windows:v0.2"
+                ),
                 "notes": str(window["notes"]),
             }
     return {
         "family": "unassigned FTIR band region",
         "confidence": "insufficient",
-        "source": str(parameters.get("band_assignment", {}).get("source") or "ea.ftir.builtin_band_windows:v0.2"),
+        "source": str(
+            parameters.get("band_assignment", {}).get("source")
+            or "ea.ftir.builtin_band_windows:v0.2"
+        ),
         "notes": "No built-in broad band window matched this wavenumber.",
     }
 
 
-def _detect_bands(processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str) -> pd.DataFrame:
+def _detect_bands(
+    processed: pd.DataFrame, parameters: dict[str, Any], signal_mode: str
+) -> pd.DataFrame:
     y = processed["processed_signal"].to_numpy(dtype=float)
     detection_signal = y if signal_mode == "absorbance" else -y
     peak_params = parameters.get("peak_detection", {})
@@ -1825,13 +2257,20 @@ def _detect_bands(processed: pd.DataFrame, parameters: dict[str, Any], signal_mo
         prominence = max(float(np.ptp(detection_signal)) * 0.08, 0.02)
     if distance == "auto":
         distance = max(len(detection_signal) // 100, 1)
-    peaks, properties = find_peaks(detection_signal, prominence=prominence, distance=distance)
+    peaks, properties = find_peaks(
+        detection_signal, prominence=prominence, distance=distance
+    )
     ranked = sorted(
-        [(int(peak), float(properties["prominences"][index])) for index, peak in enumerate(peaks)],
+        [
+            (int(peak), float(properties["prominences"][index]))
+            for index, peak in enumerate(peaks)
+        ],
         key=lambda item: item[1],
         reverse=True,
     )[:max_bands]
-    ranked.sort(key=lambda item: float(processed.iloc[item[0]]["wavenumber_cm-1"]), reverse=True)
+    ranked.sort(
+        key=lambda item: float(processed.iloc[item[0]]["wavenumber_cm-1"]), reverse=True
+    )
     rows = []
     for index, (peak_index, peak_prominence) in enumerate(ranked, start=1):
         row = processed.iloc[peak_index]
@@ -1847,7 +2286,9 @@ def _detect_bands(processed: pd.DataFrame, parameters: dict[str, Any], signal_mo
                 "prominence": peak_prominence,
                 "method": "scipy_find_peaks",
                 "signal_mode": signal_mode,
-                "band_type": "absorbance_maximum" if signal_mode == "absorbance" else "transmittance_minimum",
+                "band_type": "absorbance_maximum"
+                if signal_mode == "absorbance"
+                else "transmittance_minimum",
                 "possible_band_family": family["family"],
                 "assignment_confidence": family["confidence"],
                 "assignment_source": family["source"],
@@ -1874,7 +2315,13 @@ def _detect_bands(processed: pd.DataFrame, parameters: dict[str, Any], signal_mo
     )
 
 
-_FTIR_CONTEXT_SECTIONS = ("instrument_accessory", "atmosphere", "sample_preparation", "background", "reference")
+_FTIR_CONTEXT_SECTIONS = (
+    "instrument_accessory",
+    "atmosphere",
+    "sample_preparation",
+    "background",
+    "reference",
+)
 
 
 def _has_context_payload(value: Any) -> bool:
@@ -1889,7 +2336,9 @@ def _has_context_payload(value: Any) -> bool:
     return True
 
 
-def _context_section(params: dict[str, Any], name: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+def _context_section(
+    params: dict[str, Any], name: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     value = params.get(name, {})
     if isinstance(value, dict):
         return deepcopy(value), None
@@ -1922,7 +2371,9 @@ def _context_notes(params: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | 
     )
 
 
-def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _record_context(
+    parameters: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     params = parameters.get("context_record", {})
     if not isinstance(params, dict) or not params.get("enabled", False):
         return None, []
@@ -1937,7 +2388,9 @@ def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, 
     if notes_warning:
         warnings.append(notes_warning)
 
-    reviewed_fields = [name for name, section in sections.items() if _has_context_payload(section)]
+    reviewed_fields = [
+        name for name, section in sections.items() if _has_context_payload(section)
+    ]
     if _has_context_payload(notes):
         reviewed_fields.append("correction_notes")
     has_reviewed_context = bool(reviewed_fields)
@@ -1953,7 +2406,9 @@ def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, 
     return (
         {
             "enabled": True,
-            "status": "reviewed_context_recorded" if has_reviewed_context else "enabled_without_reviewed_context",
+            "status": "reviewed_context_recorded"
+            if has_reviewed_context
+            else "enabled_without_reviewed_context",
             "method": str(params.get("method") or "reviewed_metadata_record"),
             "assignment_source": source,
             "confidence": "low" if has_reviewed_context else "insufficient",
@@ -1967,7 +2422,9 @@ def _record_context(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, 
     )
 
 
-def _analyze_bands(bands: pd.DataFrame, context_record: dict[str, Any] | None = None) -> dict[str, Any]:
+def _analyze_bands(
+    bands: pd.DataFrame, context_record: dict[str, Any] | None = None
+) -> dict[str, Any]:
     analysis: dict[str, Any] = {
         "band_count": int(len(bands)),
         "strongest_bands": [],
@@ -1994,11 +2451,19 @@ def _analyze_bands(bands: pd.DataFrame, context_record: dict[str, Any] | None = 
             }
             for _, row in strongest.iterrows()
         ]
-        for family, family_rows in strongest.groupby("possible_band_family", sort=False):
+        for family, family_rows in strongest.groupby(
+            "possible_band_family", sort=False
+        ):
             evidence = [str(value) for value in family_rows["band_id"].head(3)]
-            confidence_values = [str(value) for value in family_rows["assignment_confidence"] if str(value)]
+            confidence_values = [
+                str(value)
+                for value in family_rows["assignment_confidence"]
+                if str(value)
+            ]
             confidence = "low" if "low" in confidence_values else "insufficient"
-            source_values = [str(value) for value in family_rows["assignment_source"] if str(value)]
+            source_values = [
+                str(value) for value in family_rows["assignment_source"] if str(value)
+            ]
             analysis["possible_interpretations"].append(
                 {
                     "text": f"Detected FTIR feature(s) fall in the broad {family} window; treat this as a screening hint, not a definitive chemical assignment.",
@@ -2008,7 +2473,13 @@ def _analyze_bands(bands: pd.DataFrame, context_record: dict[str, Any] | None = 
                 }
             )
     if context_record and context_record.get("status") == "reviewed_context_recorded":
-        fields = ", ".join(str(value) for value in context_record.get("reviewed_context_fields", [])) or "FTIR context"
+        fields = (
+            ", ".join(
+                str(value)
+                for value in context_record.get("reviewed_context_fields", [])
+            )
+            or "FTIR context"
+        )
         analysis["possible_interpretations"].append(
             {
                 "text": (
@@ -2017,7 +2488,9 @@ def _analyze_bands(bands: pd.DataFrame, context_record: dict[str, Any] | None = 
                 ),
                 "confidence": context_record.get("confidence", "low"),
                 "evidence": ["context_record"],
-                "assignment_source": context_record.get("assignment_source", "ea.ftir.context_record:v0.2"),
+                "assignment_source": context_record.get(
+                    "assignment_source", "ea.ftir.context_record:v0.2"
+                ),
             }
         )
     return analysis
@@ -2031,7 +2504,14 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_ftir(processed: pd.DataFrame, bands: pd.DataFrame, output: Path, signal_mode: str, *, footer: str | None = None) -> None:
+def _plot_ftir(
+    processed: pd.DataFrame,
+    bands: pd.DataFrame,
+    output: Path,
+    signal_mode: str,
+    *,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(
         processed["wavenumber_cm-1"],
@@ -2049,7 +2529,9 @@ def _plot_ftir(processed: pd.DataFrame, bands: pd.DataFrame, output: Path, signa
             label="Detected bands",
             zorder=3,
         )
-        for _, band in bands.sort_values("prominence", ascending=False).head(8).iterrows():
+        for _, band in (
+            bands.sort_values("prominence", ascending=False).head(8).iterrows()
+        ):
             ax.annotate(
                 f"{float(band['wavenumber_cm-1']):.0f}",
                 (float(band["wavenumber_cm-1"]), float(band["processed_signal"])),
@@ -2059,7 +2541,9 @@ def _plot_ftir(processed: pd.DataFrame, bands: pd.DataFrame, output: Path, signa
                 fontsize=7,
             )
     ax.invert_xaxis()
-    ylabel = "Absorbance (a.u.)" if signal_mode == "absorbance" else "Transmittance (a.u.)"
+    ylabel = (
+        "Absorbance (a.u.)" if signal_mode == "absorbance" else "Transmittance (a.u.)"
+    )
     style_axis(
         ax,
         title="FTIR spectrum",
@@ -2087,15 +2571,21 @@ def process_ftir_result(
         raise FTIRProcessingError(f"File is {inspection.file_kind}, not FTIR")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    processed, processing_warnings = _apply_processing(
+        _confirmed_frame(raw_path, request), parameters
+    )
     bands = _detect_bands(processed, parameters, request.signal_mode)
     context_record, context_warnings = _record_context(parameters)
     band_analysis = _analyze_bands(bands, context_record)
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="ftir", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="ftir", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="ftir", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="ftir", day=day
+        )
     else:
         result_id = next_id(root, "ftir_result", day)
         figure_id = None
@@ -2120,11 +2610,23 @@ def process_ftir_result(
         write_yaml(context_yml, context_record)
         if band_analysis.get("context_record"):
             band_analysis["context_record"]["record_ref"] = context_ref
-    _plot_ftir(processed, bands, figure, request.signal_mode, footer=figure_footer(figure_id, None) if figure_id else None)
+    _plot_ftir(
+        processed,
+        bands,
+        figure,
+        request.signal_mode,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("ftir_x_unit_unknown", "FTIR x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "ftir_x_unit_unknown",
+                "FTIR x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     warnings.extend(processing_warnings)
     warnings.extend(context_warnings)
     outputs = {
@@ -2218,5 +2720,32 @@ def process_ftir_result(
                 bands_csv.relative_to(root).as_posix(),
             ]
             + ([context_ref] if context_ref else []),
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed FTIR trace plotted in the spectrum figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    bands_csv.relative_to(root).as_posix(),
+                    role="feature_table",
+                    purpose="Detected FTIR band annotations.",
+                ),
+            ]
+            + (
+                [
+                    source_data_entry(
+                        root,
+                        context_ref,
+                        role="interpretation_context",
+                        purpose="Reviewed context used for broad band-family screening.",
+                    )
+                ]
+                if context_ref
+                else []
+            ),
         )
     return result_metadata

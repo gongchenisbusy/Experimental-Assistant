@@ -2,6 +2,15 @@
 
 All notable public changes to Experimental Assistant are recorded here.
 
+## v0.9.8 - 2026-07-15
+
+- Bundle the version-matched `$ea` and `$ea-v0-2` skills in wheel/sdist artifacts and publish a compact checksummed skill archive; setup/update transactions now record CLI and skill before/after state.
+- Add Windows long-path and GBK-safe validation regressions, exact optional-companion compatibility diagnostics, and clean-install bundled-skill setup checks.
+- Introduce acquisition protocol v2 with a v1 reader, compact resumable literature output, public metadata adapters, bounded Unpaywall retrieval, validated PDFs, content-addressed caching, and SQLite FTS5/BM25 evidence retrieval.
+- Make project briefs decision-oriented, apply project report language consistently across eight methods, and preserve equivalent evidence/warnings in Chinese and English reports.
+- Deliver report-bound figures with a single final footer and structured, bundle-verified processed source-data links without rewriting historical images.
+- Improve the pinned `ea-feedback` companion contract for UTF-8 I/O, execution-event reconciliation, project-venv CLI discovery, and verified draft/handoff states.
+
 ## v0.9.7 - 2026-07-10
 
 - Migrate the public Codex invocation from `$ea-v0-2` to `$ea` while retaining a compatibility wrapper.

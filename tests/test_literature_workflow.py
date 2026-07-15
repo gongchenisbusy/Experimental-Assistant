@@ -991,7 +991,9 @@ def test_external_handoff_five_paper_status_is_compact_private_and_resumable(tmp
     readiness = summarize_zotero_codex_readiness(tmp_path, write_report=False, checked_at="2026-07-10T14:01:00")
 
     assert result["sync"]["status"] == "external_state_recorded_without_local_literature_deployment"
-    assert state["schema_version"] == "1.0"
+    assert state["schema_version"] == "2.0"
+    assert state["protocol_version"] == "2.0"
+    assert state["source_protocol_version"] == "1.0"
     assert state["summary"] == {
         "target_count": 5,
         "ready_count": 2,
@@ -1093,10 +1095,14 @@ def test_handoff_error_taxonomy_and_schema_are_stable() -> None:
 def test_handoff_accepts_current_zotero_codex_batch_v1_fixture() -> None:
     fixture_path = Path("tests/fixtures/zotero_codex_batch_v1.json")
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    original = json.loads(json.dumps(payload))
     state = normalize_acquisition_handoff(payload, updated_at="2026-07-10T15:01:00+08:00")
     schema = json.loads(Path("schemas/literature-acquisition-handoff.schema.json").read_text(encoding="utf-8"))
 
     assert state["schema_version"] == schema["properties"]["schema_version"]["const"]
+    assert state["protocol_version"] == "2.0"
+    assert state["source_protocol_version"] == "zotero-codex-batch/v1"
+    assert payload == original
     assert set(schema["required"]) <= set(state)
     assert state["targets"][0]["status"] == "cache_verified"
     assert state["targets"][0]["zotero_item_key"] == "ABCD1234"
@@ -1107,6 +1113,8 @@ def test_handoff_accepts_current_zotero_codex_batch_v1_fixture() -> None:
     assert {item["status"] for item in state["targets"]} <= set(
         schema["$defs"]["target"]["properties"]["status"]["enum"]
     )
+    assert state["targets"][0]["stages"]["cache"]["status"] == "completed"
+    assert state["targets"][0]["zotero"]["parent_key"] == "ABCD1234"
 
 
 def test_cache_refs_redact_posix_windows_and_unc_absolute_paths() -> None:
@@ -2335,8 +2343,52 @@ def test_cli_literature_search_public_wires_arguments(tmp_path: Path, capsys, mo
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    assert result["candidate_count"] == 1
-    assert result["status"]["status"] == "public_metadata_ranked_ready"
+    assert result["counts"]["candidates"] == 1
+    assert result["status"] == "public_metadata_ranked_ready"
+    assert len(json.dumps(result, ensure_ascii=False)) <= 2048
+
+    assert (
+        main(
+            [
+                "literature",
+                "search-public",
+                str(tmp_path),
+                "--source",
+                "crossref",
+                "--max-results",
+                "3",
+                "--query-limit",
+                "1",
+                "--page-limit",
+                "2",
+                "--delay-seconds",
+                "0.25",
+                "--resume",
+                "--keyword",
+                "strain",
+                "--json-full",
+            ]
+        )
+        == 0
+    )
+    full = json.loads(capsys.readouterr().out)
+    assert full["candidate_count"] == 1
+    assert full["status"]["status"] == "public_metadata_ranked_ready"
+
+
+def test_literature_router_stays_within_initial_instruction_budget() -> None:
+    router = Path("skills/ea/references/local-literature-library.md")
+
+    assert router.stat().st_size <= 5705
+    text = router.read_text(encoding="utf-8")
+    for stage in (
+        "literature-metadata-discovery.md",
+        "literature-oa-acquisition.md",
+        "literature-zotero-handoff.md",
+        "literature-reconciliation.md",
+        "literature-cache-reading.md",
+    ):
+        assert stage in text
 
 
 def test_literature_import_acquisition_manifest_registers_references_and_syncs_status(tmp_path: Path) -> None:

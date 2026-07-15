@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
-from ea.figures import update_figure_report_ref
+from ea.figures import lookup_figure, update_figure_report_ref
 from ea.provenance import write_provenance_entry
 from ea.references import build_report_reference_block, format_inline_citation
 from ea.review import require_confirmed_review
@@ -16,6 +19,288 @@ from ea.storage.ids import next_id, next_standard_id
 
 
 FORBIDDEN_STRONG_CLAIMS = ["证明了", "毫无疑问", "机制已经确定", "完全说明"]
+
+
+REPORT_MESSAGE_CATALOG = {
+    "zh": {
+        "confidence": "可信度",
+        "evidence": "证据",
+        "evidence peaks": "证据峰",
+        "evidence bands": "证据谱带",
+        "evidence features": "证据特征",
+        "mode separation": "模态间距",
+        "assignment_source": "归属来源",
+        "warning": "警告",
+        "recommendation": "建议",
+    },
+    "en": {
+        "confidence": "Confidence",
+        "evidence": "Evidence",
+        "warning": "Warning",
+        "recommendation": "Recommendation",
+    },
+}
+
+
+def _report_language(root: Path) -> str:
+    path = root / ".ea" / "project_config.yml"
+    config = read_yaml(path) if path.is_file() else {}
+    language = str(config.get("default_report_language") or "zh").lower()
+    return language if language in {"zh", "en"} else "zh"
+
+
+def _semantic_contract(
+    metadata: dict[str, Any], report: ReportRecord, reference_ids: list[str]
+) -> dict[str, Any]:
+    numeric_values: list[dict[str, Any]] = []
+    units: list[dict[str, str]] = []
+    evidence_refs: set[str] = set(reference_ids)
+    confidences: set[str] = set()
+    warning_codes: set[str] = set()
+
+    def walk(value: Any, path: str = "") -> None:
+        key = path.rsplit(".", 1)[-1].lower()
+        if isinstance(value, bool) or value is None:
+            return
+        if isinstance(value, (int, float)):
+            numeric_values.append({"path": path, "value": value})
+            return
+        if isinstance(value, str):
+            if "unit" in key:
+                units.append({"path": path, "value": value})
+            if "confidence" in key:
+                confidences.add(value)
+            if (
+                key.endswith("_ref")
+                or key.endswith("_id")
+                or key in {"evidence", "evidence_refs", "reference_ids"}
+            ):
+                evidence_refs.add(value)
+            if key == "code" and (
+                "warning" in path.lower() or "warnings" in path.lower()
+            ):
+                warning_codes.add(value)
+            return
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                walk(child, f"{path}.{child_key}".strip("."))
+            return
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]")
+
+    walk(metadata)
+    record = report.model_dump(exclude_none=True)
+    contract = {
+        "schema_version": "1.0",
+        "result_ids": record.get("related_results") or [],
+        "figure_ids": record.get("figure_ids") or [],
+        "reference_ids": sorted(reference_ids),
+        "numeric_values": numeric_values,
+        "units": sorted(units, key=lambda item: item["path"]),
+        "evidence_refs": sorted(value for value in evidence_refs if value),
+        "confidence_enums": sorted(confidences),
+        "warning_codes": sorted(warning_codes),
+    }
+    contract["sha256"] = hashlib.sha256(
+        json.dumps(
+            contract, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    return contract
+
+
+def _localize_chinese_dynamic_labels(body: str) -> str:
+    replacements = {
+        "confidence:": "可信度：",
+        "evidence peaks:": "证据峰：",
+        "evidence bands:": "证据谱带：",
+        "evidence features:": "证据特征：",
+        "evidence_status:": "证据状态：",
+        "evidence:": "证据：",
+        "mode separation:": "模态间距：",
+        "assignment_source:": "归属来源：",
+        "| confidence |": "| 可信度 |",
+        "| source |": "| 来源 |",
+    }
+    for source, target in replacements.items():
+        body = body.replace(source, target)
+    return body
+
+
+def _render_english_report(
+    *,
+    report: ReportRecord,
+    metadata: dict[str, Any],
+    outputs: dict[str, Any],
+    reference_markdown: str,
+    semantic: dict[str, Any],
+) -> str:
+    record = report.model_dump(exclude_none=True)
+    method = str(record.get("report_type") or "analysis").replace("_", " ").title()
+    numeric_rows = ["| Field | Value |", "|---|---:|"]
+    numeric_rows.extend(
+        f"| `{item['path']}` | `{item['value']}` |"
+        for item in semantic["numeric_values"]
+    )
+    if len(numeric_rows) == 2:
+        numeric_rows.append("| No numeric value recorded | — |")
+    unit_rows = ["| Field | Unit |", "|---|---|"]
+    unit_rows.extend(
+        f"| `{item['path']}` | `{item['value']}` |" for item in semantic["units"]
+    )
+    if len(unit_rows) == 2:
+        unit_rows.append("| No unit recorded | — |")
+    output_rows = [f"- {key}: `{value}`" for key, value in outputs.items() if value]
+    warning_codes = (
+        ", ".join(f"`{value}`" for value in semantic["warning_codes"])
+        or "none recorded"
+    )
+    confidences = (
+        ", ".join(f"`{value}`" for value in semantic["confidence_enums"])
+        or "none recorded"
+    )
+    evidence_refs = (
+        "\n".join(f"- `{value}`" for value in semantic["evidence_refs"])
+        or "- No evidence ref recorded."
+    )
+    return f"""# {method} Report
+
+## Report Identity
+
+- report_id: `{record.get("report_id")}`
+- project_id: `{record.get("project_id")}`
+- result_ids: `{", ".join(record.get("related_results") or [])}`
+- figure_ids: `{", ".join(record.get("figure_ids") or []) or "not generated"}`
+
+## Review and Interpretation Boundary
+
+This draft reports review-gated processed evidence. It does not independently prove material identity, mechanism, performance, or causality. Scientific interpretation and durable memory require user review.
+
+## Numeric Evidence
+
+{chr(10).join(numeric_rows)}
+
+## Units
+
+{chr(10).join(unit_rows)}
+
+## Evidence References
+
+{evidence_refs}
+
+## Confidence and Warnings
+
+- Confidence enums: {confidences}
+- Warning codes: {warning_codes}
+
+## Output Files
+
+{chr(10).join(output_rows) if output_rows else "- No output file recorded."}
+
+## References
+
+{reference_markdown}
+
+## Provenance
+
+The report semantic contract hash is `{semantic["sha256"]}`. Detailed processing parameters, evidence anchors, warnings, and provenance remain in the local structured records.
+"""
+
+
+def _prepare_localized_report(
+    root: Path,
+    *,
+    report: ReportRecord,
+    body: str,
+    metadata: dict[str, Any],
+    outputs: dict[str, Any],
+    reference_block: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
+    language = _report_language(root)
+    semantic = _semantic_contract(metadata, report, reference_block["reference_ids"])
+    if language == "en":
+        body = _render_english_report(
+            report=report,
+            metadata=metadata,
+            outputs=outputs,
+            reference_markdown=reference_block["references_markdown"],
+            semantic=semantic,
+        )
+    else:
+        body = _localize_chinese_dynamic_labels(body)
+    source_data_block = _figure_source_data_markdown(root, report, language)
+    if source_data_block:
+        body = f"{body.rstrip()}\n\n{source_data_block}\n"
+    return language, body, semantic
+
+
+def _figure_source_data_markdown(
+    root: Path, report: ReportRecord, language: str
+) -> str:
+    if not report.figure_ids:
+        return ""
+    heading = "## Figure Source Data" if language == "en" else "## 图下数据"
+    lines = [heading, ""]
+    for figure_id in report.figure_ids:
+        try:
+            figure = lookup_figure(root, figure_id)
+        except KeyError:
+            message = "figure record missing" if language == "en" else "图件登记缺失"
+            lines.extend(
+                [
+                    f"### `{figure_id}`",
+                    "",
+                    f"- WARNING `figure_record_missing`: {message}.",
+                    "",
+                ]
+            )
+            continue
+        lines.extend([f"### `{figure_id}`", ""])
+        source_data = list(figure.get("source_data") or [])
+        if not source_data:
+            source_data = [
+                {
+                    "ref": ref,
+                    "role": "legacy_unspecified",
+                    "purpose": "Legacy source-data reference.",
+                    "columns": [],
+                    "protected_raw": False,
+                }
+                for ref in figure.get("source_data_refs") or []
+            ]
+        if not source_data:
+            message = (
+                "No public-safe processed source dataset was registered; protected raw data is not linked."
+                if language == "en"
+                else "未登记可公开链接的 processed source data；受保护的 raw data 不在此处链接。"
+            )
+            lines.extend([f"- WARNING `figure_source_data_missing`: {message}", ""])
+            continue
+        for item in source_data:
+            if item.get("protected_raw"):
+                lines.append(
+                    "- WARNING `protected_raw_source_omitted`: protected raw data link omitted."
+                )
+                continue
+            ref = str(item.get("ref") or "")
+            source_path = root / ref
+            role = str(item.get("role") or "unspecified")
+            purpose = str(item.get("purpose") or "")
+            columns = (
+                ", ".join(f"`{value}`" for value in item.get("columns") or []) or "n/a"
+            )
+            if not ref or not source_path.is_file():
+                lines.append(
+                    f"- WARNING `figure_source_data_file_missing`: `{ref or 'empty-ref'}` ({role}); {purpose}"
+                )
+                continue
+            portable_ref = f"../{ref}"
+            lines.append(
+                f"- [{ref}]({portable_ref}) — role: `{role}`; purpose: {purpose}; columns: {columns}"
+            )
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 RAMAN_INTERPRETATION_TRANSLATIONS = {
@@ -62,7 +347,9 @@ def _peak_fit_table(root: Path, peak_table_ref: str) -> str:
             "| {peak_id} | {position:.1f} | {fit_center} | {fwhm} | {prominence:.3g} | {assignment} |".format(
                 peak_id=peak["peak_id"],
                 position=float(peak["position_cm-1"]),
-                fit_center=f"{float(fit_center):.2f}" if pd.notna(fit_center) else "n/a",
+                fit_center=f"{float(fit_center):.2f}"
+                if pd.notna(fit_center)
+                else "n/a",
                 fwhm=f"{float(fwhm):.2f}" if pd.notna(fwhm) else "n/a",
                 prominence=float(peak.get("prominence", 0.0)),
                 assignment=assignment or "unassigned",
@@ -78,15 +365,27 @@ def _interpretation_text(metadata: dict, citation_text: str) -> str:
         return "- 当前 metadata 中没有可复用的自动解释结果；建议先复核检峰参数和样品背景。\n  - confidence: `insufficient`"
     lines: list[str] = []
     for item in interpretations:
-        text = _localize_raman_interpretation_text(str(item.get("text", "No interpretation text recorded.")))
+        text = _localize_raman_interpretation_text(
+            str(item.get("text", "No interpretation text recorded."))
+        )
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         separation = item.get("mode_separation_cm-1")
-        suffix = f"；mode separation: `{float(separation):.2f} cm^-1`" if separation is not None else ""
+        suffix = (
+            f"；mode separation: `{float(separation):.2f} cm^-1`"
+            if separation is not None
+            else ""
+        )
         cite = citation_text if citation_text else ""
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`{suffix}")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`{suffix}"
+        )
     if not citation_text:
-        lines.append("- 上述自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -103,7 +402,9 @@ def generate_raman_report(
     metadata = read_yaml(raman_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -127,13 +428,22 @@ def generate_raman_report(
     peak_text = _peak_summary(root, outputs["peak_table"])
     peak_fit_table = _peak_fit_table(root, outputs["peak_table"])
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献引用。"
+    literature_note = (
+        f"相关解释应与已登记文献对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献引用。"
+    )
     interpretation_text = _interpretation_text(metadata, citation_text)
     body = f"""# Raman 分析报告
 
@@ -141,16 +451,16 @@ def generate_raman_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['raman_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["raman_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 Raman processing result `{metadata['raman_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 Raman processing result `{metadata["raman_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，Raman shift 单位记录为 `{metadata['x_unit']}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，Raman shift 单位记录为 `{metadata["x_unit"]}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## 主要观察
 
@@ -174,23 +484,33 @@ def generate_raman_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- peak table: `{outputs['peak_table']}`
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- peak table: `{outputs["peak_table"]}`
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 Raman result `{metadata['raman_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 Raman result `{metadata["raman_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -199,10 +519,14 @@ def generate_raman_report(
         workflow="report_generation",
         inputs={
             "records": [raman_metadata_path.relative_to(root).as_posix()],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [
+                outputs["processed_csv"],
+                outputs["peak_table"],
+                outputs["figure"],
+            ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={"include_next_step_suggestions": False, "language": language},
         review_refs=[],
         warnings=warnings,
         created_at=created_at,
@@ -257,9 +581,13 @@ def _pl_peak_table(root: Path, peak_table_ref: str) -> str:
                 peak_id=peak["peak_id"],
                 position=float(peak["position"]),
                 unit=peak["position_unit"],
-                wavelength=f"{float(wavelength):.1f}" if pd.notna(wavelength) else "n/a",
+                wavelength=f"{float(wavelength):.1f}"
+                if pd.notna(wavelength)
+                else "n/a",
                 prominence=float(peak.get("prominence", 0.0)),
-                assignment=peak.get("assignment") if pd.notna(peak.get("assignment")) and peak.get("assignment") else "unassigned",
+                assignment=peak.get("assignment")
+                if pd.notna(peak.get("assignment")) and peak.get("assignment")
+                else "unassigned",
             )
         )
     return "\n".join(rows)
@@ -274,11 +602,17 @@ def _pl_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`"
+        )
     if not citation_text:
-        lines.append("- 上述 PL 自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 PL 自动解释尚未绑定外部文献；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -295,7 +629,9 @@ def generate_pl_report(
     metadata = read_yaml(pl_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -319,13 +655,22 @@ def generate_pl_report(
     peak_text = _pl_peak_summary(root, outputs["peak_table"])
     peak_table = _pl_peak_table(root, outputs["peak_table"])
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献引用。"
+    literature_note = (
+        f"相关解释应与已登记文献对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献引用。"
+    )
     interpretation_text = _pl_interpretation_text(metadata, citation_text)
     body = f"""# PL 分析报告
 
@@ -333,16 +678,16 @@ def generate_pl_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['pl_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["pl_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 PL processing result `{metadata['pl_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 PL processing result `{metadata["pl_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，PL x 轴单位记录为 `{metadata['x_unit']}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，PL x 轴单位记录为 `{metadata["x_unit"]}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## 主要观察
 
@@ -366,23 +711,33 @@ def generate_pl_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- peak table: `{outputs['peak_table']}`
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- peak table: `{outputs["peak_table"]}`
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 PL result `{metadata['pl_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 PL result `{metadata["pl_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -391,10 +746,14 @@ def generate_pl_report(
         workflow="report_generation",
         inputs={
             "records": [pl_metadata_path.relative_to(root).as_posix()],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [
+                outputs["processed_csv"],
+                outputs["peak_table"],
+                outputs["figure"],
+            ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={"include_next_step_suggestions": False, "language": language},
         review_refs=[],
         warnings=warnings,
         created_at=created_at,
@@ -444,7 +803,11 @@ def _xrd_peak_table(root: Path, peak_table_ref: str) -> str:
     ]
     for _, peak in peaks.sort_values("prominence", ascending=False).head(10).iterrows():
         d_spacing = peak.get("d_spacing_angstrom")
-        possible_phase = peak.get("possible_phase") if pd.notna(peak.get("possible_phase")) and peak.get("possible_phase") else "unassigned"
+        possible_phase = (
+            peak.get("possible_phase")
+            if pd.notna(peak.get("possible_phase")) and peak.get("possible_phase")
+            else "unassigned"
+        )
         rows.append(
             "| {peak_id} | {two_theta:.2f} | {d_spacing} | {prominence:.3g} | {possible_phase} |".format(
                 peak_id=peak["peak_id"],
@@ -466,11 +829,17 @@ def _xrd_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`"
+        )
     if not citation_text:
-        lines.append("- 上述 XRD 自动解释尚未绑定外部文献或相数据库；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 XRD 自动解释尚未绑定外部文献或相数据库；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -489,7 +858,9 @@ def generate_xrd_report(
     metadata = read_yaml(xrd_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -513,10 +884,15 @@ def generate_xrd_report(
     peak_text = _xrd_peak_summary(root, outputs["peak_table"])
     peak_table = _xrd_peak_table(root, outputs["peak_table"])
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     assignment_suggestion_records = _load_xrd_assignment_suggestion_records(
         root,
         assignment_suggestion_paths,
@@ -531,29 +907,39 @@ def generate_xrd_report(
         for reference_id in record.get("reference_ids", [])
         if str(reference_id) in registered_references
     ]
-    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
+    reference_block = build_report_reference_block(
+        root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids])
+    )
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献或相数据库条目对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或相数据库引用。"
+    literature_note = (
+        f"相关解释应与已登记文献或相数据库条目对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献或相数据库引用。"
+    )
     interpretation_text = _xrd_interpretation_text(metadata, citation_text)
-    assignment_suggestion_text = _xrd_assignment_suggestion_text(assignment_suggestion_records, reference_block)
+    assignment_suggestion_text = _xrd_assignment_suggestion_text(
+        assignment_suggestion_records, reference_block
+    )
     wavelength = metadata.get("wavelength_angstrom")
-    wavelength_text = f"{float(wavelength):.4f} A" if wavelength is not None else "未记录/不可计算"
+    wavelength_text = (
+        f"{float(wavelength):.4f} A" if wavelength is not None else "未记录/不可计算"
+    )
     body = f"""# XRD 分析报告
 
 ## 报告 ID 信息
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['xrd_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["xrd_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 XRD processing result `{metadata['xrd_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 XRD processing result `{metadata["xrd_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，XRD x 轴单位记录为 `{metadata['x_unit']}`。X-ray wavelength 为 `{wavelength_text}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，XRD x 轴单位记录为 `{metadata["x_unit"]}`。X-ray wavelength 为 `{wavelength_text}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## 主要观察
 
@@ -581,23 +967,33 @@ def generate_xrd_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- peak table: `{outputs['peak_table']}`
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- peak table: `{outputs["peak_table"]}`
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 XRD result `{metadata['xrd_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 XRD result `{metadata["xrd_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -607,16 +1003,29 @@ def generate_xrd_report(
         inputs={
             "records": [
                 xrd_metadata_path.relative_to(root).as_posix(),
-                *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
-                *[f"reviews/{review_ref}.yml" for review_ref in assignment_review_refs or []],
+                *[
+                    _relative_to_root(root, path)
+                    for path in assignment_suggestion_paths or []
+                ],
+                *[
+                    f"reviews/{review_ref}.yml"
+                    for review_ref in assignment_review_refs or []
+                ],
             ],
-            "files": [outputs["processed_csv"], outputs["peak_table"], outputs["figure"]],
+            "files": [
+                outputs["processed_csv"],
+                outputs["peak_table"],
+                outputs["figure"],
+            ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
-            "language": "zh",
-            "assignment_suggestion_refs": [_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
+            "language": language,
+            "assignment_suggestion_refs": [
+                _relative_to_root(root, path)
+                for path in assignment_suggestion_paths or []
+            ],
             "assignment_review_refs": assignment_review_refs or [],
         },
         review_refs=assignment_review_refs or [],
@@ -662,8 +1071,18 @@ def _ftir_band_table(root: Path, peak_table_ref: str) -> str:
         "|---|---:|---:|---|---|",
     ]
     for _, band in bands.sort_values("prominence", ascending=False).head(12).iterrows():
-        family = band.get("possible_band_family") if pd.notna(band.get("possible_band_family")) and band.get("possible_band_family") else "unassigned"
-        confidence = band.get("assignment_confidence") if pd.notna(band.get("assignment_confidence")) and band.get("assignment_confidence") else "insufficient"
+        family = (
+            band.get("possible_band_family")
+            if pd.notna(band.get("possible_band_family"))
+            and band.get("possible_band_family")
+            else "unassigned"
+        )
+        confidence = (
+            band.get("assignment_confidence")
+            if pd.notna(band.get("assignment_confidence"))
+            and band.get("assignment_confidence")
+            else "insufficient"
+        )
         rows.append(
             "| {band_id} | {wavenumber:.0f} | {prominence:.3g} | {family} | {confidence} |".format(
                 band_id=band["band_id"],
@@ -685,12 +1104,18 @@ def _ftir_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
         source = str(item.get("assignment_source", "") or "未记录")
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence bands: `{evidence}`；assignment_source: `{source}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence bands: `{evidence}`；assignment_source: `{source}`"
+        )
     if not citation_text:
-        lines.append("- 上述 FTIR 自动解释尚未绑定外部文献或参考谱库；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 FTIR 自动解释尚未绑定外部文献或参考谱库；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -708,10 +1133,18 @@ def _has_ftir_context_value(value: object) -> bool:
 
 def _format_ftir_context_value(value: object) -> str:
     if isinstance(value, dict):
-        parts = [f"{key}={_format_ftir_context_value(item)}" for key, item in value.items() if _has_ftir_context_value(item)]
+        parts = [
+            f"{key}={_format_ftir_context_value(item)}"
+            for key, item in value.items()
+            if _has_ftir_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     if isinstance(value, list | tuple):
-        parts = [_format_ftir_context_value(item) for item in value if _has_ftir_context_value(item)]
+        parts = [
+            _format_ftir_context_value(item)
+            for item in value
+            if _has_ftir_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     return str(value)
 
@@ -725,7 +1158,11 @@ def _ftir_context_record_text(metadata: dict) -> str:
     source = context.get("assignment_source", "ea.ftir.context_record:v0.2")
     record_ref = context.get("record_ref", "未生成")
     fields = context.get("reviewed_context_fields") or []
-    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed context 字段"
+    field_text = (
+        "、".join(str(field) for field in fields)
+        if fields
+        else "未记录 reviewed context 字段"
+    )
     labels = {
         "instrument_accessory": "instrument/accessory",
         "atmosphere": "atmosphere",
@@ -777,7 +1214,9 @@ def _relative_to_root(root: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _load_ftir_assignment_suggestion_records(root: Path, refs: list[Path] | None) -> list[dict]:
+def _load_ftir_assignment_suggestion_records(
+    root: Path, refs: list[Path] | None
+) -> list[dict]:
     records = []
     for ref in refs or []:
         path = ref if ref.is_absolute() else root / ref
@@ -787,7 +1226,9 @@ def _load_ftir_assignment_suggestion_records(root: Path, refs: list[Path] | None
     return records
 
 
-def _load_xps_parameter_suggestion_records(root: Path, refs: list[Path] | None) -> list[dict]:
+def _load_xps_parameter_suggestion_records(
+    root: Path, refs: list[Path] | None
+) -> list[dict]:
     records = []
     for ref in refs or []:
         path = ref if ref.is_absolute() else root / ref
@@ -820,7 +1261,9 @@ def _load_uv_vis_interpretation_suggestion_records(
     if not refs:
         return []
     if len(refs) != len(review_refs):
-        raise ValueError("Each --interpretation-suggestion requires one matching --interpretation-review-ref.")
+        raise ValueError(
+            "Each --interpretation-suggestion requires one matching --interpretation-review-ref."
+        )
 
     metadata_ref = _relative_to_root(root, uv_vis_metadata_path)
     records: list[dict] = []
@@ -832,22 +1275,31 @@ def _load_uv_vis_interpretation_suggestion_records(
         record_ref = _relative_to_root(root, path)
         record_project_id = str(record.get("project_id") or "")
         if record_project_id and project_id and record_project_id != project_id:
-            raise ValueError(f"UV-Vis suggestion project_id {record_project_id} does not match report project_id {project_id}.")
+            raise ValueError(
+                f"UV-Vis suggestion project_id {record_project_id} does not match report project_id {project_id}."
+            )
         suggestion_metadata_ref = str(record.get("uv_vis_metadata_ref") or "")
         if suggestion_metadata_ref and suggestion_metadata_ref != metadata_ref:
-            raise ValueError(f"UV-Vis suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}.")
+            raise ValueError(
+                f"UV-Vis suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}."
+            )
 
         review = require_confirmed_review(root, review_ref)
         review_target_type = str(review.get("target_type") or "")
         review_target_ref = _normalize_report_target_ref(root, review.get("target_ref"))
-        if review_target_type != "uv_vis_interpretation_suggestions" or review_target_ref != record_ref:
+        if (
+            review_target_type != "uv_vis_interpretation_suggestions"
+            or review_target_ref != record_ref
+        ):
             raise ValueError(
                 f"ReviewRecord {review_ref} targets {review_target_type}:{review.get('target_ref')}, "
                 f"not UV-Vis interpretation suggestion {record_ref}."
             )
         record["record_ref"] = record_ref
         record["review_ref"] = review_ref
-        record["reviewed_content"] = review.get("reviewed_content") or review.get("user_original_text")
+        record["reviewed_content"] = review.get("reviewed_content") or review.get(
+            "user_original_text"
+        )
         records.append(record)
     return records
 
@@ -865,7 +1317,9 @@ def _load_xrd_assignment_suggestion_records(
     if not refs:
         return []
     if len(refs) != len(review_refs):
-        raise ValueError("Each --assignment-suggestion requires one matching --assignment-review-ref.")
+        raise ValueError(
+            "Each --assignment-suggestion requires one matching --assignment-review-ref."
+        )
 
     metadata_ref = _relative_to_root(root, xrd_metadata_path)
     records: list[dict] = []
@@ -877,22 +1331,31 @@ def _load_xrd_assignment_suggestion_records(
         record_ref = _relative_to_root(root, path)
         record_project_id = str(record.get("project_id") or "")
         if record_project_id and project_id and record_project_id != project_id:
-            raise ValueError(f"XRD suggestion project_id {record_project_id} does not match report project_id {project_id}.")
+            raise ValueError(
+                f"XRD suggestion project_id {record_project_id} does not match report project_id {project_id}."
+            )
         suggestion_metadata_ref = str(record.get("xrd_metadata_ref") or "")
         if suggestion_metadata_ref and suggestion_metadata_ref != metadata_ref:
-            raise ValueError(f"XRD suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}.")
+            raise ValueError(
+                f"XRD suggestion {record_ref} targets {suggestion_metadata_ref}, not report metadata {metadata_ref}."
+            )
 
         review = require_confirmed_review(root, review_ref)
         review_target_type = str(review.get("target_type") or "")
         review_target_ref = _normalize_report_target_ref(root, review.get("target_ref"))
-        if review_target_type != "xrd_assignment_suggestions" or review_target_ref != record_ref:
+        if (
+            review_target_type != "xrd_assignment_suggestions"
+            or review_target_ref != record_ref
+        ):
             raise ValueError(
                 f"ReviewRecord {review_ref} targets {review_target_type}:{review.get('target_ref')}, "
                 f"not XRD assignment suggestion {record_ref}."
             )
         record["record_ref"] = record_ref
         record["review_ref"] = review_ref
-        record["reviewed_content"] = review.get("reviewed_content") or review.get("user_original_text")
+        record["reviewed_content"] = review.get("reviewed_content") or review.get(
+            "user_original_text"
+        )
         records.append(record)
     return records
 
@@ -902,7 +1365,11 @@ def _reference_citation(reference_ids: list[str], reference_block: dict) -> str:
         str(item["reference_id"]): int(item["number"])
         for item in reference_block.get("numbered_references", [])
     }
-    numbers = [number_by_id[reference_id] for reference_id in reference_ids if reference_id in number_by_id]
+    numbers = [
+        number_by_id[reference_id]
+        for reference_id in reference_ids
+        if reference_id in number_by_id
+    ]
     return format_inline_citation(numbers) if numbers else ""
 
 
@@ -929,13 +1396,23 @@ def _xrd_assignment_values_text(candidate: dict) -> str:
         ("two_theta_window_deg", candidate.get("two_theta_window_deg")),
         ("d_spacing_window_angstrom", candidate.get("d_spacing_window_angstrom")),
     ]
-    parts = [f"{key}={_format_report_list(value)}" for key, value in fields if value not in (None, "", [], {})]
+    parts = [
+        f"{key}={_format_report_list(value)}"
+        for key, value in fields
+        if value not in (None, "", [], {})
+    ]
     return "；".join(parts) if parts else "未记录可展示的 XRD assignment values"
 
 
-def _xrd_assignment_report_use_status(candidate: dict, unresolved_reference_ids: list[str]) -> str:
+def _xrd_assignment_report_use_status(
+    candidate: dict, unresolved_reference_ids: list[str]
+) -> str:
     status = str(candidate.get("status") or "unknown")
-    if status == "ready_for_user_review" and not unresolved_reference_ids and not candidate.get("missing_fields"):
+    if (
+        status == "ready_for_user_review"
+        and not unresolved_reference_ids
+        and not candidate.get("missing_fields")
+    ):
         return "reviewed_assignment_context"
     if unresolved_reference_ids:
         return "warning_unresolved_references"
@@ -965,11 +1442,15 @@ def _xrd_assignment_suggestion_text(records: list[dict], reference_block: dict) 
         for item in reference_block.get("numbered_references", [])
     }
     for record in records:
-        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_ref = str(
+            record.get("record_ref") or record.get("table_ref") or "未记录"
+        )
         record_status = str(record.get("status") or "unknown")
         suggestion_id = str(record.get("suggestion_id") or "unknown")
         review_ref = str(record.get("review_ref") or "未记录")
-        reviewed_content = str(record.get("reviewed_content") or "未记录 reviewed_content")
+        reviewed_content = str(
+            record.get("reviewed_content") or "未记录 reviewed_content"
+        )
         lines.append(
             f"- suggestion_record: `{record_ref}`；suggestion_id: `{suggestion_id}`；review_ref: `{review_ref}`；"
             f"status: `{record_status}`；candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
@@ -987,12 +1468,20 @@ def _xrd_assignment_suggestion_text(records: list[dict], reference_block: dict) 
             ),
         )
         for candidate in sorted_candidates[:8]:
-            reference_ids = [str(item) for item in candidate.get("reference_ids", []) if str(item).strip()]
+            reference_ids = [
+                str(item)
+                for item in candidate.get("reference_ids", [])
+                if str(item).strip()
+            ]
             unresolved_ids = [
                 str(item)
                 for item in [
                     *(candidate.get("unresolved_reference_ids") or []),
-                    *[ref for ref in reference_ids if ref not in reference_ids_in_report],
+                    *[
+                        ref
+                        for ref in reference_ids
+                        if ref not in reference_ids_in_report
+                    ],
                 ]
                 if str(item).strip()
             ]
@@ -1001,8 +1490,12 @@ def _xrd_assignment_suggestion_text(records: list[dict], reference_block: dict) 
             status = str(candidate.get("status") or "unknown")
             report_use = _xrd_assignment_report_use_status(candidate, unresolved_ids)
             matched_peaks = _format_report_list(candidate.get("matched_peak_ids"))
-            matched_two_theta = _format_report_list(candidate.get("matched_two_theta_deg"))
-            matched_d_spacing = _format_report_list(candidate.get("matched_d_spacing_angstrom"))
+            matched_two_theta = _format_report_list(
+                candidate.get("matched_two_theta_deg")
+            )
+            matched_d_spacing = _format_report_list(
+                candidate.get("matched_d_spacing_angstrom")
+            )
             applicability = _format_report_list(candidate.get("applicability_notes"))
             caveats = _format_report_list(candidate.get("caveats"))
             missing_fields = _format_report_list(candidate.get("missing_fields"))
@@ -1035,7 +1528,9 @@ def _xrd_assignment_suggestion_text(records: list[dict], reference_block: dict) 
                 )
             )
         if len(sorted_candidates) > 8:
-            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+            lines.append(
+                f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。"
+            )
     lines.append(
         "- 上述 XRD assignment suggestions 是 reviewed source-backed advisory records；它们可以帮助组织物相、晶面或衍射特征讨论，"
         "但不会自动应用 assignment，不能单独证明相组成、材料身份、结晶度、择优取向、应变、晶格参数、仪器校准或样品质量，也不会写入 confirmed memory。"
@@ -1055,13 +1550,23 @@ def _uv_vis_candidate_values_text(candidate: dict) -> str:
         ("correction_context_type", candidate.get("correction_context_type")),
         ("correction_method", candidate.get("correction_method")),
     ]
-    parts = [f"{key}={_format_report_list(value)}" for key, value in fields if value not in (None, "", [], {})]
+    parts = [
+        f"{key}={_format_report_list(value)}"
+        for key, value in fields
+        if value not in (None, "", [], {})
+    ]
     return "；".join(parts) if parts else "未记录可展示的 UV-Vis interpretation values"
 
 
-def _uv_vis_report_use_status(candidate: dict, unresolved_reference_ids: list[str]) -> str:
+def _uv_vis_report_use_status(
+    candidate: dict, unresolved_reference_ids: list[str]
+) -> str:
     status = str(candidate.get("status") or "unknown")
-    if status == "ready_for_user_review" and not unresolved_reference_ids and not candidate.get("missing_fields"):
+    if (
+        status == "ready_for_user_review"
+        and not unresolved_reference_ids
+        and not candidate.get("missing_fields")
+    ):
         return "reviewed_interpretation_context"
     if unresolved_reference_ids:
         return "warning_unresolved_references"
@@ -1072,7 +1577,9 @@ def _uv_vis_report_use_status(candidate: dict, unresolved_reference_ids: list[st
     return "context_not_used_as_evidence"
 
 
-def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block: dict) -> str:
+def _uv_vis_interpretation_suggestion_text(
+    records: list[dict], reference_block: dict
+) -> str:
     if not records:
         return (
             "当前报告未附加 reviewed UV-Vis interpretation suggestion record。若需要讨论 source-backed band gap、"
@@ -1091,11 +1598,15 @@ def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block:
         for item in reference_block.get("numbered_references", [])
     }
     for record in records:
-        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_ref = str(
+            record.get("record_ref") or record.get("table_ref") or "未记录"
+        )
         record_status = str(record.get("status") or "unknown")
         suggestion_id = str(record.get("suggestion_id") or "unknown")
         review_ref = str(record.get("review_ref") or "未记录")
-        reviewed_content = str(record.get("reviewed_content") or "未记录 reviewed_content")
+        reviewed_content = str(
+            record.get("reviewed_content") or "未记录 reviewed_content"
+        )
         lines.append(
             f"- suggestion_record: `{record_ref}`；suggestion_id: `{suggestion_id}`；review_ref: `{review_ref}`；"
             f"status: `{record_status}`；candidate_count: `{record.get('candidate_count', 0)}`；auto_applied: `false`。"
@@ -1113,12 +1624,20 @@ def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block:
             ),
         )
         for candidate in sorted_candidates[:8]:
-            reference_ids = [str(item) for item in candidate.get("reference_ids", []) if str(item).strip()]
+            reference_ids = [
+                str(item)
+                for item in candidate.get("reference_ids", [])
+                if str(item).strip()
+            ]
             unresolved_ids = [
                 str(item)
                 for item in [
                     *(candidate.get("unresolved_reference_ids") or []),
-                    *[ref for ref in reference_ids if ref not in reference_ids_in_report],
+                    *[
+                        ref
+                        for ref in reference_ids
+                        if ref not in reference_ids_in_report
+                    ],
                 ]
                 if str(item).strip()
             ]
@@ -1128,7 +1647,9 @@ def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block:
             report_use = _uv_vis_report_use_status(candidate, unresolved_ids)
             matched_features = _format_report_list(candidate.get("matched_feature_ids"))
             matched_energies = _format_report_list(candidate.get("matched_energies_eV"))
-            matched_wavelengths = _format_report_list(candidate.get("matched_wavelengths_nm"))
+            matched_wavelengths = _format_report_list(
+                candidate.get("matched_wavelengths_nm")
+            )
             evidence_refs = _format_report_list(candidate.get("evidence_refs"))
             applicability = _format_report_list(candidate.get("applicability_notes"))
             caveats = _format_report_list(candidate.get("caveats"))
@@ -1145,7 +1666,9 @@ def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block:
                 "    - unresolved_reference_ids: `{unresolved}`".format(
                     candidate_id=str(candidate.get("candidate_id") or "unknown"),
                     candidate_type=str(candidate.get("candidate_type") or "unknown"),
-                    optical_target=str(candidate.get("optical_target") or "未记录 optical_target"),
+                    optical_target=str(
+                        candidate.get("optical_target") or "未记录 optical_target"
+                    ),
                     citation=citation,
                     report_use=report_use,
                     status=status,
@@ -1163,7 +1686,9 @@ def _uv_vis_interpretation_suggestion_text(records: list[dict], reference_block:
                 )
             )
         if len(sorted_candidates) > 8:
-            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+            lines.append(
+                f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。"
+            )
     lines.append(
         "- 上述 UV-Vis interpretation suggestions 是 reviewed source-backed advisory records；它们可以帮助组织 band gap、transition model、feature assignment 或 correction context 讨论，但不会自动应用 Tauc/Kubelka-Munk/derivative/correction 模型，不能单独证明带隙、跃迁机制、缺陷态、样品厚度效应或光学机制，也不会写入 confirmed memory。"
     )
@@ -1184,7 +1709,9 @@ def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict)
         "invalid_missing_required_metadata": 3,
     }
     for record in records:
-        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_ref = str(
+            record.get("record_ref") or record.get("table_ref") or "未记录"
+        )
         record_status = str(record.get("status") or "unknown")
         lines.append(
             f"- suggestion_record: `{record_ref}`；status: `{record_status}`；"
@@ -1203,10 +1730,14 @@ def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict)
         )
         for candidate in sorted_candidates[:8]:
             reference_ids = [str(item) for item in candidate.get("reference_ids", [])]
-            unresolved_ids = [str(item) for item in candidate.get("unresolved_reference_ids", [])]
+            unresolved_ids = [
+                str(item) for item in candidate.get("unresolved_reference_ids", [])
+            ]
             citation = _reference_citation(reference_ids, reference_block)
             matched_bands = _format_report_list(candidate.get("matched_band_ids"))
-            matched_wavenumbers = _format_report_list(candidate.get("matched_wavenumbers_cm-1"))
+            matched_wavenumbers = _format_report_list(
+                candidate.get("matched_wavenumbers_cm-1")
+            )
             caveats = _format_report_list(candidate.get("caveats"))
             applicability = _format_report_list(candidate.get("applicability_notes"))
             source_summary = str(candidate.get("source_summary") or "未记录")
@@ -1219,7 +1750,9 @@ def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict)
                 "    - caveats: {caveats}\n"
                 "    - unresolved_reference_ids: `{unresolved}`".format(
                     candidate_id=str(candidate.get("candidate_id") or "unknown"),
-                    assignment=str(candidate.get("assignment_label") or "未记录 assignment_label"),
+                    assignment=str(
+                        candidate.get("assignment_label") or "未记录 assignment_label"
+                    ),
                     citation=citation,
                     status=str(candidate.get("status") or "unknown"),
                     confidence=str(candidate.get("confidence") or "insufficient"),
@@ -1232,7 +1765,9 @@ def _ftir_assignment_suggestion_text(records: list[dict], reference_block: dict)
                 )
             )
         if len(sorted_candidates) > 8:
-            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+            lines.append(
+                f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。"
+            )
     lines.append(
         "- 上述 FTIR assignment suggestions 是 source-backed advisory records；它们可以帮助组织讨论，但不能单独证明化学组成、功能团归属、反应路径或写入 confirmed memory。"
     )
@@ -1266,7 +1801,14 @@ def _xps_parameter_values_text(candidate: dict) -> str:
         }
     else:
         values = {"suggestion_type": suggestion_type}
-    return "；".join(f"{key}={value}" for key, value in values.items() if value not in [None, "", []]) or "未记录"
+    return (
+        "；".join(
+            f"{key}={value}"
+            for key, value in values.items()
+            if value not in [None, "", []]
+        )
+        or "未记录"
+    )
 
 
 def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -> str:
@@ -1284,7 +1826,9 @@ def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -
         "invalid_missing_required_metadata": 3,
     }
     for record in records:
-        record_ref = str(record.get("record_ref") or record.get("table_ref") or "未记录")
+        record_ref = str(
+            record.get("record_ref") or record.get("table_ref") or "未记录"
+        )
         record_status = str(record.get("status") or "unknown")
         suggestion_id = str(record.get("suggestion_id") or "unknown")
         lines.append(
@@ -1304,7 +1848,9 @@ def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -
         )
         for candidate in sorted_candidates[:8]:
             reference_ids = [str(item) for item in candidate.get("reference_ids", [])]
-            unresolved_ids = [str(item) for item in candidate.get("unresolved_reference_ids", [])]
+            unresolved_ids = [
+                str(item) for item in candidate.get("unresolved_reference_ids", [])
+            ]
             citation = _reference_citation(reference_ids, reference_block)
             applicability = _format_report_list(candidate.get("applicability_notes"))
             caveats = _format_report_list(candidate.get("caveats"))
@@ -1333,7 +1879,9 @@ def _xps_parameter_suggestion_text(records: list[dict], reference_block: dict) -
                 )
             )
         if len(sorted_candidates) > 8:
-            lines.append(f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。")
+            lines.append(
+                f"  - 另有 `{len(sorted_candidates) - 8}` 个候选未在报告中展开，请查看原 suggestion record。"
+            )
     lines.append(
         "- 上述 XPS parameter suggestions 是 source-backed advisory records；它们可以帮助组织 spin-orbit、Tougaard/background、component/bounds/peak-shape 或 binding-energy/chemical-state 候选讨论，但不会自动写入 processing parameters、不会静默校准谱图或应用荷电校正，不能单独证明化学态、组成或正式定量。"
     )
@@ -1354,7 +1902,9 @@ def generate_ftir_report(
     metadata = read_yaml(ftir_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -1379,11 +1929,18 @@ def generate_ftir_report(
     band_table = _ftir_band_table(root, outputs["peak_table"])
     context_text = _ftir_context_record_text(metadata)
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
-    assignment_suggestion_records = _load_ftir_assignment_suggestion_records(root, assignment_suggestion_paths)
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
+    assignment_suggestion_records = _load_ftir_assignment_suggestion_records(
+        root, assignment_suggestion_paths
+    )
     registered_references = _registered_reference_ids(root)
     suggestion_reference_ids = [
         str(reference_id)
@@ -1391,11 +1948,19 @@ def generate_ftir_report(
         for reference_id in record.get("reference_ids", [])
         if str(reference_id) in registered_references
     ]
-    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
+    reference_block = build_report_reference_block(
+        root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids])
+    )
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献或参考谱库对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或参考谱库引用。"
+    literature_note = (
+        f"相关解释应与已登记文献或参考谱库对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献或参考谱库引用。"
+    )
     interpretation_text = _ftir_interpretation_text(metadata, citation_text)
-    assignment_suggestion_text = _ftir_assignment_suggestion_text(assignment_suggestion_records, reference_block)
+    assignment_suggestion_text = _ftir_assignment_suggestion_text(
+        assignment_suggestion_records, reference_block
+    )
     figure_rel = outputs["figure"]
     figure_embed = f"![FTIR spectrum](../{figure_rel})"
     body = f"""# FTIR 分析报告
@@ -1404,16 +1969,16 @@ def generate_ftir_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['ftir_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["ftir_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 FTIR processing result `{metadata['ftir_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 FTIR processing result `{metadata["ftir_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，FTIR x 轴单位记录为 `{metadata['x_unit']}`，信号模式为 `{metadata.get('signal_mode', 'absorbance')}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，FTIR x 轴单位记录为 `{metadata["x_unit"]}`，信号模式为 `{metadata.get("signal_mode", "absorbance")}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## FTIR context record
 
@@ -1451,24 +2016,34 @@ def generate_ftir_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- band table: `{outputs['peak_table']}`
-{f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- band table: `{outputs["peak_table"]}`
+{f"- context record: `{outputs['context_record']}`" if outputs.get("context_record") else "- context record: `未生成`"}
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 FTIR result `{metadata['ftir_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 FTIR result `{metadata["ftir_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -1476,14 +2051,32 @@ def generate_ftir_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [ftir_metadata_path.relative_to(root).as_posix(), *[_relative_to_root(root, path) for path in assignment_suggestion_paths or []]],
-            "files": [value for value in [outputs["processed_csv"], outputs["peak_table"], outputs.get("context_record"), outputs["figure"]] if value],
+            "records": [
+                ftir_metadata_path.relative_to(root).as_posix(),
+                *[
+                    _relative_to_root(root, path)
+                    for path in assignment_suggestion_paths or []
+                ],
+            ],
+            "files": [
+                value
+                for value in [
+                    outputs["processed_csv"],
+                    outputs["peak_table"],
+                    outputs.get("context_record"),
+                    outputs["figure"],
+                ]
+                if value
+            ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
-            "language": "zh",
-            "assignment_suggestion_refs": [_relative_to_root(root, path) for path in assignment_suggestion_paths or []],
+            "language": language,
+            "assignment_suggestion_refs": [
+                _relative_to_root(root, path)
+                for path in assignment_suggestion_paths or []
+            ],
         },
         review_refs=[],
         warnings=warnings,
@@ -1514,7 +2107,9 @@ def _uv_vis_feature_summary(root: Path, peak_table_ref: str) -> str:
     if features.empty:
         return "当前自动检测未得到稳定 UV-Vis 光学特征，需结合人工检查。"
     positions = []
-    for _, feature in features.sort_values("prominence", ascending=False).head(6).iterrows():
+    for _, feature in (
+        features.sort_values("prominence", ascending=False).head(6).iterrows()
+    ):
         wavelength = feature.get("wavelength_nm")
         energy = feature.get("energy_eV")
         if pd.notna(wavelength):
@@ -1535,19 +2130,30 @@ def _uv_vis_feature_table(root: Path, peak_table_ref: str) -> str:
         "| feature_id | position | wavelength (nm) | energy (eV) | prominence | feature type | confidence |",
         "|---|---:|---:|---:|---:|---|---|",
     ]
-    for _, feature in features.sort_values("prominence", ascending=False).head(10).iterrows():
+    for _, feature in (
+        features.sort_values("prominence", ascending=False).head(10).iterrows()
+    ):
         wavelength = feature.get("wavelength_nm")
         energy = feature.get("energy_eV")
-        confidence = feature.get("assignment_confidence") if pd.notna(feature.get("assignment_confidence")) and feature.get("assignment_confidence") else "insufficient"
+        confidence = (
+            feature.get("assignment_confidence")
+            if pd.notna(feature.get("assignment_confidence"))
+            and feature.get("assignment_confidence")
+            else "insufficient"
+        )
         rows.append(
             "| {feature_id} | {position:.4g} {unit} | {wavelength} | {energy} | {prominence:.3g} | {feature_type} | {confidence} |".format(
                 feature_id=feature["feature_id"],
                 position=float(feature["position"]),
                 unit=feature["position_unit"],
-                wavelength=f"{float(wavelength):.1f}" if pd.notna(wavelength) else "n/a",
+                wavelength=f"{float(wavelength):.1f}"
+                if pd.notna(wavelength)
+                else "n/a",
                 energy=f"{float(energy):.3f}" if pd.notna(energy) else "n/a",
                 prominence=float(feature.get("prominence", 0.0)),
-                feature_type=feature.get("feature_type") if pd.notna(feature.get("feature_type")) and feature.get("feature_type") else "optical_feature",
+                feature_type=feature.get("feature_type")
+                if pd.notna(feature.get("feature_type")) and feature.get("feature_type")
+                else "optical_feature",
                 confidence=confidence,
             )
         )
@@ -1578,7 +2184,11 @@ def _uv_vis_tauc_text(metadata: dict) -> str:
     confidence = tauc.get("confidence", "insufficient")
     source = tauc.get("assignment_source", "ea.uv_vis.tauc_screening:v0.2")
     fit_window = tauc.get("fit_window_eV") or []
-    window_text = f"{float(fit_window[0]):.3g}-{float(fit_window[1]):.3g} eV" if len(fit_window) == 2 else "not recorded"
+    window_text = (
+        f"{float(fit_window[0]):.3g}-{float(fit_window[1]):.3g} eV"
+        if len(fit_window) == 2
+        else "not recorded"
+    )
     if status != "screening_fit_recorded":
         return (
             f"Tauc/Kubelka-Munk screening 状态为 `{status}`；transform: `{transform}`；transition: `{transition}`；"
@@ -1609,10 +2219,14 @@ def _uv_vis_derivative_text(metadata: dict) -> str:
     wavelength = strongest.get("wavelength_nm")
     energy = strongest.get("energy_eV")
     first_derivative = strongest.get("first_derivative")
-    axis_text = f"{float(axis_value):.4g} {axis_unit}" if axis_value is not None else "n/a"
+    axis_text = (
+        f"{float(axis_value):.4g} {axis_unit}" if axis_value is not None else "n/a"
+    )
     wavelength_text = f"{float(wavelength):.1f} nm" if wavelength is not None else "n/a"
     energy_text = f"{float(energy):.3f} eV" if energy is not None else "n/a"
-    derivative_text = f"{float(first_derivative):.4g}" if first_derivative is not None else "n/a"
+    derivative_text = (
+        f"{float(first_derivative):.4g}" if first_derivative is not None else "n/a"
+    )
     return (
         f"Derivative screening 状态为 `{status}`；axis: `{axis}` (`{axis_unit}`)；"
         f"最大一阶导数绝对值附近坐标为 `{axis_text}`，对应 `{wavelength_text}` / `{energy_text}`，"
@@ -1635,10 +2249,18 @@ def _has_uv_vis_context_value(value: object) -> bool:
 
 def _format_uv_vis_context_value(value: object) -> str:
     if isinstance(value, dict):
-        parts = [f"{key}={_format_uv_vis_context_value(item)}" for key, item in value.items() if _has_uv_vis_context_value(item)]
+        parts = [
+            f"{key}={_format_uv_vis_context_value(item)}"
+            for key, item in value.items()
+            if _has_uv_vis_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     if isinstance(value, list | tuple):
-        parts = [_format_uv_vis_context_value(item) for item in value if _has_uv_vis_context_value(item)]
+        parts = [
+            _format_uv_vis_context_value(item)
+            for item in value
+            if _has_uv_vis_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     return str(value)
 
@@ -1652,7 +2274,11 @@ def _uv_vis_correction_context_text(metadata: dict) -> str:
     source = context.get("assignment_source", "ea.uv_vis.correction_context:v0.2")
     record_ref = context.get("record_ref", "未生成")
     fields = context.get("reviewed_context_fields") or []
-    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed context 字段"
+    field_text = (
+        "、".join(str(field) for field in fields)
+        if fields
+        else "未记录 reviewed context 字段"
+    )
     labels = {
         "sample_geometry": "sample geometry",
         "substrate": "substrate",
@@ -1686,11 +2312,19 @@ def _uv_vis_numeric_correction_text(metadata: dict) -> str:
     record_ref = correction.get("record_ref", "未生成")
     input_column = correction.get("input_signal_column", "raw_signal")
     output_column = correction.get("output_signal_column", "numeric_corrected_signal")
-    reference_column = correction.get("reviewed_reference_column") or correction.get("reference_signal_column") or "未使用"
+    reference_column = (
+        correction.get("reviewed_reference_column")
+        or correction.get("reference_signal_column")
+        or "未使用"
+    )
     reference_scale = correction.get("reference_scale")
-    reference_scale_text = f"{float(reference_scale):.4g}" if reference_scale is not None else "未使用"
+    reference_scale_text = (
+        f"{float(reference_scale):.4g}" if reference_scale is not None else "未使用"
+    )
     constant_offset = correction.get("constant_offset")
-    constant_offset_text = f"{float(constant_offset):.4g}" if constant_offset is not None else "0"
+    constant_offset_text = (
+        f"{float(constant_offset):.4g}" if constant_offset is not None else "0"
+    )
     operation = correction.get("operation", "未记录")
     notes = correction.get("correction_notes") or []
     note_text = "；".join(str(note) for note in notes) if notes else "未记录"
@@ -1713,12 +2347,18 @@ def _uv_vis_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
         source = str(item.get("assignment_source", "") or "未记录")
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence features: `{evidence}`；assignment_source: `{source}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence features: `{evidence}`；assignment_source: `{source}`"
+        )
     if not citation_text:
-        lines.append("- 上述 UV-Vis 自动解释尚未绑定外部文献或项目参考谱；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 UV-Vis 自动解释尚未绑定外部文献或项目参考谱；若用于正式结论，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -1737,7 +2377,9 @@ def generate_uv_vis_report(
     metadata = read_yaml(uv_vis_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -1766,10 +2408,15 @@ def generate_uv_vis_report(
     correction_context_text = _uv_vis_correction_context_text(metadata)
     numeric_correction_text = _uv_vis_numeric_correction_text(metadata)
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     interpretation_suggestion_records = _load_uv_vis_interpretation_suggestion_records(
         root,
         interpretation_suggestion_paths,
@@ -1784,11 +2431,19 @@ def generate_uv_vis_report(
         for reference_id in record.get("reference_ids", [])
         if str(reference_id) in registered_references
     ]
-    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
+    reference_block = build_report_reference_block(
+        root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids])
+    )
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献或项目参考谱对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献或项目参考谱引用。"
+    literature_note = (
+        f"相关解释应与已登记文献或项目参考谱对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献或项目参考谱引用。"
+    )
     interpretation_text = _uv_vis_interpretation_text(metadata, citation_text)
-    interpretation_suggestion_text = _uv_vis_interpretation_suggestion_text(interpretation_suggestion_records, reference_block)
+    interpretation_suggestion_text = _uv_vis_interpretation_suggestion_text(
+        interpretation_suggestion_records, reference_block
+    )
     figure_rel = outputs["figure"]
     figure_embed = f"![UV-Vis spectrum](../{figure_rel})"
     body = f"""# UV-Vis 分析报告
@@ -1797,16 +2452,16 @@ def generate_uv_vis_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['uv_vis_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["uv_vis_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 UV-Vis processing result `{metadata['uv_vis_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 UV-Vis processing result `{metadata["uv_vis_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，UV-Vis x 轴单位记录为 `{metadata['x_unit']}`，信号模式为 `{metadata.get('signal_mode', 'absorbance')}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，UV-Vis x 轴单位记录为 `{metadata["x_unit"]}`，信号模式为 `{metadata.get("signal_mode", "absorbance")}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## Correction context 记录
 
@@ -1860,27 +2515,37 @@ def generate_uv_vis_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- feature table: `{outputs['peak_table']}`
-{f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get('tauc_table') else "- Tauc/Kubelka-Munk table: `未生成`"}
-{f"- derivative table: `{outputs['derivative_table']}`" if outputs.get('derivative_table') else "- derivative table: `未生成`"}
-{f"- correction context: `{outputs['correction_context']}`" if outputs.get('correction_context') else "- correction context: `未生成`"}
-{f"- numeric correction: `{outputs['numeric_correction']}`" if outputs.get('numeric_correction') else "- numeric correction: `未生成`"}
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- feature table: `{outputs["peak_table"]}`
+{f"- Tauc/Kubelka-Munk table: `{outputs['tauc_table']}`" if outputs.get("tauc_table") else "- Tauc/Kubelka-Munk table: `未生成`"}
+{f"- derivative table: `{outputs['derivative_table']}`" if outputs.get("derivative_table") else "- derivative table: `未生成`"}
+{f"- correction context: `{outputs['correction_context']}`" if outputs.get("correction_context") else "- correction context: `未生成`"}
+{f"- numeric correction: `{outputs['numeric_correction']}`" if outputs.get("numeric_correction") else "- numeric correction: `未生成`"}
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 UV-Vis result `{metadata['uv_vis_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 UV-Vis result `{metadata["uv_vis_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -1890,8 +2555,14 @@ def generate_uv_vis_report(
         inputs={
             "records": [
                 uv_vis_metadata_path.relative_to(root).as_posix(),
-                *[_relative_to_root(root, path) for path in interpretation_suggestion_paths or []],
-                *[f"reviews/{review_ref}.yml" for review_ref in interpretation_review_refs or []],
+                *[
+                    _relative_to_root(root, path)
+                    for path in interpretation_suggestion_paths or []
+                ],
+                *[
+                    f"reviews/{review_ref}.yml"
+                    for review_ref in interpretation_review_refs or []
+                ],
             ],
             "files": [
                 value
@@ -1910,8 +2581,11 @@ def generate_uv_vis_report(
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
-            "language": "zh",
-            "interpretation_suggestion_refs": [_relative_to_root(root, path) for path in interpretation_suggestion_paths or []],
+            "language": language,
+            "interpretation_suggestion_refs": [
+                _relative_to_root(root, path)
+                for path in interpretation_suggestion_paths or []
+            ],
             "interpretation_review_refs": interpretation_review_refs or [],
         },
         review_refs=interpretation_review_refs or [],
@@ -1945,7 +2619,11 @@ def _xps_peak_summary(root: Path, peak_table_ref: str) -> str:
     positions = []
     for _, peak in peaks.sort_values("prominence", ascending=False).head(8).iterrows():
         positions.append(f"{float(peak['binding_energy_eV']):.2f} eV")
-    return "自动检测给出的主要 XPS peak binding energy 包括：" + "、".join(positions) + "。"
+    return (
+        "自动检测给出的主要 XPS peak binding energy 包括："
+        + "、".join(positions)
+        + "。"
+    )
 
 
 def _xps_peak_table(root: Path, peak_table_ref: str) -> str:
@@ -1957,15 +2635,27 @@ def _xps_peak_table(root: Path, peak_table_ref: str) -> str:
         "|---|---:|---:|---:|---|---|---|",
     ]
     for _, peak in peaks.sort_values("prominence", ascending=False).head(12).iterrows():
-        assignment = peak.get("possible_assignment") if pd.notna(peak.get("possible_assignment")) and peak.get("possible_assignment") else "unassigned"
-        confidence = peak.get("assignment_confidence") if pd.notna(peak.get("assignment_confidence")) and peak.get("assignment_confidence") else "insufficient"
+        assignment = (
+            peak.get("possible_assignment")
+            if pd.notna(peak.get("possible_assignment"))
+            and peak.get("possible_assignment")
+            else "unassigned"
+        )
+        confidence = (
+            peak.get("assignment_confidence")
+            if pd.notna(peak.get("assignment_confidence"))
+            and peak.get("assignment_confidence")
+            else "insufficient"
+        )
         rows.append(
             "| {peak_id} | {energy:.2f} | {raw_energy:.2f} | {prominence:.3g} | {model} | {assignment} | {confidence} |".format(
                 peak_id=peak["peak_id"],
                 energy=float(peak["binding_energy_eV"]),
                 raw_energy=float(peak["raw_binding_energy"]),
                 prominence=float(peak.get("prominence", 0.0)),
-                model=peak.get("component_model") if pd.notna(peak.get("component_model")) and peak.get("component_model") else "not_fitted",
+                model=peak.get("component_model")
+                if pd.notna(peak.get("component_model")) and peak.get("component_model")
+                else "not_fitted",
                 assignment=assignment,
                 confidence=confidence,
             )
@@ -1974,7 +2664,9 @@ def _xps_peak_table(root: Path, peak_table_ref: str) -> str:
 
 
 def _xps_component_summary(metadata: dict) -> str:
-    summary = (metadata.get("peak_analysis") or {}).get("component_quantification") or {}
+    summary = (metadata.get("peak_analysis") or {}).get(
+        "component_quantification"
+    ) or {}
     if not summary:
         return "当前没有记录 XPS component quantification screening。"
     if not summary.get("enabled"):
@@ -2000,9 +2692,19 @@ def _xps_component_table(root: Path, component_table_ref: str | None) -> str:
         "|---|---|---|---:|---:|---:|---:|---|---|",
     ]
     for _, component in components.head(12).iterrows():
-        element = component.get("element") if pd.notna(component.get("element")) and component.get("element") else ""
-        core = component.get("core_level") if pd.notna(component.get("core_level")) and component.get("core_level") else ""
-        element_core = "/".join(part for part in [str(element), str(core)] if part) or "n/a"
+        element = (
+            component.get("element")
+            if pd.notna(component.get("element")) and component.get("element")
+            else ""
+        )
+        core = (
+            component.get("core_level")
+            if pd.notna(component.get("core_level")) and component.get("core_level")
+            else ""
+        )
+        element_core = (
+            "/".join(part for part in [str(element), str(core)] if part) or "n/a"
+        )
         low = component.get("binding_energy_min_eV")
         high = component.get("binding_energy_max_eV")
         centroid = component.get("centroid_eV")
@@ -2013,12 +2715,22 @@ def _xps_component_table(root: Path, component_table_ref: str | None) -> str:
                 component_id=component.get("component_id", ""),
                 label=component.get("label", ""),
                 element_core=element_core,
-                window=f"{float(low):.2f}-{float(high):.2f}" if pd.notna(low) and pd.notna(high) else "n/a",
+                window=f"{float(low):.2f}-{float(high):.2f}"
+                if pd.notna(low) and pd.notna(high)
+                else "n/a",
                 centroid=f"{float(centroid):.2f}" if pd.notna(centroid) else "n/a",
-                area_percent=f"{float(area_percent):.2f}" if pd.notna(area_percent) else "n/a",
-                atomic_percent=f"{float(atomic_percent):.2f}" if pd.notna(atomic_percent) else "n/a",
-                confidence=component.get("confidence") if pd.notna(component.get("confidence")) else "insufficient",
-                status=component.get("status") if pd.notna(component.get("status")) else "unknown",
+                area_percent=f"{float(area_percent):.2f}"
+                if pd.notna(area_percent)
+                else "n/a",
+                atomic_percent=f"{float(atomic_percent):.2f}"
+                if pd.notna(atomic_percent)
+                else "n/a",
+                confidence=component.get("confidence")
+                if pd.notna(component.get("confidence"))
+                else "insufficient",
+                status=component.get("status")
+                if pd.notna(component.get("status"))
+                else "unknown",
             )
         )
     return "\n".join(rows)
@@ -2034,7 +2746,11 @@ def _xps_background_model_text(metadata: dict) -> str:
     source = background.get("assignment_source", "ea.xps.background_model:v0.2")
     record_ref = background.get("record_ref", "未生成")
     references = background.get("reference_ids") or []
-    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    reference_text = (
+        "、".join(str(item) for item in references)
+        if references
+        else "未绑定 reference_id"
+    )
     return (
         f"Reviewed XPS background model record 状态为 `{status}`；region count: `{count}`；record: `{record_ref}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
@@ -2058,12 +2774,16 @@ def _xps_background_model_table(metadata: dict) -> str:
         low = region.get("binding_energy_min_eV")
         high = region.get("binding_energy_max_eV")
         references = region.get("reference_ids") or []
-        reference_text = ", ".join(str(ref) for ref in references) if references else "n/a"
+        reference_text = (
+            ", ".join(str(ref) for ref in references) if references else "n/a"
+        )
         rows.append(
             "| {region_id} | {background_type} | {window} | {applied} | {confidence} | {references} |".format(
                 region_id=region.get("region_id", "n/a"),
                 background_type=region.get("background_type", "n/a"),
-                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                window=f"{float(low):.2f}-{float(high):.2f}"
+                if low is not None and high is not None
+                else "n/a",
                 applied=region.get("applied_to_processed_data", False),
                 confidence=region.get("confidence", "insufficient"),
                 references=reference_text,
@@ -2073,7 +2793,9 @@ def _xps_background_model_table(metadata: dict) -> str:
 
 
 def _xps_background_subtraction_text(metadata: dict) -> str:
-    subtraction = (metadata.get("peak_analysis") or {}).get("background_subtraction") or {}
+    subtraction = (metadata.get("peak_analysis") or {}).get(
+        "background_subtraction"
+    ) or {}
     if not subtraction:
         return "当前没有启用或记录 XPS background subtraction。"
     method = subtraction.get("method", "reviewed_linear_background_subtraction")
@@ -2090,9 +2812,15 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
     source = subtraction.get("assignment_source", "ea.xps.background_subtraction:v0.2")
     record_ref = subtraction.get("record_ref", "未生成")
     background_column = subtraction.get("background_column", "xps_background")
-    corrected_column = subtraction.get("corrected_intensity_column", "xps_background_subtracted_intensity")
+    corrected_column = subtraction.get(
+        "corrected_intensity_column", "xps_background_subtracted_intensity"
+    )
     references = subtraction.get("reference_ids") or []
-    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    reference_text = (
+        "、".join(str(item) for item in references)
+        if references
+        else "未绑定 reference_id"
+    )
     return (
         f"Reviewed XPS {method_label} background subtraction 状态为 `{status}`；corrected regions: `{corrected_count}/{region_count}`；"
         f"record: `{record_ref}`；background column: `{background_column}`；corrected column: `{corrected_column}`；"
@@ -2104,7 +2832,9 @@ def _xps_background_subtraction_text(metadata: dict) -> str:
 
 
 def _xps_background_subtraction_table(metadata: dict) -> str:
-    subtraction = (metadata.get("peak_analysis") or {}).get("background_subtraction") or {}
+    subtraction = (metadata.get("peak_analysis") or {}).get(
+        "background_subtraction"
+    ) or {}
     regions = subtraction.get("regions") or []
     if not regions:
         return "当前没有可展示的 XPS background subtraction region。"
@@ -2127,11 +2857,17 @@ def _xps_background_subtraction_table(metadata: dict) -> str:
                 region_id=region.get("region_id", "n/a"),
                 method=method,
                 algorithm=region.get("algorithm", "n/a"),
-                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                window=f"{float(low):.2f}-{float(high):.2f}"
+                if low is not None and high is not None
+                else "n/a",
                 left=f"{float(left_x):.2f}" if left_x is not None else "n/a",
                 right=f"{float(right_x):.2f}" if right_x is not None else "n/a",
-                b_value=f"{float(region['tougaard_B']):.6g}" if region.get("tougaard_B") is not None else "n/a",
-                c_value=f"{float(region['tougaard_C_eV2']):.6g}" if region.get("tougaard_C_eV2") is not None else "n/a",
+                b_value=f"{float(region['tougaard_B']):.6g}"
+                if region.get("tougaard_B") is not None
+                else "n/a",
+                c_value=f"{float(region['tougaard_C_eV2']):.6g}"
+                if region.get("tougaard_C_eV2") is not None
+                else "n/a",
                 direction=region.get("integration_direction", "n/a"),
                 points=region.get("point_count", 0),
                 iterations=region.get("iterations", "n/a"),
@@ -2161,7 +2897,11 @@ def _xps_component_fit_summary(metadata: dict) -> str:
     fit_column = fit.get("fit_intensity_column", "xps_component_fit_intensity")
     residual_column = fit.get("residual_column", "xps_component_fit_residual")
     references = fit.get("reference_ids") or []
-    reference_text = "、".join(str(item) for item in references) if references else "未绑定 reference_id"
+    reference_text = (
+        "、".join(str(item) for item in references)
+        if references
+        else "未绑定 reference_id"
+    )
     return (
         f"Reviewed XPS component_fit 状态为 `{status}`；fitted regions: `{fitted_regions}/{region_count}`；"
         f"fitted components: `{fitted_components}/{component_count}`；spin-orbit constraints: `{spin_constraints}`；"
@@ -2195,16 +2935,22 @@ def _xps_component_fit_table(metadata: dict) -> str:
             r2 = component.get("fit_r_squared")
             spin = component.get("spin_orbit_constraint_id")
             role = component.get("spin_orbit_role")
-            spin_text = f"{spin}:{role}" if spin and role else (str(spin) if spin else "n/a")
+            spin_text = (
+                f"{spin}:{role}" if spin and role else (str(spin) if spin else "n/a")
+            )
             rows.append(
                 "| {component_id} | {region_id} | {spin} | {shape} | {center} | {fwhm} | {area_percent} | {rmse} | {r2} | {status} | {confidence} |".format(
                     component_id=component.get("component_id", "n/a"),
-                    region_id=component.get("region_id", region.get("region_id", "n/a")),
+                    region_id=component.get(
+                        "region_id", region.get("region_id", "n/a")
+                    ),
                     spin=spin_text,
                     shape=component.get("peak_shape", "n/a"),
                     center=f"{float(center):.3f}" if center is not None else "n/a",
                     fwhm=f"{float(fwhm):.3f}" if fwhm is not None else "n/a",
-                    area_percent=f"{float(area_percent):.2f}" if area_percent is not None else "n/a",
+                    area_percent=f"{float(area_percent):.2f}"
+                    if area_percent is not None
+                    else "n/a",
                     rmse=f"{float(rmse):.4g}" if rmse is not None else "n/a",
                     r2=f"{float(r2):.4f}" if r2 is not None else "n/a",
                     status=component.get("status", "unknown"),
@@ -2228,7 +2974,9 @@ def _xps_region_records_summary(metadata: dict) -> str:
     record_ref = records.get("record_ref", "未生成")
     table_ref = records.get("region_table_ref", "未生成")
     refs = records.get("linked_output_refs") or []
-    linked = "、".join(str(item) for item in refs[:8]) if refs else "未记录 linked output"
+    linked = (
+        "、".join(str(item) for item in refs[:8]) if refs else "未记录 linked output"
+    )
     return (
         f"Reviewed XPS region_records 状态为 `{status}`；reviewed regions: `{reviewed_regions}/{region_count}`；"
         f"record: `{record_ref}`；table: `{table_ref}`；confidence: `{confidence}`；assignment_source: `{source}`；"
@@ -2251,14 +2999,18 @@ def _xps_region_records_table(metadata: dict) -> str:
         low = region.get("binding_energy_min_eV")
         high = region.get("binding_energy_max_eV")
         linked_refs = region.get("linked_output_refs") or []
-        linked_text = "<br>".join(str(item) for item in linked_refs[:4]) if linked_refs else "n/a"
+        linked_text = (
+            "<br>".join(str(item) for item in linked_refs[:4]) if linked_refs else "n/a"
+        )
         rows.append(
             "| {region_id} | {role} | {element} | {core_level} | {window} | {points} | {calibration_group} | {linked_refs} | {status} | {confidence} |".format(
                 region_id=region.get("region_id", "n/a"),
                 role=region.get("region_role", "n/a"),
                 element=region.get("element") or "n/a",
                 core_level=region.get("core_level") or "n/a",
-                window=f"{float(low):.2f}-{float(high):.2f}" if low is not None and high is not None else "n/a",
+                window=f"{float(low):.2f}-{float(high):.2f}"
+                if low is not None and high is not None
+                else "n/a",
                 points=region.get("point_count", 0),
                 calibration_group=region.get("calibration_group_id") or "n/a",
                 linked_refs=linked_text,
@@ -2273,8 +3025,14 @@ def _xps_region_records_table(metadata: dict) -> str:
 
 def _xps_calibration_text(metadata: dict) -> str:
     calibration = (metadata.get("peak_analysis") or {}).get("calibration") or {}
-    shift = float(metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0)))
-    reference = metadata.get("calibration_reference") or calibration.get("calibration_reference") or "未记录"
+    shift = float(
+        metadata.get("energy_shift_eV", calibration.get("energy_shift_eV", 0.0))
+    )
+    reference = (
+        metadata.get("calibration_reference")
+        or calibration.get("calibration_reference")
+        or "未记录"
+    )
     confidence = calibration.get("confidence", "insufficient")
     return f"本次处理记录的 binding-energy shift 为 `{shift:.3f} eV`；calibration reference 为 `{reference}`；confidence: `{confidence}`。"
 
@@ -2288,12 +3046,18 @@ def _xps_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
         source = str(item.get("assignment_source", "") or "未记录")
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`；assignment_source: `{source}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence peaks: `{evidence}`；assignment_source: `{source}`"
+        )
     if not citation_text:
-        lines.append("- 上述 XPS 自动解释尚未绑定外部文献、标准谱库或项目参考谱；若用于正式化学态判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 XPS 自动解释尚未绑定外部文献、标准谱库或项目参考谱；若用于正式化学态判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -2311,7 +3075,9 @@ def generate_xps_report(
     metadata = read_yaml(xps_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -2346,11 +3112,18 @@ def generate_xps_report(
     background_subtraction_table = _xps_background_subtraction_table(metadata)
     calibration_text = _xps_calibration_text(metadata)
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
-    parameter_suggestion_records = _load_xps_parameter_suggestion_records(root, parameter_suggestion_paths)
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
+    parameter_suggestion_records = _load_xps_parameter_suggestion_records(
+        root, parameter_suggestion_paths
+    )
     registered_references = _registered_reference_ids(root)
     suggestion_reference_ids = [
         str(reference_id)
@@ -2358,11 +3131,19 @@ def generate_xps_report(
         for reference_id in record.get("reference_ids", [])
         if str(reference_id) in registered_references
     ]
-    reference_block = build_report_reference_block(root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids]))
+    reference_block = build_report_reference_block(
+        root, _ordered_unique([*(reference_ids or []), *suggestion_reference_ids])
+    )
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献、标准谱库或项目参考谱对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准谱库或项目参考谱引用。"
+    literature_note = (
+        f"相关解释应与已登记文献、标准谱库或项目参考谱对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献、标准谱库或项目参考谱引用。"
+    )
     interpretation_text = _xps_interpretation_text(metadata, citation_text)
-    parameter_suggestion_text = _xps_parameter_suggestion_text(parameter_suggestion_records, reference_block)
+    parameter_suggestion_text = _xps_parameter_suggestion_text(
+        parameter_suggestion_records, reference_block
+    )
     figure_rel = outputs["figure"]
     figure_embed = f"![XPS spectrum](../{figure_rel})"
     body = f"""# XPS 分析报告
@@ -2371,16 +3152,16 @@ def generate_xps_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['xps_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["xps_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 XPS processing result `{metadata['xps_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 XPS processing result `{metadata["xps_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列、校准与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，XPS x 轴单位记录为 `{metadata['x_unit']}`。{calibration_text}处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，XPS x 轴单位记录为 `{metadata["x_unit"]}`。{calibration_text}处理参数为 `{metadata["processing_parameters"]}`。
 
 ## XPS background model record
 
@@ -2444,30 +3225,40 @@ def generate_xps_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
-- peak table: `{outputs['peak_table']}`
-- component table: `{outputs.get('component_table', '未生成')}`
-{f"- component fit: `{outputs['component_fit']}`" if outputs.get('component_fit') else "- component fit: `未生成`"}
-{f"- component fit table: `{outputs['component_fit_table']}`" if outputs.get('component_fit_table') else "- component fit table: `未生成`"}
-{f"- region records: `{outputs['region_records']}`" if outputs.get('region_records') else "- region records: `未生成`"}
-{f"- region records table: `{outputs['region_records_table']}`" if outputs.get('region_records_table') else "- region records table: `未生成`"}
-{f"- background model: `{outputs['background_model']}`" if outputs.get('background_model') else "- background model: `未生成`"}
-{f"- background subtraction: `{outputs['background_subtraction']}`" if outputs.get('background_subtraction') else "- background subtraction: `未生成`"}
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+- processed CSV: `{outputs["processed_csv"]}`
+- peak table: `{outputs["peak_table"]}`
+- component table: `{outputs.get("component_table", "未生成")}`
+{f"- component fit: `{outputs['component_fit']}`" if outputs.get("component_fit") else "- component fit: `未生成`"}
+{f"- component fit table: `{outputs['component_fit_table']}`" if outputs.get("component_fit_table") else "- component fit table: `未生成`"}
+{f"- region records: `{outputs['region_records']}`" if outputs.get("region_records") else "- region records: `未生成`"}
+{f"- region records table: `{outputs['region_records_table']}`" if outputs.get("region_records_table") else "- region records table: `未生成`"}
+{f"- background model: `{outputs['background_model']}`" if outputs.get("background_model") else "- background model: `未生成`"}
+{f"- background subtraction: `{outputs['background_subtraction']}`" if outputs.get("background_subtraction") else "- background subtraction: `未生成`"}
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 XPS result `{metadata['xps_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 XPS result `{metadata["xps_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -2475,7 +3266,13 @@ def generate_xps_report(
         root,
         workflow="report_generation",
         inputs={
-            "records": [xps_metadata_path.relative_to(root).as_posix(), *[_relative_to_root(root, path) for path in parameter_suggestion_paths or []]],
+            "records": [
+                xps_metadata_path.relative_to(root).as_posix(),
+                *[
+                    _relative_to_root(root, path)
+                    for path in parameter_suggestion_paths or []
+                ],
+            ],
             "files": [
                 value
                 for value in [
@@ -2496,8 +3293,11 @@ def generate_xps_report(
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
         parameters={
             "include_next_step_suggestions": False,
-            "language": "zh",
-            "parameter_suggestion_refs": [_relative_to_root(root, path) for path in parameter_suggestion_paths or []],
+            "language": language,
+            "parameter_suggestion_refs": [
+                _relative_to_root(root, path)
+                for path in parameter_suggestion_paths or []
+            ],
         },
         review_refs=[],
         warnings=warnings,
@@ -2530,8 +3330,14 @@ def _electrochemistry_feature_summary(root: Path, feature_table_ref: str) -> str
     positions = []
     for _, feature in features.head(8).iterrows():
         unit = str(feature.get("axis_unit") or "unknown")
-        positions.append(f"{feature['feature_id']}@{float(feature['axis_value']):.4g} {unit}")
-    return "自动检测给出的主要 electrochemistry feature 包括：" + "、".join(positions) + "。"
+        positions.append(
+            f"{feature['feature_id']}@{float(feature['axis_value']):.4g} {unit}"
+        )
+    return (
+        "自动检测给出的主要 electrochemistry feature 包括："
+        + "、".join(positions)
+        + "。"
+    )
 
 
 def _electrochemistry_feature_table(root: Path, feature_table_ref: str) -> str:
@@ -2566,8 +3372,14 @@ def _electrochemistry_eis_feature_summary(root: Path, feature_table_ref: str) ->
         return "当前自动 EIS Nyquist screening 未得到可展示 feature，需结合人工检查。"
     positions = []
     for _, feature in features.head(6).iterrows():
-        positions.append(f"{feature['feature_id']}@Zreal {float(feature['z_real_ohm']):.4g} ohm / -Zimag {float(feature['neg_z_imag_ohm']):.4g} ohm")
-    return "自动 EIS Nyquist screening 记录的主要阻抗 feature 包括：" + "、".join(positions) + "。"
+        positions.append(
+            f"{feature['feature_id']}@Zreal {float(feature['z_real_ohm']):.4g} ohm / -Zimag {float(feature['neg_z_imag_ohm']):.4g} ohm"
+        )
+    return (
+        "自动 EIS Nyquist screening 记录的主要阻抗 feature 包括："
+        + "、".join(positions)
+        + "。"
+    )
 
 
 def _electrochemistry_eis_feature_table(root: Path, feature_table_ref: str) -> str:
@@ -2597,7 +3409,7 @@ def _electrochemistry_eis_feature_table(root: Path, feature_table_ref: str) -> s
 
 
 def _electrochemistry_current_summary(metadata: dict) -> str:
-    summary = ((metadata.get("peak_analysis") or {}).get("current_summary") or {})
+    summary = (metadata.get("peak_analysis") or {}).get("current_summary") or {}
     if not summary:
         return "当前 metadata 中没有可复用的 current summary。"
     retention = summary.get("retention_percent")
@@ -2612,7 +3424,7 @@ def _electrochemistry_current_summary(metadata: dict) -> str:
 
 
 def _electrochemistry_eis_summary_text(metadata: dict) -> str:
-    summary = ((metadata.get("peak_analysis") or {}).get("eis_summary") or {})
+    summary = (metadata.get("peak_analysis") or {}).get("eis_summary") or {}
     if not summary:
         return "当前 metadata 中没有可复用的 EIS Nyquist summary。"
     return (
@@ -2656,16 +3468,33 @@ def _electrochemistry_eis_circuit_fit_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = fit.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
     for key in ["rs_ohm", "rct_ohm", "c_dl_F"]:
         value = fitted_parameters.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- fitted {key}: `{_format_electrochemistry_correction_value(value)}`")
-    for key in ["point_count", "rmse_ohm", "reduced_chi_square_ohm2", "r_squared_complex", "r_squared_real", "r_squared_imag"]:
+            rows.append(
+                f"- fitted {key}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    for key in [
+        "point_count",
+        "rmse_ohm",
+        "reduced_chi_square_ohm2",
+        "r_squared_complex",
+        "r_squared_real",
+        "r_squared_imag",
+    ]:
         value = quality.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry EIS circuit-fit details: `未记录`"
+            rows.append(
+                f"- {key}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows)
+        if rows
+        else "- electrochemistry EIS circuit-fit details: `未记录`"
+    )
     return (
         f"EIS circuit-fit screening 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
         f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2683,12 +3512,18 @@ def _electrochemistry_interpretation_text(metadata: dict, citation_text: str) ->
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
         source = str(item.get("assignment_source", "") or "未记录")
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`"
+        )
     if not citation_text:
-        lines.append("- 上述 electrochemistry 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式性能/机制判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 electrochemistry 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式性能/机制判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -2698,7 +3533,9 @@ def _has_electrochemistry_correction_value(value: object) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, dict):
-        return any(_has_electrochemistry_correction_value(item) for item in value.values())
+        return any(
+            _has_electrochemistry_correction_value(item) for item in value.values()
+        )
     if isinstance(value, list | tuple):
         return any(_has_electrochemistry_correction_value(item) for item in value)
     return True
@@ -2713,7 +3550,11 @@ def _format_electrochemistry_correction_value(value: object) -> str:
         ]
         return "; ".join(parts) if parts else "未记录"
     if isinstance(value, list | tuple):
-        parts = [_format_electrochemistry_correction_value(item) for item in value if _has_electrochemistry_correction_value(item)]
+        parts = [
+            _format_electrochemistry_correction_value(item)
+            for item in value
+            if _has_electrochemistry_correction_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     return str(value)
 
@@ -2724,10 +3565,16 @@ def _electrochemistry_correction_record_text(metadata: dict) -> str:
         return "当前没有启用或记录 electrochemistry correction record。"
     status = correction.get("status", "unknown")
     confidence = correction.get("confidence", "insufficient")
-    source = correction.get("assignment_source", "ea.electrochemistry.correction_record:v0.2")
+    source = correction.get(
+        "assignment_source", "ea.electrochemistry.correction_record:v0.2"
+    )
     record_ref = correction.get("record_ref", "未生成")
     fields = correction.get("reviewed_correction_fields") or []
-    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed correction 字段"
+    field_text = (
+        "、".join(str(field) for field in fields)
+        if fields
+        else "未记录 reviewed correction 字段"
+    )
     labels = {
         "reference_electrode": "reference electrode",
         "converted_potential_scale": "converted potential scale",
@@ -2739,8 +3586,12 @@ def _electrochemistry_correction_record_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = correction.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry correction details: `未记录`"
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows) if rows else "- electrochemistry correction details: `未记录`"
+    )
     return (
         f"Correction record 状态为 `{status}`；reviewed fields: `{field_text}`；record: `{record_ref}`；"
         f"confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2755,7 +3606,9 @@ def _electrochemistry_potential_conversion_text(metadata: dict) -> str:
         return "当前没有启用或记录 electrochemistry potential conversion。"
     status = conversion.get("status", "unknown")
     confidence = conversion.get("confidence", "insufficient")
-    source = conversion.get("assignment_source", "ea.electrochemistry.potential_conversion:v0.2")
+    source = conversion.get(
+        "assignment_source", "ea.electrochemistry.potential_conversion:v0.2"
+    )
     record_ref = conversion.get("record_ref", "未生成")
     applied = conversion.get("applied_to_processed_data", False)
     plot_axis = conversion.get("applied_to_plot_axis", False)
@@ -2775,8 +3628,14 @@ def _electrochemistry_potential_conversion_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = conversion.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry potential conversion details: `未记录`"
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows)
+        if rows
+        else "- electrochemistry potential conversion details: `未记录`"
+    )
     return (
         f"Potential conversion 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
         f"applied_to_plot_axis: `{plot_axis}`；record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2791,7 +3650,9 @@ def _electrochemistry_ir_drop_correction_text(metadata: dict) -> str:
         return "当前没有启用或记录 electrochemistry iR drop correction。"
     status = correction.get("status", "unknown")
     confidence = correction.get("confidence", "insufficient")
-    source = correction.get("assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2")
+    source = correction.get(
+        "assignment_source", "ea.electrochemistry.ir_drop_correction:v0.2"
+    )
     record_ref = correction.get("record_ref", "未生成")
     applied = correction.get("applied_to_processed_data", False)
     plot_axis = correction.get("applied_to_plot_axis", False)
@@ -2813,8 +3674,14 @@ def _electrochemistry_ir_drop_correction_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = correction.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry iR drop correction details: `未记录`"
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows)
+        if rows
+        else "- electrochemistry iR drop correction details: `未记录`"
+    )
     return (
         f"iR drop correction 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
         f"applied_to_plot_axis: `{plot_axis}`；record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2851,12 +3718,26 @@ def _electrochemistry_tafel_analysis_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = tafel.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
-    for key in ["fit_point_count", "tafel_slope_mV_decade", "absolute_tafel_slope_mV_decade", "intercept_V", "r_squared"]:
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    for key in [
+        "fit_point_count",
+        "tafel_slope_mV_decade",
+        "absolute_tafel_slope_mV_decade",
+        "intercept_V",
+        "r_squared",
+    ]:
         value = stats.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry Tafel/overpotential analysis details: `未记录`"
+            rows.append(
+                f"- {key}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows)
+        if rows
+        else "- electrochemistry Tafel/overpotential analysis details: `未记录`"
+    )
     return (
         f"Tafel/overpotential analysis 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
         f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2891,7 +3772,9 @@ def _electrochemistry_gcd_analysis_text(metadata: dict) -> str:
     for key, label in labels.items():
         value = gcd.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {label}: `{_format_electrochemistry_correction_value(value)}`")
+            rows.append(
+                f"- {label}: `{_format_electrochemistry_correction_value(value)}`"
+            )
     for key in [
         "duration_s",
         "voltage_span_V",
@@ -2905,8 +3788,12 @@ def _electrochemistry_gcd_analysis_text(metadata: dict) -> str:
     ]:
         value = metrics.get(key)
         if _has_electrochemistry_correction_value(value):
-            rows.append(f"- {key}: `{_format_electrochemistry_correction_value(value)}`")
-    detail_text = "\n".join(rows) if rows else "- electrochemistry GCD analysis details: `未记录`"
+            rows.append(
+                f"- {key}: `{_format_electrochemistry_correction_value(value)}`"
+            )
+    detail_text = (
+        "\n".join(rows) if rows else "- electrochemistry GCD analysis details: `未记录`"
+    )
     return (
         f"GCD analysis 状态为 `{status}`；applied_to_processed_data: `{applied}`；"
         f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`。\n\n"
@@ -2927,9 +3814,13 @@ def _electrochemistry_gcd_summary_text(metadata: dict) -> str:
         f"capacitance = `{metrics.get('capacitance_F')}` F",
     ]
     if metrics.get("specific_capacity_mAh_g-1") is not None:
-        parts.append(f"specific capacity = `{metrics.get('specific_capacity_mAh_g-1')}` mAh g^-1")
+        parts.append(
+            f"specific capacity = `{metrics.get('specific_capacity_mAh_g-1')}` mAh g^-1"
+        )
     if metrics.get("specific_capacitance_F_g-1") is not None:
-        parts.append(f"specific capacitance = `{metrics.get('specific_capacitance_F_g-1')}` F g^-1")
+        parts.append(
+            f"specific capacitance = `{metrics.get('specific_capacitance_F_g-1')}` F g^-1"
+        )
     return "GCD reviewed discharge metrics: " + "；".join(parts) + "。"
 
 
@@ -2946,7 +3837,9 @@ def generate_electrochemistry_report(
     metadata = read_yaml(electrochemistry_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -2970,8 +3863,16 @@ def generate_electrochemistry_report(
     feature_table_ref = outputs.get("feature_table", outputs.get("peak_table"))
     is_eis = metadata.get("measurement_mode") == "eis"
     is_gcd = metadata.get("measurement_mode") == "gcd"
-    feature_text = _electrochemistry_eis_feature_summary(root, feature_table_ref) if is_eis else _electrochemistry_feature_summary(root, feature_table_ref)
-    feature_table = _electrochemistry_eis_feature_table(root, feature_table_ref) if is_eis else _electrochemistry_feature_table(root, feature_table_ref)
+    feature_text = (
+        _electrochemistry_eis_feature_summary(root, feature_table_ref)
+        if is_eis
+        else _electrochemistry_feature_summary(root, feature_table_ref)
+    )
+    feature_table = (
+        _electrochemistry_eis_feature_table(root, feature_table_ref)
+        if is_eis
+        else _electrochemistry_feature_table(root, feature_table_ref)
+    )
     if is_eis:
         current_summary = _electrochemistry_eis_summary_text(metadata)
         summary_heading = "EIS Nyquist screening 摘要"
@@ -2993,13 +3894,22 @@ def generate_electrochemistry_report(
         else "在当前数据范围内，自动 electrochemistry feature 只能支持“电流响应摘要/筛查”。不能仅凭本次自动处理直接确认催化机制、过电位、Tafel slope、电容、稳定性、容量、倍率性能或器件性能；正式结论需要用户确认实验协议、归一化方式、参比校正、重复性和文献依据。"
     )
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    literature_note = (
+        f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    )
     interpretation_text = _electrochemistry_interpretation_text(metadata, citation_text)
     figure_rel = outputs["figure"]
     figure_embed = f"![Electrochemistry trace](../{figure_rel})"
@@ -3009,16 +3919,16 @@ def generate_electrochemistry_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['electrochemistry_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["electrochemistry_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 electrochemistry processing result `{metadata['electrochemistry_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 electrochemistry processing result `{metadata["electrochemistry_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列、实验上下文与处理参数
 
-用户确认的 x 列为 `{metadata['x_column']}`，y 列为 `{metadata['y_column']}`，x 轴/阻抗单位记录为 `{metadata['x_unit']}`，current 单位记录为 `{metadata['current_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。电极面积记录为 `{metadata.get('electrode_area_cm2', '未记录')}` cm^2。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 x 列为 `{metadata["x_column"]}`，y 列为 `{metadata["y_column"]}`，x 轴/阻抗单位记录为 `{metadata["x_unit"]}`，current 单位记录为 `{metadata["current_unit"]}`，measurement mode 为 `{metadata["measurement_mode"]}`。电极面积记录为 `{metadata.get("electrode_area_cm2", "未记录")}` cm^2。用户确认的上下文摘要为：`{metadata.get("context_summary") or "未记录"}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## Correction/reference record
 
@@ -3076,29 +3986,39 @@ def generate_electrochemistry_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
+- processed CSV: `{outputs["processed_csv"]}`
 - feature table: `{feature_table_ref}`
-{f"- correction record: `{outputs['correction_record']}`" if outputs.get('correction_record') else "- correction record: `未生成`"}
-{f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get('potential_conversion') else "- potential conversion: `未生成`"}
-{f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get('ir_drop_correction') else "- iR drop correction: `未生成`"}
-{f"- EIS circuit-fit screening: `{outputs['eis_circuit_fit']}`" if outputs.get('eis_circuit_fit') else "- EIS circuit-fit screening: `未生成`"}
-{f"- Tafel/overpotential analysis: `{outputs['tafel_analysis']}`" if outputs.get('tafel_analysis') else "- Tafel/overpotential analysis: `未生成`"}
-{f"- GCD discharge metrics: `{outputs['gcd_analysis']}`" if outputs.get('gcd_analysis') else "- GCD discharge metrics: `未生成`"}
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+{f"- correction record: `{outputs['correction_record']}`" if outputs.get("correction_record") else "- correction record: `未生成`"}
+{f"- potential conversion: `{outputs['potential_conversion']}`" if outputs.get("potential_conversion") else "- potential conversion: `未生成`"}
+{f"- iR drop correction: `{outputs['ir_drop_correction']}`" if outputs.get("ir_drop_correction") else "- iR drop correction: `未生成`"}
+{f"- EIS circuit-fit screening: `{outputs['eis_circuit_fit']}`" if outputs.get("eis_circuit_fit") else "- EIS circuit-fit screening: `未生成`"}
+{f"- Tafel/overpotential analysis: `{outputs['tafel_analysis']}`" if outputs.get("tafel_analysis") else "- Tafel/overpotential analysis: `未生成`"}
+{f"- GCD discharge metrics: `{outputs['gcd_analysis']}`" if outputs.get("gcd_analysis") else "- GCD discharge metrics: `未生成`"}
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 electrochemistry result `{metadata['electrochemistry_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 electrochemistry result `{metadata["electrochemistry_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -3124,7 +4044,7 @@ def generate_electrochemistry_report(
             ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={"include_next_step_suggestions": False, "language": language},
         review_refs=[],
         warnings=warnings,
         created_at=created_at,
@@ -3178,7 +4098,9 @@ def _thermal_feature_table(root: Path, feature_table_ref: str) -> str:
                 temperature=float(event["temperature_C"]),
                 signal=f"{float(signal):.4g}" if pd.notna(signal) else "n/a",
                 mass=f"{float(mass):.4g}" if pd.notna(mass) else "n/a",
-                derivative=f"{float(derivative):.4g}" if pd.notna(derivative) else "n/a",
+                derivative=f"{float(derivative):.4g}"
+                if pd.notna(derivative)
+                else "n/a",
                 confidence=event.get("assignment_confidence") or "low",
                 source=event.get("assignment_source") or "未记录",
             )
@@ -3222,12 +4144,18 @@ def _thermal_interpretation_text(metadata: dict, citation_text: str) -> str:
     for item in interpretations:
         text = str(item.get("text", "No interpretation text recorded."))
         confidence = str(item.get("confidence", "insufficient"))
-        evidence = ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        evidence = (
+            ", ".join(str(value) for value in item.get("evidence", [])) or "未记录"
+        )
         cite = citation_text if citation_text else ""
         source = str(item.get("assignment_source", "") or "未记录")
-        lines.append(f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`")
+        lines.append(
+            f"- {text}{cite}\n  - confidence: `{confidence}`；evidence: `{evidence}`；assignment_source: `{source}`"
+        )
     if not citation_text:
-        lines.append("- 上述 thermal 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式热稳定性、相变或机理判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`")
+        lines.append(
+            "- 上述 thermal 自动解释尚未绑定外部文献、标准方法或项目参考实验；若用于正式热稳定性、相变或机理判断，应补充 reference_ids 并让用户审核。\n  - confidence: `insufficient`"
+        )
     return "\n".join(lines)
 
 
@@ -3245,10 +4173,18 @@ def _has_thermal_context_value(value: object) -> bool:
 
 def _format_thermal_context_value(value: object) -> str:
     if isinstance(value, dict):
-        parts = [f"{key}={_format_thermal_context_value(item)}" for key, item in value.items() if _has_thermal_context_value(item)]
+        parts = [
+            f"{key}={_format_thermal_context_value(item)}"
+            for key, item in value.items()
+            if _has_thermal_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     if isinstance(value, list | tuple):
-        parts = [_format_thermal_context_value(item) for item in value if _has_thermal_context_value(item)]
+        parts = [
+            _format_thermal_context_value(item)
+            for item in value
+            if _has_thermal_context_value(item)
+        ]
         return "; ".join(parts) if parts else "未记录"
     return str(value)
 
@@ -3262,7 +4198,11 @@ def _thermal_context_record_text(metadata: dict) -> str:
     source = context.get("assignment_source", "ea.thermal.context_record:v0.2")
     record_ref = context.get("record_ref", "未生成")
     fields = context.get("reviewed_context_fields") or []
-    field_text = "、".join(str(field) for field in fields) if fields else "未记录 reviewed context 字段"
+    field_text = (
+        "、".join(str(field) for field in fields)
+        if fields
+        else "未记录 reviewed context 字段"
+    )
     labels = {
         "dsc_sign_convention": "DSC sign convention",
         "baseline_reference": "baseline/reference",
@@ -3350,8 +4290,12 @@ def _thermal_transition_table(root: Path, transition_table_ref: str | None) -> s
             "| {transition_id} | {transition_type} | {window_start:.1f}-{window_end:.1f} | {candidate} | {metric} | {signal} | {confidence} | {source} |".format(
                 transition_id=item.get("transition_id", "n/a"),
                 transition_type=item.get("transition_type", "n/a"),
-                window_start=float(item.get("window_start_C", 0.0)) if pd.notna(item.get("window_start_C")) else 0.0,
-                window_end=float(item.get("window_end_C", 0.0)) if pd.notna(item.get("window_end_C")) else 0.0,
+                window_start=float(item.get("window_start_C", 0.0))
+                if pd.notna(item.get("window_start_C"))
+                else 0.0,
+                window_end=float(item.get("window_end_C", 0.0))
+                if pd.notna(item.get("window_end_C"))
+                else 0.0,
                 candidate=f"{float(candidate):.2f}" if pd.notna(candidate) else "n/a",
                 metric=item.get("metric", "n/a"),
                 signal=f"{float(signal):.4g}" if pd.notna(signal) else "n/a",
@@ -3369,11 +4313,17 @@ def _thermal_transition_assignment_text(metadata: dict) -> str:
     status = assignment.get("status", "unknown")
     count = assignment.get("assignment_count", 0)
     confidence = assignment.get("confidence", "insufficient")
-    source = assignment.get("assignment_source", "ea.thermal.transition_assignment:v0.2")
+    source = assignment.get(
+        "assignment_source", "ea.thermal.transition_assignment:v0.2"
+    )
     record_ref = assignment.get("record_ref", "未生成")
     method = assignment.get("method", "未记录")
     reference_ids = assignment.get("reference_ids") or []
-    reference_text = "、".join(str(item) for item in reference_ids) if reference_ids else "未绑定 reference_id"
+    reference_text = (
+        "、".join(str(item) for item in reference_ids)
+        if reference_ids
+        else "未绑定 reference_id"
+    )
     return (
         f"Thermal transition assignment 状态为 `{status}`；assignment count: `{count}`；method: `{method}`；"
         f"record: `{record_ref}`；confidence: `{confidence}`；assignment_source: `{source}`；references: `{reference_text}`。\n\n"
@@ -3397,13 +4347,17 @@ def _thermal_transition_assignment_table(metadata: dict) -> str:
             continue
         temperature = item.get("assigned_temperature_C")
         references = item.get("reference_ids") or []
-        reference_text = ", ".join(str(ref) for ref in references) if references else "n/a"
+        reference_text = (
+            ", ".join(str(ref) for ref in references) if references else "n/a"
+        )
         rows.append(
             "| {assignment_id} | {transition_id} | {assigned_type} | {temperature} | {link_status} | {confidence} | {references} |".format(
                 assignment_id=item.get("assignment_id", "n/a"),
                 transition_id=item.get("transition_id", "n/a") or "n/a",
                 assigned_type=item.get("assigned_transition_type", "n/a"),
-                temperature=f"{float(temperature):.2f}" if temperature is not None else "n/a",
+                temperature=f"{float(temperature):.2f}"
+                if temperature is not None
+                else "n/a",
                 link_status=item.get("candidate_link_status", "n/a"),
                 confidence=item.get("confidence", "insufficient"),
                 references=reference_text,
@@ -3425,7 +4379,9 @@ def generate_thermal_report(
     metadata = read_yaml(thermal_metadata_path)
     day = created_at[:10] if created_at else None
     if project_id.startswith("prj-"):
-        report_id = next_standard_id(root, "report", infer_project_slug(project_id), day=day)
+        report_id = next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
     else:
         report_id = next_id(root, "report", day)
     report_path = root / "reports" / f"{report_id}.md"
@@ -3457,13 +4413,22 @@ def generate_thermal_report(
     transition_assignment_text = _thermal_transition_assignment_text(metadata)
     transition_assignment_table = _thermal_transition_assignment_table(metadata)
     warnings = metadata.get("warnings") or []
-    warning_text = "；".join(
-        warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
-        for warning in warnings
-    ) or "未记录高风险 warning。"
+    warning_text = (
+        "；".join(
+            warning.get("message", str(warning))
+            if isinstance(warning, dict)
+            else str(warning)
+            for warning in warnings
+        )
+        or "未记录高风险 warning。"
+    )
     reference_block = build_report_reference_block(root, reference_ids)
     citation_text = reference_block["inline_citation"]
-    literature_note = f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。" if citation_text else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    literature_note = (
+        f"相关解释应与已登记文献、标准方法或项目参考实验对应位置共同阅读{citation_text}。"
+        if citation_text
+        else "相关解释尚未绑定外部文献、标准方法或项目参考实验引用。"
+    )
     interpretation_text = _thermal_interpretation_text(metadata, citation_text)
     figure_rel = outputs["figure"]
     figure_embed = f"![Thermal analysis trace](../{figure_rel})"
@@ -3473,16 +4438,16 @@ def generate_thermal_report(
 
 - report_id: `{report_id}`
 - project_id: `{project_id}`
-- result_ids: `{metadata['thermal_result_id']}`
-- figure_ids: `{', '.join(figure_ids) if figure_ids else '未生成 v0.2 figure_id'}`
+- result_ids: `{metadata["thermal_result_id"]}`
+- figure_ids: `{", ".join(figure_ids) if figure_ids else "未生成 v0.2 figure_id"}`
 
 ## 数据来源
 
-本报告基于 thermal analysis processing result `{metadata['thermal_result_id']}` 生成，关联样品为 `{', '.join(related_samples) if related_samples else '未明确映射样品'}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
+本报告基于 thermal analysis processing result `{metadata["thermal_result_id"]}` 生成，关联样品为 `{", ".join(related_samples) if related_samples else "未明确映射样品"}`。原始数据、处理结果和图谱路径均通过 provenance 保留。
 
 ## 数据列、实验上下文与处理参数
 
-用户确认的 temperature 列为 `{metadata['temperature_column']}`，signal 列为 `{metadata['signal_column']}`，temperature 单位记录为 `{metadata['temperature_unit']}`，signal 单位记录为 `{metadata['signal_unit']}`，measurement mode 为 `{metadata['measurement_mode']}`。用户确认的上下文摘要为：`{metadata.get('context_summary') or '未记录'}`。处理参数为 `{metadata['processing_parameters']}`。
+用户确认的 temperature 列为 `{metadata["temperature_column"]}`，signal 列为 `{metadata["signal_column"]}`，temperature 单位记录为 `{metadata["temperature_unit"]}`，signal 单位记录为 `{metadata["signal_unit"]}`，measurement mode 为 `{metadata["measurement_mode"]}`。用户确认的上下文摘要为：`{metadata.get("context_summary") or "未记录"}`。处理参数为 `{metadata["processing_parameters"]}`。
 
 ## Thermal context record
 
@@ -3536,28 +4501,38 @@ def generate_thermal_report(
 
 ## 输出文件
 
-- processed CSV: `{outputs['processed_csv']}`
+- processed CSV: `{outputs["processed_csv"]}`
 - feature table: `{feature_table_ref}`
-{f"- baseline correction: `{outputs['baseline_correction']}`" if outputs.get('baseline_correction') else "- baseline correction: `未生成`"}
-{f"- transition table: `{outputs['transition_table']}`" if outputs.get('transition_table') else "- transition table: `未生成`"}
-{f"- transition record: `{outputs['transition_record']}`" if outputs.get('transition_record') else "- transition record: `未生成`"}
-{f"- transition assignment: `{outputs['transition_assignment']}`" if outputs.get('transition_assignment') else "- transition assignment: `未生成`"}
-{f"- context record: `{outputs['context_record']}`" if outputs.get('context_record') else "- context record: `未生成`"}
-- plot: `{outputs['figure']}`
-- metadata: `{outputs['metadata']}`
+{f"- baseline correction: `{outputs['baseline_correction']}`" if outputs.get("baseline_correction") else "- baseline correction: `未生成`"}
+{f"- transition table: `{outputs['transition_table']}`" if outputs.get("transition_table") else "- transition table: `未生成`"}
+{f"- transition record: `{outputs['transition_record']}`" if outputs.get("transition_record") else "- transition record: `未生成`"}
+{f"- transition assignment: `{outputs['transition_assignment']}`" if outputs.get("transition_assignment") else "- transition assignment: `未生成`"}
+{f"- context record: `{outputs['context_record']}`" if outputs.get("context_record") else "- context record: `未生成`"}
+- plot: `{outputs["figure"]}`
+- metadata: `{outputs["metadata"]}`
 
 ## References
 
-{reference_block['references_markdown']}
+{reference_block["references_markdown"]}
 
 ## 溯源
 
-本报告草稿引用 thermal analysis result `{metadata['thermal_result_id']}`，对应 provenance 将在报告生成后写入。
+本报告草稿引用 thermal analysis result `{metadata["thermal_result_id"]}`，对应 provenance 将在报告生成后写入。
 """
     for forbidden in FORBIDDEN_STRONG_CLAIMS:
         body = body.replace(forbidden, "")
 
+    language, body, semantic_contract = _prepare_localized_report(
+        root,
+        report=report,
+        body=body,
+        metadata=metadata,
+        outputs=outputs,
+        reference_block=reference_block,
+    )
     report_frontmatter = report.model_dump(exclude_none=True)
+    report_frontmatter["language"] = language
+    report_frontmatter["semantic_contract"] = semantic_contract
     report_frontmatter["reference_ids"] = reference_block["reference_ids"]
     report_frontmatter["numbered_references"] = reference_block["numbered_references"]
     write_markdown_record(report_path, report_frontmatter, body)
@@ -3582,7 +4557,7 @@ def generate_thermal_report(
             ],
         },
         outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
-        parameters={"include_next_step_suggestions": False, "language": "zh"},
+        parameters={"include_next_step_suggestions": False, "language": language},
         review_refs=[],
         warnings=warnings,
         created_at=created_at,
@@ -3627,7 +4602,11 @@ def register_report(
     reference_ids: list[str] | None = None,
 ) -> dict:
     index_path = root / "reports" / "index.yml"
-    index = read_yaml(index_path) if index_path.exists() else {"schema_version": "0.2", "reports": {}}
+    index = (
+        read_yaml(index_path)
+        if index_path.exists()
+        else {"schema_version": "0.2", "reports": {}}
+    )
     record = {
         "report_id": report_id,
         "path": path,

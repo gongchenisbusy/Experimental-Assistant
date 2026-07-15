@@ -1,6 +1,6 @@
 # Electrochemistry Workflow
 
-Use this reference when processing tabular electrochemical data in the Experimental Assistant v0.9.7 compatibility skill.
+Use this reference when processing tabular electrochemical data in the Experimental Assistant v0.9.8 compatibility skill.
 
 Required gates:
 
@@ -13,7 +13,7 @@ Required gates:
 7. Treat automatic features, EIS screening estimates, EIS circuit-fit screening records, potential-conversion records, iR-drop-correction records, Tafel/overpotential screening records, GCD discharge-metrics records, and correction/reference records as screening/provenance evidence. Use protocol context, replicates, normalization, reference-electrode calibration, frequency order, equivalent-circuit assumptions, and literature before writing performance or mechanism conclusions.
 8. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.7 electrochemistry compatibility support:
+Current Experimental Assistant v0.9.8 electrochemistry compatibility support:
 
 - Raw import uses `ea raw import --characterization-type electrochemistry`.
 - Inspection identifies common electrochemistry files by path/name, metadata, potential/current columns, time/current columns, and mode hints.
@@ -28,7 +28,7 @@ Current Experimental Assistant v0.9.7 electrochemistry compatibility support:
 - When `gcd_analysis.enabled` is reviewed, EA writes `electrochemistry_gcd_analysis.yml` with time/voltage input columns, voltage unit, reviewed discharge time and voltage windows, reviewed discharge current, mass/area/loading metadata, charge/capacity/capacitance metrics, references, caveats, confidence, source, boundary, and record ref. EA may suggest source-backed charge/discharge segments, but calculates only inside the reviewed discharge window.
 - When `correction_record.enabled` is reviewed, EA writes `electrochemistry_correction.yml` with reference electrode, converted potential scale, uncompensated resistance, iR compensation, correction notes, confidence, source, boundary, and record ref.
 - Reports include an embedded electrochemistry figure, original figure path, context section, optional potential-conversion summary/link, optional iR-drop-correction summary/link, optional EIS circuit-fit screening summary/link, optional Tafel/overpotential summary/link, optional GCD discharge-metrics summary/link, optional correction/reference record summary/link, feature table, current/EIS Nyquist/GCD summary, confidence-labeled possible interpretations, file links, References, and provenance.
-- `correction_record` is disabled by default. Enable it only after the user reviews reference-electrode scale, converted scale/offset, uncompensated resistance, iR compensation status, and correction notes. This record is metadata/provenance only; Experimental Assistant v0.9.7 does not automatically shift potential, apply iR correction, fit circuits, or calculate Tafel/GCD/performance metrics from it.
+- `correction_record` is disabled by default. Enable it only after the user reviews reference-electrode scale, converted scale/offset, uncompensated resistance, iR compensation status, and correction notes. This record is metadata/provenance only; Experimental Assistant v0.9.8 does not automatically shift potential, apply iR correction, fit circuits, or calculate Tafel/GCD/performance metrics from it.
 - `potential_conversion` is disabled by default. Enable it only after the user reviews the input scale, target scale, numeric offset in volts, equation/source, and reference-electrode context. This step is a coordinate transform only; it is not iR compensation, Tafel analysis, equivalent-circuit fitting, GCD performance calculation, catalyst ranking, or mechanistic proof.
 - `ir_drop_correction` is disabled by default. Enable it only after the user reviews Ru, compensation fraction, sign convention/formula, current input column/unit, potential input column, and caveats. This step is a coordinate correction only; it is not Tafel analysis, equivalent-circuit fitting, GCD performance calculation, overpotential proof, catalyst ranking, or mechanistic proof.
 - `eis_circuit_fit` is disabled by default. Enable it only after the user reviews the frequency column/unit/order, real and imaginary impedance columns, imaginary sign convention, circuit model, initial values, parameter bounds, fit-quality thresholds, perturbation amplitude/context, and caveats. This step is a reviewed screening fit only; it is not automatic circuit selection, Rct/Warburg proof, device-performance proof, replicate statistics, catalyst ranking, Tafel analysis, GCD analysis, or mechanistic proof.

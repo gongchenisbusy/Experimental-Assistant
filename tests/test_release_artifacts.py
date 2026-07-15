@@ -14,7 +14,7 @@ from ea.release_reproducibility import (
 
 
 def test_install_smoke_requires_wheel_and_sdist(monkeypatch, tmp_path: Path) -> None:
-    artifacts = [tmp_path / "experimental_assistant-0.9.7-py3-none-any.whl"]
+    artifacts = [tmp_path / "experimental_assistant-0.9.8-py3-none-any.whl"]
     artifacts[0].write_bytes(b"wheel")
     monkeypatch.setattr(
         "ea.release_artifacts.smoke_install_artifact",
@@ -50,13 +50,13 @@ def test_reproducibility_requires_identical_wheel_and_sdist(tmp_path: Path) -> N
     first.mkdir()
     second.mkdir()
     for folder in (first, second):
-        (folder / "experimental_assistant-0.9.7-py3-none-any.whl").write_bytes(b"wheel")
-        (folder / "experimental_assistant-0.9.7.tar.gz").write_bytes(b"sdist")
+        (folder / "experimental_assistant-0.9.8-py3-none-any.whl").write_bytes(b"wheel")
+        (folder / "experimental_assistant-0.9.8.tar.gz").write_bytes(b"sdist")
 
     matching = compare_build_directories(first, second, source_date_epoch="123")
     assert matching["status"] == "pass"
 
-    (second / "experimental_assistant-0.9.7.tar.gz").write_bytes(b"changed")
+    (second / "experimental_assistant-0.9.8.tar.gz").write_bytes(b"changed")
     mismatching = compare_build_directories(first, second, source_date_epoch="123")
     assert mismatching["status"] == "fail"
     assert json.dumps(mismatching)

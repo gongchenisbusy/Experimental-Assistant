@@ -1,4 +1,4 @@
-# Fully resolved on CPython 3.12.13 for Experimental Assistant v0.9.7.
+# Fully resolved on CPython 3.12.13 for Experimental Assistant v0.9.8.
 # Used as a constraints file; install the project or extras separately.
 annotated-types==0.7.0
 boolean.py==5.0

@@ -19,11 +19,20 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
-from ea.literature.source_packet_manifest import SourcePacketManifestError, confirmed_source_packet_library
-from ea.materials import infer_material_from_project, match_xrd_peaks, resolve_material_id, summarize_xrd_assignment_libraries
+from ea.literature.source_packet_manifest import (
+    SourcePacketManifestError,
+    confirmed_source_packet_library,
+)
+from ea.materials import (
+    infer_material_from_project,
+    match_xrd_peaks,
+    resolve_material_id,
+    summarize_xrd_assignment_libraries,
+)
 from ea.provenance import write_provenance_entry
 from ea.raman.service import _read_spectrum
 from ea.raw_import import assert_not_raw_output_path
@@ -104,13 +113,17 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -120,7 +133,9 @@ def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tupl
     return coerced, False
 
 
-def _coerce_float(value: Any, default: float, *, minimum: float | None = None) -> tuple[float, bool]:
+def _coerce_float(
+    value: Any, default: float, *, minimum: float | None = None
+) -> tuple[float, bool]:
     try:
         coerced = float(value)
     except (TypeError, ValueError):
@@ -134,13 +149,17 @@ def inspect_xrd_file(path: Path) -> XRDInspection:
     frame, metadata = _read_spectrum(path)
     columns = [str(column) for column in frame.columns]
     if frame.empty or len(columns) < 2:
-        raise XRDProcessingError(f"No two-column numeric diffraction data found in {path}")
+        raise XRDProcessingError(
+            f"No two-column numeric diffraction data found in {path}"
+        )
 
     x_values = pd.to_numeric(frame.iloc[:, 0], errors="coerce").dropna()
     x_min = float(x_values.min())
     x_max = float(x_values.max())
     axis_unit = str(metadata.get("AxisUnit[1]") or metadata.get("x_unit") or "").lower()
-    axis_label = str(metadata.get("AxisLabel[1]") or metadata.get("x_label") or "").lower()
+    axis_label = str(
+        metadata.get("AxisLabel[1]") or metadata.get("x_label") or ""
+    ).lower()
     filename_upper = path.name.upper()
     looks_like_two_theta = (
         "XRD" in filename_upper
@@ -175,9 +194,13 @@ def _confirmed_frame(path: Path, request: XRDProcessingRequest) -> pd.DataFrame:
     frame, _ = _read_spectrum(path)
     frame.columns = [str(column) for column in frame.columns]
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
-        raise XRDProcessingError("Confirmed x/y columns are not present in the raw file")
+        raise XRDProcessingError(
+            "Confirmed x/y columns are not present in the raw file"
+        )
     if request.x_unit not in {"2theta_deg", "unknown"}:
-        raise XRDProcessingError("XRD x_unit must be user-confirmed as 2theta_deg or unknown")
+        raise XRDProcessingError(
+            "XRD x_unit must be user-confirmed as 2theta_deg or unknown"
+        )
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["two_theta", "raw_intensity"]
     data["two_theta"] = pd.to_numeric(data["two_theta"], errors="coerce")
@@ -198,7 +221,9 @@ def _apply_processing(
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 9, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 9, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -223,7 +248,15 @@ def _apply_processing(
                 )
             )
         if intensity.size >= 3 and window_length >= 3:
-            intensity = np.asarray(savgol_filter(intensity, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            intensity = np.asarray(
+                savgol_filter(
+                    intensity,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             processed["smoothed_intensity"] = intensity
             warnings.append(
                 _warning(
@@ -235,35 +268,64 @@ def _apply_processing(
                 )
             )
         else:
-            warnings.append(_warning("xrd_smoothing_skipped", "XRD smoothing skipped because the pattern has fewer than three points.", severity="medium"))
+            warnings.append(
+                _warning(
+                    "xrd_smoothing_skipped",
+                    "XRD smoothing skipped because the pattern has fewer than three points.",
+                    severity="medium",
+                )
+            )
 
     if parameters.get("normalization", {}).get("enabled", True):
         max_value = float(np.max(np.abs(intensity)))
         if max_value > 0:
             intensity = intensity / max_value
-        warnings.append(_warning("xrd_normalization_applied", "XRD intensity normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "xrd_normalization_applied",
+                "XRD intensity normalized by processing parameters.",
+            )
+        )
     processed["processed_intensity"] = intensity
     return processed, warnings
 
 
-def _wavelength(parameters: dict[str, Any]) -> tuple[float | None, list[dict[str, Any]]]:
+def _wavelength(
+    parameters: dict[str, Any],
+) -> tuple[float | None, list[dict[str, Any]]]:
     radiation = parameters.get("radiation", {})
     value = radiation.get("wavelength_angstrom")
     if value in {None, ""}:
-        return None, [_warning("xrd_wavelength_missing", "No X-ray wavelength was provided; d-spacing was not calculated.", severity="medium")]
+        return None, [
+            _warning(
+                "xrd_wavelength_missing",
+                "No X-ray wavelength was provided; d-spacing was not calculated.",
+                severity="medium",
+            )
+        ]
     wavelength, adjusted = _coerce_float(value, 1.5406, minimum=0.01)
     if adjusted:
-        return wavelength, [_warning("xrd_wavelength_adjusted", "Invalid X-ray wavelength was replaced with a safe default.", wavelength_angstrom=wavelength)]
+        return wavelength, [
+            _warning(
+                "xrd_wavelength_adjusted",
+                "Invalid X-ray wavelength was replaced with a safe default.",
+                wavelength_angstrom=wavelength,
+            )
+        ]
     return wavelength, []
 
 
-def _add_d_spacing(processed: pd.DataFrame, x_unit: str, wavelength: float | None) -> None:
+def _add_d_spacing(
+    processed: pd.DataFrame, x_unit: str, wavelength: float | None
+) -> None:
     if x_unit != "2theta_deg" or wavelength is None:
         return
     theta_radians = np.deg2rad(processed["two_theta"].to_numpy(dtype=float) / 2.0)
     with np.errstate(divide="ignore", invalid="ignore"):
         d_spacing = wavelength / (2.0 * np.sin(theta_radians))
-    processed["d_spacing_angstrom"] = np.where(np.isfinite(d_spacing), d_spacing, np.nan)
+    processed["d_spacing_angstrom"] = np.where(
+        np.isfinite(d_spacing), d_spacing, np.nan
+    )
 
 
 def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.DataFrame:
@@ -284,7 +346,9 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
             {
                 "peak_id": f"xrd-peak-{index:03d}",
                 "two_theta_deg": float(row["two_theta"]),
-                "d_spacing_angstrom": float(d_spacing) if pd.notna(d_spacing) else np.nan,
+                "d_spacing_angstrom": float(d_spacing)
+                if pd.notna(d_spacing)
+                else np.nan,
                 "intensity": float(row["raw_intensity"]),
                 "height": float(y[int(peak_index)]),
                 "prominence": float(properties["prominences"][index - 1]),
@@ -315,8 +379,15 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any]) -> pd.Dat
     )
 
 
-def _analyze_xrd_peaks(peaks: pd.DataFrame, root: Path, project_id: str) -> dict[str, Any]:
-    for column in ["possible_phase", "assignment_confidence", "assignment_feature", "assignment_source"]:
+def _analyze_xrd_peaks(
+    peaks: pd.DataFrame, root: Path, project_id: str
+) -> dict[str, Any]:
+    for column in [
+        "possible_phase",
+        "assignment_confidence",
+        "assignment_feature",
+        "assignment_source",
+    ]:
         if column not in peaks.columns:
             peaks[column] = ""
 
@@ -340,7 +411,9 @@ def _analyze_xrd_peaks(peaks: pd.DataFrame, root: Path, project_id: str) -> dict
         {
             "peak_id": str(row["peak_id"]),
             "two_theta_deg": float(row["two_theta_deg"]),
-            "d_spacing_angstrom": float(row["d_spacing_angstrom"]) if pd.notna(row["d_spacing_angstrom"]) else None,
+            "d_spacing_angstrom": float(row["d_spacing_angstrom"])
+            if pd.notna(row["d_spacing_angstrom"])
+            else None,
         }
         for _, row in strongest.iterrows()
     ]
@@ -349,7 +422,9 @@ def _analyze_xrd_peaks(peaks: pd.DataFrame, root: Path, project_id: str) -> dict
     if not material_id:
         evidence = [str(strongest.iloc[0]["peak_id"])]
         text = "XRD peaks were detected, but no material-specific phase-assignment rule was applied for this project context."
-        analysis["possible_interpretations"].append({"text": text, "confidence": "low", "evidence": evidence})
+        analysis["possible_interpretations"].append(
+            {"text": text, "confidence": "low", "evidence": evidence}
+        )
         return analysis
 
     material_analysis = match_xrd_peaks(material_id, peaks.to_dict("records"))
@@ -402,7 +477,12 @@ def _xrd_assignment_source_candidates(source_packet: Any) -> list[Any]:
 
 
 def _xrd_candidate_identity(candidate: dict[str, Any]) -> str:
-    return str(candidate.get("candidate_id") or candidate.get("assignment_id") or candidate.get("suggestion_id") or "").strip()
+    return str(
+        candidate.get("candidate_id")
+        or candidate.get("assignment_id")
+        or candidate.get("suggestion_id")
+        or ""
+    ).strip()
 
 
 def _xrd_coerce_window(candidate: dict[str, Any], *names: str) -> list[float] | None:
@@ -427,7 +507,9 @@ def _xrd_coerce_window(candidate: dict[str, Any], *names: str) -> list[float] | 
     return None
 
 
-def _xrd_window_overlaps(window: list[float] | None, lower: float | None, upper: float | None) -> bool:
+def _xrd_window_overlaps(
+    window: list[float] | None, lower: float | None, upper: float | None
+) -> bool:
     if lower is None and upper is None:
         return True
     if window is None:
@@ -441,7 +523,13 @@ def _xrd_window_overlaps(window: list[float] | None, lower: float | None, upper:
 
 def _xrd_candidate_material_keys(candidate: dict[str, Any]) -> set[str]:
     keys: set[str] = set()
-    for field in ["material_id", "material", "material_display_name", "formula", "material_scope"]:
+    for field in [
+        "material_id",
+        "material",
+        "material_display_name",
+        "formula",
+        "material_scope",
+    ]:
         value = candidate.get(field)
         if value is None:
             continue
@@ -463,9 +551,14 @@ def _xrd_candidate_matches_filters(
     d_spacing_min_angstrom: float | None,
     d_spacing_max_angstrom: float | None,
 ) -> bool:
-    if include_candidates and _xrd_candidate_identity(candidate) not in include_candidates:
+    if (
+        include_candidates
+        and _xrd_candidate_identity(candidate) not in include_candidates
+    ):
         return False
-    if material_filters and not (_xrd_candidate_material_keys(candidate) & material_filters):
+    if material_filters and not (
+        _xrd_candidate_material_keys(candidate) & material_filters
+    ):
         return False
     if feature_filters:
         searchable = " ".join(
@@ -481,7 +574,9 @@ def _xrd_candidate_matches_filters(
             ]
         )
         searchable_key = _normalize_key(searchable)
-        if not any(feature and feature in searchable_key for feature in feature_filters):
+        if not any(
+            feature and feature in searchable_key for feature in feature_filters
+        ):
             return False
     two_theta_window = _xrd_coerce_window(
         candidate,
@@ -501,7 +596,9 @@ def _xrd_candidate_matches_filters(
         "d_spacing_window",
         "d_spacing_range",
     )
-    if not _xrd_window_overlaps(d_spacing_window, d_spacing_min_angstrom, d_spacing_max_angstrom):
+    if not _xrd_window_overlaps(
+        d_spacing_window, d_spacing_min_angstrom, d_spacing_max_angstrom
+    ):
         return False
     return True
 
@@ -682,7 +779,10 @@ def build_xrd_assignment_source_packet(
     template: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    selected_source_count = sum(bool(value) for value in [library_path, builtin_library, literature_manifest_path, template])
+    selected_source_count = sum(
+        bool(value)
+        for value in [library_path, builtin_library, literature_manifest_path, template]
+    )
     if selected_source_count > 1:
         raise XRDProcessingError(
             "Use only one of --library-file, --builtin-library, --literature-manifest, or --write-template for XRD assignment source-packet generation"
@@ -691,9 +791,16 @@ def build_xrd_assignment_source_packet(
         builtin_library = builtin_library or BUILTIN_XRD_ASSIGNMENT_LIBRARY_DEFAULT
     if builtin_library and builtin_library not in builtin_xrd_assignment_libraries():
         available = ", ".join(builtin_xrd_assignment_libraries())
-        raise XRDProcessingError(f"Unknown built-in XRD assignment library: {builtin_library}. Available libraries: {available}")
+        raise XRDProcessingError(
+            f"Unknown built-in XRD assignment library: {builtin_library}. Available libraries: {available}"
+        )
 
-    template_mode = template and library_path is None and builtin_library is None and literature_manifest_path is None
+    template_mode = (
+        template
+        and library_path is None
+        and builtin_library is None
+        and literature_manifest_path is None
+    )
     builtin_mode = builtin_library is not None
     literature_mode = literature_manifest_path is not None
     day = _created_day(created_at)
@@ -703,13 +810,23 @@ def build_xrd_assignment_source_packet(
         if template_mode:
             output_path = root / "templates" / "xrd_assignment_source_packet.yml"
         else:
-            output_path = root / "suggestions" / "xrd" / "source-packets" / f"{source_packet_id}.yml"
+            output_path = (
+                root
+                / "suggestions"
+                / "xrd"
+                / "source-packets"
+                / f"{source_packet_id}.yml"
+            )
     elif not output_path.is_absolute():
         output_path = root / output_path
     assert_not_raw_output_path(root, output_path)
 
-    material_filters_raw = [str(item).strip() for item in materials or [] if str(item).strip()]
-    feature_filters_raw = [str(item).strip() for item in features or [] if str(item).strip()]
+    material_filters_raw = [
+        str(item).strip() for item in materials or [] if str(item).strip()
+    ]
+    feature_filters_raw = [
+        str(item).strip() for item in features or [] if str(item).strip()
+    ]
     warnings: list[dict[str, Any]] = []
     library_ref: str | None = None
     library_kind = "template" if template_mode else "local_file"
@@ -732,7 +849,13 @@ def build_xrd_assignment_source_packet(
         library_ref = f"builtin:{builtin_library}"
         library_kind = "built_in"
     elif literature_mode:
-        source_path = literature_manifest_path if literature_manifest_path and literature_manifest_path.is_absolute() else root / literature_manifest_path if literature_manifest_path else None
+        source_path = (
+            literature_manifest_path
+            if literature_manifest_path and literature_manifest_path.is_absolute()
+            else root / literature_manifest_path
+            if literature_manifest_path
+            else None
+        )
         if source_path is None:
             raise XRDProcessingError("XRD literature manifest path was not supplied")
         try:
@@ -740,7 +863,13 @@ def build_xrd_assignment_source_packet(
                 root,
                 manifest_path=source_path,
                 method="xrd",
-                method_aliases={"xrd", "diffraction", "x_ray_diffraction", "xrd_assignment", "xrd_assignment_source_packet"},
+                method_aliases={
+                    "xrd",
+                    "diffraction",
+                    "x_ray_diffraction",
+                    "xrd_assignment",
+                    "xrd_assignment_source_packet",
+                },
             )
         except SourcePacketManifestError as exc:
             raise XRDProcessingError(str(exc)) from exc
@@ -749,14 +878,24 @@ def build_xrd_assignment_source_packet(
         library_ref = _relative_to_root(root, source_path)
         library_kind = "confirmed_literature_manifest"
     else:
-        source_path = library_path if library_path and library_path.is_absolute() else root / library_path if library_path else None
+        source_path = (
+            library_path
+            if library_path and library_path.is_absolute()
+            else root / library_path
+            if library_path
+            else None
+        )
         if source_path is None or not source_path.exists():
-            raise XRDProcessingError(f"XRD assignment library file not found: {library_path}")
+            raise XRDProcessingError(
+                f"XRD assignment library file not found: {library_path}"
+            )
         library_ref = _relative_to_root(root, source_path)
         source_library = read_yaml(source_path)
         raw_candidates = _xrd_assignment_source_candidates(source_library)
 
-    include_set = {str(item).strip() for item in include_candidates or [] if str(item).strip()}
+    include_set = {
+        str(item).strip() for item in include_candidates or [] if str(item).strip()
+    }
     material_filter_keys: set[str] = set()
     for material in material_filters_raw:
         material_filter_keys.add(_normalize_key(material))
@@ -810,9 +949,15 @@ def build_xrd_assignment_source_packet(
             )
         )
 
-    candidate_reference_ids = {reference_id for candidate in selected for reference_id in _coerce_string_list(candidate.get("reference_ids"))}
+    candidate_reference_ids = {
+        reference_id
+        for candidate in selected
+        for reference_id in _coerce_string_list(candidate.get("reference_ids"))
+    }
     guidance_reference_ids = (
-        _coerce_string_list(source_library.get("guidance_reference_ids")) if isinstance(source_library, dict) else []
+        _coerce_string_list(source_library.get("guidance_reference_ids"))
+        if isinstance(source_library, dict)
+        else []
     )
     reference_ids = sorted(candidate_reference_ids | set(guidance_reference_ids))
     reference_seeds = _xrd_source_reference_seeds(
@@ -821,7 +966,11 @@ def build_xrd_assignment_source_packet(
         warnings=warnings,
     )
     packet_ref = _relative_to_root(root, output_path)
-    status = "template_requires_user_edit" if template_mode else ("ready_for_review" if selected else "no_matching_candidates")
+    status = (
+        "template_requires_user_edit"
+        if template_mode
+        else ("ready_for_review" if selected else "no_matching_candidates")
+    )
     filters = {
         "include_candidates": sorted(include_set),
         "materials": material_filters_raw,
@@ -842,11 +991,17 @@ def build_xrd_assignment_source_packet(
         "source": "ea.xrd.assignment_source_packet:v0.2",
         "source_library_kind": library_kind,
         "source_library_ref": library_ref,
-        "source_manifest_ref": source_library.get("source_manifest_ref") if literature_mode and isinstance(source_library, dict) else None,
-        "confirmation_status": source_library.get("confirmation_status") if literature_mode and isinstance(source_library, dict) else None,
+        "source_manifest_ref": source_library.get("source_manifest_ref")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
+        "confirmation_status": source_library.get("confirmation_status")
+        if literature_mode and isinstance(source_library, dict)
+        else None,
         "reference_seed_count": len(reference_seeds),
         "reference_seeds": reference_seeds,
-        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes")) if isinstance(source_library, dict) else [],
+        "guidance_notes": _coerce_string_list(source_library.get("guidance_notes"))
+        if isinstance(source_library, dict)
+        else [],
         "guidance_reference_ids": guidance_reference_ids,
         "candidate_count": len(selected),
         "candidates": selected,
@@ -957,7 +1112,9 @@ def _xrd_peak_matches_candidate(
     two_theta_window: list[float] | None,
     d_spacing_window: list[float] | None,
 ) -> dict[str, Any] | None:
-    two_theta = _xrd_peak_float(row, "two_theta_deg", "two_theta", "position_2theta_deg", "position")
+    two_theta = _xrd_peak_float(
+        row, "two_theta_deg", "two_theta", "position_2theta_deg", "position"
+    )
     d_spacing = _xrd_peak_float(row, "d_spacing_angstrom", "d_spacing", "d_spacing_A")
     checks: list[bool] = []
     if two_theta_window is not None and two_theta is not None:
@@ -988,7 +1145,9 @@ def _match_xrd_assignment_peaks(
     if peaks.empty:
         return matches
     for _, row in peaks.iterrows():
-        match = _xrd_peak_matches_candidate(row, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window)
+        match = _xrd_peak_matches_candidate(
+            row, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window
+        )
         if match is not None:
             matches.append(match)
     return matches
@@ -1022,11 +1181,23 @@ def _normalize_xrd_assignment_candidate(
             "missing_fields": ["candidate_mapping"],
         }
 
-    candidate_id = _xrd_candidate_identity(raw_candidate) or f"{suggestion_id}-cand-{number:03d}"
-    assignment_type = str(raw_candidate.get("assignment_type") or raw_candidate.get("candidate_type") or "diffraction_feature_assignment").strip()
-    material_id = str(raw_candidate.get("material_id") or raw_candidate.get("material") or "").strip()
-    feature = str(raw_candidate.get("feature") or raw_candidate.get("feature_id") or "").strip()
-    label = str(raw_candidate.get("label") or raw_candidate.get("assignment_label") or feature).strip()
+    candidate_id = (
+        _xrd_candidate_identity(raw_candidate) or f"{suggestion_id}-cand-{number:03d}"
+    )
+    assignment_type = str(
+        raw_candidate.get("assignment_type")
+        or raw_candidate.get("candidate_type")
+        or "diffraction_feature_assignment"
+    ).strip()
+    material_id = str(
+        raw_candidate.get("material_id") or raw_candidate.get("material") or ""
+    ).strip()
+    feature = str(
+        raw_candidate.get("feature") or raw_candidate.get("feature_id") or ""
+    ).strip()
+    label = str(
+        raw_candidate.get("label") or raw_candidate.get("assignment_label") or feature
+    ).strip()
     two_theta_window = _xrd_coerce_window(
         raw_candidate,
         "two_theta_window_deg",
@@ -1043,12 +1214,20 @@ def _normalize_xrd_assignment_candidate(
         "d_spacing_window",
         "d_spacing_range",
     )
-    source_summary = str(raw_candidate.get("source_summary") or raw_candidate.get("reference_summary") or "").strip()
+    source_summary = str(
+        raw_candidate.get("source_summary")
+        or raw_candidate.get("reference_summary")
+        or ""
+    ).strip()
     reference_ids = _coerce_string_list(raw_candidate.get("reference_ids"))
     applicability_notes = _coerce_string_list(raw_candidate.get("applicability_notes"))
     caveats = _coerce_string_list(raw_candidate.get("caveats"))
     confidence = str(raw_candidate.get("confidence") or "low").strip().lower()
-    unresolved_reference_ids = [reference_id for reference_id in reference_ids if reference_id not in registered_references]
+    unresolved_reference_ids = [
+        reference_id
+        for reference_id in reference_ids
+        if reference_id not in registered_references
+    ]
     missing_fields: list[str] = []
     if not label:
         missing_fields.append("label")
@@ -1062,7 +1241,9 @@ def _normalize_xrd_assignment_candidate(
         missing_fields.append("applicability_notes")
 
     matches = (
-        _match_xrd_assignment_peaks(peaks, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window)
+        _match_xrd_assignment_peaks(
+            peaks, two_theta_window=two_theta_window, d_spacing_window=d_spacing_window
+        )
         if two_theta_window is not None or d_spacing_window is not None
         else []
     )
@@ -1087,9 +1268,19 @@ def _normalize_xrd_assignment_candidate(
         "two_theta_window_deg": two_theta_window or [],
         "d_spacing_window_angstrom": d_spacing_window or [],
         "matched_peaks": matches,
-        "matched_peak_ids": [match["peak_id"] for match in matches if match.get("peak_id")],
-        "matched_two_theta_deg": [match["two_theta_deg"] for match in matches if match.get("two_theta_deg") is not None],
-        "matched_d_spacing_angstrom": [match["d_spacing_angstrom"] for match in matches if match.get("d_spacing_angstrom") is not None],
+        "matched_peak_ids": [
+            match["peak_id"] for match in matches if match.get("peak_id")
+        ],
+        "matched_two_theta_deg": [
+            match["two_theta_deg"]
+            for match in matches
+            if match.get("two_theta_deg") is not None
+        ],
+        "matched_d_spacing_angstrom": [
+            match["d_spacing_angstrom"]
+            for match in matches
+            if match.get("d_spacing_angstrom") is not None
+        ],
         "source_summary": source_summary,
         "reference_ids": reference_ids,
         "unresolved_reference_ids": unresolved_reference_ids,
@@ -1146,7 +1337,9 @@ def suggest_xrd_assignments(
     xrd_metadata = read_yaml(xrd_metadata_path)
     peak_table_ref = xrd_metadata.get("outputs", {}).get("peak_table")
     if not peak_table_ref:
-        raise XRDProcessingError("XRD metadata does not include outputs.peak_table for assignment matching")
+        raise XRDProcessingError(
+            "XRD metadata does not include outputs.peak_table for assignment matching"
+        )
     peak_table_path = root / str(peak_table_ref)
     if not peak_table_path.exists():
         raise XRDProcessingError(f"XRD peak table not found: {peak_table_ref}")
@@ -1196,12 +1389,32 @@ def suggest_xrd_assignments(
         "caveats",
     ]:
         if column in table.columns:
-            table[column] = table[column].apply(lambda value: "; ".join(str(item) for item in value) if isinstance(value, list) else value)
+            table[column] = table[column].apply(
+                lambda value: (
+                    "; ".join(str(item) for item in value)
+                    if isinstance(value, list)
+                    else value
+                )
+            )
 
-    ready_count = sum(1 for candidate in candidates if candidate.get("status") == "ready_for_user_review")
-    unresolved_count = sum(1 for candidate in candidates if candidate.get("status") == "needs_reference_registration")
-    no_match_count = sum(1 for candidate in candidates if candidate.get("status") == "no_feature_match")
-    invalid_count = sum(1 for candidate in candidates if str(candidate.get("status", "")).startswith("invalid"))
+    ready_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "ready_for_user_review"
+    )
+    unresolved_count = sum(
+        1
+        for candidate in candidates
+        if candidate.get("status") == "needs_reference_registration"
+    )
+    no_match_count = sum(
+        1 for candidate in candidates if candidate.get("status") == "no_feature_match"
+    )
+    invalid_count = sum(
+        1
+        for candidate in candidates
+        if str(candidate.get("status", "")).startswith("invalid")
+    )
     if ready_count:
         status = "ready_for_user_review"
     elif unresolved_count:
@@ -1216,7 +1429,13 @@ def suggest_xrd_assignments(
     record_ref = _relative_to_root(root, record_path)
     table_ref = _relative_to_root(root, table_path)
     related_records = related_records or []
-    all_reference_ids = sorted({reference_id for candidate in candidates for reference_id in candidate.get("reference_ids", [])})
+    all_reference_ids = sorted(
+        {
+            reference_id
+            for candidate in candidates
+            for reference_id in candidate.get("reference_ids", [])
+        }
+    )
     record = {
         "schema_version": "0.2",
         "suggestion_id": suggestion_id,
@@ -1254,7 +1473,10 @@ def suggest_xrd_assignments(
     provenance_path = write_provenance_entry(
         root,
         workflow="xrd_assignment_suggestion",
-        inputs={"records": [source_ref, metadata_ref, *related_records], "files": [str(peak_table_ref)]},
+        inputs={
+            "records": [source_ref, metadata_ref, *related_records],
+            "files": [str(peak_table_ref)],
+        },
         outputs={"records": [record_ref, table_ref], "files": []},
         parameters={"candidate_count": len(candidates), "auto_applied": False},
         warnings=warnings,
@@ -1301,9 +1523,16 @@ def _xrd_review_value(value: Any) -> str:
     if value in (None, "", [], {}):
         return "not recorded"
     if isinstance(value, list | tuple):
-        return ", ".join(str(item) for item in value if str(item).strip()) or "not recorded"
+        return (
+            ", ".join(str(item) for item in value if str(item).strip())
+            or "not recorded"
+        )
     if isinstance(value, dict):
-        parts = [f"{key}={item}" for key, item in value.items() if item not in (None, "", [], {})]
+        parts = [
+            f"{key}={item}"
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        ]
         return "; ".join(parts) or "not recorded"
     return str(value)
 
@@ -1332,13 +1561,21 @@ def _xrd_review_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "two_theta_window_deg": candidate.get("two_theta_window_deg") or [],
         "d_spacing_window_angstrom": candidate.get("d_spacing_window_angstrom") or [],
         "matched_peak_ids": _coerce_string_list(candidate.get("matched_peak_ids")),
-        "matched_two_theta_deg": _coerce_string_list(candidate.get("matched_two_theta_deg")),
-        "matched_d_spacing_angstrom": _coerce_string_list(candidate.get("matched_d_spacing_angstrom")),
+        "matched_two_theta_deg": _coerce_string_list(
+            candidate.get("matched_two_theta_deg")
+        ),
+        "matched_d_spacing_angstrom": _coerce_string_list(
+            candidate.get("matched_d_spacing_angstrom")
+        ),
         "reference_ids": _coerce_string_list(candidate.get("reference_ids")),
-        "unresolved_reference_ids": _coerce_string_list(candidate.get("unresolved_reference_ids")),
+        "unresolved_reference_ids": _coerce_string_list(
+            candidate.get("unresolved_reference_ids")
+        ),
         "missing_fields": _coerce_string_list(candidate.get("missing_fields")),
         "source_summary": str(candidate.get("source_summary") or "not recorded"),
-        "applicability_notes": _coerce_string_list(candidate.get("applicability_notes")),
+        "applicability_notes": _coerce_string_list(
+            candidate.get("applicability_notes")
+        ),
         "caveats": _coerce_string_list(candidate.get("caveats")),
         "recommended_action": action,
     }
@@ -1362,7 +1599,9 @@ def _render_xrd_review_package_markdown(package: dict[str, Any]) -> str:
     lines.extend(["", "## Candidate Groups"])
     for group in package.get("groups", []):
         lines.append(f"### {group.get('group')}")
-        lines.append(f"- candidate_ids: `{_xrd_review_value(group.get('candidate_ids'))}`")
+        lines.append(
+            f"- candidate_ids: `{_xrd_review_value(group.get('candidate_ids'))}`"
+        )
         lines.append(f"- recommended_action: {group.get('recommended_action')}")
         lines.append("")
     lines.append("## Candidates")
@@ -1407,22 +1646,42 @@ def prepare_xrd_assignment_review_package(
     candidate_ids: list[str] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    resolved_suggestion_path = suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    resolved_suggestion_path = (
+        suggestion_path if suggestion_path.is_absolute() else root / suggestion_path
+    )
     suggestion = read_yaml(resolved_suggestion_path)
     if suggestion.get("source") != "ea.xrd.assignment_suggestions:v0.2":
-        raise XRDProcessingError(f"Not an XRD assignment suggestion record: {suggestion_path}")
+        raise XRDProcessingError(
+            f"Not an XRD assignment suggestion record: {suggestion_path}"
+        )
 
     suggestion_ref = _relative_to_root(root, resolved_suggestion_path)
     suggestion_project_id = str(suggestion.get("project_id") or "")
     if suggestion_project_id and project_id and suggestion_project_id != project_id:
-        raise XRDProcessingError(f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}")
+        raise XRDProcessingError(
+            f"Project ID mismatch: suggestion has {suggestion_project_id}, request has {project_id}"
+        )
 
-    candidates = [candidate for candidate in suggestion.get("candidates", []) if isinstance(candidate, dict)]
-    requested_ids = [str(candidate_id) for candidate_id in candidate_ids or [] if str(candidate_id).strip()]
+    candidates = [
+        candidate
+        for candidate in suggestion.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    requested_ids = [
+        str(candidate_id)
+        for candidate_id in candidate_ids or []
+        if str(candidate_id).strip()
+    ]
     requested_set = set(requested_ids)
-    selected = [candidate for candidate in candidates if not requested_set or str(candidate.get("candidate_id")) in requested_set]
+    selected = [
+        candidate
+        for candidate in candidates
+        if not requested_set or str(candidate.get("candidate_id")) in requested_set
+    ]
     found_ids = {str(candidate.get("candidate_id")) for candidate in selected}
-    missing_candidate_ids = [candidate_id for candidate_id in requested_ids if candidate_id not in found_ids]
+    missing_candidate_ids = [
+        candidate_id for candidate_id in requested_ids if candidate_id not in found_ids
+    ]
     warnings: list[dict[str, Any]] = [
         _warning(
             "xrd_review_package_candidate_not_found",
@@ -1442,10 +1701,26 @@ def prepare_xrd_assignment_review_package(
         "other": "Inspect manually before downstream use.",
     }
     groups = []
-    for group_name in ["ready_for_user_review", "needs_reference_registration", "no_feature_match", "invalid_or_incomplete", "other"]:
-        ids = [summary["candidate_id"] for summary in summaries if summary["review_group"] == group_name]
+    for group_name in [
+        "ready_for_user_review",
+        "needs_reference_registration",
+        "no_feature_match",
+        "invalid_or_incomplete",
+        "other",
+    ]:
+        ids = [
+            summary["candidate_id"]
+            for summary in summaries
+            if summary["review_group"] == group_name
+        ]
         if ids:
-            groups.append({"group": group_name, "candidate_ids": ids, "recommended_action": group_actions[group_name]})
+            groups.append(
+                {
+                    "group": group_name,
+                    "candidate_ids": ids,
+                    "recommended_action": group_actions[group_name],
+                }
+            )
 
     package_dir = resolved_suggestion_path.parent
     package_path = package_dir / "review_package.yml"
@@ -1457,7 +1732,9 @@ def prepare_xrd_assignment_review_package(
     timestamp = created_at or EARecord.now_iso()
     package_id = f"{suggestion.get('suggestion_id') or package_dir.name}-review-package"
     xrd_metadata_ref = suggestion.get("xrd_metadata_ref") or "<xrd_metadata.yml>"
-    source_packet_ref = suggestion.get("source_packet_ref") or "<xrd_assignment_source_packet.yml>"
+    source_packet_ref = (
+        suggestion.get("source_packet_ref") or "<xrd_assignment_source_packet.yml>"
+    )
     package: dict[str, Any] = {
         "schema_version": "0.2",
         "review_package_id": package_id,
@@ -1484,13 +1761,25 @@ def prepare_xrd_assignment_review_package(
         "selected_status_counts": _xrd_review_status_counts(selected),
         "groups": groups,
         "candidate_summaries": summaries,
-        "reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("reference_ids", [])}),
-        "unresolved_reference_ids": sorted({ref for candidate in summaries for ref in candidate.get("unresolved_reference_ids", [])}),
+        "reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("reference_ids", [])
+            }
+        ),
+        "unresolved_reference_ids": sorted(
+            {
+                ref
+                for candidate in summaries
+                for ref in candidate.get("unresolved_reference_ids", [])
+            }
+        ),
         "recommended_commands": {
             "create_review_record": (
                 "ea review add /path/to/ea-project --target-type xrd_assignment_suggestions "
-                f"--target-ref {suggestion_ref} --user-response \"可以，保存\" "
-                "--reviewed-content \"User reviewed the listed XRD assignment candidates; record accepted/rejected/edited candidate IDs.\""
+                f'--target-ref {suggestion_ref} --user-response "可以，保存" '
+                '--reviewed-content "User reviewed the listed XRD assignment candidates; record accepted/rejected/edited candidate IDs."'
             ),
             "rerun_after_reference_registration": (
                 "ea xrd suggest-assignments /path/to/ea-project "
@@ -1510,7 +1799,9 @@ def prepare_xrd_assignment_review_package(
         "warnings": warnings,
     }
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_xrd_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_xrd_review_package_markdown(package), encoding="utf-8"
+    )
     provenance_path = write_provenance_entry(
         root,
         workflow="xrd_assignment_review_package",
@@ -1528,7 +1819,9 @@ def prepare_xrd_assignment_review_package(
     )
     package["provenance_ref"] = _relative_to_root(root, provenance_path)
     write_yaml(package_path, package)
-    markdown_path.write_text(_render_xrd_review_package_markdown(package), encoding="utf-8")
+    markdown_path.write_text(
+        _render_xrd_review_package_markdown(package), encoding="utf-8"
+    )
     return {
         "status": package["status"],
         "review_package": str(package_path),
@@ -1550,12 +1843,33 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_xrd(processed: pd.DataFrame, peaks: pd.DataFrame, output: Path, *, footer: str | None = None) -> None:
+def _plot_xrd(
+    processed: pd.DataFrame,
+    peaks: pd.DataFrame,
+    output: Path,
+    *,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    ax.plot(processed["two_theta"], processed["processed_intensity"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.2, label="Processed intensity")
+    ax.plot(
+        processed["two_theta"],
+        processed["processed_intensity"],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=1.2,
+        label="Processed intensity",
+    )
     if not peaks.empty:
-        ax.scatter(peaks["two_theta_deg"], peaks["height"], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected peaks", zorder=3)
-        for _, peak in peaks.sort_values("prominence", ascending=False).head(6).iterrows():
+        ax.scatter(
+            peaks["two_theta_deg"],
+            peaks["height"],
+            color=NATURE_LIKE_COLORS["black"],
+            s=18,
+            label="Detected peaks",
+            zorder=3,
+        )
+        for _, peak in (
+            peaks.sort_values("prominence", ascending=False).head(6).iterrows()
+        ):
             ax.annotate(
                 f"{float(peak['two_theta_deg']):.1f}",
                 (float(peak["two_theta_deg"]), float(peak["height"])),
@@ -1591,7 +1905,9 @@ def process_xrd_result(
         raise XRDProcessingError(f"File is {inspection.file_kind}, not XRD")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    processed, processing_warnings = _apply_processing(
+        _confirmed_frame(raw_path, request), parameters
+    )
     wavelength, wavelength_warnings = _wavelength(parameters)
     _add_d_spacing(processed, request.x_unit, wavelength)
     peaks = _detect_peaks(processed, parameters)
@@ -1599,8 +1915,12 @@ def process_xrd_result(
     day = _created_day(created_at)
     project_slug = infer_project_slug(project_id)
     if _uses_v0_2_project_ids(project_id):
-        result_id = next_standard_id(root, "result", project_slug, method="xrd", day=day)
-        figure_id = next_standard_id(root, "figure", project_slug, method="xrd", day=day)
+        result_id = next_standard_id(
+            root, "result", project_slug, method="xrd", day=day
+        )
+        figure_id = next_standard_id(
+            root, "figure", project_slug, method="xrd", day=day
+        )
     else:
         result_id = next_id(root, "xrd_result", day)
         figure_id = None
@@ -1617,11 +1937,22 @@ def process_xrd_result(
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     peaks.to_csv(peaks_csv, index=False)
-    _plot_xrd(processed, peaks, figure, footer=figure_footer(figure_id, None) if figure_id else None)
+    _plot_xrd(
+        processed,
+        peaks,
+        figure,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("xrd_x_unit_unknown", "XRD x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "xrd_x_unit_unknown",
+                "XRD x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     warnings.extend(wavelength_warnings)
     warnings.extend(processing_warnings)
     result = XRDProcessingResult(
@@ -1705,6 +2036,21 @@ def process_xrd_result(
             source_data_refs=[
                 processed_csv.relative_to(root).as_posix(),
                 peaks_csv.relative_to(root).as_posix(),
+            ],
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed XRD pattern plotted in the figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    peaks_csv.relative_to(root).as_posix(),
+                    role="peak_table",
+                    purpose="Detected diffraction peak annotations.",
+                ),
             ],
         )
     return result_metadata

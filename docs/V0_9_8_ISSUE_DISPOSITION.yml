@@ -1,0 +1,76 @@
+schema_version: "1.0"
+release: v0.9.8
+baseline:
+  release: v0.9.7
+  commit: 99741d8
+  full_test_result: 360_passed
+compatibility_contract:
+  v0_9_7_project_read_only_open: required
+  source_data_refs_reader: retained
+  acquisition_v1_reader: retained_and_normalized_to_v2_in_memory
+  ea_v0_2_wrapper: retained
+  historical_provenance_and_version_ids: never_automatically_rewritten
+issues:
+  - number: 2
+    owner: installation_and_companion
+    target_release: v0.9.8
+    disposition: partial_keep_open
+    evidence:
+      - tests/test_install_experience.py
+      - tests/test_companion_compatibility.py
+    residual_work:
+      - GUI application installation, license acceptance, OS permissions, and account login remain user-authorized.
+      - Independent Zotero/Connector install-and-resume trials remain future companion evidence.
+  - number: 7
+    owner: literature_acquisition_protocol
+    target_release: v0.9.8
+    disposition: partial_keep_open
+    evidence:
+      - tests/test_literature_workflow.py
+      - tests/test_literature_pipeline.py
+      - schemas/literature-acquisition-handoff.schema.json
+    residual_work:
+      - A real five-target Zotero parent-plus-PDF-child transaction remains external companion evidence.
+      - Publisher and institution access variants remain optional adapters.
+  - number: 8
+    owner: installation
+    target_release: v0.9.8
+    disposition: close_after_release_evidence
+    evidence:
+      - tests/test_install_experience.py
+      - tests/test_release_skill_bundle.py
+      - skill-registry/companion-compatibility.yml
+    residual_work: []
+  - number: 9
+    owner: windows_install_literature_feedback
+    target_release: v0.9.8
+    disposition: partial_keep_open
+    evidence:
+      - tests/test_install_experience.py
+      - tests/test_literature_pipeline.py
+      - companion_commit:9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8
+    residual_work:
+      - Windows CI validates long-path and GBK fixtures, but a public five-paper Zotero transaction still needs independent end-user evidence.
+      - Browser login handoff remains user-controlled and is not an automatic authentication flow.
+  - number: 10
+    owner: brief_and_feedback_state
+    target_release: v0.9.8
+    disposition: close_after_release_evidence
+    evidence:
+      - tests/test_agent_brief.py
+      - tests/test_user_surface.py
+      - companion_commit:9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8
+    residual_work: []
+  - number: 11
+    owner: literature_pipeline_reports_and_figures
+    target_release: v0.9.8
+    disposition: partial_keep_open
+    evidence:
+      - tests/test_output_budgets.py
+      - tests/test_literature_benchmark.py
+      - tests/test_report_localization.py
+      - tests/test_figure_delivery.py
+      - tests/test_export_workflow.py
+    residual_work:
+      - Optional CORE, Semantic Scholar, Scopus, Web of Science, CNKI, and Wanfang adapters are deferred.
+      - Independent novice and scientific-review trials remain v1.0 promotion evidence.

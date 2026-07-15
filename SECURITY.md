@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest public release. During the v0.9.7 release-candidate period, v0.9.6 remains the stable fallback.
+Security fixes are provided for the latest public release. During the v0.9.8 release-candidate period, v0.9.7 remains the stable fallback.
 
 ## Reporting A Vulnerability
 

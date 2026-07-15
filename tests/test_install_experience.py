@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +10,7 @@ from ea import __version__
 from ea.cli import main
 from ea.identity import DISTRIBUTION_NAME
 from ea.install_experience import (
+    _decode_subprocess_output,
     identity_record,
     inspect_ea_executable,
     install_check,
@@ -20,7 +20,12 @@ from ea.install_experience import (
     rollback_codex_skills,
     uninstall_codex_skills,
     update_installation,
+    validate_skill,
 )
+
+
+def test_windows_gbk_validator_output_decodes_without_mojibake() -> None:
+    assert _decode_subprocess_output("验证通过".encode("gbk")) == "验证通过"
 
 
 def _write_validator(path: Path, *, fail_for: str | None = None) -> Path:
@@ -79,7 +84,7 @@ def test_identity_uses_public_distribution_and_ea_skill(monkeypatch) -> None:
 
     result = identity_record()
 
-    assert result["public_version"] == "Experimental Assistant v0.9.7"
+    assert result["public_version"] == "Experimental Assistant v0.9.8"
     assert result["distribution_name"] == "experimental-assistant"
     assert result["package_compatibility_name"] == "ea-v0-2"
     assert result["skill_folder"] == "ea"
@@ -98,7 +103,7 @@ def test_version_human_output_hides_legacy_compatibility_name(
     assert main(["version"]) == 0
     output = capsys.readouterr().out
 
-    assert "Distribution: experimental-assistant 0.9.7" in output
+    assert "Distribution: experimental-assistant 0.9.8" in output
     assert "Codex skill invocation: $ea" in output
     assert "ea-v0-2" not in output
 
@@ -179,6 +184,54 @@ def test_staged_validation_failure_leaves_previous_skills_untouched(
     assert (codex_home / "skills" / "ea-v0-2" / "marker.txt").read_text(
         encoding="utf-8"
     ) == "working\n"
+    journal = Path(result["transaction_journal"])
+    assert journal.is_file()
+    transaction = json.loads(journal.read_text(encoding="utf-8"))
+    assert transaction["status"] == "fail"
+    assert transaction["restored_previous"] is True
+
+
+def test_validator_forces_utf8_and_round_trips_non_ascii_output(tmp_path: Path) -> None:
+    skill = tmp_path / "技能-ea"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("# 技能 → `EA`\n", encoding="utf-8")
+    validator = tmp_path / "quick_validate.py"
+    validator.write_text(
+        "from __future__ import annotations\nprint('中文 — 箭头 → `code`')\n",
+        encoding="utf-8",
+    )
+
+    result = validate_skill(skill, validator=validator)
+
+    assert result["status"] == "pass"
+    assert result["stdout"] == "中文 — 箭头 → `code`"
+
+
+def test_install_prefers_bundled_distribution_and_never_clones_repository(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "ea.install_experience.find_bundled_skill_source", lambda: Path("skills/ea")
+    )
+    monkeypatch.setattr(
+        "ea.install_experience.find_local_skill_source",
+        lambda start=None: (_ for _ in ()).throw(
+            AssertionError("developer checkout used")
+        ),
+    )
+    monkeypatch.setattr(
+        "ea.install_experience._fetch_compact_skill_bundle",
+        lambda release_ref: (_ for _ in ()).throw(AssertionError("network used")),
+    )
+
+    result = install_codex_skill(
+        codex_home_path=tmp_path / "codex",
+        validator=_write_validator(tmp_path),
+    )
+
+    assert result["status"] == "pass"
+    assert result["source"]["origin"] == "bundled_distribution"
+    assert Path(result["transaction_journal"]).is_file()
 
 
 def test_swap_failure_restores_every_previous_skill(
@@ -283,7 +336,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     with pytest.raises(SystemExit) as version_exit:
         main(["--version"])
     assert version_exit.value.code == 0
-    assert "v0.9.7" in capsys.readouterr().out
+    assert "v0.9.8" in capsys.readouterr().out
 
     assert main(["version", "--json"]) == 0
     identity = json.loads(capsys.readouterr().out)
@@ -313,7 +366,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     assert installed["identity"]["skill_invocation"] == "$ea"
 
     onboarding = onboarding_post_install_record(event="update", lang="zh")
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.7"
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v0.9.8"
     assert onboarding["compatibility"]["legacy_skill_invocations"] == ["$ea-v0-2"]
 
 
@@ -327,14 +380,16 @@ def test_update_plan_is_read_only_until_confirmed(monkeypatch) -> None:
         },
     )
 
-    result = update_installation(release_ref="v0.9.7", confirmed=False)
+    result = update_installation(release_ref="v0.9.8", confirmed=False)
 
     assert result["status"] == "needs_confirmation"
     assert result["previous_release_ref"] == "v0.9.6"
     assert result["read_only"] is True
 
 
-def test_update_rolls_back_cli_when_new_skill_install_fails(monkeypatch) -> None:
+def test_update_rolls_back_cli_when_new_skill_install_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(
         "ea.install_experience.read_ea_executable_identity",
         lambda executable=None: {
@@ -359,16 +414,21 @@ def test_update_rolls_back_cli_when_new_skill_install_fails(monkeypatch) -> None
         return Result(0)
 
     result = update_installation(
-        release_ref="v0.9.7",
+        release_ref="v0.9.8",
         confirmed=True,
         uv_executable="/test/uv",
         command_runner=runner,
+        codex_home_path=tmp_path,
     )
 
     assert result["status"] == "fail"
     assert result["stage"] == "skill_update"
     assert result["restored_previous"] is True
     assert calls[-1][-1].endswith("@v0.9.6")
+    journal = json.loads(Path(result["journal_path"]).read_text(encoding="utf-8"))
+    assert journal["stage"] == "skill_update"
+    assert journal["restored_previous"] is True
+    assert set(journal) >= {"before", "after"}
 
 
 def test_public_lifecycle_commands_are_discoverable(capsys) -> None:

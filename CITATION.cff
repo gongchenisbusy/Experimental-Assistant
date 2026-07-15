@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "Please cite the exact Experimental Assistant release and repository commit used in your workflow."
 title: "Experimental Assistant"
 type: software
-version: 0.9.7
+version: 0.9.8
 date-released: 2026-07-10
 authors:
   - name: "Experimental Assistant maintainers"

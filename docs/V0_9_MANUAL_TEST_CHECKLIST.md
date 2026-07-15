@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.7 Manual Test Checklist
+# Experimental Assistant v0.9.8 Manual Test Checklist
 
 Record tester, operating system, Python version, commit/tag, date, commands, artifact paths, and each failure. Do not convert an unchecked item into inferred evidence.
 
@@ -7,6 +7,8 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Install the wheel in a clean environment and run PATH-resolved `ea version --json`, `ea capabilities --json`, `ea doctor --json`, and `ea --help`.
 - [ ] Repeat from the sdist.
 - [ ] Run `ea setup`, restart Codex, and invoke `$ea` in a fresh task.
+- [ ] Confirm wheel/sdist setup uses their bundled skills without a repository clone; separately verify the release skill ZIP and SHA-256 sidecar.
+- [ ] On native Windows, repeat setup under a path longer than 260 characters and validate Chinese GBK console output without mojibake or `UnicodeDecodeError`.
 - [ ] Confirm `$ea-v0-2` routes to `$ea` without loading a second full instruction set.
 - [ ] Preview update, rollback, and uninstall; perform them only in a disposable test environment.
 
@@ -29,6 +31,8 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 ## Literature
 
 - [ ] Run `ea literature zotero-readiness` in no-Zotero degraded mode and a mixed acquired/blocked five-paper handoff.
+- [ ] Import one acquisition v1 handoff through the v2 reader, confirm the source file is unchanged, and resume one partial v2 batch without duplicate targets/cache objects.
+- [ ] Run one public OA DOI through resolve, PDF signature/page/hash validation, content-addressed storage, warm-cache reuse, and EA reconciliation.
 - [ ] Confirm login/subscription blockers pause for user action and expose no signed URL, cookie, token, profile, or session value.
 - [ ] Run the ten-paper evidence-dataset pilot; review accept/reject/edit/defer/not-comparable states.
 - [ ] Confirm only accepted/edited values enter plots and the privacy export excludes raw/private full text and absolute source paths.
@@ -41,6 +45,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Clean wheel/sdist builds are reproducible under the documented conditions.
 - [ ] SBOM exists and vulnerability report status is `pass`.
 - [ ] Release manifest, repository package, SHA-256 sidecar, package verification, and distribution checklist pass.
+- [ ] Compact skill ZIP and its SHA-256 sidecar pass `skill_distribution.bundle` in the distribution checklist.
 - [ ] Public release assets can be downloaded and independently verified/installed.
 
 ## v1.0 Promotion

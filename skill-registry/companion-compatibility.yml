@@ -1,0 +1,22 @@
+schema_version: "1.0"
+ea_release: v0.9.8
+companions:
+  ea-feedback:
+    repository: https://github.com/gongchenisbusy/ea-feedback
+    accepted_commit: 9bb8ca5916fc307eb322fc7f45cb629b3eadf5b8
+    required_context_schema: ea-feedback-context-v2
+    required_execution_event_schema: ea-feedback-execution-events-v1
+    acceptance_evidence:
+      - utf8_gbk_roundtrip
+      - historical_failure_reconciliation
+      - project_virtualenv_cli_discovery
+      - partial_literature_execution_events
+      - no_gh_verified_email_fallback
+  zotero-codex-literature:
+    compatibility: protocol_range
+    acquisition_handoff_reader: ["1.0", "2.0"]
+    acquisition_handoff_writer: "2.0"
+    boundaries:
+      - app_installation_state_is_separate_from_data_library_state
+      - data_library_state_is_separate_from_api_connector_state
+      - browser_and_institution_access_remain_user_confirmed

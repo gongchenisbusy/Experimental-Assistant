@@ -4,6 +4,7 @@ import base64
 import hashlib
 import html
 import mimetypes
+import os
 import re
 import shutil
 import zipfile
@@ -12,6 +13,7 @@ from typing import Any, Iterable
 
 import yaml
 
+from ea.figures import figure_path_for_report
 from ea.schema.models import EARecord
 from ea.storage.files import read_markdown_record, read_yaml, write_yaml
 from ea.traceability import build_project_trace_view
@@ -126,8 +128,12 @@ def _result_metadata_index(root: Path) -> dict[str, Path]:
     return results
 
 
-def _record_missing(manifest: dict[str, Any], *, kind: str, ref: str, reason: str) -> None:
-    manifest.setdefault("missing_refs", []).append({"kind": kind, "ref": ref, "reason": reason})
+def _record_missing(
+    manifest: dict[str, Any], *, kind: str, ref: str, reason: str
+) -> None:
+    manifest.setdefault("missing_refs", []).append(
+        {"kind": kind, "ref": ref, "reason": reason}
+    )
 
 
 def _bundle_trace_view(
@@ -203,10 +209,14 @@ def _dedupe_text(values: Iterable[Any]) -> list[str]:
 
 def _html_inline(text: str) -> str:
     escaped = html.escape(text, quote=False)
-    escaped = re.sub(r"`([^`]+)`", lambda match: f"<code>{match.group(1)}</code>", escaped)
+    escaped = re.sub(
+        r"`([^`]+)`", lambda match: f"<code>{match.group(1)}</code>", escaped
+    )
     escaped = re.sub(
         r"\[([^\]]+)\]\(([^)]+)\)",
-        lambda match: f'<a href="{html.escape(match.group(2), quote=True)}">{match.group(1)}</a>',
+        lambda match: (
+            f'<a href="{html.escape(match.group(2), quote=True)}">{match.group(1)}</a>'
+        ),
         escaped,
     )
     return escaped
@@ -241,7 +251,11 @@ def _render_markdown_image(
     original = html.escape(image_ref, quote=True)
     caption = _html_inline(alt_text or image_ref)
     if image_path and image_path.exists():
-        src = _data_uri_for_file(image_path) if embed_images else _project_ref(root, image_path)
+        src = (
+            _data_uri_for_file(image_path)
+            if embed_images
+            else _project_ref(root, image_path)
+        )
         return (
             '<figure class="report-figure inline-figure">'
             f'<img src="{html.escape(src, quote=True)}" alt="{html.escape(alt_text, quote=True)}">'
@@ -250,7 +264,7 @@ def _render_markdown_image(
         )
     return (
         '<figure class="report-figure missing-figure">'
-        f'<p>{caption}</p><p>Image link preserved but not embedded: <code>{original}</code></p>'
+        f"<p>{caption}</p><p>Image link preserved but not embedded: <code>{original}</code></p>"
         "</figure>"
     )
 
@@ -282,12 +296,22 @@ def _markdown_table_to_html(lines: list[str], start: int) -> tuple[str, int]:
     header_html = "".join(f"<th>{_html_inline(header)}</th>" for header in headers)
     row_html = []
     for row in rows:
-        row_html.append("<tr>" + "".join(f"<td>{_html_inline(cell)}</td>" for cell in row) + "</tr>")
-    table = "<table><thead><tr>" + header_html + "</tr></thead><tbody>" + "".join(row_html) + "</tbody></table>"
+        row_html.append(
+            "<tr>" + "".join(f"<td>{_html_inline(cell)}</td>" for cell in row) + "</tr>"
+        )
+    table = (
+        "<table><thead><tr>"
+        + header_html
+        + "</tr></thead><tbody>"
+        + "".join(row_html)
+        + "</tbody></table>"
+    )
     return table, index
 
 
-def _markdown_body_to_html(root: Path, report_path: Path, body: str, *, embed_images: bool) -> str:
+def _markdown_body_to_html(
+    root: Path, report_path: Path, body: str, *, embed_images: bool
+) -> str:
     lines = body.splitlines()
     parts: list[str] = []
     index = 0
@@ -319,7 +343,11 @@ def _markdown_body_to_html(root: Path, report_path: Path, body: str, *, embed_im
             index += 1
             continue
 
-        if index + 1 < len(lines) and "|" in stripped and _is_table_separator(lines[index + 1]):
+        if (
+            index + 1 < len(lines)
+            and "|" in stripped
+            and _is_table_separator(lines[index + 1])
+        ):
             table, index = _markdown_table_to_html(lines, index)
             parts.append(table)
             continue
@@ -342,7 +370,11 @@ def _markdown_body_to_html(root: Path, report_path: Path, body: str, *, embed_im
                 or next_line.startswith("#")
                 or next_line.startswith("- ")
                 or _MARKDOWN_IMAGE_RE.match(next_line)
-                or (index + 1 < len(lines) and "|" in next_line and _is_table_separator(lines[index + 1]))
+                or (
+                    index + 1 < len(lines)
+                    and "|" in next_line
+                    and _is_table_separator(lines[index + 1])
+                )
             ):
                 break
             paragraph.append(next_line)
@@ -351,9 +383,16 @@ def _markdown_body_to_html(root: Path, report_path: Path, body: str, *, embed_im
     return "\n".join(parts)
 
 
-def _citation_check(body: str, numbered_references: list[dict[str, Any]]) -> dict[str, Any]:
+def _citation_check(
+    body: str, numbered_references: list[dict[str, Any]]
+) -> dict[str, Any]:
     body_without_code = re.sub(r"`[^`]*`", "", body)
-    body_numbers = sorted({int(number) for number in re.findall(r"(?<![A-Za-z0-9])\[(\d+)\]", body_without_code)})
+    body_numbers = sorted(
+        {
+            int(number)
+            for number in re.findall(r"(?<![A-Za-z0-9])\[(\d+)\]", body_without_code)
+        }
+    )
     reference_numbers = sorted(
         {
             int(record["number"])
@@ -361,7 +400,9 @@ def _citation_check(body: str, numbered_references: list[dict[str, Any]]) -> dic
             if isinstance(record, dict) and str(record.get("number") or "").isdigit()
         }
     )
-    missing_numbers = [number for number in body_numbers if number not in reference_numbers]
+    missing_numbers = [
+        number for number in body_numbers if number not in reference_numbers
+    ]
     status = "pass" if not missing_numbers else "warning"
     if body_numbers and not reference_numbers:
         status = "warning"
@@ -374,7 +415,9 @@ def _citation_check(body: str, numbered_references: list[dict[str, Any]]) -> dic
     }
 
 
-def _provenance_summary(provenance_id: str, record: dict[str, Any], provenance_ref: str) -> dict[str, Any]:
+def _provenance_summary(
+    provenance_id: str, record: dict[str, Any], provenance_ref: str
+) -> dict[str, Any]:
     inputs = record.get("inputs") or {}
     outputs = record.get("outputs") or {}
     return {
@@ -423,7 +466,10 @@ def _expand_provenance_refs(root: Path, provenance_refs: Iterable[str]) -> list[
         provenance = read_yaml(provenance_path)
         inputs = provenance.get("inputs") or {}
         outputs = provenance.get("outputs") or {}
-        for record_ref in [*(inputs.get("records") or []), *(outputs.get("records") or [])]:
+        for record_ref in [
+            *(inputs.get("records") or []),
+            *(outputs.get("records") or []),
+        ]:
             for linked_ref in _record_provenance_refs(root, str(record_ref)):
                 if linked_ref in seen:
                     continue
@@ -440,6 +486,7 @@ def _language_labels(language: str | None) -> dict[str, str]:
             "canonical": "规范 Markdown 报告 / Canonical Markdown report",
             "report_meta": "报告元数据 / Report Metadata",
             "figures": "图件 / Figures",
+            "source_data": "图下数据 / Figure source data",
             "references": "参考文献记录 / Reference Records",
             "provenance": "溯源摘要 / Provenance Summary",
             "audit": "审计附录 / Audit Appendix",
@@ -450,11 +497,56 @@ def _language_labels(language: str | None) -> dict[str, str]:
         "canonical": "Canonical Markdown report",
         "report_meta": "Report Metadata",
         "figures": "Figures",
+        "source_data": "Figure source data",
         "references": "Reference Records",
         "provenance": "Provenance Summary",
         "audit": "Audit Appendix",
         "no_references": "No registered external references are linked to this report.",
     }
+
+
+def _normalized_figure_source_data(figure: dict[str, Any]) -> list[dict[str, Any]]:
+    source_data = [
+        dict(item) for item in figure.get("source_data") or [] if isinstance(item, dict)
+    ]
+    if source_data:
+        return source_data
+    return [
+        {
+            "ref": str(ref),
+            "role": "legacy_unspecified",
+            "purpose": "Legacy source-data reference.",
+            "columns": [],
+            "primary": index == 0,
+            "protected_raw": False,
+        }
+        for index, ref in enumerate(figure.get("source_data_refs") or [])
+    ]
+
+
+def _render_figure_source_data_html(figure: dict[str, Any], label: str) -> str:
+    items = []
+    for item in figure.get("source_data") or []:
+        ref = str(item.get("ref") or "")
+        role = str(item.get("role") or "unspecified")
+        purpose = str(item.get("purpose") or "")
+        columns = ", ".join(str(value) for value in item.get("columns") or []) or "n/a"
+        href = item.get("href")
+        if href:
+            ref_html = f'<a href="{html.escape(str(href), quote=True)}"><code>{html.escape(ref)}</code></a>'
+        else:
+            ref_html = f'<code>{html.escape(ref or "missing")}</code> <span class="missing">(not linked)</span>'
+        items.append(
+            "<li>"
+            + ref_html
+            + f" — <code>{html.escape(role)}</code>; {html.escape(purpose)}; columns: <code>{html.escape(columns)}</code>"
+            + "</li>"
+        )
+    if not items:
+        items.append(
+            '<li><span class="missing">No public-safe processed source data registered.</span></li>'
+        )
+    return f"<details><summary>{html.escape(label)}</summary><ul>{''.join(items)}</ul></details>"
 
 
 def _render_report_html_document(
@@ -472,7 +564,9 @@ def _render_report_html_document(
     labels = _language_labels(str(frontmatter.get("language") or ""))
     report_id = str(frontmatter.get("report_id") or manifest["report_id"])
     canonical_ref = manifest["canonical_report_ref"]
-    body_html = _markdown_body_to_html(root, report_path, body, embed_images=embed_images)
+    body_html = _markdown_body_to_html(
+        root, report_path, body, embed_images=embed_images
+    )
 
     figure_parts = []
     for figure in figures:
@@ -481,7 +575,9 @@ def _render_report_html_document(
         if image_src:
             image_html = f'<img src="{html.escape(image_src, quote=True)}" alt="{html.escape(str(caption), quote=True)}">'
         else:
-            image_html = '<p class="missing">Figure file was not found during export.</p>'
+            image_html = (
+                '<p class="missing">Figure file was not found during export.</p>'
+            )
         figure_parts.append(
             '<figure class="report-figure">'
             + image_html
@@ -489,13 +585,18 @@ def _render_report_html_document(
             + f"<strong>{html.escape(str(figure['figure_id']))}</strong>: {_html_inline(str(caption))}"
             + f"<br><span>Original path: <code>{html.escape(str(figure.get('original_path') or ''))}</code></span>"
             + f"<br><span>Report ID: <code>{html.escape(str(figure.get('report_id') or report_id))}</code></span>"
+            + _render_figure_source_data_html(figure, labels["source_data"])
             + "</figcaption></figure>"
         )
 
     if references:
         reference_items = []
         for reference in references:
-            label = f"[{reference['number']}]" if reference.get("number") else reference["reference_id"]
+            label = (
+                f"[{reference['number']}]"
+                if reference.get("number")
+                else reference["reference_id"]
+            )
             detail = str(reference.get("citation") or reference.get("entry") or "")
             extras = []
             if reference.get("doi"):
@@ -506,7 +607,11 @@ def _render_report_html_document(
                 "<li>"
                 + f"<strong>{html.escape(str(label))}</strong> "
                 + _html_inline(detail)
-                + (f"<br><span>{_html_inline(' | '.join(extras))}</span>" if extras else "")
+                + (
+                    f"<br><span>{_html_inline(' | '.join(extras))}</span>"
+                    if extras
+                    else ""
+                )
                 + f"<br><span>Reference ID: <code>{html.escape(str(reference['reference_id']))}</code></span>"
                 + "</li>"
             )
@@ -555,9 +660,14 @@ def _render_report_html_document(
         ("Created", frontmatter.get("created_at")),
         ("HTML export sidecar", manifest["metadata_ref"]),
     ]
-    metadata_html = "<dl>" + "".join(
-        f"<dt>{html.escape(label)}</dt><dd><code>{html.escape(str(value or ''))}</code></dd>" for label, value in metadata_items
-    ) + "</dl>"
+    metadata_html = (
+        "<dl>"
+        + "".join(
+            f"<dt>{html.escape(label)}</dt><dd><code>{html.escape(str(value or ''))}</code></dd>"
+            for label, value in metadata_items
+        )
+        + "</dl>"
+    )
 
     css = """
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: #202124; background: #f7f7f4; }
@@ -579,18 +689,18 @@ dt { font-weight: 700; color: #3c4043; }
 details { margin: 12px 0; }
 """
     return (
-        "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n"
-        "<meta charset=\"utf-8\">\n"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<meta name=\"ea-report-id\" content=\"{html.escape(report_id, quote=True)}\">\n"
-        f"<meta name=\"ea-canonical-report\" content=\"{html.escape(str(canonical_ref), quote=True)}\">\n"
+        '<!doctype html>\n<html lang="zh-CN">\n<head>\n'
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<meta name="ea-report-id" content="{html.escape(report_id, quote=True)}">\n'
+        f'<meta name="ea-canonical-report" content="{html.escape(str(canonical_ref), quote=True)}">\n'
         f"<title>{html.escape(report_id)} - {html.escape(labels['title'])}</title>\n"
         f"<style>{css}</style>\n</head>\n<body>\n"
-        f"<header><h1>{html.escape(report_id)}</h1><p class=\"note\">{html.escape(labels['canonical'])}: <code>{html.escape(str(canonical_ref))}</code></p></header>\n"
+        f'<header><h1>{html.escape(report_id)}</h1><p class="note">{html.escape(labels["canonical"])}: <code>{html.escape(str(canonical_ref))}</code></p></header>\n'
         f"<section><h2>{html.escape(labels['report_meta'])}</h2>{metadata_html}</section>\n"
         f"<main>{body_html}</main>\n"
         f"<section><h2>{html.escape(labels['figures'])}</h2>{''.join(figure_parts)}</section>\n"
-        f"<section><h2>{html.escape(labels['references'])}</h2>{references_html}<p class=\"note\">Citation check: <code>{html.escape(manifest['citation_check']['status'])}</code></p></section>\n"
+        f'<section><h2>{html.escape(labels["references"])}</h2>{references_html}<p class="note">Citation check: <code>{html.escape(manifest["citation_check"]["status"])}</code></p></section>\n'
         f"<section><h2>{html.escape(labels['provenance'])}</h2>{provenance_html}</section>\n"
         f"<section><h2>{html.escape(labels['audit'])}</h2><p>{html.escape(audit_intro)}</p>{''.join(provenance_details)}</section>\n"
         "</body>\n</html>\n"
@@ -615,7 +725,9 @@ def export_report_html(
     report_ref = str(report_record.get("path") or "")
     report_path = _project_path(root, report_ref)
     if not report_ref or not report_path.exists():
-        raise ReportBundleError(f"Report file is missing for report_id {report_id}: {report_ref}")
+        raise ReportBundleError(
+            f"Report file is missing for report_id {report_id}: {report_ref}"
+        )
     if not _is_inside(root, report_path):
         raise ReportBundleError(f"Report file is outside project root: {report_ref}")
 
@@ -630,32 +742,83 @@ def export_report_html(
     missing_refs: list[dict[str, Any]] = []
 
     figures_index = _figures_index(root)
-    figure_ids = _dedupe_text([*(report_record.get("figure_ids") or []), *(frontmatter.get("figure_ids") or [])])
+    figure_ids = _dedupe_text(
+        [
+            *(report_record.get("figure_ids") or []),
+            *(frontmatter.get("figure_ids") or []),
+        ]
+    )
     figures: list[dict[str, Any]] = []
     for figure_id in figure_ids:
         figure = figures_index.get(figure_id)
         if not figure:
-            missing_refs.append({"kind": "figure_record", "ref": figure_id, "reason": "unknown_figure_id"})
-            figures.append({"figure_id": figure_id, "embedded": False, "html_src": None, "missing": True})
+            missing_refs.append(
+                {
+                    "kind": "figure_record",
+                    "ref": figure_id,
+                    "reason": "unknown_figure_id",
+                }
+            )
+            figures.append(
+                {
+                    "figure_id": figure_id,
+                    "embedded": False,
+                    "html_src": None,
+                    "missing": True,
+                }
+            )
             continue
-        figure_ref = str(figure.get("path") or "")
+        figure_ref = figure_path_for_report(figure, report_id)
         figure_path = _project_path(root, figure_ref)
         html_src = None
         embedded = False
         if figure_ref and figure_path.exists() and _is_inside(root, figure_path):
-            html_src = _data_uri_for_file(figure_path) if embed_images else _project_ref(root, figure_path)
+            html_src = (
+                _data_uri_for_file(figure_path)
+                if embed_images
+                else _project_ref(root, figure_path)
+            )
             embedded = embed_images
         else:
-            missing_refs.append({"kind": "figure_file", "ref": figure_ref or figure_id, "reason": "missing_or_outside_project_root"})
+            missing_refs.append(
+                {
+                    "kind": "figure_file",
+                    "ref": figure_ref or figure_id,
+                    "reason": "missing_or_outside_project_root",
+                }
+            )
+        source_data = _normalized_figure_source_data(figure)
+        for item in source_data:
+            ref = str(item.get("ref") or "")
+            source_path = _project_path(root, ref)
+            if item.get("protected_raw"):
+                item["href"] = None
+                item["link_status"] = "protected_raw_omitted"
+            elif ref and source_path.is_file() and _is_inside(root, source_path):
+                item["href"] = Path(
+                    os.path.relpath(source_path, output_path.parent)
+                ).as_posix()
+                item["link_status"] = "available"
+            else:
+                item["href"] = None
+                item["link_status"] = "missing_or_outside_project_root"
+                missing_refs.append(
+                    {
+                        "kind": "source_data",
+                        "ref": ref or figure_id,
+                        "reason": item["link_status"],
+                    }
+                )
         figures.append(
             {
                 "figure_id": figure_id,
                 "path": str(figure_path),
                 "original_path": figure_ref,
-                "report_id": figure.get("report_id"),
+                "report_id": report_id,
                 "result_id": figure.get("result_id"),
                 "caption": figure.get("caption"),
                 "source_data_refs": figure.get("source_data_refs") or [],
+                "source_data": source_data,
                 "generation": figure.get("generation") or {},
                 "embedded": embedded,
                 "html_src": html_src,
@@ -663,53 +826,111 @@ def export_report_html(
             }
         )
 
-    numbered_references = [item for item in frontmatter.get("numbered_references") or [] if isinstance(item, dict)]
-    reference_numbers = {str(item.get("reference_id")): item.get("number") for item in numbered_references}
-    reference_entries = {str(item.get("reference_id")): item.get("entry") for item in numbered_references}
+    numbered_references = [
+        item
+        for item in frontmatter.get("numbered_references") or []
+        if isinstance(item, dict)
+    ]
+    reference_numbers = {
+        str(item.get("reference_id")): item.get("number")
+        for item in numbered_references
+    }
+    reference_entries = {
+        str(item.get("reference_id")): item.get("entry") for item in numbered_references
+    }
     references_index = _reference_index(root)
-    reference_ids = _dedupe_text([*(report_record.get("reference_ids") or []), *(frontmatter.get("reference_ids") or [])])
+    reference_ids = _dedupe_text(
+        [
+            *(report_record.get("reference_ids") or []),
+            *(frontmatter.get("reference_ids") or []),
+        ]
+    )
     references: list[dict[str, Any]] = []
     for reference_id in reference_ids:
         reference_record = references_index.get(reference_id)
         if not reference_record:
-            missing_refs.append({"kind": "reference_record", "ref": reference_id, "reason": "unknown_reference_id"})
-            references.append({"reference_id": reference_id, "number": reference_numbers.get(reference_id), "missing": True})
+            missing_refs.append(
+                {
+                    "kind": "reference_record",
+                    "ref": reference_id,
+                    "reason": "unknown_reference_id",
+                }
+            )
+            references.append(
+                {
+                    "reference_id": reference_id,
+                    "number": reference_numbers.get(reference_id),
+                    "missing": True,
+                }
+            )
             continue
-        record_ref = str(reference_record.get("path") or f"literature/references/{reference_id}.yml")
+        record_ref = str(
+            reference_record.get("path") or f"literature/references/{reference_id}.yml"
+        )
         record_path = _project_path(root, record_ref)
-        reference_data = read_yaml(record_path) if record_path.exists() and _is_inside(root, record_path) else {}
+        reference_data = (
+            read_yaml(record_path)
+            if record_path.exists() and _is_inside(root, record_path)
+            else {}
+        )
         if not reference_data:
-            missing_refs.append({"kind": "reference_record", "ref": record_ref, "reason": "missing_or_outside_project_root"})
+            missing_refs.append(
+                {
+                    "kind": "reference_record",
+                    "ref": record_ref,
+                    "reason": "missing_or_outside_project_root",
+                }
+            )
         references.append(
             {
                 "reference_id": reference_id,
                 "number": reference_numbers.get(reference_id),
                 "entry": reference_entries.get(reference_id),
                 "path": record_ref,
-                "citation": reference_data.get("citation") or reference_record.get("citation"),
+                "citation": reference_data.get("citation")
+                or reference_record.get("citation"),
                 "doi": reference_data.get("doi") or reference_record.get("doi"),
                 "url": reference_data.get("url") or reference_record.get("url"),
-                "local_path": reference_data.get("local_path") or reference_record.get("local_path"),
+                "local_path": reference_data.get("local_path")
+                or reference_record.get("local_path"),
                 "missing": not bool(reference_data),
             }
         )
 
     result_index = _result_metadata_index(root)
     result_provenance_refs: list[str] = []
-    for result_id in report_record.get("result_ids") or frontmatter.get("related_results") or []:
+    for result_id in (
+        report_record.get("result_ids") or frontmatter.get("related_results") or []
+    ):
         result_path = result_index.get(str(result_id))
         if not result_path:
-            missing_refs.append({"kind": "result_metadata", "ref": str(result_id), "reason": "unknown_result_id"})
+            missing_refs.append(
+                {
+                    "kind": "result_metadata",
+                    "ref": str(result_id),
+                    "reason": "unknown_result_id",
+                }
+            )
             continue
         result_data = read_yaml(result_path)
-        result_provenance_refs.extend(str(ref) for ref in result_data.get("provenance_refs") or [])
+        result_provenance_refs.extend(
+            str(ref) for ref in result_data.get("provenance_refs") or []
+        )
 
-    provenance_refs = _expand_provenance_refs(root, [*(frontmatter.get("provenance_refs") or []), *result_provenance_refs])
+    provenance_refs = _expand_provenance_refs(
+        root, [*(frontmatter.get("provenance_refs") or []), *result_provenance_refs]
+    )
     provenance_records: list[dict[str, Any]] = []
     for provenance_ref in provenance_refs:
         provenance_path = _provenance_path(root, provenance_ref)
         if not provenance_path.exists() or not _is_inside(root, provenance_path):
-            missing_refs.append({"kind": "provenance_record", "ref": provenance_ref, "reason": "missing_or_outside_project_root"})
+            missing_refs.append(
+                {
+                    "kind": "provenance_record",
+                    "ref": provenance_ref,
+                    "reason": "missing_or_outside_project_root",
+                }
+            )
             continue
         provenance = read_yaml(provenance_path)
         provenance_id = str(provenance.get("provenance_id") or provenance_ref)
@@ -717,7 +938,9 @@ def export_report_html(
             {
                 "provenance_id": provenance_id,
                 "provenance_ref": _project_ref(root, provenance_path),
-                "summary": _provenance_summary(provenance_id, provenance, _project_ref(root, provenance_path)),
+                "summary": _provenance_summary(
+                    provenance_id, provenance, _project_ref(root, provenance_path)
+                ),
                 "record": provenance if include_audit else {},
             }
         )
@@ -738,7 +961,10 @@ def export_report_html(
         "metadata_ref": _project_ref(root, metadata_path),
         "embed_images": embed_images,
         "include_audit": include_audit,
-        "figures": [{key: value for key, value in figure.items() if key != "html_src"} for figure in figures],
+        "figures": [
+            {key: value for key, value in figure.items() if key != "html_src"}
+            for figure in figures
+        ],
         "references": references,
         "provenance": [record["summary"] for record in provenance_records],
         "citation_check": _citation_check(body, numbered_references),
@@ -766,7 +992,9 @@ def export_report_html(
     return manifest
 
 
-def _write_zip_archive(bundle_dir: Path, archive_path: Path, *, exclude_paths: Iterable[Path | None] = ()) -> Path:
+def _write_zip_archive(
+    bundle_dir: Path, archive_path: Path, *, exclude_paths: Iterable[Path | None] = ()
+) -> Path:
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     excluded = _resolved_paths([archive_path, *exclude_paths])
     if archive_path.exists():
@@ -785,7 +1013,9 @@ def _write_zip_archive(bundle_dir: Path, archive_path: Path, *, exclude_paths: I
 
 def _write_archive_checksum(archive_path: Path, checksum_path: Path) -> Path:
     checksum_path.parent.mkdir(parents=True, exist_ok=True)
-    checksum_path.write_text(f"{_sha256_file(archive_path)}  {archive_path.name}\n", encoding="utf-8")
+    checksum_path.write_text(
+        f"{_sha256_file(archive_path)}  {archive_path.name}\n", encoding="utf-8"
+    )
     return checksum_path
 
 
@@ -844,11 +1074,15 @@ def verify_bundle_checksums(bundle_dir: Path) -> dict[str, Any]:
     }
     if not bundle_dir.is_dir():
         result["status"] = "fail"
-        result["failures"].append({"path": str(bundle_dir), "reason": "missing_bundle_dir"})
+        result["failures"].append(
+            {"path": str(bundle_dir), "reason": "missing_bundle_dir"}
+        )
         return result
     if not checksum_path.exists():
         result["status"] = "fail"
-        result["failures"].append({"path": "bundle_checksums.yml", "reason": "missing_checksum_manifest"})
+        result["failures"].append(
+            {"path": "bundle_checksums.yml", "reason": "missing_checksum_manifest"}
+        )
         return result
 
     checksum_manifest = read_yaml(checksum_path)
@@ -856,8 +1090,40 @@ def verify_bundle_checksums(bundle_dir: Path) -> dict[str, Any]:
     result["algorithm"] = algorithm
     if algorithm != "sha256":
         result["status"] = "fail"
-        result["failures"].append({"path": "bundle_checksums.yml", "reason": "unsupported_algorithm", "algorithm": algorithm})
+        result["failures"].append(
+            {
+                "path": "bundle_checksums.yml",
+                "reason": "unsupported_algorithm",
+                "algorithm": algorithm,
+            }
+        )
         return result
+
+    bundle_manifest_path = bundle_dir / "bundle_manifest.yml"
+    if bundle_manifest_path.is_file():
+        bundle_manifest = read_yaml(bundle_manifest_path)
+        for missing in bundle_manifest.get("missing_refs") or []:
+            result["failures"].append(
+                {
+                    "path": str(missing.get("ref") or "bundle_manifest.yml"),
+                    "reason": f"manifest_{missing.get('reason') or 'missing_ref'}",
+                    "kind": missing.get("kind"),
+                }
+            )
+        for artifact in (bundle_manifest.get("artifacts") or {}).get(
+            "source_data"
+        ) or []:
+            bundle_ref = str(artifact.get("bundle_ref") or "")
+            if artifact.get("copied") and (
+                not bundle_ref or not _is_inside(bundle_dir, bundle_dir / bundle_ref)
+            ):
+                result["failures"].append(
+                    {
+                        "path": bundle_ref,
+                        "reason": "source_data_outside_bundle",
+                        "kind": "source_data",
+                    }
+                )
 
     for entry in checksum_manifest.get("files") or []:
         ref = str(entry.get("path") or "")
@@ -895,7 +1161,9 @@ def verify_bundle_checksums(bundle_dir: Path) -> dict[str, Any]:
     return result
 
 
-def verify_archive_checksum(archive_path: Path, checksum_path: Path | None = None) -> dict[str, Any]:
+def verify_archive_checksum(
+    archive_path: Path, checksum_path: Path | None = None
+) -> dict[str, Any]:
     archive_path = archive_path.resolve()
     checksum_path = (checksum_path or _archive_checksum_path(archive_path)).resolve()
     result: dict[str, Any] = {
@@ -909,16 +1177,22 @@ def verify_archive_checksum(archive_path: Path, checksum_path: Path | None = Non
     }
     if not archive_path.exists():
         result["status"] = "fail"
-        result["failures"].append({"path": str(archive_path), "reason": "missing_archive"})
+        result["failures"].append(
+            {"path": str(archive_path), "reason": "missing_archive"}
+        )
         return result
     if not checksum_path.exists():
         result["status"] = "fail"
-        result["failures"].append({"path": str(checksum_path), "reason": "missing_archive_checksum"})
+        result["failures"].append(
+            {"path": str(checksum_path), "reason": "missing_archive_checksum"}
+        )
         return result
     sidecar = checksum_path.read_text(encoding="utf-8").strip().split()
     if not sidecar:
         result["status"] = "fail"
-        result["failures"].append({"path": str(checksum_path), "reason": "empty_archive_checksum"})
+        result["failures"].append(
+            {"path": str(checksum_path), "reason": "empty_archive_checksum"}
+        )
         return result
     expected_sha = sidecar[0]
     actual_sha = _sha256_file(archive_path)
@@ -960,11 +1234,18 @@ def _copy_provenance(
         )
         copied.append(record)
         if not record["copied"]:
-            _record_missing(manifest, kind="provenance_record", ref=provenance_ref, reason=str(record.get("skip_reason")))
+            _record_missing(
+                manifest,
+                kind="provenance_record",
+                ref=provenance_ref,
+                reason=str(record.get("skip_reason")),
+            )
             continue
         provenance = read_yaml(provenance_path)
         inputs = provenance.get("inputs") or {}
-        for input_ref in list(inputs.get("records") or []) + list(inputs.get("files") or []):
+        for input_ref in list(inputs.get("records") or []) + list(
+            inputs.get("files") or []
+        ):
             input_record = _copy_project_file(
                 root,
                 bundle_dir,
@@ -1034,7 +1315,9 @@ def export_report_bundle(
         "trace_export": {
             "included": include_trace,
             "focus_ref": None,
-            "strategy": "focused_report_trace_view" if include_trace else "not_requested",
+            "strategy": "focused_report_trace_view"
+            if include_trace
+            else "not_requested",
             "boundaries": [
                 "Trace export writes audit YAML/Markdown into the bundle only.",
                 "It does not mutate reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.",
@@ -1054,19 +1337,36 @@ def export_report_bundle(
 
     report_ref = str(report_record.get("path") or "")
     manifest["trace_export"]["focus_ref"] = report_ref or None
-    report_copy = _copy_project_file(root, bundle_dir, ref=report_ref, subdir="reports", kind="report", label=report_id)
+    report_copy = _copy_project_file(
+        root,
+        bundle_dir,
+        ref=report_ref,
+        subdir="reports",
+        kind="report",
+        label=report_id,
+    )
     manifest["artifacts"]["reports"].append(report_copy)
     report_frontmatter: dict[str, Any] = {}
     if report_copy["copied"]:
         report_frontmatter, _ = read_markdown_record(_project_path(root, report_ref))
     else:
-        _record_missing(manifest, kind="report", ref=report_ref, reason=str(report_copy.get("skip_reason")))
+        _record_missing(
+            manifest,
+            kind="report",
+            ref=report_ref,
+            reason=str(report_copy.get("skip_reason")),
+        )
 
     result_index = _result_metadata_index(root)
     for result_id in report_record.get("result_ids") or []:
         result_path = result_index.get(str(result_id))
         if not result_path:
-            _record_missing(manifest, kind="result_metadata", ref=str(result_id), reason="unknown_result_id")
+            _record_missing(
+                manifest,
+                kind="result_metadata",
+                ref=str(result_id),
+                reason="unknown_result_id",
+            )
             continue
         result_ref = _project_ref(root, result_path)
         result_copy = _copy_project_file(
@@ -1090,12 +1390,18 @@ def export_report_bundle(
     for figure_id in report_record.get("figure_ids") or []:
         figure = figures.get(str(figure_id))
         if not figure:
-            _record_missing(manifest, kind="figure_record", ref=str(figure_id), reason="unknown_figure_id")
+            _record_missing(
+                manifest,
+                kind="figure_record",
+                ref=str(figure_id),
+                reason="unknown_figure_id",
+            )
             continue
+        figure_ref = figure_path_for_report(figure, report_id)
         figure_copy = _copy_project_file(
             root,
             bundle_dir,
-            ref=str(figure.get("path") or ""),
+            ref=figure_ref,
             subdir="figures",
             kind="figure_file",
             label=str(figure_id),
@@ -1103,9 +1409,16 @@ def export_report_bundle(
         figure_copy["figure_record"] = figure
         manifest["artifacts"]["figures"].append(figure_copy)
         if not figure_copy["copied"]:
-            _record_missing(manifest, kind="figure_file", ref=str(figure_id), reason=str(figure_copy.get("skip_reason")))
-        for source_ref in figure.get("source_data_refs") or []:
-            source_ref = str(source_ref)
+            _record_missing(
+                manifest,
+                kind="figure_file",
+                ref=str(figure_id),
+                reason=str(figure_copy.get("skip_reason")),
+            )
+        for source_entry in _normalized_figure_source_data(figure):
+            if source_entry.get("protected_raw"):
+                continue
+            source_ref = str(source_entry.get("ref") or "")
             if source_ref in seen_source_refs:
                 continue
             seen_source_refs.add(source_ref)
@@ -1117,17 +1430,34 @@ def export_report_bundle(
                 kind="source_data",
                 label=str(figure_id),
             )
+            source_copy["source_data"] = source_entry
             manifest["artifacts"]["source_data"].append(source_copy)
             if not source_copy["copied"]:
-                _record_missing(manifest, kind="source_data", ref=source_ref, reason=str(source_copy.get("skip_reason")))
+                _record_missing(
+                    manifest,
+                    kind="source_data",
+                    ref=source_ref,
+                    reason=str(source_copy.get("skip_reason")),
+                )
 
     references = _reference_index(root)
-    for reference_id in report_record.get("reference_ids") or report_frontmatter.get("reference_ids") or []:
+    for reference_id in (
+        report_record.get("reference_ids")
+        or report_frontmatter.get("reference_ids")
+        or []
+    ):
         reference = references.get(str(reference_id))
         if not reference:
-            _record_missing(manifest, kind="reference_record", ref=str(reference_id), reason="unknown_reference_id")
+            _record_missing(
+                manifest,
+                kind="reference_record",
+                ref=str(reference_id),
+                reason="unknown_reference_id",
+            )
             continue
-        record_ref = str(reference.get("path") or f"literature/references/{reference_id}.yml")
+        record_ref = str(
+            reference.get("path") or f"literature/references/{reference_id}.yml"
+        )
         reference_copy = _copy_project_file(
             root,
             bundle_dir,
@@ -1138,7 +1468,12 @@ def export_report_bundle(
         )
         manifest["artifacts"]["references"].append(reference_copy)
         if not reference_copy["copied"]:
-            _record_missing(manifest, kind="reference_record", ref=str(reference_id), reason=str(reference_copy.get("skip_reason")))
+            _record_missing(
+                manifest,
+                kind="reference_record",
+                ref=str(reference_id),
+                reason=str(reference_copy.get("skip_reason")),
+            )
             continue
         reference_data = read_yaml(_project_path(root, record_ref))
         local_path = reference_data.get("local_path")
@@ -1160,8 +1495,12 @@ def export_report_bundle(
                     reason=str(file_copy.get("skip_reason")),
                 )
 
-    report_provenance_refs = [str(item) for item in report_frontmatter.get("provenance_refs") or []]
-    manifest["artifacts"]["provenance"].extend(_copy_provenance(root, bundle_dir, manifest, report_provenance_refs))
+    report_provenance_refs = [
+        str(item) for item in report_frontmatter.get("provenance_refs") or []
+    ]
+    manifest["artifacts"]["provenance"].extend(
+        _copy_provenance(root, bundle_dir, manifest, report_provenance_refs)
+    )
 
     if include_trace and report_ref:
         trace_record = _bundle_trace_view(
@@ -1173,8 +1512,12 @@ def export_report_bundle(
         )
         manifest["artifacts"]["traceability"].append(trace_record)
         manifest["trace_export"]["trace_bundle_ref"] = trace_record["bundle_ref"]
-        manifest["trace_export"]["markdown_bundle_ref"] = trace_record["markdown_bundle_ref"]
-        manifest["trace_export"]["canonical_focus_ref"] = trace_record.get("canonical_focus_ref")
+        manifest["trace_export"]["markdown_bundle_ref"] = trace_record[
+            "markdown_bundle_ref"
+        ]
+        manifest["trace_export"]["canonical_focus_ref"] = trace_record.get(
+            "canonical_focus_ref"
+        )
 
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
     archive_target: Path | None = None
@@ -1195,15 +1538,23 @@ def export_report_bundle(
     checksum_path = bundle_dir / "bundle_checksums.yml"
     manifest["checksum_manifest_path"] = str(checksum_path)
     manifest["checksum_manifest_ref"] = _project_ref(root, checksum_path)
-    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(bundle_dir).as_posix()
+    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(
+        bundle_dir
+    ).as_posix()
     write_yaml(manifest_path, manifest)
-    _write_bundle_checksums(root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum])
+    _write_bundle_checksums(
+        root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum]
+    )
     if create_archive:
         try:
-            _write_zip_archive(bundle_dir, archive_target, exclude_paths=[archive_checksum])
+            _write_zip_archive(
+                bundle_dir, archive_target, exclude_paths=[archive_checksum]
+            )
             _write_archive_checksum(archive_target, archive_checksum)
         except OSError as exc:
-            raise ReportBundleError(f"Failed to create report bundle archive: {archive_target}: {exc}") from exc
+            raise ReportBundleError(
+                f"Failed to create report bundle archive: {archive_target}: {exc}"
+            ) from exc
     return manifest
 
 
@@ -1242,9 +1593,13 @@ def export_batch_bundle(
         },
         "trace_export": {
             "included": include_trace,
-            "strategy": "nested_report_focused_trace_views" if include_trace else "not_requested",
+            "strategy": "nested_report_focused_trace_views"
+            if include_trace
+            else "not_requested",
             "batch_level_trace_included": False,
-            "batch_level_trace_reason": "project_trace_view_does_not_model_batch_nodes_yet" if include_trace else None,
+            "batch_level_trace_reason": "project_trace_view_does_not_model_batch_nodes_yet"
+            if include_trace
+            else None,
             "boundaries": [
                 "Batch trace export currently delegates to nested report bundle focused trace views.",
                 "It does not mutate source reports, create ReviewRecords, commit memory, register references, inject citations, generate source packets/suggestions, or prove scientific conclusions.",
@@ -1272,15 +1627,25 @@ def export_batch_bundle(
         if not ref:
             _record_missing(manifest, kind=kind, ref=ref, reason="empty_ref")
             continue
-        copied = _copy_project_file(root, bundle_dir, ref=ref, subdir="batch", kind=kind, label=batch_id)
+        copied = _copy_project_file(
+            root, bundle_dir, ref=ref, subdir="batch", kind=kind, label=batch_id
+        )
         manifest["artifacts"]["batch_records"].append(copied)
         if not copied["copied"]:
-            _record_missing(manifest, kind=kind, ref=ref, reason=str(copied.get("skip_reason")))
+            _record_missing(
+                manifest, kind=kind, ref=ref, reason=str(copied.get("skip_reason"))
+            )
 
-    batch_record_path = _project_path(root, str(batch_index_record.get("record_ref") or ""))
+    batch_record_path = _project_path(
+        root, str(batch_index_record.get("record_ref") or "")
+    )
     batch_record = read_yaml(batch_record_path) if batch_record_path.exists() else {}
-    manifest["batch_status"] = batch_record.get("status") or batch_index_record.get("status")
-    manifest["item_count"] = batch_record.get("item_count") or batch_index_record.get("item_count")
+    manifest["batch_status"] = batch_record.get("status") or batch_index_record.get(
+        "status"
+    )
+    manifest["item_count"] = batch_record.get("item_count") or batch_index_record.get(
+        "item_count"
+    )
     manifest["items"] = []
 
     for item in batch_record.get("items") or []:
@@ -1306,7 +1671,12 @@ def export_batch_bundle(
             continue
         report_id = _report_id_from_ref(root, report_ref)
         if not report_id:
-            _record_missing(manifest, kind="item_report", ref=report_ref, reason="missing_or_unreadable_report")
+            _record_missing(
+                manifest,
+                kind="item_report",
+                ref=report_ref,
+                reason="missing_or_unreadable_report",
+            )
             continue
         report_bundle = export_report_bundle(
             root,
@@ -1326,8 +1696,12 @@ def export_batch_bundle(
             "label": report_id,
             "item_id": item.get("item_id"),
             "status": report_bundle["status"],
-            "bundle_ref": Path(report_bundle["bundle_path"]).relative_to(bundle_dir).as_posix(),
-            "manifest_ref": Path(report_bundle["manifest_path"]).relative_to(bundle_dir).as_posix(),
+            "bundle_ref": Path(report_bundle["bundle_path"])
+            .relative_to(bundle_dir)
+            .as_posix(),
+            "manifest_ref": Path(report_bundle["manifest_path"])
+            .relative_to(bundle_dir)
+            .as_posix(),
             "missing_ref_count": len(report_bundle.get("missing_refs") or []),
             "traceability": report_bundle.get("artifacts", {}).get("traceability", []),
         }
@@ -1344,7 +1718,12 @@ def export_batch_bundle(
             )
 
     manifest["artifacts"]["provenance"].extend(
-        _copy_provenance(root, bundle_dir, manifest, [str(ref) for ref in batch_record.get("provenance_refs") or []])
+        _copy_provenance(
+            root,
+            bundle_dir,
+            manifest,
+            [str(ref) for ref in batch_record.get("provenance_refs") or []],
+        )
     )
 
     manifest["status"] = "complete" if not manifest["missing_refs"] else "warning"
@@ -1366,13 +1745,21 @@ def export_batch_bundle(
     checksum_path = bundle_dir / "bundle_checksums.yml"
     manifest["checksum_manifest_path"] = str(checksum_path)
     manifest["checksum_manifest_ref"] = _project_ref(root, checksum_path)
-    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(bundle_dir).as_posix()
+    manifest["checksum_manifest_bundle_ref"] = checksum_path.relative_to(
+        bundle_dir
+    ).as_posix()
     write_yaml(manifest_path, manifest)
-    _write_bundle_checksums(root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum])
+    _write_bundle_checksums(
+        root, bundle_dir, manifest, exclude_paths=[archive_target, archive_checksum]
+    )
     if create_archive:
         try:
-            _write_zip_archive(bundle_dir, archive_target, exclude_paths=[archive_checksum])
+            _write_zip_archive(
+                bundle_dir, archive_target, exclude_paths=[archive_checksum]
+            )
             _write_archive_checksum(archive_target, archive_checksum)
         except OSError as exc:
-            raise ReportBundleError(f"Failed to create batch bundle archive: {archive_target}: {exc}") from exc
+            raise ReportBundleError(
+                f"Failed to create batch bundle archive: {archive_target}: {exc}"
+            ) from exc
     return manifest

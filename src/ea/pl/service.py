@@ -19,6 +19,7 @@ from ea.figures import (
     figure_footer,
     register_figure,
     save_styled_figure,
+    source_data_entry,
     style_axis,
     styled_subplots,
 )
@@ -82,13 +83,17 @@ def _merge_parameters(parameters: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
-def _warning(code: str, message: str, severity: str = "low", **details: Any) -> dict[str, Any]:
+def _warning(
+    code: str, message: str, severity: str = "low", **details: Any
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"code": code, "message": message, "severity": severity}
     payload.update(details)
     return payload
 
 
-def _coerce_int(value: Any, default: int, *, minimum: int | None = None) -> tuple[int, bool]:
+def _coerce_int(
+    value: Any, default: int, *, minimum: int | None = None
+) -> tuple[int, bool]:
     try:
         coerced = int(value)
     except (TypeError, ValueError):
@@ -104,7 +109,9 @@ def _confirmed_frame(path: Path, request: PLProcessingRequest) -> pd.DataFrame:
     if request.x_column not in frame.columns or request.y_column not in frame.columns:
         raise PLProcessingError("Confirmed x/y columns are not present in the raw file")
     if request.x_unit not in {"eV", "nm", "unknown"}:
-        raise PLProcessingError("PL x_unit must be user-confirmed as eV, nm, or unknown")
+        raise PLProcessingError(
+            "PL x_unit must be user-confirmed as eV, nm, or unknown"
+        )
     data = frame[[request.x_column, request.y_column]].copy()
     data.columns = ["pl_axis", "raw_intensity"]
     data["pl_axis"] = pd.to_numeric(data["pl_axis"], errors="coerce")
@@ -120,14 +127,18 @@ def _confirmed_frame(path: Path, request: PLProcessingRequest) -> pd.DataFrame:
     return data
 
 
-def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _apply_processing(
+    data: pd.DataFrame, parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     processed = data.copy()
     warnings: list[dict[str, Any]] = []
     intensity = processed["raw_intensity"].to_numpy(dtype=float)
 
     smoothing = parameters.get("smoothing", {})
     if smoothing.get("enabled", False):
-        window_length, window_adjusted = _coerce_int(smoothing.get("window_length"), 11, minimum=3)
+        window_length, window_adjusted = _coerce_int(
+            smoothing.get("window_length"), 11, minimum=3
+        )
         polyorder, poly_adjusted = _coerce_int(smoothing.get("polyorder"), 2, minimum=1)
         max_window = intensity.size if intensity.size % 2 == 1 else intensity.size - 1
         adjusted = window_adjusted or poly_adjusted
@@ -152,7 +163,15 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
                 )
             )
         if intensity.size >= 3:
-            intensity = np.asarray(savgol_filter(intensity, window_length=window_length, polyorder=polyorder, mode="interp"), dtype=float)
+            intensity = np.asarray(
+                savgol_filter(
+                    intensity,
+                    window_length=window_length,
+                    polyorder=polyorder,
+                    mode="interp",
+                ),
+                dtype=float,
+            )
             processed["smoothed_intensity"] = intensity
             warnings.append(
                 _warning(
@@ -164,18 +183,31 @@ def _apply_processing(data: pd.DataFrame, parameters: dict[str, Any]) -> tuple[p
                 )
             )
         else:
-            warnings.append(_warning("pl_smoothing_skipped", "PL smoothing skipped because the spectrum has fewer than three points.", severity="medium"))
+            warnings.append(
+                _warning(
+                    "pl_smoothing_skipped",
+                    "PL smoothing skipped because the spectrum has fewer than three points.",
+                    severity="medium",
+                )
+            )
 
     if parameters.get("normalization", {}).get("enabled", True):
         max_value = float(np.max(np.abs(intensity)))
         if max_value > 0:
             intensity = intensity / max_value
-        warnings.append(_warning("pl_normalization_applied", "PL intensity normalized by processing parameters."))
+        warnings.append(
+            _warning(
+                "pl_normalization_applied",
+                "PL intensity normalized by processing parameters.",
+            )
+        )
     processed["processed_intensity"] = intensity
     return processed, warnings
 
 
-def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: str) -> pd.DataFrame:
+def _detect_peaks(
+    processed: pd.DataFrame, parameters: dict[str, Any], x_unit: str
+) -> pd.DataFrame:
     y = processed["processed_intensity"].to_numpy(dtype=float)
     peak_params = parameters.get("peak_detection", {})
     prominence = peak_params.get("prominence", "auto")
@@ -228,8 +260,15 @@ def _detect_peaks(processed: pd.DataFrame, parameters: dict[str, Any], x_unit: s
     )
 
 
-def _analyze_pl_peaks(peaks: pd.DataFrame, root: Path, project_id: str, x_unit: str) -> dict[str, Any]:
-    for column in ["assignment", "assignment_confidence", "assignment_feature", "assignment_source"]:
+def _analyze_pl_peaks(
+    peaks: pd.DataFrame, root: Path, project_id: str, x_unit: str
+) -> dict[str, Any]:
+    for column in [
+        "assignment",
+        "assignment_confidence",
+        "assignment_feature",
+        "assignment_source",
+    ]:
         if column not in peaks.columns:
             peaks[column] = ""
 
@@ -253,8 +292,12 @@ def _analyze_pl_peaks(peaks: pd.DataFrame, root: Path, project_id: str, x_unit: 
         "peak_id": str(dominant["peak_id"]),
         "position": float(dominant["position"]),
         "position_unit": str(dominant["position_unit"]),
-        "position_eV": float(dominant["position_eV"]) if pd.notna(dominant["position_eV"]) else None,
-        "wavelength_nm": float(dominant["wavelength_nm"]) if pd.notna(dominant["wavelength_nm"]) else None,
+        "position_eV": float(dominant["position_eV"])
+        if pd.notna(dominant["position_eV"])
+        else None,
+        "wavelength_nm": float(dominant["wavelength_nm"])
+        if pd.notna(dominant["wavelength_nm"])
+        else None,
     }
     analysis["dominant_peak"] = dominant_peak
 
@@ -271,7 +314,9 @@ def _analyze_pl_peaks(peaks: pd.DataFrame, root: Path, project_id: str, x_unit: 
         )
         return analysis
 
-    material_analysis = match_pl_peaks(material_id, peaks.to_dict("records"), x_unit=x_unit)
+    material_analysis = match_pl_peaks(
+        material_id, peaks.to_dict("records"), x_unit=x_unit
+    )
     for update in material_analysis.pop("peak_updates", []):
         mask = peaks["peak_id"].astype(str) == str(update["peak_id"])
         for key, value in update.items():
@@ -288,16 +333,45 @@ def _uses_v0_2_project_ids(project_id: str) -> bool:
     return project_id.startswith("prj-")
 
 
-def _plot_pl(processed: pd.DataFrame, peaks: pd.DataFrame, output: Path, x_unit: str, *, footer: str | None = None) -> None:
+def _plot_pl(
+    processed: pd.DataFrame,
+    peaks: pd.DataFrame,
+    output: Path,
+    x_unit: str,
+    *,
+    footer: str | None = None,
+) -> None:
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
-    ax.plot(processed["pl_axis"], processed["raw_intensity"], color=NATURE_LIKE_COLORS["blue"], linewidth=1.0, alpha=0.5, label="Raw intensity")
-    ax.plot(processed["pl_axis"], processed["processed_intensity"], color=NATURE_LIKE_COLORS["orange"], linewidth=1.2, label="Processed intensity")
+    ax.plot(
+        processed["pl_axis"],
+        processed["raw_intensity"],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=1.0,
+        alpha=0.5,
+        label="Raw intensity",
+    )
+    ax.plot(
+        processed["pl_axis"],
+        processed["processed_intensity"],
+        color=NATURE_LIKE_COLORS["orange"],
+        linewidth=1.2,
+        label="Processed intensity",
+    )
     if not peaks.empty:
-        ax.scatter(peaks["position"], peaks["height"], color=NATURE_LIKE_COLORS["black"], s=18, label="Detected peaks", zorder=3)
+        ax.scatter(
+            peaks["position"],
+            peaks["height"],
+            color=NATURE_LIKE_COLORS["black"],
+            s=18,
+            label="Detected peaks",
+            zorder=3,
+        )
     style_axis(
         ax,
         title="PL spectrum",
-        xlabel=f"Emission energy ({x_unit})" if x_unit != "unknown" else "PL axis (unknown unit)",
+        xlabel=f"Emission energy ({x_unit})"
+        if x_unit != "unknown"
+        else "PL axis (unknown unit)",
         ylabel="Intensity (a.u.)",
     )
     save_styled_figure(fig, output, footer=footer)
@@ -321,7 +395,9 @@ def process_pl_result(
         raise PLProcessingError(f"File is {inspection.file_kind}, not PL")
 
     parameters = _merge_parameters(request.processing_parameters)
-    processed, processing_warnings = _apply_processing(_confirmed_frame(raw_path, request), parameters)
+    processed, processing_warnings = _apply_processing(
+        _confirmed_frame(raw_path, request), parameters
+    )
     peaks = _detect_peaks(processed, parameters, request.x_unit)
     peak_analysis = _analyze_pl_peaks(peaks, root, project_id, request.x_unit)
     day = _created_day(created_at)
@@ -345,11 +421,23 @@ def process_pl_result(
     output_dir.mkdir(parents=True, exist_ok=True)
     processed.to_csv(processed_csv, index=False)
     peaks.to_csv(peaks_csv, index=False)
-    _plot_pl(processed, peaks, figure, request.x_unit, footer=figure_footer(figure_id, None) if figure_id else None)
+    _plot_pl(
+        processed,
+        peaks,
+        figure,
+        request.x_unit,
+        footer=figure_footer(figure_id, None) if figure_id else None,
+    )
 
     warnings: list[Any] = []
     if request.x_unit == "unknown":
-        warnings.append(_warning("pl_x_unit_unknown", "PL x unit remains unknown after confirmation.", severity="medium"))
+        warnings.append(
+            _warning(
+                "pl_x_unit_unknown",
+                "PL x unit remains unknown after confirmation.",
+                severity="medium",
+            )
+        )
     warnings.extend(processing_warnings)
     result = PLProcessingResult(
         pl_result_id=result_id,
@@ -431,6 +519,21 @@ def process_pl_result(
             source_data_refs=[
                 processed_csv.relative_to(root).as_posix(),
                 peaks_csv.relative_to(root).as_posix(),
+            ],
+            source_data=[
+                source_data_entry(
+                    root,
+                    processed_csv.relative_to(root).as_posix(),
+                    role="primary_plotting_dataset",
+                    purpose="Processed PL trace plotted in the spectrum figure.",
+                    primary=True,
+                ),
+                source_data_entry(
+                    root,
+                    peaks_csv.relative_to(root).as_posix(),
+                    role="peak_table",
+                    purpose="Detected PL peak annotations.",
+                ),
             ],
         )
     return result_metadata

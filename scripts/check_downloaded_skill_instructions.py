@@ -17,7 +17,7 @@ REQUIRED_FILES = [
     Path("docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md"),
 ]
 REQUIRED_STRINGS = [
-    "Experimental Assistant v0.9.7",
+    "Experimental Assistant v0.9.8",
     "$ea",
     "$ea-v0-2",
     "ea setup",

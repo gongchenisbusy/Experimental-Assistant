@@ -60,8 +60,8 @@ CONFUSING_CURRENT_VERSION_PHRASES = [
 def test_v0_9_release_candidate_docs_are_public_safe_and_actionable() -> None:
     text_by_path = {path: path.read_text(encoding="utf-8") for path in RC_DOCS}
 
-    assert "Experimental Assistant v0.9.7 Public Acceptance Matrix" in text_by_path[Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md")]
-    assert "Package version: `0.9.7`" in text_by_path[Path("docs/V0_9_RELEASE_NOTES.md")]
+    assert "Experimental Assistant v0.9.8 Public Acceptance Matrix" in text_by_path[Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md")]
+    assert "Package version: `0.9.8`" in text_by_path[Path("docs/V0_9_RELEASE_NOTES.md")]
     assert "Relationship To v1.0" in text_by_path[Path("docs/V0_9_RELEASE_NOTES.md")]
     assert "Scientific Boundaries" in text_by_path[Path("docs/V0_9_KNOWN_LIMITATIONS.md")]
     assert "Manual Test Checklist" in text_by_path[Path("docs/V0_9_MANUAL_TEST_CHECKLIST.md")]
@@ -79,7 +79,7 @@ def test_v0_9_release_candidate_docs_are_public_safe_and_actionable() -> None:
 def test_v0_9_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
     parser_help = build_parser().format_help()
     assert "init-project" in parser_help
-    assert "initialize a public-user Experimental Assistant v0.9.7" in parser_help
+    assert "initialize a public-user Experimental Assistant v0.9.8" in parser_help
     assert "project workspace" in parser_help
 
     combined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_VERSION_SURFACES)
@@ -95,11 +95,11 @@ def test_v0_9_release_candidate_docs_are_packaged(tmp_path: Path) -> None:
     for doc in RC_DOCS:
         assert doc.as_posix() in paths
 
-    assert manifest["release"]["label"] == "v0.9.7"
+    assert manifest["release"]["label"] == "v0.9.8"
     assert manifest["release"]["acceptance_matrix_ref"] == "docs/PUBLIC_ACCEPTANCE_MATRIX.md"
     assert manifest["public_repository"]["project_name"] == "Experimental Assistant (EA)"
     assert manifest["public_repository"]["repository_full_name"] == "gongchenisbusy/Experimental-Assistant"
-    assert manifest["public_repository"]["release_url"].endswith("/releases/tag/v0.9.7")
+    assert manifest["public_repository"]["release_url"].endswith("/releases/tag/v0.9.8")
 
     package = write_release_package(Path.cwd(), output=tmp_path / "release.zip", archive_root="ea-release-doc-test")
     with zipfile.ZipFile(package["archive_path"]) as archive:
