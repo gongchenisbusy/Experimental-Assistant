@@ -1,6 +1,6 @@
 # FTIR Workflow
 
-Use this reference when processing Fourier-transform infrared spectra in the Experimental Assistant v0.9.8 compatibility skill.
+Use this reference when processing Fourier-transform infrared spectra in the Experimental Assistant v0.9.8 skill.
 
 Required gates:
 

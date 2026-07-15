@@ -2,7 +2,7 @@
 
 This guide is for a new public user or a fresh agent starting from an Experimental Assistant v0.9.8 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
-Naming note: the distribution is `experimental-assistant`, the CLI is `ea`, and the primary Codex skill is `$ea`. `$ea-v0-2` is a deprecated compatibility identifier retained through v1.0.x; new work should use `$ea`.
+The distribution is `experimental-assistant`, the CLI is `ea`, and `$ea` is the only public Codex skill.
 
 ## 1. Install
 
@@ -22,7 +22,7 @@ ea doctor
 
 For repository checkouts or extracted release packages, run `python3 scripts/check_install_env.py` before creating a venv. The `python3` used for `python3 -m pip install -e .` must be Python 3.11 or newer. Use `python3 -m pip install -e ".[dev]"` only for developers or maintainers who need pytest, release smoke checks, and package verification.
 
-`ea setup` installs the primary `$ea` skill and thin `$ea-v0-2` compatibility wrapper as one validated transaction. Restart Codex after setup and invoke `$ea` in a new task. `ea doctor` verifies the exact PATH executable, distribution identity, version, both skill paths, and skill validation; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for update, rollback, uninstall, and troubleshooting commands.
+`ea setup` installs the `$ea` skill as one validated transaction and removes the retired Compatibility skill if present. Restart Codex after setup and invoke `$ea` in a new task. `ea doctor` verifies the exact PATH executable, distribution identity, version, `$ea` path, retired-skill absence, and skill validation; see `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` for update, rollback, uninstall, and troubleshooting commands.
 
 The release package also includes `examples/public-raman-project/`, a public-safe Raman project artifact; `examples/public-ftir-assignment-project/`, a public-safe FTIR source-backed assignment artifact; `examples/public-uv-vis-project/`, a public-safe UV-Vis reviewed optical-screening artifact; and `examples/public-xps-be-project/`, a public-safe XPS binding-energy candidate artifact that demonstrates the default C 1s/Si 2p candidate path plus an optional O 1s/oxide source-backed path. These examples can be inspected without configuring Zotero, browser assistance, institution access, private caches, or signing keys.
 

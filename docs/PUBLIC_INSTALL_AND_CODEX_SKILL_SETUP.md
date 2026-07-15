@@ -1,8 +1,6 @@
 # EA Public Install And Codex Skill Setup
 
-Product identity: `Experimental Assistant v0.9.8`. The CLI is `ea`, the Python distribution is `experimental-assistant`, and the primary Codex skill is `$ea`.
-
-Naming note: `$ea-v0-2` is the deprecated compatibility identifier retained through v1.0.x. It is installed beside `$ea` so older tasks continue to route correctly; new users should invoke `$ea`.
+Product identity: `Experimental Assistant v0.9.8`. The CLI is `ea`, the Python distribution is `experimental-assistant`, and the single Codex skill is `$ea`.
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
@@ -20,7 +18,7 @@ ea setup
 ea doctor
 ```
 
-`ea setup` installs both Codex skill entries transactionally. Restart Codex, create a new task, and invoke `$ea`.
+`ea setup` installs the `$ea` Codex skill transactionally and removes the retired Compatibility skill if it is present. Restart Codex, create a new task, and invoke `$ea`.
 
 Expected identity:
 
@@ -29,15 +27,14 @@ Product: Experimental Assistant
 Version: 0.9.8
 Distribution: experimental-assistant
 Primary skill: $ea
-Compatibility skill: $ea-v0-2
 ```
 
 ## Installation Layers
 
 - Layer 1: EA CLI. The `experimental-assistant` distribution provides `ea` and release helpers.
-- Layer 2: Codex skill. `ea setup` installs `skills/ea` and the thin `skills/ea-v0-2` wrapper under `${CODEX_HOME:-$HOME/.codex}/skills`.
+- Layer 2: Codex skill. `ea setup` installs `skills/ea` under `${CODEX_HOME:-$HOME/.codex}/skills`.
 
-Installing only the skill does not provide the CLI. Installing only the CLI does not make `$ea` available to Codex. `ea doctor` checks the exact executable, distribution, version, both skills, and validation state.
+Installing only the skill does not provide the CLI. Installing only the CLI does not make `$ea` available to Codex. `ea doctor` checks the exact executable, distribution, version, `$ea` skill, retired-skill absence, and validation state.
 
 ## Verify The Install
 
@@ -137,16 +134,13 @@ python3 scripts/public_release_smoke.py
 
 ## Manual Skill Copy
 
-The built-in transactional installer is preferred. A maintainer diagnosing a local checkout may manually copy and validate both entries:
+The built-in transactional installer is preferred. A maintainer diagnosing a local checkout may manually copy and validate the single entry:
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 cp -R skills/ea "${CODEX_HOME:-$HOME/.codex}/skills/ea"
-cp -R skills/ea-v0-2 "${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2"
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
   "${CODEX_HOME:-$HOME/.codex}/skills/ea"
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
-  "${CODEX_HOME:-$HOME/.codex}/skills/ea-v0-2"
 ```
 
 The installer preserves unrelated skills such as `ea-v0-1`; it does not delete `ea-v0-1` or project data.
@@ -166,7 +160,7 @@ Then install the extracted checkout with the editable-checkout steps above. Chec
 
 - `ea: command not found`: restart the shell or add the `uv tool` binary directory to `PATH`.
 - Wrong product/version from `ea version`: run `command -v ea`, then reinstall with `uv tool install --force ...` and rerun `ea doctor`.
-- `$ea` unavailable after setup: restart Codex and confirm `ea doctor` reports both skills as valid.
+- `$ea` unavailable after setup: restart Codex and confirm `ea doctor` reports the skill as valid and the retired Compatibility entry as absent.
 - Existing project format differs: run `ea migrate status` and `ea migrate plan`; do not edit project metadata by hand.
 - Literature integration blocked: run `ea literature setup-preflight`; EA supports a no-Zotero degraded mode and does not assume accounts or institution access.
 

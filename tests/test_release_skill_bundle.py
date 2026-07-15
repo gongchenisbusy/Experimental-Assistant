@@ -8,7 +8,7 @@ from ea import __version__
 from ea.release_skill_bundle import build_skill_bundle, verify_skill_bundle
 
 
-def test_skill_bundle_is_compact_deterministic_and_contains_both_skills(
+def test_skill_bundle_is_compact_deterministic_and_contains_only_primary_skill(
     tmp_path: Path,
 ) -> None:
     first = tmp_path / "first.zip"
@@ -23,7 +23,8 @@ def test_skill_bundle_is_compact_deterministic_and_contains_both_skills(
     with zipfile.ZipFile(first) as archive:
         names = set(archive.namelist())
     assert "skills/ea/SKILL.md" in names
-    assert "skills/ea-v0-2/SKILL.md" in names
+    assert not any(name.startswith("skills/ea-v0-2/") for name in names)
+    assert one["skills"] == ["ea"]
     assert not any("__pycache__" in name or name.endswith(".pyc") for name in names)
     assert verify_skill_bundle(first)["status"] == "pass"
 

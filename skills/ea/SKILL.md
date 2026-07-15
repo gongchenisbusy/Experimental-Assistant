@@ -7,7 +7,7 @@ description: Experimental Assistant v0.9.8 local-first materials research skill.
 
 ## Product Contract
 
-Use `Experimental Assistant`, CLI `ea`, and invocation `$ea` as the public identity. Treat `$ea-v0-2` only as a temporary compatibility entry point. Preserve historical identities in existing project records.
+Use `Experimental Assistant`, CLI `ea`, and invocation `$ea` as the only public identity. The former Compatibility skill has been retired before v1.0; preserve historical identities in existing project records without exposing a second skill entry.
 
 EA is a local-first materials research assistant. Protect raw data, require review for decisions that change scientific interpretation, preserve provenance and evidence anchors, and keep Zotero, browser, institution access, downloads, diagnostics submission, and feedback submission opt-in.
 
@@ -58,4 +58,4 @@ Estimate broad acquisition, extraction, OCR, digitization, batch, or large repor
 
 ## Release Work
 
-For repository release tasks, follow `references/release-workflow.md`. Validate `skills/ea` and the compatibility wrapper, run the complete platform/package/identity/privacy gates, and verify public artifacts after upload. Never treat a local legacy test pass as proof of release completion.
+For repository release tasks, follow `references/release-workflow.md`. Validate `skills/ea`, confirm the retired Compatibility skill is absent, run the complete platform/package/identity/privacy gates, and verify public artifacts after upload. Never treat a local legacy test pass as proof of release completion.

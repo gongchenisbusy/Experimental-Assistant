@@ -139,12 +139,11 @@ def smoke_install_artifact(
             and identity.get("package_version") == __version__
             and identity.get("skill_folder") == "ea"
         )
-        skill_setup_pass = all(
-            (
-                temporary_root / "codex-home" / "skills" / skill_name / "SKILL.md"
-            ).is_file()
-            for skill_name in ("ea", "ea-v0-2")
-        )
+        skill_setup_pass = (
+            temporary_root / "codex-home" / "skills" / "ea" / "SKILL.md"
+        ).is_file() and not (
+            temporary_root / "codex-home" / "skills" / "ea-v0-2"
+        ).exists()
         return {
             "artifact": artifact.name,
             "artifact_kind": "wheel" if artifact.suffix == ".whl" else "sdist",
@@ -156,7 +155,7 @@ def smoke_install_artifact(
                 resolved and Path(resolved).resolve() == ea.resolve()
             ),
             "commands": results,
-            "bundled_skills_installed": skill_setup_pass,
+            "bundled_skill_installed": skill_setup_pass,
         }
 
 

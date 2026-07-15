@@ -9,7 +9,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 - [ ] Run `ea setup`, restart Codex, and invoke `$ea` in a fresh task.
 - [ ] Confirm wheel/sdist setup uses their bundled skills without a repository clone; separately verify the release skill ZIP and SHA-256 sidecar.
 - [ ] On native Windows, repeat setup under a path longer than 260 characters and validate Chinese GBK console output without mojibake or `UnicodeDecodeError`.
-- [ ] Confirm `$ea-v0-2` routes to `$ea` without loading a second full instruction set.
+- [ ] Confirm only `$ea` is installed and the retired Compatibility skill is absent after setup/update.
 - [ ] Preview update, rollback, and uninstall; perform them only in a disposable test environment.
 
 ## First Project
@@ -40,7 +40,7 @@ Record tester, operating system, Python version, commit/tag, date, commands, art
 
 ## Release Engineering
 
-- [ ] Full tests and both skill validations pass.
+- [ ] Full tests and the `$ea` skill validation pass; the retired Compatibility skill is absent.
 - [ ] Native CI passes on Windows, Ubuntu, macOS with Python 3.11-3.13; Python 3.14 result is recorded separately.
 - [ ] Clean wheel/sdist builds are reproducible under the documented conditions.
 - [ ] SBOM exists and vulnerability report status is `pass`.

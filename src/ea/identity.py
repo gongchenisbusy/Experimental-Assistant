@@ -16,8 +16,9 @@ CLI_NAME = "ea"
 
 SKILL_NAME = "ea"
 SKILL_INVOCATION = "$ea"
-LEGACY_SKILL_NAMES = ("ea-v0-2",)
-LEGACY_SKILL_INVOCATIONS = ("$ea-v0-2",)
+# Retained only so setup/doctor can remove stale pre-v1 compatibility installs.
+# It is not a supported public skill or invocation.
+RETIRED_SKILL_NAMES = ("ea-v0-2",)
 
 PROJECT_FORMAT_VERSION = "1.0"
 SUPPORTED_PYTHON_MINORS = ((3, 11), (3, 12), (3, 13))

@@ -1,6 +1,6 @@
 # Experimental Assistant v0.9.8 中文快速入门
 
-EA 是一个本地优先的材料研究助手。公开名称是 Experimental Assistant，命令行是 `ea`，Codex 中的主入口是 `$ea`。`$ea-v0-2` 仅用于兼容旧任务。
+EA 是一个本地优先的材料研究助手。公开名称是 Experimental Assistant，命令行是 `ea`，Codex 中唯一的 skill 入口是 `$ea`。
 
 ## 1. 安装
 

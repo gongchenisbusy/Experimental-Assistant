@@ -2,9 +2,7 @@
 
 Experimental Assistant (EA) is a local-first materials-research assistant. It helps organize projects, protect imported raw data, run review-gated characterization workflows, trace reports back to evidence, and coordinate literature work without assuming developer-machine accounts or paths.
 
-Public identity: `Experimental Assistant`, CLI `ea`, Codex skill `$ea`, Python distribution `experimental-assistant`.
-
-Naming note: `$ea-v0-2` is a deprecated compatibility identifier retained through the v1.0.x line. New users and documentation use `$ea`.
+Public identity: `Experimental Assistant`, CLI `ea`, the single Codex skill `$ea`, and Python distribution `experimental-assistant`.
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
@@ -151,9 +149,9 @@ Compact metadata is stored in `traceability/index.yml`; explicit full export wri
 
 Machine tests do not replace scientific review. Raman remains beta until independent scientific sign-off is recorded. External novice and expert trial evidence is also required before promotion to v1.0.
 
-## Compatibility And Updates
+## Migration And Updates
 
-Existing `$ea-v0-2` installs continue to route to `$ea` during v1.0.x. Historical project records are not rewritten merely to change the product name.
+The former `Experimental Assistant (Compatibility)` skill was retired after v0.9.8 and is not part of the pre-v1 or v1.0 public surface. `ea setup` removes a stale compatibility-skill directory if one is present. Historical project records remain readable and are not rewritten merely to change the product name.
 
 ```bash
 ea migrate status /path/to/project

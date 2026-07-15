@@ -8,7 +8,8 @@ compatibility_contract:
   v0_9_7_project_read_only_open: required
   source_data_refs_reader: retained
   acquisition_v1_reader: retained_and_normalized_to_v2_in_memory
-  ea_v0_2_wrapper: retained
+  ea_v0_2_wrapper: retained_in_published_v0_9_8_only
+  post_v0_9_8_decision: removed_before_v1_0
   historical_provenance_and_version_ids: never_automatically_rewritten
 issues:
   - number: 2

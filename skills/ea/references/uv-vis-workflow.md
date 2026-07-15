@@ -1,6 +1,6 @@
 # UV-Vis Workflow
 
-Use this reference when processing UV-Vis absorbance, transmittance, or reflectance spectra in the Experimental Assistant v0.9.8 compatibility skill.
+Use this reference when processing UV-Vis absorbance, transmittance, or reflectance spectra in the Experimental Assistant v0.9.8 skill.
 
 Required gates:
 

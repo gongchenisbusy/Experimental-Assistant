@@ -93,7 +93,8 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     assert 'python3 -m pip install -e ".[dev,release]"' in text
     assert "CODEX_HOME" in text
     assert "cp -R skills/ea " in text
-    assert "cp -R skills/ea-v0-2" in text
+    assert "cp -R skills/ea-v0-2" not in text
+    assert "single Codex skill" in text
     assert "quick_validate.py" in text
     assert "Quick Start For Users" in text
     assert "Layer 1: EA CLI" in text

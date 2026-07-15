@@ -56,9 +56,9 @@ Repeat clean builds with the same commit and `SOURCE_DATE_EPOCH`; the wheel and 
 
 ## What Each Check Proves
 
-- `ea-public-release-smoke`: tests, both skill validations, CLI help, examples, portability scan, and sensitive-value scan.
+- `ea-public-release-smoke`: tests, `$ea` skill validation, retired-skill absence, CLI help, examples, portability scan, and sensitive-value scan.
 - `ea-release-supply-chain`: installed-component inventory and known-vulnerability policy result for the clean environment.
-- `ea-release-skill-bundle`: deterministic compact `$ea`/`$ea-v0-2` payload and checksum for recovery when a bundled distribution is unavailable.
+- `ea-release-skill-bundle`: deterministic compact `$ea` payload and checksum for recovery when a bundled distribution is unavailable.
 - `ea-release-manifest`: exact release inputs, identity, git state, validation contract, scientific evidence refs, and supply-chain refs.
 - `ea-release-package`: deterministic repository handoff zip and SHA-256 sidecar.
 - `ea-verify-release-package`: sidecar, embedded manifest, file sizes, and manifest-listed SHA-256 values.
@@ -70,7 +70,7 @@ Repeat clean builds with the same commit and `SOURCE_DATE_EPOCH`; the wheel and 
 
 - dirty worktree or release tag not at the intended commit;
 - failed full tests, skill validation, identity, downloaded-instruction, portability, privacy, or public-example gate;
-- wheel or sdist cannot install, run, and set up both bundled skills without a repository clone from a clean supported interpreter;
+- wheel or sdist cannot install, run, set up the bundled `$ea` skill, and confirm the retired Compatibility skill is absent without a repository clone from a clean supported interpreter;
 - missing or invalid compact skill bundle/checksum;
 - missing SBOM or vulnerability report;
 - vulnerability scan status other than `pass`;

@@ -40,7 +40,7 @@ Scope limits:
 Repository release gate:
 
 - For publishing or handing off the Experimental Assistant v0.9.8 repository itself, run `ea-public-release-smoke` after project-level readiness checks.
-- The smoke gate is broader than `ea eval project`: it runs the test suite, validates the Experimental Assistant v0.9.8 compatibility skill package, checks core CLI help commands, scans product files for accidental developer-machine defaults, and checks release-facing files for credential-like assignments or token literals.
+- The smoke gate is broader than `ea eval project`: it runs the test suite, validates the Experimental Assistant skill package, confirms the retired Compatibility skill is absent, checks core CLI help commands, scans product files for accidental developer-machine defaults, and checks release-facing files for credential-like assignments or token literals.
 - After the smoke gate passes, run `ea-release-manifest` to write package metadata, git state, console scripts, release-input checksums, smoke-gate requirements, and public-user boundary notes under `dist/`.
 - Run `ea-release-package` when the handoff should include a portable repository archive and `.zip.sha256` sidecar.
 - Run `ea-verify-release-package ARCHIVE.zip` after copying or before handoff to verify the sidecar, embedded manifest, and manifest-listed payload checksums.

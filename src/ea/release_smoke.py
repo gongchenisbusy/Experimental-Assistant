@@ -24,7 +24,6 @@ DEFAULT_SCAN_ROOTS = [
     "src",
     "docs",
     "skills/ea",
-    "skills/ea-v0-2/SKILL.md",
     "skill-registry",
     "examples",
 ]
@@ -155,17 +154,11 @@ def build_command_steps(
     if not skip_tests:
         steps.append(SmokeStep("pytest", [python, "-m", "pytest"]))
     if not skip_skill_validation:
-        steps.extend(
-            [
-                SmokeStep(
-                    "primary_skill_validation",
-                    [python, str(quick_validate), "skills/ea"],
-                ),
-                SmokeStep(
-                    "compatibility_skill_validation",
-                    [python, str(quick_validate), "skills/ea-v0-2"],
-                ),
-            ]
+        steps.append(
+            SmokeStep(
+                "primary_skill_validation",
+                [python, str(quick_validate), "skills/ea"],
+            )
         )
     if not skip_cli_sanity:
         steps.extend(

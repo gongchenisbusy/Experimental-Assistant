@@ -1,6 +1,6 @@
 # PL Workflow
 
-Use this reference when processing photoluminescence spectra in the Experimental Assistant v0.9.8 compatibility skill.
+Use this reference when processing photoluminescence spectra in the Experimental Assistant v0.9.8 skill.
 
 Required gates:
 

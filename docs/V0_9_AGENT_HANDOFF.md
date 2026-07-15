@@ -3,9 +3,9 @@
 ## Current State
 
 - Release line: `v0.9.8`, package `experimental-assistant 0.9.8`
-- Development branch: `codex/eav0.9.8`
+- Development branch: post-v0.9.8 pre-v1 development
 - Primary skill: `skills/ea` / `$ea`
-- Compatibility wrapper: `skills/ea-v0-2` / `$ea-v0-2` through v1.0.x
+- Compatibility skill: retired before v1.0; source, package, release bundle, and installed target must be absent
 - Capability matrix: `docs/CAPABILITY_MATRIX.md`
 - Acceptance and manual evidence: `docs/PUBLIC_ACCEPTANCE_MATRIX.md`, `docs/V0_9_MANUAL_TEST_CHECKLIST.md`
 
@@ -36,4 +36,4 @@ Do not mark independent novice/platform trials or external scientific review as 
 
 - Do not assume Zotero, browser sessions, institution access, private caches, signing keys, or developer paths.
 - Do not mutate raw data, bypass access controls, commit memory without review, or turn screening evidence into a definitive claim.
-- Do not duplicate full instructions in `skills/ea-v0-2`; it is only a compatibility router.
+- Do not restore or republish the retired Compatibility skill. Preserve old project identifiers only as read-only provenance where needed.

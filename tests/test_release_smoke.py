@@ -26,11 +26,7 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
         str(quick_validate),
         "skills/ea",
     ]
-    assert commands["compatibility_skill_validation"] == [
-        "python",
-        str(quick_validate),
-        "skills/ea-v0-2",
-    ]
+    assert "compatibility_skill_validation" not in commands
     assert "raise SystemExit(main(['--help']))" in commands["cli_help"][2]
     assert "raise SystemExit(main(['--version']))" in commands["cli_global_version"][2]
     assert (

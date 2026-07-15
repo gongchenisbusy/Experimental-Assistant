@@ -244,7 +244,7 @@ def build_distribution_checklist(
         ),
         _check(
             "skill_distribution.bundle",
-            "Compact Codex skill bundle and checksum contain $ea and $ea-v0-2.",
+            "Compact Codex skill bundle and checksum contain only the public $ea skill.",
             "pass" if skill_bundle_verification["status"] == "pass" else "fail",
             evidence={
                 "path": _display_path(root, skill_bundle_path),

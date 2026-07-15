@@ -9,7 +9,7 @@ v0.9.8 is an integration and non-regression release on the v1.0-candidate line. 
 - Distribution: `experimental-assistant`
 - CLI: `ea`
 - Primary Codex skill: `$ea`
-- Compatibility: `$ea-v0-2` thin wrapper through v1.0.x
+- Compatibility at the published v0.9.8 tag: `$ea-v0-2` thin wrapper
 - License: Apache-2.0
 
 ## Major Changes Since v0.9.7
@@ -37,4 +37,6 @@ See `docs/CAPABILITY_MATRIX.md`, `docs/V0_9_KNOWN_LIMITATIONS.md`, and `docs/PUB
 
 ## Migration
 
-Run `ea migrate status` and `ea migrate plan` before changing an existing project. Use `$ea` for new Codex tasks. Existing `$ea-v0-2` invocation and historical records remain supported during v1.0.x and are not rewritten merely for naming.
+Run `ea migrate status` and `ea migrate plan` before changing an existing project. Use `$ea` for new Codex tasks. Historical records are not rewritten merely for naming.
+
+Post-release decision: the visible Compatibility skill shipped in the immutable v0.9.8 artifacts but is removed from post-v0.9.8 development before v1.0. See `docs/PRE_V1_COMPATIBILITY_SKILL_REMOVAL.md`.

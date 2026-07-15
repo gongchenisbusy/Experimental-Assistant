@@ -4,7 +4,7 @@ This matrix is the release-candidate contract for ordinary users. A row is passe
 
 | Area | Required evidence | v0.9.8 gate |
 |---|---|---|
-| Identity | `experimental-assistant 0.9.8`, CLI `ea`, primary `$ea`, thin `$ea-v0-2` wrapper | Blocking |
+| Identity | `experimental-assistant`, CLI `ea`, single `$ea` skill, retired Compatibility skill absent | Blocking |
 | Platforms | Native Windows, Ubuntu, macOS on Python 3.11-3.13; 3.14 observation only | Blocking |
 | Install lifecycle | clean wheel and sdist install; setup, doctor, update plan, rollback plan, uninstall plan | Blocking |
 | Project safety | migration plan/apply/rollback, atomic writes, interruption recovery, protected raw import | Blocking |

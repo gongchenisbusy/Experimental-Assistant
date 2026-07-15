@@ -10,7 +10,7 @@ Only platform and Python combinations shown as passing in the release checklist 
 
 - v0.9.x projects remain readable without automatic destructive rewrites.
 - Project-format migrations are explicit, backed up, reversible, and idempotent.
-- `$ea-v0-2` remains available through v1.0.x as a compatibility wrapper for `$ea`.
+- `$ea` is the only supported Codex skill. The former Compatibility skill is removed before v1.0.
 - Historical provenance and project records retain their original version identifiers.
 
 ## Support Channels

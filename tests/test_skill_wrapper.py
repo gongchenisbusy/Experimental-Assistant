@@ -16,7 +16,8 @@ def test_ea_skill_defaults_to_public_user_workflow() -> None:
         in skill_doc
     )
     assert "# Experimental Assistant v0.9.8" in skill_doc
-    assert "$ea-v0-2` only as a temporary compatibility entry point" in skill_doc
+    assert "invocation `$ea` as the only public identity" in skill_doc
+    assert "former Compatibility skill has been retired before v1.0" in skill_doc
     assert "ea start" in skill_doc
     assert "ea status" in skill_doc
     assert "Core Workflow" in skill_doc
@@ -44,15 +45,8 @@ def test_ea_skill_defaults_to_public_user_workflow() -> None:
     )
 
 
-def test_ea_v0_2_is_a_thin_compatibility_wrapper() -> None:
-    wrapper = Path("skills/ea-v0-2/SKILL.md").read_text(encoding="utf-8")
-
-    assert "temporary compatibility invocation" in wrapper
-    assert "sibling `ea/SKILL.md`" in wrapper
-    assert "stable public invocation is `$ea`" in wrapper
-    assert "v1.0.x release line" in wrapper
-    assert "references/raman-workflow.md" not in wrapper
-    assert len(wrapper.encode("utf-8")) < 1500
+def test_retired_compatibility_skill_is_absent() -> None:
+    assert not Path("skills/ea-v0-2").exists()
 
 
 def test_ea_skill_public_demo_command_runs(tmp_path: Path) -> None:

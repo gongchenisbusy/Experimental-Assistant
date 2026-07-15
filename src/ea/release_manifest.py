@@ -13,7 +13,6 @@ import yaml
 
 from ea.identity import (
     DISTRIBUTION_NAME,
-    LEGACY_SKILL_NAMES,
     PROJECT_FORMAT_VERSION,
     RELEASE_LABEL,
     SKILL_NAME,
@@ -34,7 +33,6 @@ DEFAULT_INCLUDE_ROOTS = [
     "pyproject.toml",
     "src/ea",
     "skills/ea",
-    "skills/ea-v0-2",
     "skill-registry",
     "docs",
     "schemas",
@@ -253,7 +251,6 @@ def build_release_manifest(
             "required_smoke_steps": [
                 "pytest",
                 "primary_skill_validation",
-                "compatibility_skill_validation",
                 "cli_help",
                 "cli_global_version",
                 "cli_version_help",
@@ -285,13 +282,12 @@ def build_release_manifest(
                 "release_skill_bundle_help",
                 "portability_scan",
             ],
-            "skill_validation_targets": ["skills/ea", "skills/ea-v0-2"],
+            "skill_validation_targets": ["skills/ea"],
             "portability_scan_scope": [
                 "README.md",
                 "pyproject.toml",
                 "src",
                 "skills/ea",
-                "skills/ea-v0-2/SKILL.md",
                 "skill-registry",
                 "examples",
             ],
@@ -299,7 +295,6 @@ def build_release_manifest(
         "identity_contract": {
             "distribution": DISTRIBUTION_NAME,
             "primary_skill": SKILL_NAME,
-            "compatibility_skills": list(LEGACY_SKILL_NAMES),
             "project_format_version": PROJECT_FORMAT_VERSION,
             "supported_python_minors": [
                 f"{major}.{minor}" for major, minor in SUPPORTED_PYTHON_MINORS

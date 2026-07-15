@@ -32,5 +32,5 @@
 
 ## Compatibility
 
-- `$ea-v0-2` remains a thin compatibility entry through v1.0.x. Removal requires a later announced deprecation window.
+- The former Compatibility skill was removed before v1.0 because there was no material legacy-user population. `$ea` is the only supported skill entry.
 - Historical project schema/version strings are preserved where rewriting would damage provenance; use the migration commands rather than manual edits.

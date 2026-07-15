@@ -29,7 +29,6 @@ PUBLIC_VERSION_SURFACES = [
     Path("docs/RELEASE_VERIFICATION.md"),
     Path("docs/PROJECT_BUNDLE_VERIFICATION.md"),
     Path("skills/ea/SKILL.md"),
-    Path("skills/ea-v0-2/SKILL.md"),
     Path("skills/ea/references/evaluator-workflow.md"),
     Path("skills/ea/references/project-workflow.md"),
     Path("skills/ea/references/release-workflow.md"),
@@ -83,8 +82,8 @@ def test_v0_9_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
     assert "project workspace" in parser_help
 
     combined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_VERSION_SURFACES)
-    assert "Naming note" in combined
-    assert "compatibility identifier" in combined
+    assert "single Codex skill" in combined
+    assert "retired Compatibility skill" in combined
     for phrase in CONFUSING_CURRENT_VERSION_PHRASES:
         assert phrase not in combined
 

@@ -13,7 +13,6 @@ from ea.release_skill_bundle import build_skill_bundle
 def _minimal_release_root(root: Path) -> Path:
     (root / "src" / "ea").mkdir(parents=True)
     (root / "skills" / "ea").mkdir(parents=True)
-    (root / "skills" / "ea-v0-2").mkdir(parents=True)
     (root / "skill-registry").mkdir()
     (root / "requirements").mkdir()
     (root / "docs").mkdir()
@@ -61,9 +60,6 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     (root / "src" / "ea" / "__pycache__" / "ignored.pyc").write_bytes(b"ignored")
     (root / "skills" / "ea" / "SKILL.md").write_text(
         "---\nname: ea\ndescription: test\n---\n", encoding="utf-8"
-    )
-    (root / "skills" / "ea-v0-2" / "SKILL.md").write_text(
-        "---\nname: ea-v0-2\ndescription: test\n---\n", encoding="utf-8"
     )
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")

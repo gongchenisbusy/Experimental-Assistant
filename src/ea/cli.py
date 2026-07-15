@@ -305,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup = sub.add_parser(
         "setup",
-        help="install the $ea and compatibility skills and show first-run onboarding",
+        help="install the $ea skill and show first-run onboarding",
     )
     setup.add_argument(
         "--source", type=Path, help="repository root or primary skills/ea folder"
@@ -406,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     uninstall = sub.add_parser(
         "uninstall",
-        help="plan or remove the EA CLI and Codex skills with recoverable skill backups",
+        help="plan or remove the EA CLI and Codex skill with a recoverable backup",
     )
     uninstall.add_argument("--codex-home", type=Path)
     uninstall.add_argument(
@@ -431,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_sub = codex.add_subparsers(dest="codex_command", required=True)
     codex_install = codex_sub.add_parser(
         "install-skill",
-        help="transactionally install the $ea skill and compatibility wrapper into Codex",
+        help="transactionally install the $ea skill into Codex",
     )
     codex_install.add_argument(
         "--source",
@@ -443,7 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_install.add_argument(
         "--no-backup",
         action="store_true",
-        help="replace existing EA skills without making timestamped backups",
+        help="replace the existing EA skill without making a timestamped backup",
     )
     codex_install.add_argument(
         "--no-github-fetch",
@@ -454,14 +454,14 @@ def build_parser() -> argparse.ArgumentParser:
     codex_install.add_argument("--json", action="store_true")
     codex_rollback = codex_sub.add_parser(
         "rollback-skill",
-        help="restore the latest validated $ea and compatibility backups",
+        help="restore the latest validated $ea backup",
     )
     codex_rollback.add_argument("--codex-home", type=Path)
     codex_rollback.add_argument("--quick-validate", type=Path)
     codex_rollback.add_argument("--yes", action="store_true")
     codex_rollback.add_argument("--json", action="store_true")
     codex_uninstall = codex_sub.add_parser(
-        "uninstall-skills", help="remove EA skills into recoverable backups"
+        "uninstall-skills", help="remove the EA skill into a recoverable backup"
     )
     codex_uninstall.add_argument("--codex-home", type=Path)
     codex_uninstall.add_argument("--yes", action="store_true")

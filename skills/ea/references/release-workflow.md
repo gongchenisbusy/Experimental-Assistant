@@ -40,7 +40,7 @@ Release smoke gate:
 
 - Runs the Python test suite.
 - Validates `skills/ea` with `quick_validate.py`.
-- Validates the thin `skills/ea-v0-2` compatibility wrapper separately.
+- Confirms the retired Compatibility skill is absent from source and release assets.
 - Checks core CLI help paths.
 - Checks the release manifest entry point.
 - Checks the release package entry point.
