@@ -139,6 +139,17 @@ def _artifact_records(path: Path) -> dict[str, dict[str, Any]]:
     return records
 
 
+def publish_reproducible_artifacts(root: Path, source: Path) -> list[dict[str, Any]]:
+    """Publish the already-compared deterministic artifacts into ``dist/``."""
+    dist = root / "dist"
+    records: list[dict[str, Any]] = []
+    for name, record in _artifact_records(source).items():
+        target = dist / name
+        atomic_write_bytes(target, (source / name).read_bytes())
+        records.append({"artifact": name, **record})
+    return records
+
+
 def compare_build_directories(
     first: Path, second: Path, *, source_date_epoch: str
 ) -> dict[str, Any]:
@@ -208,6 +219,11 @@ def build_reproducibility_report(
         report = compare_build_directories(first, second, source_date_epoch=epoch)
         report["builds"] = [first_build, second_build]
         report["canonicalized_release_sdists"] = release_sdists
+        report["published_release_artifacts"] = (
+            publish_reproducible_artifacts(root, first)
+            if report["status"] == "pass"
+            else []
+        )
         return report
 
 
