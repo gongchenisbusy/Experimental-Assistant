@@ -47,6 +47,7 @@ def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
     assert signed["status"] == "complete"
     assert Path(signed["signature_path"]).exists()
     assert verified["status"] == "pass"
+    assert verified["check_type"] == "ea_v0_9_9_release_package_signature"
     assert verified["package_verification"]["status"] == "pass"
 
     sidecar = yaml.safe_load(Path(signed["signature_path"]).read_text(encoding="utf-8"))

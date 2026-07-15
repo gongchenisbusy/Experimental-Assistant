@@ -10,6 +10,7 @@ from ea.release_reproducibility import (
     _sha256,
     canonicalize_sdist,
     compare_build_directories,
+    publish_reproducible_artifacts,
 )
 
 
@@ -60,6 +61,26 @@ def test_reproducibility_requires_identical_wheel_and_sdist(tmp_path: Path) -> N
     mismatching = compare_build_directories(first, second, source_date_epoch="123")
     assert mismatching["status"] == "fail"
     assert json.dumps(mismatching)
+
+
+def test_reproducibility_publishes_compared_artifacts_to_dist(tmp_path: Path) -> None:
+    source = tmp_path / "compared"
+    source.mkdir()
+    artifacts = {
+        "experimental_assistant-0.9.9-py3-none-any.whl": b"deterministic wheel",
+        "experimental_assistant-0.9.9.tar.gz": b"deterministic sdist",
+    }
+    for name, payload in artifacts.items():
+        (source / name).write_bytes(payload)
+        stale = tmp_path / "dist" / name
+        stale.parent.mkdir(exist_ok=True)
+        stale.write_bytes(b"stale")
+
+    records = publish_reproducible_artifacts(tmp_path, source)
+
+    assert {item["artifact"] for item in records} == set(artifacts)
+    for name, payload in artifacts.items():
+        assert (tmp_path / "dist" / name).read_bytes() == payload
 
 
 def test_sdist_canonicalization_removes_archive_time_and_order(tmp_path: Path) -> None:
