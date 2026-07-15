@@ -1,44 +1,45 @@
 schema_version: "1.0"
 release: v0.9.9
-status: rc3_evidence_complete_release_checks_pending
+status: release_candidate_verified_publication_pending
 issues:
   - issue: 1
-    disposition: implemented_and_simulated_review_passed
+    disposition: release_candidate_verified
     evidence:
       - src/ea/user_surface.py
       - tests/test_user_surface.py
       - tests/test_export_workflow.py
     residual: Real-user trials are optional post-v1 improvement evidence.
   - issue: 2
-    disposition: implemented_pending_release_checks
+    disposition: release_candidate_verified_with_user_authority_boundary
     evidence:
       - src/ea/install_experience.py
       - tests/test_install_experience.py
     residual: User-authorized GUI and permission actions remain outside EA automation.
   - issue: 7
-    disposition: implemented_with_mock_limits
+    disposition: release_candidate_verified_with_mock_limits
     evidence:
       - tests/test_v0_9_9_mock_companion.py
       - docs/simulated-evidence/mock-companion-validation.yml
     residual: No live Zotero or publisher account was exercised.
   - issue: 9
-    disposition: implemented_with_mock_and_ci_evidence
+    disposition: release_candidate_verified_with_mock_and_native_ci_evidence
     evidence:
       - .github/workflows/ci.yml
       - tests/fixtures/v0_9_9/mock_zotero_five_target.yml
-    residual: Native CI must pass on the final public commit.
+      - https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29450662740
+    residual: Live Zotero and institution-account behavior remains outside the release claim.
   - issue: 11
-    disposition: implemented_and_simulated_scientific_review_passed
+    disposition: release_candidate_verified_with_simulated_scientific_review
     evidence:
       - benchmarks/raman-v1/benchmark.yml
       - benchmarks/literature-v0.9.9.yml
       - docs/simulated-evidence/scientific-reviews.yml
     residual: Simulated review is not independent expert endorsement.
   - issue: 14
-    disposition: implemented_and_manual_artifact_review_passed
+    disposition: release_candidate_verified_with_manual_artifact_review
     evidence:
       - tests/test_report_localization.py
       - tests/test_export_workflow.py
       - tests/test_figure_delivery.py
       - docs/simulated-evidence/manual-artifact-review.yml
-    residual: Public release assets must reproduce the accepted report contract.
+    residual: Public release publication and downloaded-asset replay remain delivery steps.
