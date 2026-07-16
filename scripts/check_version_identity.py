@@ -8,17 +8,20 @@ import tomllib
 import yaml
 
 
-EXPECTED_VERSION = "v0.9.9"
-EXPECTED_PACKAGE_VERSION = "0.9.9"
+EXPECTED_VERSION = "v1.0.0"
+EXPECTED_PACKAGE_VERSION = "1.0.0"
 EXPECTED_DISTRIBUTION = "experimental-assistant"
 EXPECTED_PRIMARY_SKILL = "ea"
 SCAN_ROOTS = [
     "README.md",
+    "CITATION.cff",
     "docs",
     "skills/ea",
     "src/ea",
     "scripts",
     "examples",
+    "skill-registry",
+    ".github/workflows",
 ]
 EXCLUDED_PATHS = {
     "src/ea/release_smoke.py",
@@ -100,12 +103,39 @@ def main(argv: list[str] | None = None) -> int:
     release_signature_text = (root / "src" / "ea" / "release_signature.py").read_text(
         encoding="utf-8"
     )
+    citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
+    skill_text = (root / "skills" / "ea" / "SKILL.md").read_text(encoding="utf-8")
+    skill_agent = yaml.safe_load(
+        (root / "skills" / "ea" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    )
+    historical_checks = {
+        "v0_9_9_release_notes_preserved": "Experimental Assistant v0.9.9"
+        in (root / "docs" / "V0_9_9_RELEASE_NOTES.md").read_text(encoding="utf-8"),
+        "v0_9_9_literature_benchmark_preserved": "literature-pipeline-v0.9.9"
+        in (root / "benchmarks" / "literature-v0.9.9.yml").read_text(encoding="utf-8"),
+        "v0_9_9_readiness_dossier_preserved": "release_candidate: v0.9.9"
+        in (root / "docs" / "V1_0_READINESS_DOSSIER.yml").read_text(encoding="utf-8"),
+        "v0_9_9_adr_preserved": "v0.9.9"
+        in (
+            root
+            / "docs"
+            / "adr"
+            / "0001-v0.9.9-universal-literature-data-and-report-contract.md"
+        ).read_text(encoding="utf-8"),
+    }
     exact_checks = {
         "pyproject_distribution": pyproject.get("name") == EXPECTED_DISTRIBUTION,
         "pyproject_version": pyproject.get("version") == EXPECTED_PACKAGE_VERSION,
         "pyproject_license": pyproject.get("license") == "Apache-2.0",
+        "pyproject_stable_classifier": "Development Status :: 5 - Production/Stable"
+        in pyproject.get("classifiers", []),
+        "citation_version": str(citation.get("version")) == EXPECTED_PACKAGE_VERSION,
+        "citation_release_date": str(citation.get("date-released")) == "2026-07-17",
         "primary_skill_name": _skill_name(root / "skills" / "ea" / "SKILL.md")
         == EXPECTED_PRIMARY_SKILL,
+        "primary_skill_version": "Experimental Assistant v1.0.0" in skill_text,
+        "primary_skill_agent_version": "v1.0.0"
+        in str((skill_agent.get("interface") or {}).get("short_description") or ""),
         "compatibility_skill_removed": not (root / "skills" / "ea-v0-2").exists(),
         "source_version": f'__version__ = "{EXPECTED_PACKAGE_VERSION}"'
         in (root / "src" / "ea" / "__init__.py").read_text(encoding="utf-8"),
@@ -113,12 +143,17 @@ def main(argv: list[str] | None = None) -> int:
         in (root / "src" / "ea" / "identity.py").read_text(encoding="utf-8"),
         "identity_primary_skill": f'SKILL_NAME = "{EXPECTED_PRIMARY_SKILL}"'
         in (root / "src" / "ea" / "identity.py").read_text(encoding="utf-8"),
-        "release_package_check_type": '"check_type": "ea_v0_9_9_release_package"'
+        "release_package_check_type": 'CURRENT_RELEASE_PACKAGE_TYPE = "ea_v1_release_package"'
         in release_package_text,
-        "release_signature_type": 'SIGNATURE_TYPE = "ea_v0_9_9_release_package_signature"'
+        "release_package_legacy_type": '"0.9.9": "ea_v0_9_9_release_package"'
+        in release_package_text,
+        "release_signature_type": 'SIGNATURE_TYPE = "ea_v1_release_package_signature"'
+        in release_signature_text,
+        "release_signature_legacy_type": '"ea_v0_9_9_release_package_signature"'
         in release_signature_text,
         "release_signature_check_type": '"check_type": SIGNATURE_TYPE'
         in release_signature_text,
+        **historical_checks,
     }
     status = (
         "pass"
@@ -133,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         "expected_distribution": EXPECTED_DISTRIBUTION,
         "expected_hits": expected_hits,
         "exact_checks": exact_checks,
+        "historical_identity_checks": historical_checks,
         "forbidden_findings": findings,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))

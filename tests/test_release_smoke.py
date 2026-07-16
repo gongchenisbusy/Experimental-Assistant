@@ -20,6 +20,15 @@ def test_public_release_smoke_builds_expected_command_steps(tmp_path: Path) -> N
     )
     commands = {step.name: step.command for step in steps}
 
+    assert commands["audit_mode_validator_regression"] == [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_interaction_modes.py",
+        "tests/test_references_workflow.py::test_cli_registers_reference_and_validates_report",
+        "tests/test_export_workflow.py::test_cli_verifies_report_bundle_and_archive_checksums",
+    ]
     assert commands["pytest"] == ["python", "-m", "pytest"]
     assert commands["primary_skill_validation"] == [
         "python",

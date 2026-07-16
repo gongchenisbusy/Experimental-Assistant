@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import zipfile
 from pathlib import Path
@@ -20,6 +21,15 @@ from ea.release_manifest import (
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 MANIFEST_ARCHIVE_NAME = f"experimental-assistant-v{__version__}-release-manifest.yml"
+CURRENT_RELEASE_PACKAGE_TYPE = "ea_v1_release_package"
+LEGACY_RELEASE_PACKAGE_TYPES = {
+    "0.9.7": "ea_v0_9_7_release_package",
+    "0.9.8": "ea_v0_9_8_release_package",
+    "0.9.9": "ea_v0_9_9_release_package",
+}
+MANIFEST_ARCHIVE_PATTERN = re.compile(
+    r"(?:^|/)experimental-assistant-v(?P<version>[0-9][0-9A-Za-z.+-]*)-release-manifest\.yml$"
+)
 
 
 def _repo_root(path: Path | None = None) -> Path:
@@ -133,7 +143,13 @@ def verify_release_package(
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
         "schema_version": "1.0",
-        "check_type": "ea_v0_9_9_release_package",
+        "check_type": CURRENT_RELEASE_PACKAGE_TYPE,
+        "artifact_type": None,
+        "artifact_version": None,
+        "accepted_artifact_types": [
+            CURRENT_RELEASE_PACKAGE_TYPE,
+            *sorted(LEGACY_RELEASE_PACKAGE_TYPES.values()),
+        ],
         "status": "pass",
         "archive_path": str(archive_path),
         "archive_checksum_path": str(checksum_path),
@@ -184,14 +200,13 @@ def verify_release_package(
             manifest_names = [
                 name
                 for name in archive.namelist()
-                if name.endswith(f"/{MANIFEST_ARCHIVE_NAME}")
-                or name == MANIFEST_ARCHIVE_NAME
+                if MANIFEST_ARCHIVE_PATTERN.search(name)
             ]
             if not manifest_names:
                 result["status"] = "fail"
                 result["failures"].append(
                     {
-                        "path": MANIFEST_ARCHIVE_NAME,
+                        "path": "experimental-assistant-v*-release-manifest.yml",
                         "reason": "missing_embedded_manifest",
                     }
                 )
@@ -200,7 +215,7 @@ def verify_release_package(
                 result["status"] = "fail"
                 result["failures"].append(
                     {
-                        "path": MANIFEST_ARCHIVE_NAME,
+                        "path": "experimental-assistant-v*-release-manifest.yml",
                         "reason": "multiple_embedded_manifests",
                         "matches": sorted(manifest_names),
                     }
@@ -208,13 +223,29 @@ def verify_release_package(
                 return result
             manifest_ref = manifest_names[0]
             result["manifest_archive_ref"] = manifest_ref
+            manifest_name = manifest_ref.rsplit("/", 1)[-1]
             archive_root = (
-                manifest_ref[: -len(f"/{MANIFEST_ARCHIVE_NAME}")]
-                if "/" in manifest_ref
-                else ""
+                manifest_ref[: -len(f"/{manifest_name}")] if "/" in manifest_ref else ""
             )
             result["archive_root"] = archive_root
             manifest = yaml.safe_load(archive.read(manifest_ref)) or {}
+            artifact_version = str((manifest.get("package") or {}).get("version") or "")
+            artifact_type = (
+                CURRENT_RELEASE_PACKAGE_TYPE
+                if artifact_version.startswith("1.")
+                else LEGACY_RELEASE_PACKAGE_TYPES.get(artifact_version)
+            )
+            result["artifact_version"] = artifact_version or None
+            result["artifact_type"] = artifact_type
+            if artifact_type is None:
+                result["status"] = "fail"
+                result["failures"].append(
+                    {
+                        "path": manifest_ref,
+                        "reason": "unsupported_release_package_type",
+                        "artifact_version": artifact_version or None,
+                    }
+                )
             infos = {info.filename: info for info in archive.infolist()}
             for entry in manifest.get("release_inputs", {}).get("files") or []:
                 rel = str(entry.get("path") or "")

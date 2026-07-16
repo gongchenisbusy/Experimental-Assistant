@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 
 import pytest
+import yaml
 
 from ea.cli import main
 from ea.errors import error_record
@@ -61,6 +62,45 @@ def test_migration_plan_is_read_only_and_legacy_project_remains_unchanged(tmp_pa
     assert plan["raw_data_copied"] is False
     assert not (tmp_path / ".ea" / "project_format.yml").exists()
     assert (tmp_path / "EA_PROJECT.md").read_bytes() == before
+
+
+@pytest.mark.parametrize("created_with_ea", ["0.9.7", "0.9.8", "0.9.9"])
+def test_v0_9_x_current_format_projects_open_read_only_without_identity_rewrite(
+    tmp_path: Path, created_with_ea: str
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name=f"Historical {created_with_ea}",
+        research_direction="compatibility",
+        material_system="MoS2",
+        experiment_type="Raman",
+        created_at="2026-07-10T10:00:00+00:00",
+    )
+    format_path = tmp_path / ".ea" / "project_format.yml"
+    project_format = read_yaml(format_path)
+    project_format["created_with_ea"] = created_with_ea
+    format_path.write_text(
+        yaml.safe_dump(project_format, sort_keys=False), encoding="utf-8"
+    )
+    before = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    status = project_format_status(tmp_path)
+    plan = plan_project_migration(tmp_path)
+
+    assert status["status"] == "pass"
+    assert status["detected_project_format_version"] == "1.0"
+    assert plan["status"] == "already_current"
+    assert read_yaml(format_path)["created_with_ea"] == created_with_ea
+    after = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
 
 
 def test_migration_apply_is_idempotent_and_rollback_restores_legacy_detection(tmp_path: Path) -> None:

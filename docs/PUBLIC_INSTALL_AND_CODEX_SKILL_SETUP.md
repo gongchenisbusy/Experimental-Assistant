@@ -1,10 +1,10 @@
 # EA Public Install And Codex Skill Setup
 
-Product identity: `Experimental Assistant v0.9.9`. The CLI is `ea`, the Python distribution is `experimental-assistant`, and the single Codex skill is `$ea`.
+Product identity: `Experimental Assistant v1.0.0`. The CLI is `ea`, the Python distribution is `experimental-assistant`, and the single Codex skill is `$ea`.
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
-Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9>
+Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0>
 
 Chinese quick start: `docs/QUICKSTART_ZH.md`. Stable error catalog: `docs/ERROR_CATALOG.md`.
 
@@ -13,7 +13,7 @@ Chinese quick start: `docs/QUICKSTART_ZH.md`. Stable error catalog: `docs/ERROR_
 EA supports Python 3.11, 3.12, and 3.13. Python 3.12 is recommended.
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.9
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
 ea setup
 ea doctor
 ```
@@ -24,7 +24,7 @@ Expected identity:
 
 ```text
 Product: Experimental Assistant
-Version: 0.9.9
+Version: 1.0.0
 Distribution: experimental-assistant
 Primary skill: $ea
 ```
@@ -98,7 +98,8 @@ These commands show a plan unless `--yes` is provided:
 
 ```bash
 ea update
-ea update --release-ref v0.9.9 --yes
+ea update --release-ref v1.0.0 --yes
+ea rollback --release-ref v0.9.9
 ea rollback --release-ref v0.9.7
 ea rollback --release-ref v0.9.7 --yes
 ea uninstall
@@ -107,6 +108,19 @@ ea uninstall --yes
 
 CLI/skill replacement is staged and validated before the installed skill directories are swapped. Rollback restores a verified release. Uninstall creates recoverable skill backups and does not delete EA project folders.
 
+For a public v0.9.9 installation, use the same transaction and verify all identity layers after the swap:
+
+```bash
+ea version
+ea update --release-ref v1.0.0
+ea update --release-ref v1.0.0 --yes
+ea version
+ea doctor
+ea install-check --run-example-check
+```
+
+If rollback is required, preview and then explicitly restore the verified v0.9.9 release with `ea rollback --release-ref v0.9.9 --yes`. Historical project and provenance version fields are not rewritten merely because the installed package changed.
+
 ## Developer And Release Maintenance
 
 Use an editable checkout for contribution, local validation, or release work.
@@ -114,7 +128,7 @@ Use an editable checkout for contribution, local validation, or release work.
 ```bash
 git clone https://github.com/gongchenisbusy/Experimental-Assistant.git ea
 cd ea
-git checkout v0.9.9
+git checkout v1.0.0
 python3 scripts/check_install_env.py
 python3 -m venv .venv
 . .venv/bin/activate
@@ -147,11 +161,11 @@ The installer preserves unrelated skills such as `ea-v0-1`; it does not delete `
 
 ## Release Package Install
 
-Download the release archive and `.sha256` sidecar from the v0.9.9 release page. Verify before extraction:
+Download the release archive and `.sha256` sidecar from the v1.0.0 release page. Verify before extraction:
 
 ```bash
-shasum -a 256 -c experimental-assistant-0.9.9-COMMIT-release.zip.sha256
-python3 scripts/verify_release_package.py experimental-assistant-0.9.9-COMMIT-release.zip
+shasum -a 256 -c experimental-assistant-1.0.0-COMMIT-release.zip.sha256
+python3 scripts/verify_release_package.py experimental-assistant-1.0.0-COMMIT-release.zip
 ```
 
 Then install the extracted checkout with the editable-checkout steps above. Checksums detect corruption; publisher identity requires a trusted release/signing channel as explained in `docs/RELEASE_SECURITY_POLICY.md`.

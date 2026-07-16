@@ -63,7 +63,7 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - name: Lint for syntax and undefined names
         run: ruff check src tests scripts --select E9,F63,F7,F82
-      - name: Check formatting of v0.9.9 release surfaces
+      - name: Check formatting of v1.0.0 release surfaces
         run: >-
           ruff format --check
           src/ea/identity.py src/ea/errors.py src/ea/diagnostics.py src/ea/drafts.py

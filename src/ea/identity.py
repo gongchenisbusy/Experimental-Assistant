@@ -34,9 +34,9 @@ CAPABILITY_MATURITY = {
         "review_provenance_and_references",
         "health_evaluation_brief_and_traceability",
         "html_reports_and_verified_exports",
+        "raman_benchmark_bounded_analysis",
     ),
     "beta": (
-        "raman_analysis_pending_release_candidate_review",
         "pl_analysis",
         "xrd_analysis",
         "ftir_source_backed_assignments",
@@ -62,6 +62,7 @@ PUBLIC_CAPABILITY_CONTRACT = {
         "protected_raw_import_and_duplicate_detection",
         "review_records_provenance_and_references",
         "characterization_inspect_process_report_workflows",
+        "raman_benchmark_bounded_analysis",
         "user_defined_literature_data_collection",
         "health_evaluation_trace_and_verified_exports",
     ),

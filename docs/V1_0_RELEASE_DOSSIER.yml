@@ -1,0 +1,62 @@
+schema_version: "1.0"
+release: v1.0.0
+package_version: 1.0.0
+status: candidate_ready_publication_replay_pending
+tested_candidate_commit: 5736bcdadeb28f93055312f4f92f1fcf200c0018
+release_commit: pending
+tag: v1.0.0
+release_url: https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0
+gates:
+  audit_read_only_and_mode_error: pass
+  active_and_historical_identity: pass
+  release_format_legacy_compatibility: pass
+  capability_contract_alignment: pass
+  full_regression_and_public_smoke: pass
+  public_scientific_benchmarks: pass
+  packaged_examples: pass
+  simulated_personas_and_reviews: pass
+  deterministic_mock_acquisition: pass
+  manual_artifact_review: pass
+  clean_install_update_rollback_uninstall: pass
+  historical_project_compatibility: pass
+  native_ci_python_3_11_to_3_13: pass
+  minimum_dependencies_and_quality: pass
+  reproducibility: pass
+  sbom_and_vulnerability_scan: pass
+  release_package_and_skill_bundle: pass
+  public_download_replay: pending
+candidate_results:
+  full_regression_tests: 458
+  release_smoke: pass
+  raman_benchmark_checks: 11
+  raman_promotion_status: eligible_for_release
+  release_manifest_file_count: 500
+  release_package_sha256: f84073c9f1631e00ef67538b49d15e81d22debceca331d07e5b132b76593b96a
+  skill_bundle_sha256: 722392a4123db39c78852dc1c84cca4d82d3fdcdff1b7d14b1f864cff6a0ca7e
+  sbom_component_count: 54
+  vulnerability_count: 0
+  lifecycle_source_release: v0.9.9
+  lifecycle_status: pass
+candidate_ci_runs:
+  push: https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29520485674
+  pull_request: https://github.com/gongchenisbusy/Experimental-Assistant/actions/runs/29520487768
+open_findings:
+  p0: 0
+  p1: 0
+evidence_policy:
+  real_user_trials_required: false
+  external_expert_signoff_required: false
+  live_zotero_or_institution_login_required: false
+  simulated_is_not_real_user: true
+  mock_is_not_live_service: true
+  simulated_review_is_not_independent_expert: true
+historical_inputs:
+  v0_9_9_readiness_dossier: docs/V1_0_READINESS_DOSSIER.yml
+  v0_9_9_literature_benchmark: benchmarks/literature-v0.9.9.yml
+  preservation_rule: do_not_rewrite_historical_version_or_provenance_ids
+evidence_refs:
+  trial_report: docs/V1_0_TRIAL_REPORT.md
+  issue_disposition: docs/V1_0_ISSUE_DISPOSITION.yml
+  support_promise: docs/V1_0_SUPPORT_PROMISE.md
+  known_limitations: docs/V1_0_KNOWN_LIMITATIONS.md
+  release_notes: docs/V1_0_RELEASE_NOTES.md

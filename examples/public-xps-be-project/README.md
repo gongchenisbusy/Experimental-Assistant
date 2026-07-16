@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.9 Public XPS Binding-Energy Candidate Example
+# Experimental Assistant v1.0.0 Public XPS Binding-Energy Candidate Example
 
 This folder is a packaged, public-safe EA project example for the XPS source-backed binding-energy candidate workflow. It is meant for inspection, smoke testing, and agent orientation after installing or unpacking an EA v0.9 release-candidate package.
 

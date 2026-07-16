@@ -18,7 +18,7 @@ def test_cyclonedx_sbom_is_deterministic_for_one_environment() -> None:
     assert first["bomFormat"] == "CycloneDX"
     assert first["specVersion"] == "1.5"
     assert first["metadata"]["component"]["name"] == "experimental-assistant"
-    assert first["metadata"]["component"]["version"] == "0.9.9"
+    assert first["metadata"]["component"]["version"] == "1.0.0"
     assert first["components"]
 
 

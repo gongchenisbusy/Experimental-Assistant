@@ -1,10 +1,10 @@
-# EA v0.9.9 Large-Work Gate
+# EA v1.0.0 Large-Work Gate
 
 Use this reference when a task may create substantial agent context, long reports, broad literature results, or large acquisition handoffs.
 
 ## Threshold
 
-EA v0.9.9 uses a fixed large-work threshold of `100` Codex-credit-equivalent units. This follows the approved planning estimate of about 20% of a practical Plus/GPT-5.5 five-hour working window. Do not expose this as a normal user setting.
+EA v1.0.0 uses a fixed large-work threshold of `100` Codex-credit-equivalent units. This follows the approved planning estimate of about 20% of a practical Plus/GPT-5.5 five-hour working window. Do not expose this as a normal user setting.
 
 ## Estimate Before Expensive Work
 

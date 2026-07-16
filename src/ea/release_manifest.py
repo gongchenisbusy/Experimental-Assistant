@@ -231,14 +231,16 @@ def build_release_manifest(
         "release": {
             "label": RELEASE_LABEL,
             "version": metadata.get("version"),
-            "relationship_to_v1": "Feature-frozen pre-v1 release; v1 promotion repeats the same automated, simulated, benchmark, security, and packaging gates without adding core features.",
+            "relationship_to_v1": "Formal v1 stable release of the feature-frozen v0.9.9 contract after current-candidate automated, simulated, benchmark, lifecycle, security, and packaging gates.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
-            "release_notes_ref": "docs/V0_9_9_RELEASE_NOTES.md",
-            "known_limitations_ref": "docs/V0_9_KNOWN_LIMITATIONS.md",
-            "manual_test_checklist_ref": "docs/V0_9_9_TRIAL_REPORT.md",
-            "agent_handoff_ref": "docs/V1_0_READINESS_DOSSIER.md",
-            "trial_report_ref": "docs/V0_9_9_TRIAL_REPORT.md",
-            "issue_disposition_ref": "docs/V0_9_9_ISSUE_DISPOSITION.md",
+            "release_notes_ref": "docs/V1_0_RELEASE_NOTES.md",
+            "known_limitations_ref": "docs/V1_0_KNOWN_LIMITATIONS.md",
+            "manual_test_checklist_ref": "docs/V1_0_TRIAL_REPORT.md",
+            "agent_handoff_ref": "docs/V1_0_RELEASE_DOSSIER.md",
+            "trial_report_ref": "docs/V1_0_TRIAL_REPORT.md",
+            "issue_disposition_ref": "docs/V1_0_ISSUE_DISPOSITION.md",
+            "support_promise_ref": "docs/V1_0_SUPPORT_PROMISE.md",
+            "release_dossier_ref": "docs/V1_0_RELEASE_DOSSIER.yml",
         },
         "git": git_state(root),
         "release_inputs": {
@@ -252,6 +254,7 @@ def build_release_manifest(
         "validation_contract": {
             "smoke_gate_commands": SMOKE_GATE_COMMANDS,
             "required_smoke_steps": [
+                "audit_mode_validator_regression",
                 "pytest",
                 "primary_skill_validation",
                 "cli_help",

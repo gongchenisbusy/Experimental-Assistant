@@ -1,6 +1,6 @@
 # Thermal Analysis Workflow
 
-Use this reference when processing tabular TGA, DSC, or DTG-style thermal analysis data in the Experimental Assistant v0.9.9 skill.
+Use this reference when processing tabular TGA, DSC, or DTG-style thermal analysis data in the Experimental Assistant v1.0.0 skill.
 
 Required gates:
 
@@ -13,7 +13,7 @@ Required gates:
 7. Treat automatic events as screening evidence. Use protocol context, baselines, replicates, instrument settings, and literature before writing decomposition, transition, kinetic, composition, or thermal-stability conclusions.
 8. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v0.9.9 thermal compatibility support:
+Current Experimental Assistant v1.0.0 thermal compatibility support:
 
 - Raw import uses `ea raw import --characterization-type thermal_analysis`.
 - Inspection identifies common thermal files by path/name, metadata, temperature columns, mass/heat-flow columns, and mode hints.

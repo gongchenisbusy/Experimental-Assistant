@@ -34,6 +34,12 @@ Use `ea --mode execute <command>` or the default command mode.
 
 Use `ea --mode audit <read-only-command>` for health, no-write evaluation/brief, migration plan/status, diagnostics preview, release evidence inspection, `references validate-report`, `export verify-bundle`, and `export verify-archive`. Like consult, audit rejects writes, including neighboring `references` and `export` subcommands that create or change artifacts.
 
+```bash
+ea --mode audit references validate-report /path/to/project reports/REPORT.md
+ea --mode audit export verify-bundle /path/to/report-bundle
+ea --mode audit export verify-archive /path/to/report-bundle.zip
+```
+
 Mode-policy refusal returns `EA-MODE-COMMAND-BLOCKED`. It is distinct from `EA-IO-PERMISSION-DENIED`, which means the operating system or sandbox denied access.
 
 ## Review Confirmation

@@ -1,6 +1,6 @@
 # Experimental Assistant Capability Matrix
 
-This is a maintainer-facing release-governance contract for v0.9.9. Ordinary user responses and normal command results describe concrete limits and next actions instead of exposing maturity labels.
+This is a maintainer-facing release-governance contract for v1.0.0. Ordinary user responses and normal command results describe concrete limits and next actions instead of exposing maturity labels.
 
 Run `ea capabilities` for the installed machine-readable contract.
 
@@ -14,12 +14,12 @@ Run `ea capabilities` for the installed machine-readable contract.
 | Review and provenance | explicit review records and linked evidence | schema, idempotency, and traceability tests |
 | Health, evaluation, brief, trace | compact status with full local audit records | read-only and output-budget tests |
 | Reports and exports | HTML reports and checksum-verified bundles | public examples and package verification |
+| Raman benchmark-bounded analysis | inspected Raman tables, reviewed processing, peak screening, traceable reports | public golden benchmark, numeric tolerances, walkthrough, simulated scientific review, artifact inspection, platform/privacy regression |
 
-Raman enters this table only after its public golden benchmark, numeric tolerances, walkthrough, regression tests, and a recorded simulated scientific review all pass with no unresolved blocking finding. The simulated review tests the release contract; it is not represented as independent expert validation.
+The stable Raman scope is limited to the public-benchmark-covered preprocessing, peak screening, review gates, and traceable reporting contract. It does not prove material identity, phase, layer count, mechanism, strain/doping, calibration, or advanced interpretation. The simulated review tests the release contract; it is not represented as independent expert validation.
 
 ## Beta
 
-- Raman until its public benchmark, simulated scientific review, and artifact inspection are recorded for the release candidate.
 - PL and XRD analysis.
 - FTIR source-backed assignment support.
 - UV-Vis screening and replicate comparison.
