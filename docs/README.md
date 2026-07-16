@@ -2,7 +2,7 @@
 
 ## 当前权威文档
 
-1. `V1_0_RELEASE_DOSSIER.md` / `V1_0_RELEASE_DOSSIER.yml`
+1. `V1_0_RELEASE_DOSSIER.md` / `V1_0_RELEASE_DOSSIER.yml` / `V1_0_PUBLICATION_VERIFICATION.*`
    - v1.0.0 候选、发布和下载重放门禁的当前权威记录。
    - 与历史 `V1_0_READINESS_DOSSIER.*` 分离，后者只记录 v0.9.9 晋升快照。
 

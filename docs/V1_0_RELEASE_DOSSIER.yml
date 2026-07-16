@@ -1,9 +1,9 @@
 schema_version: "1.0"
 release: v1.0.0
 package_version: 1.0.0
-status: candidate_ready_publication_replay_pending
+status: released_publication_replay_passed
 tested_candidate_commit: 5736bcdadeb28f93055312f4f92f1fcf200c0018
-release_commit: pending
+release_commit: 8f0e407c6b54e4e8e69ad62b3ece9498e524b62e
 tag: v1.0.0
 release_url: https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0
 gates:
@@ -24,7 +24,7 @@ gates:
   reproducibility: pass
   sbom_and_vulnerability_scan: pass
   release_package_and_skill_bundle: pass
-  public_download_replay: pending
+  public_download_replay: pass
 candidate_results:
   full_regression_tests: 458
   release_smoke: pass
@@ -60,3 +60,4 @@ evidence_refs:
   support_promise: docs/V1_0_SUPPORT_PROMISE.md
   known_limitations: docs/V1_0_KNOWN_LIMITATIONS.md
   release_notes: docs/V1_0_RELEASE_NOTES.md
+  publication_verification: docs/V1_0_PUBLICATION_VERIFICATION.yml

@@ -1,0 +1,44 @@
+schema_version: "1.0"
+release: v1.0.0
+status: pass
+verified_at: 2026-07-17
+release_commit: 8f0e407c6b54e4e8e69ad62b3ece9498e524b62e
+tag: v1.0.0
+release_url: https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0
+public_assets:
+  expected_count: 13
+  downloaded_count: 13
+  byte_matches: 13
+checks:
+  tag_bound_manifest: pass
+  repository_archive_checksum: pass
+  repository_archive_500_file_verification: pass
+  skill_bundle_checksum: pass
+  wheel_clean_install: pass
+  sdist_clean_install: pass
+  cli_version_and_capabilities: pass
+  skill_install_and_validation: pass
+  doctor: pass
+  public_v0_9_9_to_v1_update: pass
+  public_v1_to_v0_9_9_rollback: pass
+  maintainer_environment_update: pass
+artifacts:
+  wheel:
+    name: experimental_assistant-1.0.0-py3-none-any.whl
+    sha256: 1bfe96c6f0c1e52d0a51294f5d7f8d99a3d4ede03b6ac6b2eeffe9f9b8162a26
+  sdist:
+    name: experimental_assistant-1.0.0.tar.gz
+    sha256: 0d9b287323127ef11eed9cd49d0a13a85d02d833afba10c17de2ae7c84076b5f
+  skill_bundle:
+    name: experimental-assistant-1.0.0-skills.zip
+    sha256: 722392a4123db39c78852dc1c84cca4d82d3fdcdff1b7d14b1f864cff6a0ca7e
+  repository_package:
+    name: experimental-assistant-1.0.0-8f0e407-release.zip
+    sha256: d1d84d9feef4703ae86e07a349715104724bfae2104f69eb5e2edb6e2e8a7be8
+supply_chain:
+  sbom_component_count: 54
+  vulnerability_count: 0
+  detached_signature: not_created_no_user_managed_key
+distribution:
+  github_release: published
+  pypi: not_in_scope

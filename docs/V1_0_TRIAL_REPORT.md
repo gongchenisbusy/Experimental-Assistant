@@ -1,8 +1,8 @@
 # Experimental Assistant v1.0.0 Candidate Trial Report
 
-Status: `candidate evidence passed; public download replay pending`.
+Status: `candidate evidence and public download replay passed`.
 
-This report binds v1.0 product and scientific trial evidence to tested candidate commit `5736bcdadeb28f93055312f4f92f1fcf200c0018`. Public Release publication and downloaded-asset replay remain separate final gates.
+This report binds v1.0 product and scientific trial evidence to tested candidate commit `5736bcdadeb28f93055312f4f92f1fcf200c0018`. Public Release publication and downloaded-asset replay passed separately and are recorded in [V1_0_PUBLICATION_VERIFICATION.yml](V1_0_PUBLICATION_VERIFICATION.yml).
 
 ## Candidate identity
 
