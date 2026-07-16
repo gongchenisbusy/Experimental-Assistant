@@ -550,16 +550,28 @@ def test_cli_verifies_report_bundle_and_archive_checksums(
     bundle_dir = Path(output["bundle_path"])
     archive_path = Path(output["archive_path"])
 
-    assert main(["export", "verify-bundle", str(bundle_dir)]) == 0
+    before = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    assert main(["--mode", "audit", "export", "verify-bundle", str(bundle_dir)]) == 0
     bundle_check = _json_output(capsys)
     assert bundle_check["status"] == "pass"
     assert bundle_check["checked_count"] > 0
     assert bundle_check["failures"] == []
 
-    assert main(["export", "verify-archive", str(archive_path)]) == 0
+    assert main(["--mode", "audit", "export", "verify-archive", str(archive_path)]) == 0
     archive_check = _json_output(capsys)
     assert archive_check["status"] == "pass"
     assert archive_check["actual_sha256"] == _sha256(archive_path)
+    after = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
 
 
 def test_cli_verify_bundle_reports_hash_mismatch(tmp_path: Path, capsys) -> None:

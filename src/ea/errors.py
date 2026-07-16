@@ -9,7 +9,20 @@ class ReviewRequiredError(ValueError):
     """Raised when reviewed-only output is requested before review exists."""
 
 
+class ModeCommandBlockedError(RuntimeError):
+    """Raised when the selected interaction mode blocks a command."""
+
+
 def _error_details(exc: BaseException) -> tuple[str, str, bool, list[str]]:
+    if isinstance(exc, ModeCommandBlockedError):
+        return (
+            "EA-MODE-COMMAND-BLOCKED",
+            "The selected interaction mode blocks this command.",
+            False,
+            [
+                "Use a read-only command or choose record/execute mode explicitly."
+            ],
+        )
     if isinstance(exc, ReviewRequiredError):
         return (
             "EA-REVIEW-REQUIRED",

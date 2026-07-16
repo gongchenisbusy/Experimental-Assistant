@@ -267,10 +267,30 @@ The Raman interpretation uses a registered reference{block["inline_citation"]}.
 """,
     )
 
-    assert main(["references", "validate-report", str(tmp_path), "reports/rpt-reference-demo-20260630-001.md"]) == 0
+    before = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert main(
+        [
+            "--mode",
+            "audit",
+            "references",
+            "validate-report",
+            str(tmp_path),
+            "reports/rpt-reference-demo-20260630-001.md",
+        ]
+    ) == 0
     validation = json.loads(capsys.readouterr().out)
     assert validation["ok"] is True
     assert validation["inline_numbers"] == [1]
+    after = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
 
 
 def test_cli_imports_bibtex_and_reuses_existing_references(tmp_path: Path, capsys) -> None:
