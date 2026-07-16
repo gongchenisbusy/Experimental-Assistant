@@ -19,9 +19,7 @@ def _error_details(exc: BaseException) -> tuple[str, str, bool, list[str]]:
             "EA-MODE-COMMAND-BLOCKED",
             "The selected interaction mode blocks this command.",
             False,
-            [
-                "Use a read-only command or choose record/execute mode explicitly."
-            ],
+            ["Use a read-only command or choose record/execute mode explicitly."],
         )
     if isinstance(exc, ReviewRequiredError):
         return (
