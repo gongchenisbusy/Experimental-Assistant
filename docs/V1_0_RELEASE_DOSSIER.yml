@@ -1,0 +1,47 @@
+schema_version: "1.0"
+release: v1.0.0
+package_version: 1.0.0
+status: candidate_evidence_pending
+tested_candidate_commit: pending
+release_commit: pending
+tag: v1.0.0
+release_url: https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0
+gates:
+  audit_read_only_and_mode_error: pending
+  active_and_historical_identity: pending
+  release_format_legacy_compatibility: pending
+  capability_contract_alignment: pending
+  full_regression_and_public_smoke: pending
+  public_scientific_benchmarks: pending
+  packaged_examples: pending
+  simulated_personas_and_reviews: pending
+  deterministic_mock_acquisition: pending
+  manual_artifact_review: pending
+  clean_install_update_rollback_uninstall: pending
+  historical_project_compatibility: pending
+  native_ci_python_3_11_to_3_13: pending
+  minimum_dependencies_and_quality: pending
+  reproducibility: pending
+  sbom_and_vulnerability_scan: pending
+  release_package_and_skill_bundle: pending
+  public_download_replay: pending
+open_findings:
+  p0: pending
+  p1: pending
+evidence_policy:
+  real_user_trials_required: false
+  external_expert_signoff_required: false
+  live_zotero_or_institution_login_required: false
+  simulated_is_not_real_user: true
+  mock_is_not_live_service: true
+  simulated_review_is_not_independent_expert: true
+historical_inputs:
+  v0_9_9_readiness_dossier: docs/V1_0_READINESS_DOSSIER.yml
+  v0_9_9_literature_benchmark: benchmarks/literature-v0.9.9.yml
+  preservation_rule: do_not_rewrite_historical_version_or_provenance_ids
+evidence_refs:
+  trial_report: docs/V1_0_TRIAL_REPORT.md
+  issue_disposition: docs/V1_0_ISSUE_DISPOSITION.yml
+  support_promise: docs/V1_0_SUPPORT_PROMISE.md
+  known_limitations: docs/V1_0_KNOWN_LIMITATIONS.md
+  release_notes: docs/V1_0_RELEASE_NOTES.md

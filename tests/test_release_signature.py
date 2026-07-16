@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
+import ea.release_signature as release_signature
 
 from ea.release_package import write_release_package
 from ea.release_signature import (
@@ -47,14 +48,45 @@ def test_release_signature_keygen_sign_and_verify_pass(tmp_path: Path) -> None:
     assert signed["status"] == "complete"
     assert Path(signed["signature_path"]).exists()
     assert verified["status"] == "pass"
-    assert verified["check_type"] == "ea_v0_9_9_release_package_signature"
+    assert verified["check_type"] == "ea_v1_release_package_signature"
+    assert verified["artifact_signature_type"] == "ea_v1_release_package_signature"
     assert verified["package_verification"]["status"] == "pass"
 
     sidecar = yaml.safe_load(Path(signed["signature_path"]).read_text(encoding="utf-8"))
-    assert sidecar["payload"]["signature_type"] == "ea_v0_9_9_release_package_signature"
+    assert sidecar["payload"]["signature_type"] == "ea_v1_release_package_signature"
     assert sidecar["payload"]["algorithm"] == "ed25519"
     assert sidecar["payload"]["public_key"]["key_id"] == "test-key"
     assert sidecar["payload"]["archive"]["filename"] == "release.zip"
+
+
+def test_v1_signature_verifier_accepts_v0_9_9_signature_type(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _minimal_release_root(tmp_path / "repo")
+    package = write_release_package(
+        root, output=Path("dist/release.zip"), archive_root="ea-release"
+    )
+    private_key, public_key = _key_paths(tmp_path)
+    generate_release_keypair(private_key_path=private_key, public_key_path=public_key)
+    monkeypatch.setattr(
+        release_signature,
+        "SIGNATURE_TYPE",
+        "ea_v0_9_9_release_package_signature",
+    )
+    sign_release_package(
+        Path(package["archive_path"]),
+        private_key_path=private_key,
+        public_key_path=public_key,
+    )
+    monkeypatch.undo()
+
+    verified = verify_release_signature(
+        Path(package["archive_path"]), public_key_path=public_key
+    )
+
+    assert verified["status"] == "pass"
+    assert verified["check_type"] == "ea_v1_release_package_signature"
+    assert verified["artifact_signature_type"] == "ea_v0_9_9_release_package_signature"
 
 
 def test_release_signature_verifier_reports_tampered_archive(tmp_path: Path) -> None:

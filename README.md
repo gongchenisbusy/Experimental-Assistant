@@ -1,4 +1,4 @@
-# Experimental Assistant v0.9.9
+# Experimental Assistant v1.0.0
 
 Experimental Assistant (EA) is a local-first materials-research assistant. It helps organize projects, protect imported raw data, run review-gated characterization workflows, trace reports back to evidence, and coordinate literature work without assuming developer-machine accounts or paths.
 
@@ -6,7 +6,7 @@ Public identity: `Experimental Assistant`, CLI `ea`, the single Codex skill `$ea
 
 Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
 
-Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v0.9.9>
+Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0>
 
 中文用户可直接阅读 [docs/QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md)。稳定错误码与处理建议见 [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md)。
 
@@ -15,7 +15,7 @@ Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/
 Python 3.11, 3.12, or 3.13 is supported. Python 3.12 is recommended.
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v0.9.9
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
 ea setup
 ea doctor
 ```
@@ -113,7 +113,7 @@ Confirmed source-candidate manifests such as `confirmed_ftir_source_candidates.y
 
 ### User-Defined Literature Data Collection
 
-v0.9.9 can collect any user-requested literature data category described by a validated schema. The six earlier electrical-property templates remain available as conveniences, not as an allowlist. A schema can declare numeric values, ranges, values with uncertainty, text, enums, booleans, dates, lists, and nested fields, together with units, aliases, evidence requirements, comparison rules, and conflict policy. EA keeps reported and normalized values separate, requires item-level review, validates the accepted dataset, plots compatible fields where meaningful, and exports a privacy-scoped bundle.
+v1.0.0 can collect any user-requested literature data category described by a validated schema. The six earlier electrical-property templates remain available as conveniences, not as an allowlist. A schema can declare numeric values, ranges, values with uncertainty, text, enums, booleans, dates, lists, and nested fields, together with units, aliases, evidence requirements, comparison rules, and conflict policy. EA keeps reported and normalized values separate, requires item-level review, validates the accepted dataset, plots compatible fields where meaningful, and exports a privacy-scoped bundle.
 
 ```bash
 ea literature data-template --help
@@ -145,7 +145,7 @@ Compact metadata is stored in `traceability/index.yml`; explicit full export wri
 
 ## Scientific And Integration Boundaries
 
-EA produces reviewable evidence and candidate interpretations; it does not independently prove material identity, mechanism, performance, or literature completeness. Browser, Zotero, and institution-login operations remain optional integrations and never bypass access controls. v0.9.9 release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection. These records are labeled by evidence type and are not represented as real-user or independent-expert validation.
+EA produces reviewable evidence and candidate interpretations; it does not independently prove material identity, mechanism, performance, or literature completeness. Browser, Zotero, and institution-login operations remain optional integrations and never bypass access controls. v1.0.0 release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection. These records are labeled by evidence type and are not represented as real-user or independent-expert validation.
 
 ## Migration And Updates
 
@@ -173,7 +173,7 @@ python3 scripts/public_release_smoke.py
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
 ea-release-checklist
 ```
 

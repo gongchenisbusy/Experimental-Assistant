@@ -1,4 +1,4 @@
-# EA v0.9.9 Onboarding Workflow
+# EA v1.0.0 Onboarding Workflow
 
 Use this reference after installing, updating, or downloading the skill.
 
@@ -17,7 +17,9 @@ For an update, use:
 ea onboarding post-install --event update --lang zh
 ```
 
-The onboarding message should identify Experimental Assistant v0.9.9, present `$ea` as the only skill invocation, and remind the user to restart Codex after skill installation or replacement.
+When updating a verified public v0.9.9 installation to v1.0.0, preview `ea update --release-ref v1.0.0`, confirm with `--yes`, then run `ea version`, `ea doctor`, and `ea install-check`. Use `ea rollback --release-ref v0.9.9` for a read-only rollback plan before any explicit restore.
+
+The onboarding message should identify Experimental Assistant v1.0.0, present `$ea` as the only skill invocation, and remind the user to restart Codex after skill installation or replacement.
 
 ## Downloaded Instructions Sync
 

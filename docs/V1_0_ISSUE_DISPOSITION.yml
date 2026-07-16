@@ -1,0 +1,28 @@
+schema_version: "1.0"
+release: v1.0.0
+status: candidate_publication_verification_pending
+issues:
+  "19":
+    scope_status: implemented_and_regression_tested
+    evidence: pull_request_20
+    close_after: public_release_download_replay
+  "1":
+    scope_status: delivered
+    residual: real_user_findings_route_to_v1_x
+  "2":
+    scope_status: delivered_with_boundary
+    residual: gui_license_os_permission_and_account_actions_user_authorized
+  "7":
+    scope_status: delivered_with_boundary
+    residual: live_publisher_and_zotero_variants_post_v1
+  "9":
+    scope_status: delivered_with_boundary
+    residual: live_account_institution_sso_mfa_captcha_not_guaranteed
+  "11":
+    scope_status: delivered_with_boundary
+    residual: optional_adapters_and_deeper_models_v1_x
+evidence_policy:
+  simulated_is_not_real_user: true
+  mock_is_not_live_service: true
+  simulated_review_is_not_independent_expert: true
+

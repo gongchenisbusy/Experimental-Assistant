@@ -152,7 +152,23 @@ def build_command_steps(
 ) -> list[SmokeStep]:
     steps: list[SmokeStep] = []
     if not skip_tests:
-        steps.append(SmokeStep("pytest", [python, "-m", "pytest"]))
+        steps.extend(
+            [
+                SmokeStep(
+                    "audit_mode_validator_regression",
+                    [
+                        python,
+                        "-m",
+                        "pytest",
+                        "-q",
+                        "tests/test_interaction_modes.py",
+                        "tests/test_references_workflow.py::test_cli_registers_reference_and_validates_report",
+                        "tests/test_export_workflow.py::test_cli_verifies_report_bundle_and_archive_checksums",
+                    ],
+                ),
+                SmokeStep("pytest", [python, "-m", "pytest"]),
+            ]
+        )
     if not skip_skill_validation:
         steps.append(
             SmokeStep(

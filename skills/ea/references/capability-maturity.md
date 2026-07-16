@@ -9,12 +9,13 @@ Use this maintainer-only reference for release governance or when the user expli
 - Protected raw import and duplicate detection.
 - Review, provenance, references, health, evaluation, brief, and traceability.
 - HTML reports and checksum-verified exports.
+- Public-benchmark-bounded Raman preprocessing, peak screening, review gates, and traceable reporting.
 
-Raman is stable only after its public benchmark, numeric tolerances, simulated release-candidate scientific review, and artifact inspection pass with no unresolved blocking finding.
+The stable Raman scope does not include material/phase/layer proof, mechanism claims, strain/doping inference, calibration proof, or unbenchmarked advanced interpretation. The simulated release-candidate scientific review is not independent expert validation.
 
 ## Beta
 
-- Raman pending release-candidate review, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, and batch workflows.
+- PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal, and batch workflows.
 - Public literature metadata search/ranking.
 - Literature evidence datasets and review-gated plotting.
 

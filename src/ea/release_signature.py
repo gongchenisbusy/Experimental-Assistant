@@ -26,8 +26,9 @@ from ea.release_package import (
 
 
 SIGNATURE_SIDECAR_SUFFIX = ".sig.yml"
-SIGNATURE_TYPE = "ea_v0_9_9_release_package_signature"
+SIGNATURE_TYPE = "ea_v1_release_package_signature"
 LEGACY_SIGNATURE_TYPES = {
+    "ea_v0_9_9_release_package_signature",
     "ea_v0_9_8_release_package_signature",
     "ea_v0_9_7_release_package_signature",
 }
@@ -108,7 +109,7 @@ def generate_release_keypair(
     existing = [path for path in [private_key_path, public_key_path] if path.exists()]
     if existing and not overwrite:
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "operation": "release_keygen",
             "status": "fail",
             "failures": [
@@ -144,7 +145,7 @@ def generate_release_keypair(
         pass
 
     return {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "operation": "release_keygen",
         "status": "complete",
         "algorithm": SIGNATURE_ALGORITHM,
@@ -184,7 +185,7 @@ def sign_release_package(
         failures.append({"path": str(public_key_path), "reason": "missing_public_key"})
     if failures:
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": failures,
@@ -195,7 +196,7 @@ def sign_release_package(
         public_record = _public_key_record(public_key_path, key_id=key_id)
     except (OSError, TypeError, ValueError) as exc:
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": [
@@ -209,7 +210,7 @@ def sign_release_package(
     private_fingerprint = _private_key_public_fingerprint(private_key)
     if private_fingerprint != public_record["fingerprint_sha256"]:
         return {
-            "schema_version": "0.9",
+            "schema_version": "1.0",
             "operation": "release_package_sign",
             "status": "fail",
             "failures": [
@@ -231,7 +232,7 @@ def sign_release_package(
             "sha256": _sha256_file(checksum_path),
         }
     payload = {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "signature_type": SIGNATURE_TYPE,
         "algorithm": SIGNATURE_ALGORITHM,
         "archive": {
@@ -264,7 +265,7 @@ def sign_release_package(
     )
 
     return {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "operation": "release_package_sign",
         "status": "complete",
         "archive_path": str(archive_path),
@@ -288,8 +289,10 @@ def verify_release_signature(
     signature_path = (signature_path or _signature_sidecar_path(archive_path)).resolve()
     checksum_path = (checksum_path or _checksum_sidecar_path(archive_path)).resolve()
     result: dict[str, Any] = {
-        "schema_version": "0.9",
+        "schema_version": "1.0",
         "check_type": SIGNATURE_TYPE,
+        "artifact_signature_type": None,
+        "accepted_signature_types": [SIGNATURE_TYPE, *sorted(LEGACY_SIGNATURE_TYPES)],
         "status": "pass",
         "archive_path": str(archive_path),
         "signature_path": str(signature_path),
@@ -324,6 +327,7 @@ def verify_release_signature(
     try:
         sidecar = yaml.safe_load(signature_path.read_text(encoding="utf-8")) or {}
         payload = sidecar.get("payload") or {}
+        result["artifact_signature_type"] = payload.get("signature_type")
         signature = sidecar.get("signature") or {}
         payload_bytes = _canonical_payload_bytes(payload)
         signed_payload_sha256 = _sha256_bytes(payload_bytes)

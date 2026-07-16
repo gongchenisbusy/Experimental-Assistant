@@ -1,5 +1,5 @@
 schema_version: "1.0"
-ea_release: v0.9.9
+ea_release: v1.0.0
 companions:
   ea-feedback:
     repository: https://github.com/gongchenisbusy/ea-feedback

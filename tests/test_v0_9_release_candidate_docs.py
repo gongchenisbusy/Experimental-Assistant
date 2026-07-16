@@ -8,12 +8,19 @@ from ea.release_manifest import build_release_manifest
 from ea.release_package import write_release_package
 
 
-RC_DOCS = [
+CURRENT_RELEASE_DOCS = [
     Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md"),
-    Path("docs/V0_9_RELEASE_NOTES.md"),
-    Path("docs/V0_9_KNOWN_LIMITATIONS.md"),
-    Path("docs/V0_9_MANUAL_TEST_CHECKLIST.md"),
-    Path("docs/V0_9_AGENT_HANDOFF.md"),
+    Path("docs/V1_0_RELEASE_NOTES.md"),
+    Path("docs/V1_0_KNOWN_LIMITATIONS.md"),
+    Path("docs/V1_0_TRIAL_REPORT.md"),
+    Path("docs/V1_0_RELEASE_DOSSIER.md"),
+    Path("docs/V1_0_ISSUE_DISPOSITION.md"),
+]
+HISTORICAL_V0_9_9_DOCS = [
+    Path("docs/V0_9_9_RELEASE_NOTES.md"),
+    Path("docs/V0_9_9_TRIAL_REPORT.md"),
+    Path("docs/V0_9_9_ISSUE_DISPOSITION.md"),
+    Path("docs/V1_0_READINESS_DOSSIER.md"),
 ]
 FORBIDDEN_PUBLIC_DEFAULTS = [
     "/Users/geecoe",
@@ -56,15 +63,29 @@ CONFUSING_CURRENT_VERSION_PHRASES = [
 ]
 
 
-def test_v0_9_release_candidate_docs_are_public_safe_and_actionable() -> None:
-    text_by_path = {path: path.read_text(encoding="utf-8") for path in RC_DOCS}
+def test_v1_release_docs_are_public_safe_and_actionable() -> None:
+    text_by_path = {
+        path: path.read_text(encoding="utf-8") for path in CURRENT_RELEASE_DOCS
+    }
 
-    assert "Experimental Assistant v0.9.9 Public Acceptance Matrix" in text_by_path[Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md")]
-    assert "Package version: `0.9.9`" in text_by_path[Path("docs/V0_9_RELEASE_NOTES.md")]
-    assert "Relationship To v1.0" in text_by_path[Path("docs/V0_9_RELEASE_NOTES.md")]
-    assert "Scientific Boundaries" in text_by_path[Path("docs/V0_9_KNOWN_LIMITATIONS.md")]
-    assert "Manual Test Checklist" in text_by_path[Path("docs/V0_9_MANUAL_TEST_CHECKLIST.md")]
-    assert "Agent Handoff" in text_by_path[Path("docs/V0_9_AGENT_HANDOFF.md")]
+    assert "Experimental Assistant v1.0.0 Public Acceptance Matrix" in text_by_path[
+        Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md")
+    ]
+    assert "Experimental Assistant v1.0.0 Release Notes" in text_by_path[
+        Path("docs/V1_0_RELEASE_NOTES.md")
+    ]
+    assert "Scientific boundaries" in text_by_path[
+        Path("docs/V1_0_KNOWN_LIMITATIONS.md")
+    ]
+    assert "Candidate Trial Report" in text_by_path[
+        Path("docs/V1_0_TRIAL_REPORT.md")
+    ]
+    assert "Release Dossier" in text_by_path[
+        Path("docs/V1_0_RELEASE_DOSSIER.md")
+    ]
+    assert "Issue Disposition" in text_by_path[
+        Path("docs/V1_0_ISSUE_DISPOSITION.md")
+    ]
 
     combined = "\n".join(text_by_path.values())
     assert "ea export report-bundle" in combined
@@ -75,10 +96,24 @@ def test_v0_9_release_candidate_docs_are_public_safe_and_actionable() -> None:
         assert forbidden not in combined
 
 
-def test_v0_9_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
+def test_v0_9_9_release_records_remain_historical() -> None:
+    combined = "\n".join(
+        path.read_text(encoding="utf-8") for path in HISTORICAL_V0_9_9_DOCS
+    )
+
+    assert "Experimental Assistant v0.9.9" in combined
+    assert "release_candidate: v0.9.9" in Path(
+        "docs/V1_0_READINESS_DOSSIER.yml"
+    ).read_text(encoding="utf-8")
+    assert "literature-pipeline-v0.9.9" in Path(
+        "benchmarks/literature-v0.9.9.yml"
+    ).read_text(encoding="utf-8")
+
+
+def test_v1_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
     parser_help = build_parser().format_help()
     assert "init-project" in parser_help
-    assert "initialize a public-user Experimental Assistant v0.9.9" in parser_help
+    assert "initialize a public-user Experimental Assistant v1.0.0" in parser_help
     assert "project workspace" in parser_help
 
     combined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_VERSION_SURFACES)
@@ -88,21 +123,25 @@ def test_v0_9_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
         assert phrase not in combined
 
 
-def test_v0_9_release_candidate_docs_are_packaged(tmp_path: Path) -> None:
+def test_v1_release_docs_are_packaged(tmp_path: Path) -> None:
     manifest = build_release_manifest(Path.cwd())
     paths = {record["path"] for record in manifest["release_inputs"]["files"]}
-    for doc in RC_DOCS:
+    for doc in CURRENT_RELEASE_DOCS:
         assert doc.as_posix() in paths
 
-    assert manifest["release"]["label"] == "v0.9.9"
+    assert manifest["release"]["label"] == "v1.0.0"
     assert manifest["release"]["acceptance_matrix_ref"] == "docs/PUBLIC_ACCEPTANCE_MATRIX.md"
+    assert manifest["release"]["release_notes_ref"] == "docs/V1_0_RELEASE_NOTES.md"
+    assert manifest["release"]["release_dossier_ref"] == "docs/V1_0_RELEASE_DOSSIER.yml"
     assert manifest["public_repository"]["project_name"] == "Experimental Assistant (EA)"
     assert manifest["public_repository"]["repository_full_name"] == "gongchenisbusy/Experimental-Assistant"
-    assert manifest["public_repository"]["release_url"].endswith("/releases/tag/v0.9.9")
+    assert manifest["public_repository"]["release_url"].endswith(
+        "/releases/tag/v1.0.0"
+    )
 
     package = write_release_package(Path.cwd(), output=tmp_path / "release.zip", archive_root="ea-release-doc-test")
     with zipfile.ZipFile(package["archive_path"]) as archive:
         names = set(archive.namelist())
 
-    for doc in RC_DOCS:
+    for doc in CURRENT_RELEASE_DOCS:
         assert f"ea-release-doc-test/{doc.as_posix()}" in names

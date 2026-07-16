@@ -1,9 +1,9 @@
 ---
 name: ea
-description: Experimental Assistant v0.9.9 local-first materials research skill. Use when Codex needs to advise without project writes, guide a first project, import protected raw data, run review-gated characterization, collect any user-requested literature data through a project schema, generate traceable reports or verified exports, diagnose/update/rollback EA, or prepare release artifacts without assuming developer-machine accounts, paths, or credentials.
+description: Experimental Assistant v1.0.0 local-first materials research skill. Use when Codex needs to advise without project writes, guide a first project, import protected raw data, run review-gated characterization, collect any user-requested literature data through a project schema, generate traceable reports or verified exports, diagnose/update/rollback EA, or prepare release artifacts without assuming developer-machine accounts, paths, or credentials.
 ---
 
-# Experimental Assistant v0.9.9
+# Experimental Assistant v1.0.0
 
 ## Product Contract
 

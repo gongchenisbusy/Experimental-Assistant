@@ -26,7 +26,7 @@ def _minimal_release_root(root: Path) -> Path:
         """
 [project]
 name = "experimental-assistant"
-version = "0.9.9"
+version = "1.0.0"
 description = "Release test"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=42", "pyyaml>=6.0"]
@@ -55,7 +55,7 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     )
     (root / "README.md").write_text("# EA\n", encoding="utf-8")
     (root / "src" / "ea" / "__init__.py").write_text(
-        "__version__ = '0.9.9'\n", encoding="utf-8"
+        "__version__ = '1.0.0'\n", encoding="utf-8"
     )
     (root / "src" / "ea" / "__pycache__" / "ignored.pyc").write_bytes(b"ignored")
     (root / "skills" / "ea" / "SKILL.md").write_text(
@@ -64,28 +64,37 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
     (root / "docs" / "PUBLIC_ONBOARDING.md").write_text(
-        "# Experimental Assistant v0.9.9 Public Onboarding\n", encoding="utf-8"
+        "# Experimental Assistant v1.0.0 Public Onboarding\n", encoding="utf-8"
     )
     (root / "docs" / "RELEASE_VERIFICATION.md").write_text(
-        "# Experimental Assistant v0.9.9 Release Verification\n", encoding="utf-8"
+        "# Experimental Assistant v1.0.0 Release Verification\n", encoding="utf-8"
     )
     (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text(
-        "# Experimental Assistant v0.9.9 Public Acceptance Matrix\n", encoding="utf-8"
+        "# Experimental Assistant v1.0.0 Public Acceptance Matrix\n", encoding="utf-8"
     )
-    (root / "docs" / "V0_9_RELEASE_NOTES.md").write_text(
-        "# Experimental Assistant v0.9.9 Release Notes\n", encoding="utf-8"
+    (root / "docs" / "V1_0_RELEASE_NOTES.md").write_text(
+        "# Experimental Assistant v1.0.0 Release Notes\n", encoding="utf-8"
     )
-    (root / "docs" / "V0_9_KNOWN_LIMITATIONS.md").write_text(
-        "# Experimental Assistant v0.9.9 Known Limitations\n", encoding="utf-8"
+    (root / "docs" / "V1_0_KNOWN_LIMITATIONS.md").write_text(
+        "# Experimental Assistant v1.0.0 Known Limitations\n", encoding="utf-8"
     )
-    (root / "docs" / "V0_9_MANUAL_TEST_CHECKLIST.md").write_text(
-        "# Experimental Assistant v0.9.9 Manual Test Checklist\n", encoding="utf-8"
+    (root / "docs" / "V1_0_TRIAL_REPORT.md").write_text(
+        "# Experimental Assistant v1.0.0 Candidate Trial Report\n", encoding="utf-8"
     )
-    (root / "docs" / "V0_9_AGENT_HANDOFF.md").write_text(
-        "# Experimental Assistant v0.9.9 Agent Handoff\n", encoding="utf-8"
+    (root / "docs" / "V1_0_RELEASE_DOSSIER.md").write_text(
+        "# Experimental Assistant v1.0.0 Release Dossier\n", encoding="utf-8"
+    )
+    (root / "docs" / "V1_0_RELEASE_DOSSIER.yml").write_text(
+        "release: v1.0.0\nstatus: candidate\n", encoding="utf-8"
+    )
+    (root / "docs" / "V1_0_ISSUE_DISPOSITION.md").write_text(
+        "# Experimental Assistant v1.0.0 Issue Disposition\n", encoding="utf-8"
+    )
+    (root / "docs" / "V1_0_SUPPORT_PROMISE.md").write_text(
+        "# Experimental Assistant v1.0.0 Support Promise\n", encoding="utf-8"
     )
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
-        "# Experimental Assistant v0.9.9 Project Bundle Verification\n",
+        "# Experimental Assistant v1.0.0 Project Bundle Verification\n",
         encoding="utf-8",
     )
     (root / "examples" / "example_manifest.yml").write_text(
@@ -97,13 +106,13 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     (root / "scripts" / "demo.py").write_text("print('demo')\n", encoding="utf-8")
     (root / "dist" / "ignored.yml").write_text("ignored: true\n", encoding="utf-8")
     build_skill_bundle(repository_root=root)
-    (root / "dist" / "experimental-assistant-0.9.9-sbom.json").write_text(
+    (root / "dist" / "experimental-assistant-1.0.0-sbom.json").write_text(
         json.dumps(
             {
                 "bomFormat": "CycloneDX",
                 "specVersion": "1.5",
                 "metadata": {
-                    "component": {"name": "experimental-assistant", "version": "0.9.9"}
+                    "component": {"name": "experimental-assistant", "version": "1.0.0"}
                 },
                 "components": [],
             }
@@ -112,33 +121,33 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
         encoding="utf-8",
     )
     (
-        root / "dist" / "experimental-assistant-0.9.9-vulnerability-report.json"
+        root / "dist" / "experimental-assistant-1.0.0-vulnerability-report.json"
     ).write_text(
         json.dumps({"scanner": "pip-audit", "status": "pass", "vulnerability_count": 0})
         + "\n",
         encoding="utf-8",
     )
-    (root / "dist" / "experimental-assistant-0.9.9-install-smoke.json").write_text(
+    (root / "dist" / "experimental-assistant-1.0.0-install-smoke.json").write_text(
         json.dumps(
             {
                 "status": "pass",
                 "distribution": "experimental-assistant",
-                "version": "0.9.9",
+                "version": "1.0.0",
             }
         )
         + "\n",
         encoding="utf-8",
     )
-    wheel = root / "dist" / "experimental_assistant-0.9.9-py3-none-any.whl"
-    sdist = root / "dist" / "experimental_assistant-0.9.9.tar.gz"
+    wheel = root / "dist" / "experimental_assistant-1.0.0-py3-none-any.whl"
+    sdist = root / "dist" / "experimental_assistant-1.0.0.tar.gz"
     wheel.write_bytes(b"wheel")
     sdist.write_bytes(b"sdist")
-    (root / "dist" / "experimental-assistant-0.9.9-reproducibility.json").write_text(
+    (root / "dist" / "experimental-assistant-1.0.0-reproducibility.json").write_text(
         json.dumps(
             {
                 "status": "pass",
                 "distribution": "experimental-assistant",
-                "version": "0.9.9",
+                "version": "1.0.0",
                 "artifacts": [
                     {
                         "artifact": wheel.name,
@@ -222,10 +231,13 @@ def test_release_manifest_collects_package_metadata_and_checksums(
     assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "docs/RELEASE_VERIFICATION.md" in paths
     assert "docs/PUBLIC_ACCEPTANCE_MATRIX.md" in paths
-    assert "docs/V0_9_RELEASE_NOTES.md" in paths
-    assert "docs/V0_9_KNOWN_LIMITATIONS.md" in paths
-    assert "docs/V0_9_MANUAL_TEST_CHECKLIST.md" in paths
-    assert "docs/V0_9_AGENT_HANDOFF.md" in paths
+    assert "docs/V1_0_RELEASE_NOTES.md" in paths
+    assert "docs/V1_0_KNOWN_LIMITATIONS.md" in paths
+    assert "docs/V1_0_TRIAL_REPORT.md" in paths
+    assert "docs/V1_0_RELEASE_DOSSIER.md" in paths
+    assert "docs/V1_0_RELEASE_DOSSIER.yml" in paths
+    assert "docs/V1_0_ISSUE_DISPOSITION.md" in paths
+    assert "docs/V1_0_SUPPORT_PROMISE.md" in paths
     assert "docs/PROJECT_BUNDLE_VERIFICATION.md" in paths
     assert "examples/example_manifest.yml" in paths
     assert "src/ea/__init__.py" in paths
@@ -233,6 +245,10 @@ def test_release_manifest_collects_package_metadata_and_checksums(
     assert "dist/ignored.yml" not in paths
     assert ".venv/ignored.txt" not in paths
     assert manifest["release_inputs"]["aggregate_sha256"]
+    assert (
+        "audit_mode_validator_regression"
+        in manifest["validation_contract"]["required_smoke_steps"]
+    )
     assert (
         "release_manifest_help"
         in manifest["validation_contract"]["required_smoke_steps"]
@@ -317,7 +333,7 @@ def test_release_manifest_cli_writes_summary_json(tmp_path: Path, capsys) -> Non
 
     assert exit_code == 0
     assert summary["status"] == "complete"
-    assert summary["package"] == {"name": "experimental-assistant", "version": "0.9.9"}
+    assert summary["package"] == {"name": "experimental-assistant", "version": "1.0.0"}
     assert Path(summary["manifest"]).exists()
     assert summary["file_count"] > 0
 

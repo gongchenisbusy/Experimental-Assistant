@@ -1,4 +1,4 @@
-# EA v0.9.9 CLI Command Index
+# EA v1.0.0 CLI Command Index
 
 Use this reference only when the task needs concrete command examples. The top-level skill file stays compact so routine EA use does not load the full command catalogue.
 
@@ -147,7 +147,7 @@ ea-release-artifact-smoke
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -155,6 +155,6 @@ Optional signing uses only explicit user-managed key paths:
 
 ```bash
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/experimental-assistant-0.9.9-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/experimental-assistant-0.9.9-COMMIT-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/experimental-assistant-1.0.0-COMMIT-release.zip --public-key /path/to/user-release-public.pem
 ```

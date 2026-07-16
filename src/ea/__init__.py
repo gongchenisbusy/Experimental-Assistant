@@ -1,5 +1,5 @@
-"""Experimental Assistant v0.9.9 local-first materials research core."""
+"""Experimental Assistant v1.0.0 local-first materials research core."""
 
 __all__ = ["__version__"]
 
-__version__ = "0.9.9"
+__version__ = "1.0.0"

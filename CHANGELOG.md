@@ -2,6 +2,14 @@
 
 All notable public changes to Experimental Assistant are recorded here.
 
+## v1.0.0 - 2026-07-17
+
+- Promote the frozen v0.9.9 feature contract to the first stable public release after repeating current-candidate tests, public benchmarks, native CI, lifecycle, reproducibility, supply-chain, and artifact gates.
+- Allow report-citation and export-integrity validators in audit mode while preserving zero-write behavior; mode-policy refusal now uses `EA-MODE-COMMAND-BLOCKED` instead of an operating-system permission error.
+- Align package, CLI, citation, single `$ea` Skill, onboarding, release records, and public documentation on the `1.0.0` identity while preserving historical v0.9.x evidence and project provenance.
+- Promote only the public-benchmark-bounded Raman workflow into the stable core; advanced interpretation and all other method-specific candidate boundaries remain review-gated as documented.
+- Add v1 release-package/signature formats with declared v0.9.x verification compatibility, plus clean update, rollback, uninstall, and downloaded-asset replay evidence.
+
 ## v0.9.9 - 2026-07-16
 
 - Generalize literature data collection from six electrical categories to arbitrary validated user schemas while retaining the old categories as templates and preserving reviewed-only downstream use.
