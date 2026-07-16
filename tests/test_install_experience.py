@@ -121,9 +121,10 @@ def test_capability_contract_is_queryable(capsys) -> None:
 
     assert "maturity" not in json.dumps(result).lower()
     assert "beta" not in json.dumps(result).lower()
-    assert "user_defined_literature_data_collection" in result["contract"][
-        "supported_workflows"
-    ]
+    assert (
+        "user_defined_literature_data_collection"
+        in result["contract"]["supported_workflows"]
+    )
     assert "scientific_interpretations" in result["contract"]["review_required"]
 
 
@@ -367,6 +368,50 @@ def test_rollback_and_uninstall_are_confirmation_gated(tmp_path: Path) -> None:
     assert set(rollback_plan["will_restore"]) == {"ea"}
     assert uninstall_plan["status"] == "needs_confirmation"
     assert len(uninstall_plan["will_remove"]) == 1
+
+
+@pytest.mark.parametrize("legacy_version", ["v0.9.7", "v0.9.8", "v0.9.9"])
+def test_rollback_restores_supported_legacy_skill_backup(
+    tmp_path: Path, legacy_version: str
+) -> None:
+    codex_home = tmp_path / "codex"
+    _install_sources(codex_home)
+    target = codex_home / "skills" / "ea" / "SKILL.md"
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("v1.0.0", legacy_version),
+        encoding="utf-8",
+    )
+    validator = _write_validator(tmp_path)
+    install_codex_skill(
+        source=Path("skills/ea"), codex_home_path=codex_home, validator=validator
+    )
+
+    result = rollback_codex_skills(
+        codex_home_path=codex_home, validator=validator, confirmed=True
+    )
+
+    assert result["status"] == "completed"
+    assert result["restored"] == ["ea"]
+    assert legacy_version in target.read_text(encoding="utf-8")
+
+
+def test_rollback_rejects_unsupported_legacy_skill_backup(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    _install_sources(codex_home)
+    target = codex_home / "skills" / "ea" / "SKILL.md"
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("v1.0.0", "v0.9.6"),
+        encoding="utf-8",
+    )
+    validator = _write_validator(tmp_path)
+    install_codex_skill(
+        source=Path("skills/ea"), codex_home_path=codex_home, validator=validator
+    )
+
+    with pytest.raises(RuntimeError, match="Rollback backup validation failed for ea"):
+        rollback_codex_skills(
+            codex_home_path=codex_home, validator=validator, confirmed=True
+        )
 
 
 def test_cli_version_install_and_onboarding_use_v097_identity(

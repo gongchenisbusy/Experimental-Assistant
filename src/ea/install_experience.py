@@ -39,6 +39,12 @@ from ea.identity import (
 
 PACKAGE_NAME = DISTRIBUTION_NAME
 MIN_PYTHON = (3, 11)
+SUPPORTED_ROLLBACK_SKILL_VERSIONS = (
+    DISPLAY_VERSION,
+    "v0.9.9",
+    "v0.9.8",
+    "v0.9.7",
+)
 
 
 def _decode_subprocess_output(value: bytes) -> str:
@@ -255,11 +261,25 @@ def _skill_manifest(path: Path) -> dict[str, Any]:
         return {}
 
 
-def inspect_skill_identity(path: Path, *, expected_name: str) -> dict[str, Any]:
+def inspect_skill_identity(
+    path: Path,
+    *,
+    expected_name: str,
+    accepted_versions: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     manifest = _skill_manifest(path)
     actual_name = manifest.get("name")
     description = str(manifest.get("description") or "")
-    version_ok = DISPLAY_VERSION in description
+    expected_versions = accepted_versions or (DISPLAY_VERSION,)
+    detected_version = next(
+        (
+            version
+            for version in expected_versions
+            if f"{PRODUCT_NAME} {version}" in description
+        ),
+        None,
+    )
+    version_ok = detected_version is not None
     status = "pass" if actual_name == expected_name and version_ok else "fail"
     return {
         "name": "codex_skill_identity",
@@ -267,7 +287,8 @@ def inspect_skill_identity(path: Path, *, expected_name: str) -> dict[str, Any]:
         "path": str(path),
         "expected_name": expected_name,
         "actual_name": actual_name,
-        "version_detected": DISPLAY_VERSION if version_ok else None,
+        "version_detected": detected_version,
+        "accepted_versions": list(expected_versions),
         "next_steps": []
         if status == "pass"
         else ["Run `ea codex install-skill` to replace the mismatched skill."],
@@ -587,9 +608,7 @@ def rollback_codex_skills(
 ) -> dict[str, Any]:
     home = codex_home_path or codex_home()
     skills_dir = codex_skills_dir(home)
-    selected = {
-        SKILL_NAME: _latest_backup(skills_dir, SKILL_NAME)
-    }
+    selected = {SKILL_NAME: _latest_backup(skills_dir, SKILL_NAME)}
     missing = [name for name, backup in selected.items() if backup is None]
     if missing:
         raise FileNotFoundError(
@@ -610,7 +629,11 @@ def rollback_codex_skills(
             staged = stage / name
             shutil.copytree(backup, staged)
             validation = validate_skill(staged, validator=validator)
-            identity = inspect_skill_identity(staged, expected_name=name)
+            identity = inspect_skill_identity(
+                staged,
+                expected_name=name,
+                accepted_versions=SUPPORTED_ROLLBACK_SKILL_VERSIONS,
+            )
             if validation["status"] == "fail" or identity["status"] == "fail":
                 raise RuntimeError(f"Rollback backup validation failed for {name}")
         for name in selected:
@@ -873,7 +896,9 @@ def install_check(
                     "name": f"retired_codex_skill:{retired_name}",
                     "status": "fail" if retired_exists else "pass",
                     "path": str(retired_path),
-                    "next_steps": ["Run `ea codex install-skill` to remove the retired compatibility skill."]
+                    "next_steps": [
+                        "Run `ea codex install-skill` to remove the retired compatibility skill."
+                    ]
                     if retired_exists
                     else [],
                 }

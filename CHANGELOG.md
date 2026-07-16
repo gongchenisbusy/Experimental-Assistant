@@ -9,6 +9,7 @@ All notable public changes to Experimental Assistant are recorded here.
 - Align package, CLI, citation, single `$ea` Skill, onboarding, release records, and public documentation on the `1.0.0` identity while preserving historical v0.9.x evidence and project provenance.
 - Promote only the public-benchmark-bounded Raman workflow into the stable core; advanced interpretation and all other method-specific candidate boundaries remain review-gated as documented.
 - Add v1 release-package/signature formats with declared v0.9.x verification compatibility, plus clean update, rollback, uninstall, and downloaded-asset replay evidence.
+- Accept structurally valid v0.9.7–v0.9.9 `$ea` Skill backups during v1 rollback while keeping normal installation and health checks pinned to the exact v1.0.0 identity.
 
 ## v0.9.9 - 2026-07-16
 
