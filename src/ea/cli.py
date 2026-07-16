@@ -27,7 +27,7 @@ from ea.electrochemistry import (
     process_electrochemistry_result,
 )
 from ea.evaluation import run_project_evaluation
-from ea.errors import error_record
+from ea.errors import ModeCommandBlockedError, error_record
 from ea.exports import (
     ReportBundleError,
     export_batch_bundle,
@@ -2353,6 +2353,10 @@ def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
         )
     if args.command == "draft":
         return args.draft_command == "status"
+    if args.command == "references":
+        return args.references_command == "validate-report"
+    if args.command == "export":
+        return args.export_command in {"verify-bundle", "verify-archive"}
     return False
 
 
@@ -2475,7 +2479,7 @@ def _thermal_processing_parameters(args: argparse.Namespace, workspace: Path) ->
 def _main_impl(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not _mode_allows(args):
-        raise PermissionError(
+        raise ModeCommandBlockedError(
             f"Interaction mode '{args.interaction_mode}' blocks this command before any project write. "
             "Use a read-only command or choose record/execute mode explicitly."
         )

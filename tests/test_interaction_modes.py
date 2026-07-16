@@ -39,7 +39,7 @@ def test_consult_status_is_zero_write_and_mutation_is_blocked(tmp_path: Path, ca
     new_project = tmp_path / "blocked-project"
     assert main(["--mode", "consult", "start", str(new_project), "--yes"]) == 2
     error = json.loads(capsys.readouterr().out)
-    assert error["code"] == "EA-IO-PERMISSION-DENIED"
+    assert error["code"] == "EA-MODE-COMMAND-BLOCKED"
     assert "consult" in error["cause"]["message"]
     assert not new_project.exists()
 
@@ -51,12 +51,47 @@ def test_audit_requires_no_write_flags_and_record_blocks_execution(tmp_path: Pat
     assert main(["--mode", "audit", "brief", "project", str(project), "--no-write", "--json"]) == 0
     capsys.readouterr()
     assert main(["--mode", "audit", "brief", "project", str(project), "--json"]) == 2
-    assert json.loads(capsys.readouterr().out)["code"] == "EA-IO-PERMISSION-DENIED"
+    assert json.loads(capsys.readouterr().out)["code"] == "EA-MODE-COMMAND-BLOCKED"
 
     source = tmp_path / "spectrum.txt"
     source.write_text("100 1\n101 2\n", encoding="utf-8")
     assert main(["--mode", "record", "raman", "inspect", str(project), str(source)]) == 2
-    assert json.loads(capsys.readouterr().out)["code"] == "EA-IO-PERMISSION-DENIED"
+    assert json.loads(capsys.readouterr().out)["code"] == "EA-MODE-COMMAND-BLOCKED"
+
+
+def test_audit_read_only_allowlist_does_not_admit_neighboring_writes(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "project"
+    _project(project)
+    before = _snapshot(project)
+
+    assert main(
+        [
+            "--mode",
+            "audit",
+            "references",
+            "add",
+            str(project),
+            "--citation",
+            "Blocked write candidate",
+        ]
+    ) == 2
+    assert json.loads(capsys.readouterr().out)["code"] == "EA-MODE-COMMAND-BLOCKED"
+
+    assert main(
+        [
+            "--mode",
+            "audit",
+            "export",
+            "report-bundle",
+            str(project),
+            "--report-id",
+            "rpt-blocked",
+        ]
+    ) == 2
+    assert json.loads(capsys.readouterr().out)["code"] == "EA-MODE-COMMAND-BLOCKED"
+    assert _snapshot(project) == before
 
 
 def test_mode_command_is_read_only_and_describes_all_modes(tmp_path: Path, capsys) -> None:
