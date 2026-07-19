@@ -1,83 +1,121 @@
-# Experimental Assistant v1.0.0
+<h1 align="center">Experimental Assistant v1.0.0</h1>
 
-Experimental Assistant (EA) is a local-first materials-research assistant. It helps organize projects, protect imported raw data, run review-gated characterization workflows, trace reports back to evidence, and coordinate literature work without assuming developer-machine accounts or paths.
+<p align="center">
+  <strong>From project evidence to better next steps — with the researcher in control.</strong>
+</p>
 
-Public identity: `Experimental Assistant`, CLI `ea`, the single Codex skill `$ea`, and Python distribution `experimental-assistant`.
+<p align="center">
+  A local-first, review-gated assistant for materials research. Experimental Assistant (EA) organizes experimental context and literature evidence, supports traceable characterization workflows, and produces reviewable reports and next-step candidates without overwriting protected raw data.
+</p>
 
-Repository: <https://github.com/gongchenisbusy/Experimental-Assistant>
+<p align="center">
+  <a href="https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b596d" alt="Experimental Assistant v1.0.0 release"></a>
+  <a href="https://github.com/gongchenisbusy/Experimental-Assistant/actions/workflows/ci.yml"><img src="https://github.com/gongchenisbusy/Experimental-Assistant/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 through 3.13">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-c58b22" alt="Apache 2.0 license"></a>
+  <img src="https://img.shields.io/badge/Codex%20skill-%24ea-8f2d1b" alt="Codex skill $ea">
+</p>
 
-Release: <https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0>
+<p align="center">
+  <a href="docs/QUICKSTART_ZH.md">中文快速入门</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#public-examples">Public Examples</a> ·
+  <a href="docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md">Installation &amp; Updates</a> ·
+  <a href="docs/V1_0_KNOWN_LIMITATIONS.md">Known Limits</a>
+</p>
 
-中文用户可直接阅读 [docs/QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md)。稳定错误码与处理建议见 [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md)。
+<p align="center">
+  <img src="docs/assets/ea-concept-overview.png" width="100%" alt="Experimental Assistant materials-research workflow, from literature and experiment records through context-aware analysis to evidence-grounded project guidance">
+</p>
 
-## Install
+<p align="center"><sub>Conceptual overview. Exact supported inputs, review requirements, and scientific limits are documented below.</sub></p>
 
-Python 3.11, 3.12, or 3.13 is supported. Python 3.12 is recommended.
+> [!IMPORTANT]
+> EA produces reviewable evidence and candidate interpretations. It does not independently prove material identity, phase, mechanism, performance, calibration validity, or exhaustive literature coverage.
+
+## What EA does
+
+| Build the evidence base | Analyze with context | Produce reviewable next steps |
+|---|---|---|
+| Organize literature, experiments, samples, conditions, uncertainties, and open questions. | Inspect columns, units, processing choices, and experimental context before computation. | Generate reports, figures, candidate interpretations, research plans, and evidence links. |
+| Import raw files as controlled, hashed copies and preserve the original source. | Connect reviewed processing to experimental records and source-backed literature candidates. | Keep conclusions, limitations, confidence, and unresolved questions visible for researcher review. |
+
+**EA proposes. You review. The project learns.**
+
+## Quick Start
+
+EA supports Python 3.11, 3.12, and 3.13 on Windows, macOS, and Ubuntu. Python 3.12 is recommended.
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
+uv tool install --python 3.12 \
+  git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
+
 ea setup
 ea doctor
 ```
 
-Restart Codex, open a new task, and invoke `$ea`. The complete public install, update, rollback, and removal guide is [docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md](docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md).
+Restart Codex, open a new task, and invoke the single public skill: `$ea`.
 
-## First Project
-
-`ea start` previews the project before writing. Add `--yes` only after checking the proposed location and metadata.
+Create a first project by previewing the write, reviewing the proposed location and metadata, and then confirming the same command with `--yes`:
 
 ```bash
 ea start /path/to/project \
   --name "2D material study" \
   --material "MoS2" \
-  --direction "electrical and spectroscopic characterization"
+  --direction "spectroscopic characterization"
+
 ea start /path/to/project \
   --name "2D material study" \
   --material "MoS2" \
-  --direction "electrical and spectroscopic characterization" \
+  --direction "spectroscopic characterization" \
   --yes
+
 ea journey /path/to/project
 ```
 
-Preview a data file without writing, then apply only the exact reviewed hash:
+`ea journey` recovers one concrete next action at a time. For a guided Chinese walkthrough, see [中文快速入门](docs/QUICKSTART_ZH.md). For install, update, rollback, and removal instructions, see [Public Install and Codex Skill Setup](docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md).
 
-```bash
-ea import preview /path/to/spectrum.csv
-ea import apply /path/to/project /path/to/spectrum.csv --characterization-type raman --preview-hash SHA256 --yes
-ea analyze /path/to/project raw/raman/RECORD/spectrum.csv --method raman
+## How EA works
+
+```text
+Project context
+      ↓
+Preview and protected import
+      ↓
+Inspect columns, units, and experimental context
+      ↓
+Researcher reviews scientific choices
+      ↓
+Process, compare, and prepare candidate interpretations
+      ↓
+Report, trace, and verify the handoff
 ```
 
-EA separates inspection, parameter/review decisions, processing, and reporting. It does not silently infer scientific identity, apply unreviewed parameters, or overwrite protected raw data.
+The ordinary characterization pattern is `inspect → review → process → report`. EA does not silently infer scientific identity, apply unreviewed parameters, or overwrite protected raw data.
 
-## Interaction Modes
+### Interaction modes
 
-Use `ea mode` for the exact contract.
+| Mode | Contract |
+|---|---|
+| `consult` | Read-only advice, inspection, and previews. |
+| `record` | Confirmed project notes and review records, without analysis or report execution. |
+| `execute` | Confirmed import, processing, literature, plotting, reporting, and export work. |
+| `audit` | Read-only health, provenance, trace, diagnostics, and release checks. |
 
-- `--mode consult`: read-only advice and previews.
-- `--mode record`: project notes and review records, but no analysis/report execution.
-- `--mode execute`: confirmed processing and artifact creation.
-- `--mode audit`: read-only health, provenance, and trace checks.
+Run `ea mode` for the exact contract. Mutating commands preview their plans or require explicit confirmation.
 
-Mutating commands show a plan or require explicit confirmation. Stable errors report the cause, retry safety, written artifacts, next steps, and a local debug-log reference.
+## Capabilities at a glance
 
-## Everyday Checks
+| Area | Available today | Research boundary |
+|---|---|---|
+| Project workspace | Project initialization and recovery; experiment, sample, progress, open-item, review, provenance, and memory records. | Findings enter durable memory only after review. |
+| Protected data | Encoding and table inspection, controlled raw copies, hashes, duplicate detection, and source protection. | Generated output is never written beneath `raw/`, and source files are not overwritten. |
+| Characterization | Review-gated workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, batch work, and structured image records. | Raman preprocessing and peak screening are bounded by the public benchmark. Other method outputs remain candidate or screening results within their documented inputs. |
+| Literature evidence | Public metadata discovery and ranking, local source packets, optional acquisition handoffs, and user-defined evidence datasets. | Coverage is query- and source-limited. Full-text access must be lawful and user-authorized. |
+| Reports and handoff | Markdown and HTML reports, figures, evidence links, trace views, checksum-verified report and batch bundles. | Checksums verify file integrity, not scientific correctness. |
+| Lifecycle and recovery | `doctor`, status, health checks, evaluation, diagnostics, update, rollback, and uninstall previews. | Replacement and removal require explicit confirmation. |
 
-```bash
-ea capabilities
-ea status /path/to/project
-ea healthcheck /path/to/project
-ea eval project /path/to/project --no-write
-ea brief project /path/to/project
-ea diagnostics collect /path/to/project --output /path/to/ea-diagnostics.json
-```
-
-Diagnostics are local-only, redact common secrets and signed/session URLs, and exclude raw data, processed data, private full text, and credential stores.
-
-## Characterization Workflows
-
-The ordinary pattern is `inspect -> review -> process -> report`. Detailed commands and scientific boundaries live in `skills/ea/references/cli-command-index.md` and the matching workflow reference.
-
-Command groups include:
+### Characterization entry points
 
 ```text
 ea raman inspect
@@ -90,11 +128,73 @@ ea electrochemistry inspect
 ea thermal inspect
 ```
 
-Source-backed candidate discovery remains advisory. Useful expert entry points include `ea ftir list-assignment-libraries`, `ea uv-vis list-source-libraries`, `ea uv-vis build-source-packet`, `ea uv-vis suggest-interpretations`, `ea uv-vis prepare-review`, `ea uv-vis propose-memory`, `ea uv-vis compare-replicates --feature-match-tolerance-ev`, `ea xps list-parameter-libraries`, and the report option `--interpretation-suggestion`.
+Detailed processing, review, and reporting commands live in the matching references under [`skills/ea/references/`](skills/ea/references/) and in the [CLI command index](skills/ea/references/cli-command-index.md).
 
-## Literature Work
+<details>
+<summary><strong>Source-backed method discovery and review helpers</strong></summary>
 
-EA preserves confirmed query phrases, applies material/application relevance gates, and records acquisition state. It does not bypass subscriptions, authentication, or publisher controls.
+These commands prepare candidates and review packages; they do not silently apply scientific interpretations:
+
+```text
+ea ftir list-assignment-libraries
+ea uv-vis list-source-libraries
+ea uv-vis build-source-packet
+ea uv-vis suggest-interpretations
+ea uv-vis prepare-review
+ea uv-vis propose-memory
+ea uv-vis compare-replicates --feature-match-tolerance-ev 0.05
+ea xps list-parameter-libraries
+```
+
+After a confirmed review, `ea uv-vis report --interpretation-suggestion ...` can include reviewed, registered evidence. Method-specific limits and concrete examples are documented in the workflow references.
+
+</details>
+
+## Public examples
+
+The repository includes public-safe, inspectable projects that require no private data, Zotero account, browser profile, institution login, or literature cache.
+
+<table>
+<tr>
+<td width="50%" align="center" valign="top">
+<a href="examples/public-raman-project/README.md"><img src="examples/public-raman-project/processed/sample-example-mos2-001/raman/res-public-raman-example-raman-20260602-001/fig-public-raman-example-raman-20260602-001.png" width="100%" alt="Public Raman example figure"></a><br>
+<strong><a href="examples/public-raman-project/README.md">Raman workflow</a></strong><br>
+Controlled raw import, reviewed preprocessing, peak screening, figure, report, and provenance.
+</td>
+<td width="50%" align="center" valign="top">
+<a href="examples/public-ftir-assignment-project/README.md"><img src="examples/public-ftir-assignment-project/processed/sample-example-polymer-silica-ftir-001/ftir/res-public-ftir-assignment-example-ftir-20260604-001/fig-public-ftir-assignment-example-ftir-20260604-001.png" width="100%" alt="Public FTIR assignment example figure"></a><br>
+<strong><a href="examples/public-ftir-assignment-project/README.md">FTIR assignment workflow</a></strong><br>
+Source-backed band-assignment candidates, review packages, references, and traceable reporting.
+</td>
+</tr>
+<tr>
+<td width="50%" align="center" valign="top">
+<a href="examples/public-uv-vis-project/README.md"><img src="examples/public-uv-vis-project/processed/sample-example-semiconductor-film-uv-vis-001/uv_vis/res-public-uv-vis-example-uv-vis-20260605-001/fig-public-uv-vis-example-uv-vis-20260605-001.png" width="100%" alt="Public UV-Vis example figure"></a><br>
+<strong><a href="examples/public-uv-vis-project/README.md">UV-Vis screening workflow</a></strong><br>
+Reviewed optical screening, candidate interpretations, source context, and comparison-ready records.
+</td>
+<td width="50%" align="center" valign="top">
+<a href="examples/public-xps-be-project/README.md"><img src="examples/public-xps-be-project/processed/sample-example-si-sio2-xps-001/xps/res-public-xps-be-example-xps-20260603-001/fig-public-xps-be-example-xps-20260603-001.png" width="100%" alt="Public XPS binding-energy example figure"></a><br>
+<strong><a href="examples/public-xps-be-project/README.md">XPS binding-energy workflow</a></strong><br>
+Reviewed calibration context, binding-energy candidates, source packets, and auditable reports.
+</td>
+</tr>
+</table>
+
+Inspect an example without writing project state:
+
+```bash
+ea healthcheck examples/public-raman-project
+ea eval project examples/public-raman-project --no-write
+```
+
+Copy an example before experimenting with edits. These are orientation artifacts, not templates containing a user's real project memory.
+
+## Literature evidence, with access under your control
+
+EA separates planning, metadata discovery, lawful acquisition, evidence extraction, scientific review, and downstream use. A new project either records literature as enabled or creates a **literature-library decision record** so the choice remains visible.
+
+The public metadata route can use Crossref, OpenAlex, and arXiv when explicitly requested. It records query and coverage state in `public_search_state.yml`; it does not claim exhaustive search or download subscription content.
 
 ```bash
 ea literature setup-preflight /path/to/project
@@ -103,32 +203,33 @@ ea literature search-public /path/to/project
 ea literature rank-candidates /path/to/project
 ea literature prepare-source-candidates /path/to/project
 ea literature preflight-source-candidates /path/to/project
-ea literature zotero-readiness /path/to/project
-ea literature acceptance-checklist /path/to/project
 ```
 
-The literature-library decision record, `public_search_state.yml`, `institution-access-guide`, and `zotero-bridge` describe what EA runs locally and what remains an optional external integration. `import-zotero-status`, `reconcile-acquisition`, and `render-reconciliation` normalize current acquisition evidence and expose actionable `repair_actions`.
+Confirmed method manifests such as `confirmed_ftir_source_candidates.yml`, `confirmed_uv_vis_source_candidates.yml`, and `confirmed_xps_source_candidates.yml` can feed local, reviewable source-packet builders.
 
-Confirmed source-candidate manifests such as `confirmed_ftir_source_candidates.yml`, `confirmed_uv_vis_source_candidates.yml`, and `confirmed_xps_source_candidates.yml` can feed method-specific packet builders after review.
+EA can also collect a user-defined literature data category through a validated schema. Reported and normalized values remain separate; only accepted or edited records can enter statistics, plots, reports, or exports.
 
-### User-Defined Literature Data Collection
+<details>
+<summary><strong>Optional acquisition handoff and reconciliation commands</strong></summary>
 
-v1.0.0 can collect any user-requested literature data category described by a validated schema. The six earlier electrical-property templates remain available as conveniences, not as an allowlist. A schema can declare numeric values, ranges, values with uncertainty, text, enums, booleans, dates, lists, and nested fields, together with units, aliases, evidence requirements, comparison rules, and conflict policy. EA keeps reported and normalized values separate, requires item-level review, validates the accepted dataset, plots compatible fields where meaningful, and exports a privacy-scoped bundle.
-
-```bash
-ea literature data-template --help
-ea literature data-schema validate /path/to/schema.yml
-ea literature data-plan /path/to/project --schema /path/to/schema.yml
-ea literature data-extract /path/to/project --help
-ea literature data-review /path/to/project --help
-ea literature data-validate /path/to/project --help
-ea literature data-plot /path/to/project --help
-ea literature data-export /path/to/project --help
+```text
+ea literature institution-access-guide
+ea literature zotero-bridge
+ea literature import-zotero-status
+ea literature reconcile-acquisition
+ea literature render-reconciliation
+ea literature acceptance-checklist
 ```
 
-Only accepted or edited review records can enter downstream statistics, plots, reports, or exports. Numeric values are never converted or compared unless their schema and unit rules permit it. See `skills/ea/references/literature-data-extraction.md` for schema examples and concrete limits.
+Reconciliation exposes actionable `repair_actions` but does not silently repair records. Zotero, browser, publisher, institution, SSO, MFA, and CAPTCHA operations remain user-authorized and never bypass access controls.
 
-## Trace And Export
+</details>
+
+See [Local Literature Library](skills/ea/references/local-literature-library.md) and [Literature Data Extraction](skills/ea/references/literature-data-extraction.md) for the complete contract.
+
+## Traceable reports and verified handoff
+
+EA keeps compact trace metadata in `traceability/index.yml`. A focused trace connects one report or record to its immediate evidence; an explicit full export writes `traceability/full_trace.yml`.
 
 ```bash
 ea trace index /path/to/project
@@ -136,32 +237,63 @@ ea trace focus /path/to/project REPORT_OR_RECORD_ID
 ea trace view /path/to/project --focus REPORT_OR_RECORD_REF
 ea trace lookup /path/to/project RECORD_ID
 ea trace export /path/to/project --full
+
 ea export report-html /path/to/project --report-id REPORT_ID
 ea export report-bundle /path/to/project --report-id REPORT_ID --include-trace --zip
 ea export verify-archive /path/to/report-bundle.zip
 ```
 
-Compact metadata is stored in `traceability/index.yml`; explicit full export writes `traceability/full_trace.yml`. The graph links reports to registered references, reference seeds, built-in/source-library refs, review records, provenance, and memory. Project-bundle verification is documented in [docs/PROJECT_BUNDLE_VERIFICATION.md](docs/PROJECT_BUNDLE_VERIFICATION.md).
+Trace graphs preserve connections to registered references, reference seeds, built-in/source-library refs, review records, provenance, figures, reports, source packets, and reviewed memory.
 
-## Scientific And Integration Boundaries
+## Trust by design
 
-EA produces reviewable evidence and candidate interpretations; it does not independently prove material identity, mechanism, performance, or literature completeness. Browser, Zotero, and institution-login operations remain optional integrations and never bypass access controls. v1.0.0 release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys/reviews, and manual artifact inspection. These records are labeled by evidence type and are not represented as real-user or independent-expert validation.
+| Principle | What it means in EA |
+|---|---|
+| **Local-first** | Project data, private full text, and local caches stay under the user's control. |
+| **Review-gated** | Decisions that change scientific interpretation require explicit review. |
+| **Traceable** | Results link back to data, processing choices, reviews, references, and provenance. |
+| **Raw-data safe** | Original files remain unmodified; EA processes controlled project copies. |
+| **Permission-aware** | Browser, Zotero, institution access, downloads, and diagnostics submission remain opt-in. |
+| **Recoverable** | Lifecycle operations preview changes, use atomic writes where applicable, and support documented rollback paths. |
 
-## Migration And Updates
+### Scientific and integration boundaries
 
-The former `Experimental Assistant (Compatibility)` skill was retired after v0.9.8 and is not part of the pre-v1 or v1.0 public surface. `ea setup` removes a stale compatibility-skill directory if one is present. Historical project records remain readable and are not rewritten merely to change the product name.
+- EA prepares evidence, screening results, and candidate interpretations for review; it does not autonomously establish material identity, phase, layer count, mechanism, performance, strain or doping, calibration proof, or cross-paper comparability.
+- Public literature results are source- and query-limited. Optional full-text workflows must respect publisher terms, access controls, and user authorization.
+- Advanced image interpretation, complex PDF/table digitization, and scanned-document OCR may require separately authorized tools and review.
+- Release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys and reviews, and manual artifact inspection. Simulated evidence is not represented as real-user or independent-expert validation.
+
+Read the [Capability Matrix](docs/CAPABILITY_MATRIX.md), [Known Limitations](docs/V1_0_KNOWN_LIMITATIONS.md), and [Support Promise](docs/V1_0_SUPPORT_PROMISE.md) before using outputs for consequential scientific decisions.
+
+## Everyday project checks
 
 ```bash
-ea migrate status /path/to/project
-ea migrate plan /path/to/project
-ea update
-ea rollback --release-ref v0.9.7
-ea uninstall
+ea capabilities
+ea status /path/to/project
+ea healthcheck /path/to/project
+ea eval project /path/to/project --no-write
+ea brief project /path/to/project
+ea diagnostics collect /path/to/project --output /path/to/ea-diagnostics.json
 ```
 
-All lifecycle commands preview by default and require `--yes` for replacement or removal.
+Diagnostics remain local by default, redact common secrets and signed/session URLs, and exclude raw data, processed data, private full text, and credential stores.
+
+## Documentation
+
+| Start here | Reference |
+|---|---|
+| Chinese quick start | [docs/QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md) |
+| Full public onboarding | [docs/PUBLIC_ONBOARDING.md](docs/PUBLIC_ONBOARDING.md) |
+| Install, update, rollback, removal | [docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md](docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md) |
+| Stable error codes and next actions | [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md) |
+| Report-bundle verification | [docs/PROJECT_BUNDLE_VERIFICATION.md](docs/PROJECT_BUNDLE_VERIFICATION.md) |
+| Release verification and security | [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) · [docs/RELEASE_SECURITY_POLICY.md](docs/RELEASE_SECURITY_POLICY.md) |
+| Release notes and history | [docs/V1_0_RELEASE_NOTES.md](docs/V1_0_RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md) |
 
 ## Developers
+
+<details>
+<summary><strong>Development and release checks</strong></summary>
 
 ```bash
 python3 -m pip install -e ".[dev,release]"
@@ -169,14 +301,16 @@ python3 -m pytest -q
 python3 scripts/validate_skill_packages.py
 python3 scripts/check_version_identity.py
 python3 scripts/check_downloaded_skill_instructions.py
+python3 scripts/check_docs_links.py
 python3 scripts/public_release_smoke.py
-ea-release-supply-chain
-ea-release-manifest
-ea-release-package
-ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
-ea-release-checklist
 ```
 
-Release policy, SBOM/vulnerability requirements, checksums, signature trust limits, and clean-build verification are in [docs/RELEASE_SECURITY_POLICY.md](docs/RELEASE_SECURITY_POLICY.md) and [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md).
+Release policy, reproducibility, SBOM and vulnerability requirements, package checksums, signature trust limits, and clean-build verification are documented in [Release Security Policy](docs/RELEASE_SECURITY_POLICY.md) and [Release Verification](docs/RELEASE_VERIFICATION.md).
 
-Apache-2.0 license. See [LICENSE](LICENSE), [NOTICE](NOTICE), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), and [docs/SUPPORT_POLICY.md](docs/SUPPORT_POLICY.md).
+</details>
+
+Contributions and security reports are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [GOVERNANCE.md](GOVERNANCE.md), and the [Support Policy](docs/SUPPORT_POLICY.md).
+
+## License
+
+Experimental Assistant is licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution information.
