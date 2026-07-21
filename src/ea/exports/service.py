@@ -6,7 +6,6 @@ import html
 import mimetypes
 import os
 import re
-import shutil
 import zipfile
 from pathlib import Path
 from typing import Any, Iterable
@@ -16,7 +15,13 @@ import yaml
 from ea.figures import figure_path_for_report
 from ea.report_messages import localized_figure_caption, localized_source_data_purpose
 from ea.schema.models import EARecord
-from ea.storage.files import read_markdown_record, read_yaml, write_yaml
+from ea.storage.files import (
+    atomic_copy_file,
+    atomic_write_text,
+    read_markdown_record,
+    read_yaml,
+    write_yaml,
+)
 from ea.traceability import build_project_trace_view
 
 
@@ -86,7 +91,11 @@ def _copy_project_file(
         return record
     target = bundle_dir / subdir / _safe_name(_project_ref(root, source))
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
+    if target.exists() and _sha256_file(source) == _sha256_file(target):
+        record["reused"] = True
+    else:
+        atomic_copy_file(source, target)
+        record["reused"] = False
     record["copied"] = True
     record["bundle_ref"] = target.relative_to(bundle_dir).as_posix()
     record["source_ref"] = _project_ref(root, source)
@@ -1085,6 +1094,80 @@ def export_report_html(
     return manifest
 
 
+def export_draft_html_preview(
+    root: Path,
+    *,
+    draft_id: str,
+    output_path: Path | None = None,
+    embed_images: bool = True,
+) -> dict[str, Any]:
+    root = root.resolve()
+    manifest_path = root / "drafts" / draft_id / "draft.yml"
+    if not manifest_path.is_file():
+        raise ReportBundleError(f"Unknown draft_id: {draft_id}")
+    manifest = read_yaml(manifest_path)
+    content_ref = str(manifest.get("content_ref") or "")
+    content_path = _project_path(root, content_ref)
+    if not content_ref or not content_path.is_file() or not _is_inside(root, content_path):
+        raise ReportBundleError(
+            f"Draft content is missing or outside the project: {content_ref}"
+        )
+    output_path = output_path or (
+        root / "exports" / "user-reports" / "drafts" / f"{draft_id}.preview.html"
+    )
+    if not output_path.is_absolute():
+        output_path = root / output_path
+    body_text = content_path.read_text(encoding="utf-8")
+    if body_text.startswith("---\n"):
+        _, body_text = read_markdown_record(content_path)
+    body_html = _markdown_body_to_html(
+        root,
+        content_path,
+        body_text,
+        embed_images=embed_images,
+    )
+    document = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ea-draft-id" content="{html.escape(draft_id, quote=True)}">
+<meta name="ea-formal-status" content="draft-not-formal">
+<title>{html.escape(draft_id)} — DRAFT / NOT FORMAL</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0 auto; max-width: 960px; padding: 24px; color: #202124; }}
+.draft-banner {{ background: #7f1d1d; color: white; padding: 16px 20px; border: 4px solid #450a0a; font-weight: 800; letter-spacing: .04em; position: sticky; top: 0; z-index: 10; }}
+.draft-note {{ background: #fff7ed; border: 1px solid #fdba74; padding: 12px 16px; }}
+img {{ max-width: 100%; height: auto; }}
+code, pre {{ font-family: "SFMono-Regular", Consolas, monospace; }}
+</style>
+</head>
+<body>
+<div class="draft-banner">DRAFT / NOT FORMAL</div>
+<p class="draft-note">Read-only preview of staged content. This is not an indexed or promoted EA report and does not change formal project state.</p>
+<main>{body_html}</main>
+</body>
+</html>
+"""
+    atomic_write_text(output_path, document)
+    return {
+        "schema_version": "1.1",
+        "status": "preview",
+        "draft_id": draft_id,
+        "draft_ref": manifest_path.relative_to(root).as_posix(),
+        "content_ref": content_ref,
+        "html_path": str(output_path),
+        "html_ref": _project_ref(root, output_path),
+        "formal_state_mutated": False,
+        "marker": "DRAFT / NOT FORMAL",
+        "boundaries": [
+            "Preview output is not registered in reports/index.yml.",
+            "Preview does not create or promote a ReviewRecord.",
+            "Preview does not mutate the draft manifest or canonical report state.",
+        ],
+    }
+
+
 def _write_zip_archive(
     bundle_dir: Path, archive_path: Path, *, exclude_paths: Iterable[Path | None] = ()
 ) -> Path:
@@ -1309,9 +1392,12 @@ def _copy_provenance(
     bundle_dir: Path,
     manifest: dict[str, Any],
     provenance_refs: list[str],
+    copy_registry: dict[str, set[str]] | None = None,
 ) -> list[dict[str, Any]]:
     copied = []
-    seen = set()
+    copy_registry = copy_registry if copy_registry is not None else {}
+    seen = copy_registry.setdefault("provenance_refs", set())
+    seen_inputs = copy_registry.setdefault("provenance_inputs", set())
     for provenance_ref in provenance_refs:
         if provenance_ref in seen:
             continue
@@ -1339,6 +1425,12 @@ def _copy_provenance(
         for input_ref in list(inputs.get("records") or []) + list(
             inputs.get("files") or []
         ):
+            normalized_input_ref = _project_ref(
+                root, _project_path(root, str(input_ref))
+            )
+            if normalized_input_ref in seen_inputs:
+                continue
+            seen_inputs.add(normalized_input_ref)
             input_record = _copy_project_file(
                 root,
                 bundle_dir,
@@ -1427,6 +1519,10 @@ def export_report_bundle(
         "checksum_manifest_ref": None,
         "checksum_manifest_bundle_ref": None,
     }
+    copy_registry: dict[str, set[str]] = {
+        "provenance_refs": set(),
+        "provenance_inputs": set(),
+    }
 
     report_ref = str(report_record.get("path") or "")
     manifest["trace_export"]["focus_ref"] = report_ref or None
@@ -1475,7 +1571,13 @@ def export_report_bundle(
             result_data = read_yaml(result_path)
             for provenance_ref in result_data.get("provenance_refs") or []:
                 manifest["artifacts"]["provenance"].extend(
-                    _copy_provenance(root, bundle_dir, manifest, [str(provenance_ref)])
+                    _copy_provenance(
+                        root,
+                        bundle_dir,
+                        manifest,
+                        [str(provenance_ref)],
+                        copy_registry,
+                    )
                 )
 
     figures = _figures_index(root)
@@ -1592,7 +1694,13 @@ def export_report_bundle(
         str(item) for item in report_frontmatter.get("provenance_refs") or []
     ]
     manifest["artifacts"]["provenance"].extend(
-        _copy_provenance(root, bundle_dir, manifest, report_provenance_refs)
+        _copy_provenance(
+            root,
+            bundle_dir,
+            manifest,
+            report_provenance_refs,
+            copy_registry,
+        )
     )
 
     if include_trace and report_ref:

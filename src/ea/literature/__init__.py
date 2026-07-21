@@ -21,6 +21,10 @@ from ea.literature.service import (
     setup_literature_preflight,
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
+    create_literature_acquisition_session,
+    ingest_local_pdfs,
+    literature_acquisition_status,
+    record_zotero_choice,
 )
 from ea.literature.data_extraction import (
     REVIEW_DECISIONS,
@@ -80,6 +84,10 @@ __all__ = [
     "setup_literature_preflight",
     "summarize_zotero_codex_readiness",
     "sync_literature_acquisition_status",
+    "create_literature_acquisition_session",
+    "ingest_local_pdfs",
+    "literature_acquisition_status",
+    "record_zotero_choice",
     "PROPERTY_KINDS",
     "REVIEW_DECISIONS",
     "export_literature_data",

@@ -1,8 +1,8 @@
-# Experimental Assistant v1.0.0 Public Acceptance Matrix
+# Experimental Assistant v1.1.0 Public Acceptance Matrix
 
 This matrix is the maintainer-facing release-candidate contract. A row passes only with evidence bound to the current candidate. Simulated-agent and mock-fixture evidence are labeled as such and are never described as real-user or independent-expert validation.
 
-| Area | Required evidence | v1.0.0 gate |
+| Area | Required evidence | v1.1.0 gate |
 |---|---|---|
 | Identity | `experimental-assistant`, CLI `ea`, single `$ea` skill, retired Compatibility skill absent | Blocking |
 | Platforms | Native Windows, Ubuntu, macOS on Python 3.11-3.13; 3.14 observation only | Blocking |
@@ -32,7 +32,7 @@ python3 -m build
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-1.1.0-COMMIT-release.zip
 ea-release-checklist
 ea literature zotero-readiness /path/to/project --no-write
 ea export report-bundle /path/to/project --report-id REPORT_ID --include-trace --zip
@@ -62,4 +62,4 @@ ea export verify-archive /path/to/report-bundle.zip
 - Any conversion of advisory/screening evidence into definitive material, phase, composition, band-gap, chemical-state, performance, or mechanism claims.
 - Any evidence record whose type, candidate commit, fixture hash, or limits are absent or misleading.
 
-Real-user trials, external expert sign-off, and a live Zotero account are not v1.0.0 release gates. They may be collected after v1.0.0 as product-improvement evidence.
+Real-user trials, external expert sign-off, and a live Zotero account are not v1.1.0 release gates. They may be collected after v1.1.0 as product-improvement evidence.

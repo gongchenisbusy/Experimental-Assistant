@@ -1,6 +1,6 @@
 # Raman Workflow
 
-Use this reference when processing Raman spectra in the Experimental Assistant v1.0.0 skill.
+Use this reference when processing Raman spectra in the Experimental Assistant v1.1.0 skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret peaks with project context and literature references. Use confidence labels rather than empty caution.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v1.0.0 preprocessing compatibility support:
+Current Experimental Assistant v1.1.0 preprocessing compatibility support:
 
 - The public-benchmark-bounded preprocessing, peak screening, explicit review gates, and traceable reporting path is part of the stable v1.0 core. This does not make advanced or unbenchmarked interpretation stable.
 

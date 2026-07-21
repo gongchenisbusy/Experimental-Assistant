@@ -2,6 +2,16 @@
 
 All notable public changes to Experimental Assistant are recorded here.
 
+## v1.1.0 - 2026-07-22
+
+- Make protected raw import and report export transactional and idempotent, including rollback after failed provenance writes and export-wide reuse of repeated protected inputs.
+- Centralize command effects so genuinely read-only inspect/list/status commands work in consult and audit modes while state-changing operations remain blocked.
+- Bind confirmed reviews to explicit target type, reference, and content; add clear-confirmation-only idempotent draft confirm/promotion.
+- Add method-aware Raman/PL import preview, scientifically readable dual-axis PL plots, direct experiment/sample workflows, stage-aware memory, reviewed multi-method composite reports, immediate HTML delivery, and non-formal draft HTML preview.
+- Add a fixed-scope resumable literature run ledger, per-target reconciliation, supporting-information parent checks, explicit Zotero choice, privacy-safe institution session state, verified local-PDF ingest, and acquisition postflight validation.
+- Pin a compatible EA-feedback companion that uses active-install evidence, keeps local collection offline from submission auth, respects structured warning severity, deduplicates findings, and recognizes multilingual submission intent.
+- Track optional reviewed PL peak fitting separately in issue #27; v1.1 does not introduce an unvalidated fitting model or automatic exciton-mechanism claims.
+
 ## v1.0.0 - 2026-07-17
 
 - Promote the frozen v0.9.9 feature contract to the first stable public release after repeating current-candidate tests, public benchmarks, native CI, lifecycle, reproducibility, supply-chain, and artifact gates.

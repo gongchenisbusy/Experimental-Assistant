@@ -45,6 +45,17 @@ Workflow:
 10. Run `ea eval project` before handoff, public-demo readiness checks, or long context transitions.
 11. Run `ea brief project` before a user-facing update or context handoff; use its Markdown as the concise summary and keep detailed refs/hashes/provenance/review records in audit files unless requested.
 
+Compact run/sample path before characterization:
+
+```bash
+ea experiment add /path/to/ea-project --date 2026-07-22 --text "CVD run at 750 C; continuous film" --user-response "确认保存"
+ea experiment runs /path/to/ea-project
+ea sample add /path/to/ea-project --experiment-ref exp-20260722-001 --quality-status candidate_good --morphology "continuous domains"
+ea sample select-best /path/to/ea-project --sample-id sample-20260722-001 --rationale "best coverage" --user-response "确认选择"
+```
+
+Use stable experiment/sample IDs across Raman, PL, AFM/image records, memory, and composite reports. Working memory should surface the selected sample, stage standard, method coverage, and the next missing characterization step.
+
 CLI path for the first Raman workflow:
 
 ```bash
@@ -167,12 +178,12 @@ ea-public-release-smoke --dry-run
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-1.0.0-abcdef0-release.zip
+ea-verify-release-package dist/experimental-assistant-1.1.0-abcdef0-release.zip
 ```
 
 The smoke gate includes tests, skill validation, CLI help checks, public-user portability scanning, and sensitive-value scanning for accidental credential-like assignments or token literals in release-facing files.
 
-Use the smoke check before publishing or handing off the Experimental Assistant v1.0.0 repository itself, then generate and verify the release manifest/package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, verifies package payload integrity, and scans for portability plus accidental sensitive values without relying on Zotero, browser profiles, institution access, or developer-machine paths.
+Use the smoke check before publishing or handing off the Experimental Assistant v1.1.0 repository itself, then generate and verify the release manifest/package. This is separate from project readiness: it runs tests, skill validation, CLI help sanity checks, records package/git/checksum metadata, builds a portable archive with a checksum sidecar, verifies package payload integrity, and scans for portability plus accidental sensitive values without relying on Zotero, browser profiles, institution access, or developer-machine paths.
 
 Report bundle export:
 

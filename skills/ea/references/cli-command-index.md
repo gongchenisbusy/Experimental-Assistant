@@ -1,4 +1,4 @@
-# EA v1.0.0 CLI Command Index
+# EA v1.1.0 CLI Command Index
 
 Use this reference only when the task needs concrete command examples. The top-level skill file stays compact so routine EA use does not load the full command catalogue.
 
@@ -14,12 +14,18 @@ ea capabilities --maturity beta --json
 ea diagnostics collect /path/to/ea-project
 ea diagnostics collect /path/to/ea-project --output exports/diagnostics/ea-diagnostics.json --log logs/selected.log --debug-json
 ea draft stage /path/to/ea-project --source /path/to/generated-draft.md --target reports/final-report.md --yes
+ea draft confirm-promote /path/to/ea-project --draft-id draft-YYYYMMDD-001 --user-response "确认保存并提升"
 ea review add /path/to/ea-project --target-type draft_promotion --target-ref drafts/draft-YYYYMMDD-001/draft.yml --user-response "confirmed" --reviewed-content "promote reviewed draft" --confirm
 ea draft promote /path/to/ea-project --draft-id draft-YYYYMMDD-001 --review-ref review-YYYYMMDD-001 --yes
 ea codex install-skill
 ea onboarding post-install --event install --lang zh
 ea install-check
 ea init-project /path/to/ea-project --name "Project name" --slug project-slug --direction "Research direction" --material "Material" --experiment-type "Experiment type"
+ea experiment add /path/to/ea-project --date 2026-07-22 --text "CVD run at 750 C; continuous film" --user-response "确认保存"
+ea experiment update /path/to/ea-project --experiment-ref experiments/exp-YYYYMMDD-001.md --condition stage_standard=true --observation "Selected as stage standard" --user-response "确认更新"
+ea experiment runs /path/to/ea-project
+ea sample add /path/to/ea-project --experiment-ref exp-YYYYMMDD-001 --quality-status candidate_good --morphology "continuous domains"
+ea sample select-best /path/to/ea-project --sample-id sample-YYYYMMDD-001 --rationale "best coverage" --user-response "确认选择"
 ea config doctor /path/to/ea-project
 ea healthcheck /path/to/ea-project
 ea eval project /path/to/ea-project
@@ -54,6 +60,10 @@ ea literature confirm /path/to/ea-project --selected-top-n 50 --user-response "c
 ea literature search-public /path/to/ea-project --source crossref --source openalex --source arxiv --max-results 20 --page-limit 1 --confirm-large-work
 ea literature rank-candidates /path/to/ea-project --candidates literature/candidate_results.yml --reference-year 2026
 ea literature acquisition-request /path/to/ea-project --confirm-large-work
+ea literature acquisition-status /path/to/ea-project
+ea literature zotero-choice /path/to/ea-project --choice skip
+ea literature acquisition-session /path/to/ea-project --target-id target-001 --publisher "Publisher" --canonical-url https://publisher.example/article
+ea literature ingest-local-pdf /path/to/ea-project --pdf /path/to/paper.pdf --doi 10.xxxx/example
 ea literature prepare-source-candidates /path/to/ea-project --method ftir --source-items literature/selected_items.yml --confirm-for-source-packet --user-response "confirmed" --confirm-large-work
 ea literature preflight-source-candidates /path/to/ea-project --method ftir --manifest literature/confirmed_ftir_source_candidates.yml
 ea literature handoff /path/to/ea-project --literature-thread-id thread-lit-001
@@ -83,6 +93,7 @@ ea estimate reminders /path/to/ea-project --enable
 
 ```bash
 ea raw import /path/to/ea-project /path/to/raw-spectrum.txt --characterization-type raman --sample-ref sample-001 --experiment-ref exp-001
+ea import preview /path/to/raw-spectrum.txt --characterization-type raman
 ea raman inspect /path/to/ea-project raw/raman/char-YYYYMMDD-001/raw-spectrum.txt
 ea raman list-assignment-libraries --material mos2 --feature mos2_a1g_like --shift-min-cm1 400 --shift-max-cm1 420
 ea raman process /path/to/ea-project --metadata raw/raman/char-YYYYMMDD-001/metadata.yml --x-column col_0 --y-column col_1 --x-unit cm^-1 --column-review-ref review-YYYYMMDD-001 --parameter-review-ref review-YYYYMMDD-002 --sample-ref sample-001
@@ -127,6 +138,8 @@ ea trace view /path/to/ea-project
 ea trace lookup /path/to/ea-project rpt-project-YYYYMMDD-001 --json-full
 ea trace export /path/to/ea-project --full
 ea export report-html /path/to/ea-project --report-id rpt-project-YYYYMMDD-001
+ea export report-html /path/to/ea-project --draft-id draft-YYYYMMDD-001 --preview
+ea composite-report /path/to/ea-project --result-id res-raman-001 --result-id res-pl-001 --sample-ref sample-001 --user-response "确认生成综合报告"
 ea export report-bundle /path/to/ea-project --report-id rpt-project-YYYYMMDD-001 --include-trace --zip
 ea export batch-bundle /path/to/ea-project --batch-id batch-YYYYMMDD-001 --include-trace --zip
 ea export verify-bundle /path/to/ea-project/exports/report-bundles/rpt-project-YYYYMMDD-001
@@ -147,7 +160,7 @@ ea-release-artifact-smoke
 ea-release-supply-chain
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-1.1.0-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -155,6 +168,6 @@ Optional signing uses only explicit user-managed key paths:
 
 ```bash
 ea-release-keygen --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-sign-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
-ea-verify-release-signature dist/experimental-assistant-1.0.0-COMMIT-release.zip --public-key /path/to/user-release-public.pem
+ea-sign-release-package dist/experimental-assistant-1.1.0-COMMIT-release.zip --private-key /path/to/user-release-private.pem --public-key /path/to/user-release-public.pem
+ea-verify-release-signature dist/experimental-assistant-1.1.0-COMMIT-release.zip --public-key /path/to/user-release-public.pem
 ```

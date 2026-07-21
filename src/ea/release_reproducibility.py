@@ -103,7 +103,7 @@ def _build_once(
     env["SOURCE_DATE_EPOCH"] = source_date_epoch
     constraints = root / "requirements" / "release.txt"
     if constraints.is_file():
-        env["PIP_CONSTRAINT"] = str(constraints)
+        env["PIP_CONSTRAINT"] = constraints.resolve().as_uri()
     completed = subprocess.run(
         [python_executable, "-m", "build", "--outdir", str(output)],
         cwd=root,

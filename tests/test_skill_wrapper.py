@@ -15,7 +15,7 @@ def test_ea_skill_defaults_to_public_user_workflow() -> None:
         "without assuming developer-machine accounts, paths, or credentials"
         in skill_doc
     )
-    assert "# Experimental Assistant v1.0.0" in skill_doc
+    assert "# Experimental Assistant v1.1.0" in skill_doc
     assert "invocation `$ea` as the only public identity" in skill_doc
     assert "former Compatibility skill has been retired before v1.0" in skill_doc
     assert "ea start" in skill_doc

@@ -130,3 +130,28 @@ def test_processed_outputs_are_rejected_inside_raw_tree(tmp_path: Path) -> None:
     assert_not_raw_output_path(project, project / "processed" / "result.csv")
     with pytest.raises(RawPathBoundaryError):
         assert_not_raw_output_path(project, project / "raw" / "raman" / "bad.csv")
+
+
+def test_raw_import_rolls_back_characterization_directory_when_copy_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("300\t100\n301\t120\n", encoding="utf-8")
+    project = tmp_path / "project"
+
+    def fail_copy(source_path: Path, destination_path: Path) -> Path:
+        raise OSError("simulated protected-file copy failure")
+
+    monkeypatch.setattr("ea.raw_import.service.atomic_copy_file", fail_copy)
+
+    with pytest.raises(OSError, match="simulated protected-file"):
+        import_raw_file(
+            project,
+            source,
+            project_id="project-20260602-mos2",
+            sample_refs=["sample-1"],
+            imported_at="2026-06-02T14:00:00",
+        )
+
+    raw_method_dir = project / "raw" / "raman"
+    assert not raw_method_dir.exists() or list(raw_method_dir.iterdir()) == []

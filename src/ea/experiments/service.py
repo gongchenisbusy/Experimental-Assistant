@@ -10,6 +10,7 @@ from ea.review import classify_user_response, write_review_record
 from ea.schema import ExperimentRecord
 from ea.schema.models import EARecord
 from ea.storage.files import write_markdown_record
+from ea.storage.files import read_markdown_record
 from ea.storage.ids import next_id
 
 
@@ -116,7 +117,10 @@ def structure_experiment_log(text: str) -> ExperimentDraft:
         draft.initial_judgement = "user_preliminary_judgement_or_hypothesis"
 
     if "保存为阶段实验的标准条件" in text:
+        conditions["stage_standard"] = True
         draft.uncertainties.append("requires_explicit_decision_log_confirmation")
+    elif "保存为阶段实验的标准条件" in text.replace("了", ""):
+        conditions["stage_standard"] = True
 
     return draft
 
@@ -191,3 +195,98 @@ def save_confirmed_experiment(
         "## User Original Text\n\n" + draft.user_original_text,
     )
     return experiment_path
+
+
+def list_experiment_runs(root: Path) -> dict[str, Any]:
+    runs: list[dict[str, Any]] = []
+    for path in sorted((root / "experiments").glob("*.md")):
+        record, _ = read_markdown_record(path)
+        conditions = record.get("process_conditions") or {}
+        runs.append(
+            {
+                "experiment_id": record.get("experiment_id"),
+                "experiment_date": record.get("experiment_date"),
+                "run_label": conditions.get("run_label"),
+                "flow_rate": conditions.get("flow_rate"),
+                "sulfur_start_temperature_c": conditions.get(
+                    "sulfur_start_temperature_c"
+                ),
+                "hold_time_min": conditions.get("hold_time_min"),
+                "substrate_count": conditions.get("substrate_count"),
+                "grown_substrate_count": conditions.get("grown_substrate_count"),
+                "stage_standard": bool(conditions.get("stage_standard")),
+                "sample_refs": record.get("sample_refs") or [],
+                "ref": path.relative_to(root).as_posix(),
+            }
+        )
+    return {
+        "schema_version": "1.1",
+        "status": "ready",
+        "read_only": True,
+        "run_count": len(runs),
+        "runs": runs,
+    }
+
+
+def update_confirmed_experiment(
+    root: Path,
+    *,
+    experiment_ref: str,
+    condition_updates: dict[str, Any] | None = None,
+    observation: str | None = None,
+    user_response: str,
+    updated_at: str | None = None,
+) -> Path:
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        raise ReviewRequiredError(
+            f"Experiment cannot be updated with review status {classification.review_status}"
+        )
+    path = root / experiment_ref
+    if not path.is_file():
+        candidate = root / "experiments" / f"{experiment_ref}.md"
+        path = candidate if candidate.is_file() else path
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    record, body = read_markdown_record(path)
+    updates = condition_updates or {}
+    reviewed_content = repr(
+        {"condition_updates": updates, "observation": observation}
+    )
+    review_path = write_review_record(
+        root,
+        target_type="experiment_record",
+        target_ref=path.relative_to(root).as_posix(),
+        user_response=user_response,
+        reviewed_content=reviewed_content,
+        reviewed_at=updated_at,
+    )
+    record.setdefault("process_conditions", {}).update(updates)
+    if observation:
+        record.setdefault("observations", []).append(observation)
+    record.setdefault("review_refs", []).append(review_path.stem)
+    record["updated_at"] = updated_at or EARecord.now_iso()
+    record.setdefault("update_history", []).append(
+        {
+            "updated_at": record["updated_at"],
+            "review_ref": review_path.stem,
+            "condition_keys": sorted(updates),
+            "observation_added": bool(observation),
+        }
+    )
+    write_markdown_record(path, record, body)
+    provenance_path = write_provenance_entry(
+        root,
+        workflow="experiment_log_update",
+        inputs={"records": [path.relative_to(root).as_posix()], "files": []},
+        outputs={"records": [path.relative_to(root).as_posix()], "files": []},
+        parameters={"condition_updates": updates, "observation": observation},
+        review_refs=[review_path.stem],
+        created_at=updated_at,
+    )
+    record["provenance_refs"] = [
+        *(record.get("provenance_refs") or []),
+        provenance_path.stem,
+    ]
+    write_markdown_record(path, record, body)
+    return path

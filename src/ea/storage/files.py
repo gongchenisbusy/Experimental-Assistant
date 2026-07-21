@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 from typing import Any
 
@@ -105,14 +106,30 @@ def atomic_copy_file(source: Path, destination: Path) -> Path:
         raise IsADirectoryError(f"Source path is not a file: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
-    os.close(fd)
     temp_path = Path(temp_name)
+    original_destination_mode: int | None = None
     try:
-        shutil.copy2(source, temp_path)
-        # Windows requires a writable descriptor for fsync.
-        with temp_path.open("rb+") as handle:
-            os.fsync(handle.fileno())
-        os.replace(temp_path, destination)
+        with os.fdopen(fd, "wb") as temp_handle, source.open("rb") as source_handle:
+            shutil.copyfileobj(source_handle, temp_handle, length=1024 * 1024)
+            temp_handle.flush()
+            os.fsync(temp_handle.fileno())
+        # Apply source metadata only after the writable descriptor is closed. This
+        # keeps 0400/0444 sources copyable without weakening the final artifact.
+        shutil.copystat(source, temp_path)
+        try:
+            os.replace(temp_path, destination)
+        except PermissionError:
+            # Windows can reject replacement of a read-only destination. Make the
+            # old target replaceable, but restore it if replacement still fails.
+            if not destination.exists():
+                raise
+            original_destination_mode = stat.S_IMODE(destination.stat().st_mode)
+            destination.chmod(original_destination_mode | stat.S_IWUSR)
+            try:
+                os.replace(temp_path, destination)
+            except BaseException:
+                destination.chmod(original_destination_mode)
+                raise
         _fsync_directory(destination.parent)
     except BaseException:
         try:

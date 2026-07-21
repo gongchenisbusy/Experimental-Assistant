@@ -9,6 +9,8 @@ ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --output exports/user-reports/custom-report.html
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --no-embed-images
 ea export report-html /path/to/ea-project --report-id rpt-project-20260630-001 --include-audit
+ea export report-html /path/to/ea-project --draft-id draft-20260722-001 --preview
+ea composite-report /path/to/ea-project --result-id res-raman-001 --result-id res-pl-001 --sample-ref sample-001 --user-response "确认生成综合报告"
 ```
 
 HTML export default output:
@@ -19,6 +21,8 @@ exports/user-reports/{report_id}.html.yml
 ```
 
 The HTML report is a friendly rendering of the canonical Markdown report from `reports/index.yml`. It embeds linked figures as data URIs by default, adds a Figures section from `figures/index.yml` so images remain visible even when the Markdown only lists file paths, preserves figure IDs, captions, original project-local paths, report IDs, reference records, citation-number checks, provenance summaries, and an audit appendix. The sidecar YAML records `canonical_report_ref`, figure/reference/provenance metadata, missing refs if any, and the same boundaries. Use this for a user-readable report first; use `report-bundle` when the recipient also needs copied source data, result metadata, references, checksums, and optional focused traceability records.
+
+`--draft-id ... --preview` renders a staged draft with a `DRAFT / NOT FORMAL` banner. It does not add a report to `reports/index.yml`, create a formal report/provenance record, or satisfy a requested formal-delivery lifecycle. `composite-report` accepts multiple reviewed results, writes one composite report/provenance record with multi-report figure backlinks, and immediately returns the HTML delivery path.
 
 `--no-embed-images` keeps project-local image refs rather than data URIs. Audit details are omitted by default; `--include-audit` adds the detailed provenance appendix when explicitly needed.
 
@@ -96,7 +100,7 @@ exports/batch-bundles/{batch_id}/
 
 `batch_bundle_manifest.yml` records copied batch index/run/summary/source-manifest files, batch provenance refs, item summaries, and nested per-report bundle manifests. `--zip` writes `exports/batch-bundles/{batch_id}.zip` and `exports/batch-bundles/{batch_id}.zip.sha256` by default.
 
-For batch bundles, `--include-trace` passes focused trace view generation into each nested report bundle. The top-level batch manifest records `trace_export.strategy: nested_report_focused_trace_views`; Experimental Assistant v1.0.0 does not emit a batch-level trace graph until the traceability service models batch nodes.
+For batch bundles, `--include-trace` passes focused trace view generation into each nested report bundle. The top-level batch manifest records `trace_export.strategy: nested_report_focused_trace_views`; Experimental Assistant v1.1.0 does not emit a batch-level trace graph until the traceability service models batch nodes.
 
 Checksum files:
 

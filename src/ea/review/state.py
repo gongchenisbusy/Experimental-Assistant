@@ -42,17 +42,39 @@ CONFIRM_PATTERNS = [
 REJECT_PATTERNS = ["拒绝", "不要保存", "不保存", "取消", "donotsave", "dontsave", "reject", "rejected"]
 DEFER_PATTERNS = ["再看看", "先放着", "之后再说", "稍后", "可能吧", "大概是", "maybelater", "later", "notreadyyet", "defer"]
 EDIT_PATTERNS = ["改成", "修改", "不对", "更正", "应该是", "editto", "change", "revise", "correct"]
-PARAMETER_CONFIRM_TARGET_FRAGMENTS = {
-    "columns",
-    "parameters",
-    "calibration",
-    "context",
-    "feature_matching",
-    "assignment_suggestions",
-    "interpretation_suggestions",
-    "parameter_suggestions",
-    "region_records",
-}
+EXPLICIT_CONFIRM_TARGET_TYPES = frozenset(
+    {
+        "draft_promotion",
+        "electrochemistry_columns",
+        "electrochemistry_context",
+        "electrochemistry_parameters",
+        "ftir_assignment_suggestions",
+        "ftir_columns",
+        "ftir_parameters",
+        "image_description",
+        "composite_report_manifest",
+        "pl_columns",
+        "pl_parameters",
+        "raman_columns",
+        "raman_parameters",
+        "thermal_columns",
+        "thermal_context",
+        "thermal_parameters",
+        "uv_vis_columns",
+        "uv_vis_feature_matching",
+        "uv_vis_interpretation_suggestions",
+        "uv_vis_parameters",
+        "uv_vis_replicate_feature_matching",
+        "xps_calibration",
+        "xps_columns",
+        "xps_parameter_suggestions",
+        "xps_parameters",
+        "xps_region_records",
+        "xrd_assignment_suggestions",
+        "xrd_columns",
+        "xrd_parameters",
+    }
+)
 
 
 def _normalize_response(text: str) -> str:
@@ -82,9 +104,7 @@ def content_hash(content: str) -> str:
 
 def _target_allows_explicit_confirm(target_type: str) -> bool:
     normalized = target_type.strip().lower()
-    if normalized in {"memory_candidate", "confirmed_finding"}:
-        return False
-    return any(fragment in normalized for fragment in PARAMETER_CONFIRM_TARGET_FRAGMENTS)
+    return normalized in EXPLICIT_CONFIRM_TARGET_TYPES
 
 
 def write_review_record(
@@ -128,7 +148,14 @@ def review_path_for_ref(root: Path, review_ref: str) -> Path:
     return root / "reviews" / f"{review_ref}.yml"
 
 
-def require_confirmed_review(root: Path, review_ref: str) -> dict:
+def require_confirmed_review(
+    root: Path,
+    review_ref: str,
+    *,
+    expected_target_type: str | None = None,
+    expected_target_ref: str | None = None,
+    expected_content_hash: str | None = None,
+) -> dict:
     path = review_path_for_ref(root, review_ref)
     if not path.exists():
         raise ReviewRequiredErrorForRef(f"ReviewRecord does not exist: {review_ref}")
@@ -137,6 +164,16 @@ def require_confirmed_review(root: Path, review_ref: str) -> dict:
         raise ReviewRequiredErrorForRef(
             f"ReviewRecord is not user_confirmed: {review_ref}"
         )
+    expected_fields = {
+        "target_type": expected_target_type,
+        "target_ref": expected_target_ref,
+        "reviewed_content_hash": expected_content_hash,
+    }
+    for field, expected in expected_fields.items():
+        if expected is not None and review.get(field) != expected:
+            raise ReviewRequiredErrorForRef(
+                f"ReviewRecord {field} does not match expected value: {review_ref}"
+            )
     return review
 
 

@@ -1,0 +1,16 @@
+schema_version: "1.1"
+release: v1.1.0
+issues:
+  - number: 23
+    status: resolved
+    gates: [fixed_scope, canonical_run, per_target_reconciliation, pdf_postflight]
+  - number: 24
+    status: resolved
+    gates: [protected_import_rollback, command_effects, method_preview, run_sample_memory, feedback_companion]
+  - number: 25
+    status: resolved
+    gates: [html_completion, draft_html_preview]
+  - number: 26
+    status: resolved_with_follow_up
+    gates: [review_binding, export_deduplication, pl_visualization, composite_report]
+    follow_up_issue: 27

@@ -269,6 +269,7 @@ def register_figure(
         "base_sha256": _sha256(base_path) if base_path.is_file() else None,
         "render_policy": "footer_free_base_to_report_bound_final_v1",
         "report_id": None,
+        "report_ids": [],
         "result_id": result_id,
         "raw_data_ids": raw_data_ids,
         "sample_ids": sample_ids,
@@ -285,6 +286,7 @@ def register_figure(
     if report_id:
         rendering = _render_report_bound_png(root, record, report_id)
         record["report_id"] = report_id
+        record["report_ids"] = [report_id]
         record["footer"] = figure_footer(figure_id, report_id)
         if rendering:
             record["renderings"][report_id] = rendering
@@ -323,6 +325,10 @@ def update_figure_report_ref(
 
     rendering = _render_report_bound_png(root, record, report_id)
     record["report_id"] = report_id
+    report_ids = list(record.get("report_ids") or [])
+    if report_id not in report_ids:
+        report_ids.append(report_id)
+    record["report_ids"] = report_ids
     record["footer"] = figure_footer(figure_id, report_id)
     if rendering:
         record.setdefault("renderings", {})[report_id] = rendering

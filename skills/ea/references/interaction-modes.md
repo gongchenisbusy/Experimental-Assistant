@@ -18,6 +18,8 @@ Ask no more than the next necessary decisions. Do not ask for credentials, hidde
 
 Use `ea --mode consult <read-only-command>`. The CLI rejects commands that can write before entering their workflow.
 
+Method `inspect`, assignment/source-library `list`, compact experiment `runs`, and literature `acquisition-status` commands are read-only and valid in consult/audit. Their neighboring import/process/record/session commands remain state-changing.
+
 ## Record Mode
 
 Use when the user asks EA to create/update project files, register references, write ReviewRecords, write memory candidates, refresh `memory/project-working-memory.md`, or prepare literature/source-candidate staging files. Record mode may write local files but should preserve raw data and provenance boundaries.

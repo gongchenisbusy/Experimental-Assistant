@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from ea.cli import main
 from ea.pl import default_pl_processing_parameters, inspect_pl_file
+from ea.pl.service import _plot_pl
 from ea.storage import read_markdown_record, read_yaml
 
 
@@ -24,6 +27,35 @@ def test_inspect_public_pl_fixture() -> None:
     assert inspection.y_column_candidate == "col_1"
     assert inspection.x_unit == "eV"
     assert inspection.requires_user_confirmation is True
+
+
+def test_pl_plot_keeps_processed_signal_on_primary_axis_when_raw_scale_is_large(
+    monkeypatch, tmp_path: Path
+) -> None:
+    processed = pd.DataFrame(
+        {
+            "pl_axis": [1.8, 1.9, 2.0],
+            "raw_intensity": [100.0, 6413.0, 120.0],
+            "processed_intensity": [0.02, 1.0, 0.03],
+        }
+    )
+    peaks = pd.DataFrame({"position": [1.9], "height": [1.0]})
+    captured = {}
+
+    def capture_figure(fig, output, *, footer=None):
+        captured["figure"] = fig
+
+    monkeypatch.setattr("ea.pl.service.save_styled_figure", capture_figure)
+
+    _plot_pl(processed, peaks, tmp_path / "pl.png", "eV")
+
+    figure = captured["figure"]
+    assert len(figure.axes) == 2
+    primary, raw_axis = figure.axes
+    assert [line.get_label() for line in primary.lines] == ["Processed intensity"]
+    assert [line.get_label() for line in raw_axis.lines] == ["Raw intensity (counts)"]
+    assert primary.get_ylabel() == "Processed intensity (a.u.)"
+    assert raw_axis.get_ylabel() == "Raw intensity (counts)"
 
 
 def test_cli_runs_public_pl_workflow_end_to_end(tmp_path: Path, capsys) -> None:

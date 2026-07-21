@@ -21,7 +21,7 @@ FORBIDDEN_PUBLIC_DEFAULTS = [
 def test_public_onboarding_doc_is_public_safe_and_actionable() -> None:
     text = ONBOARDING_PATH.read_text(encoding="utf-8")
 
-    assert "# Experimental Assistant v1.0.0 Public Onboarding" in text
+    assert "# Experimental Assistant v1.1.0 Public Onboarding" in text
     assert "ea start" in text
     assert "ea status" in text
     assert "docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md" in text
@@ -70,9 +70,9 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
     text = INSTALL_SKILL_SETUP_PATH.read_text(encoding="utf-8")
 
     assert "# EA Public Install And Codex Skill Setup" in text
-    assert "Product identity: `Experimental Assistant v1.0.0`" in text
+    assert "Product identity: `Experimental Assistant v1.1.0`" in text
     assert (
-        "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0"
+        "uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.1.0"
         in text
     )
     assert "ea setup" in text
@@ -84,7 +84,7 @@ def test_public_install_and_skill_setup_doc_is_public_safe_and_actionable() -> N
         in text
     )
     assert (
-        "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0"
+        "https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.1.0"
         in text
     )
     assert "OWNER/REPOSITORY" not in text

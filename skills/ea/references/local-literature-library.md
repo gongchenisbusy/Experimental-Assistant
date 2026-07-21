@@ -6,6 +6,7 @@ Use this router when a task concerns literature planning, metadata discovery, ac
 
 - Planning, metadata search, acquisition, and scientific interpretation are separate stages.
 - Bulk search or full-text acquisition requires a user-confirmed scope. Use `ea estimate workflow` for large work.
+- Keep the confirmed count fixed across `selected_items.yml`, `acquisition_request.yml`, `run.yml`, and `zotero_codex_targets.jsonl`. Stop on empty, duplicate, or mismatched scope instead of silently changing target count.
 - Treat public metadata coverage as source- and query-limited; never claim exhaustive search.
 - Use source-verified venue metrics when available; never present an inferred or stale metric as verified.
 - For impact-factor filtering, do not invent IF values; record the source and retrieval date or leave the metric unknown.
@@ -42,7 +43,10 @@ Start from these small state surfaces before opening broad artifacts:
 
 ```bash
 ea literature status /path/to/project
+ea literature acquisition-status /path/to/project
 ea literature search-public /path/to/project --resume
+ea literature zotero-choice /path/to/project --choice existing
+ea literature ingest-local-pdf /path/to/project --pdf /path/to/paper.pdf --doi 10.xxxx/example
 ea literature zotero-readiness /path/to/project
 ea literature reconcile-acquisition /path/to/project
 ea brief project /path/to/project --no-write
@@ -52,6 +56,8 @@ Default CLI output is compact. Use `--json-full` or the artifact refs only when 
 
 ## Project state
 
-EA owns the project-side records under `literature/`: query plan, candidates, ranking, selected items, acquisition request/handoff, imported companion status, reconciliation, local reference records, cache index, evidence datasets, and origin-thread summary. A literature companion may own browser/Zotero/OA execution, but must return a versioned, redacted, resumable status artifact that EA can import.
+EA owns the project-side records under `literature/`: query plan, candidates, ranking, selected items, canonical `run.yml`, acquisition request/handoff, imported companion status, reconciliation, local reference records, cache index, evidence datasets, and origin-thread summary. A literature companion may own browser/Zotero/OA execution, but must return a versioned, redacted, resumable status artifact that EA can import.
+
+Zotero is a one-time explicit `existing`, `skip`, or `later` choice. Local PDF ingest does not require Zotero and accepts only verified PDFs with page count, title/DOI match, and SHA-256. Institution session state stores no credentials, cookies, SAML parameters, session tokens, URL queries, fragments, or browser history.
 
 Prefer DOI, then canonical URL, then normalized title for identity. Preserve versions and supplementary relationships instead of silently deleting them.

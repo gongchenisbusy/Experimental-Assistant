@@ -15,6 +15,7 @@ from ea.raw_import import assert_not_raw_output_path
 from ea.references import build_report_reference_block
 from ea.reports.service import register_report
 from ea.review import require_confirmed_review
+from ea.review.state import content_hash
 from ea.schema import ImageAnalysisResult, ReportRecord
 from ea.schema.models import EARecord
 from ea.standards import infer_project_slug, slugify
@@ -134,9 +135,19 @@ def create_image_analysis_record(
         raise ImageDataError(
             "Image analysis requires a user description or confirmed image notes."
         )
-    require_confirmed_review(root, description_review_ref)
-
     metadata_path = _project_path(root, characterization_metadata_path)
+    try:
+        metadata_ref = metadata_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        metadata_ref = str(metadata_path)
+    require_confirmed_review(
+        root,
+        description_review_ref,
+        expected_target_type="image_description",
+        expected_target_ref=metadata_ref,
+        expected_content_hash=content_hash(user_description.strip()),
+    )
+
     raw_metadata = read_yaml(metadata_path)
     raw_path = root / raw_metadata["project_raw_path"]
     if not raw_path.exists():

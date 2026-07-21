@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import asdict
 import hashlib
 from pathlib import Path
 import re
@@ -101,6 +102,7 @@ def preview_import(
     delimiter: str | None = "auto",
     allow_symlink: bool = False,
     max_rows: int = 5,
+    characterization_type: str | None = None,
 ) -> dict[str, Any]:
     source_path = source_path.expanduser()
     if not source_path.exists():
@@ -131,7 +133,7 @@ def preview_import(
     inconsistent = [index + 2 for index, row in enumerate(preview_rows) if len(row) != len(columns)]
     if inconsistent:
         warnings.append(f"inconsistent_column_count_rows:{','.join(map(str, inconsistent))}")
-    return {
+    result = {
         "schema_version": "1.0",
         "status": "ready" if not inconsistent else "needs_confirmation",
         "read_only": True,
@@ -150,6 +152,38 @@ def preview_import(
         "truncated_preview": size > len(data),
         "next_steps": ["Review columns, units, encoding, and delimiter; then run `ea import apply ... --preview-hash <sha256> --yes`."],
     }
+    normalized_type = (characterization_type or "").strip().lower().replace("-", "_")
+    if normalized_type in {"raman", "pl"}:
+        from ea.pl import inspect_pl_file
+        from ea.raman import inspect_spectrum_file
+        from ea.raman.service import _read_spectrum
+
+        inspector = inspect_pl_file if normalized_type == "pl" else inspect_spectrum_file
+        inspection = asdict(inspector(source_path))
+        frame, _ = _read_spectrum(source_path)
+        result.update(
+            {
+                "characterization_type": normalized_type,
+                "row_count": inspection["row_count"],
+                "columns": inspection["columns"],
+                "x_column_candidate": inspection["x_column_candidate"],
+                "y_column_candidate": inspection["y_column_candidate"],
+                "x_unit": inspection["x_unit"],
+                "unit_proposals": {
+                    str(inspection["x_column_candidate"]): inspection["x_unit"]
+                }
+                if inspection.get("x_column_candidate")
+                and inspection.get("x_unit") != "unknown"
+                else {},
+                "preview_rows": frame.head(max_rows).values.tolist(),
+                "method_metadata": inspection["metadata"],
+                "method_warnings": inspection["warnings"],
+                "method_file_kind": inspection["file_kind"],
+            }
+        )
+    elif normalized_type:
+        result["characterization_type"] = normalized_type
+    return result
 
 
 def _project_id(root: Path) -> str:
@@ -181,6 +215,7 @@ def apply_import(
         encoding=encoding,
         delimiter=delimiter,
         allow_symlink=allow_symlink,
+        characterization_type=characterization_type,
     )
     if not confirmed:
         return {

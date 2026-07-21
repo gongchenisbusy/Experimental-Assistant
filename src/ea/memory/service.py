@@ -78,6 +78,13 @@ def _source_snapshot(root: Path) -> dict[str, Any]:
         "memory/candidates/index.yml",
     ]
     refs.extend(sorted(path.relative_to(root).as_posix() for path in (root / "open-items").glob("*.yml"))[:20])
+    for directory in ("experiments", "samples", "raw", "processed"):
+        refs.extend(
+            path.relative_to(root).as_posix()
+            for path in sorted((root / directory).glob("**/*"))
+            if path.is_file() and path.suffix.lower() in {".yml", ".yaml", ".md"}
+        )
+    refs = list(dict.fromkeys(refs))[:300]
     records: dict[str, Any] = {}
     for ref in refs:
         path = root / ref
@@ -153,6 +160,54 @@ def _compact_memory_candidates(root: Path, limit: int = PROJECT_WORKING_MEMORY_S
     return items[:limit]
 
 
+def _compact_runs(
+    root: Path, limit: int = PROJECT_WORKING_MEMORY_SECTION_LIMIT
+) -> list[dict[str, Any]]:
+    runs: list[dict[str, Any]] = []
+    for path in sorted((root / "experiments").glob("*.md"), reverse=True):
+        record, _ = _safe_markdown_frontmatter(path)
+        conditions = record.get("process_conditions") or {}
+        runs.append(
+            {
+                "experiment_id": record.get("experiment_id"),
+                "date": record.get("experiment_date"),
+                "run_label": conditions.get("run_label"),
+                "flow_rate": conditions.get("flow_rate"),
+                "hold_time_min": conditions.get("hold_time_min"),
+                "stage_standard": bool(conditions.get("stage_standard")),
+                "sample_refs": record.get("sample_refs") or [],
+            }
+        )
+    return runs[:limit]
+
+
+def _selected_sample(root: Path) -> dict[str, Any]:
+    return _safe_yaml(root / "samples" / "selection.yml")
+
+
+def _method_coverage(root: Path) -> list[dict[str, Any]]:
+    methods = sorted(
+        {
+            path.parent.parent.name
+            for path in (root / "raw").glob("*/*/metadata.yml")
+        }
+        | {
+            path.parent.parent.name
+            for path in (root / "processed").glob("*/*/*/*_metadata.yml")
+        }
+    )
+    coverage = []
+    for method in methods:
+        raw_count = len(list((root / "raw" / method).glob("*/metadata.yml")))
+        processed_count = len(
+            list((root / "processed").glob(f"*/{method}/*/*_metadata.yml"))
+        )
+        coverage.append(
+            {"method": method, "raw_count": raw_count, "processed_count": processed_count}
+        )
+    return coverage
+
+
 def _markdown_list(items: list[str]) -> str:
     if not items:
         return "- None recorded."
@@ -223,6 +278,9 @@ def refresh_project_working_memory(
     reports = _compact_reports(root, limit=max_items)
     open_items = _compact_open_items(root, limit=max_items)
     memory_candidates = _compact_memory_candidates(root, limit=max_items)
+    runs = _compact_runs(root, limit=max_items)
+    selected_sample = _selected_sample(root)
+    method_coverage = _method_coverage(root)
     literature_status = _safe_yaml(root / "literature" / "deployment_status.yml")
     snapshot = _source_snapshot(root)
     status_lines = [
@@ -231,6 +289,8 @@ def refresh_project_working_memory(
         f"Open user questions: `{len(open_items)}`",
         f"Memory candidates needing attention: `{len(memory_candidates)}`",
         f"Literature status: `{literature_status.get('status') or 'not_configured'}`",
+        f"Experiment runs recorded: `{len(runs)}`",
+        f"Selected best sample: `{selected_sample.get('selected_sample_id') or 'not_selected'}`",
     ]
     report_lines = [
         f"`{item['ref']}` ({item.get('type') or 'report'}, {item.get('status') or 'status unknown'})"
@@ -243,6 +303,16 @@ def refresh_project_working_memory(
     candidate_lines = [
         f"`{item.get('ref')}` {item.get('category') or 'memory'} [{item.get('status')}] confidence={item.get('confidence')}"
         for item in memory_candidates
+    ]
+    run_lines = [
+        f"`{item.get('experiment_id')}` date={item.get('date') or 'unknown'}; "
+        f"label={item.get('run_label') or 'n/a'}; flow={item.get('flow_rate') or 'n/a'}; "
+        f"hold_min={item.get('hold_time_min') or 'n/a'}; stage_standard={item.get('stage_standard')}"
+        for item in runs
+    ]
+    coverage_lines = [
+        f"{item['method']}: raw={item['raw_count']}, processed={item['processed_count']}"
+        for item in method_coverage
     ]
     body = f"""# Project Working Memory
 
@@ -260,8 +330,15 @@ def refresh_project_working_memory(
 ## Current Status
 {_markdown_list(status_lines)}
 
+## Furnace Runs And Stage Standard
+{_markdown_list(run_lines)}
+
+## Selected Sample And Characterization Coverage
+- Selected/best sample: `{selected_sample.get('selected_sample_id') or 'not_selected'}`
+{_markdown_list(coverage_lines)}
+
 ## Next Actions
-{_markdown_list(_next_project_memory_actions(reports, open_items, literature_status))}
+{_markdown_list(_next_project_memory_actions(reports, open_items, literature_status, runs, selected_sample, method_coverage))}
 
 ## Blockers And Open Questions
 {_markdown_list(open_item_lines)}
@@ -295,6 +372,9 @@ Use this compact snapshot to resume the project after context compaction. Expand
         "report_count": len(reports),
         "open_item_count": len(open_items),
         "memory_candidate_count": len(memory_candidates),
+        "run_count": len(runs),
+        "selected_sample_id": selected_sample.get("selected_sample_id"),
+        "method_coverage": method_coverage,
         "status": "refreshed",
     }
 
@@ -303,15 +383,31 @@ def _next_project_memory_actions(
     reports: list[dict[str, Any]],
     open_items: list[dict[str, Any]],
     literature_status: dict[str, Any],
+    runs: list[dict[str, Any]] | None = None,
+    selected_sample: dict[str, Any] | None = None,
+    method_coverage: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     actions: list[str] = []
     if open_items:
         actions.append("Resolve the highest-priority open user question before stronger claims or full workflow execution.")
-    if not reports:
+    runs = runs or []
+    selected_sample = selected_sample or {}
+    method_coverage = method_coverage or []
+    if not runs:
+        actions.append("Add and confirm the next furnace run before downstream characterization.")
+    elif not selected_sample.get("selected_sample_id"):
+        actions.append("Select the reviewed best sample so all characterization methods share one stable sample ID.")
+    elif not method_coverage or any(
+        item["raw_count"] > item["processed_count"] for item in method_coverage
+    ):
+        actions.append("Import or process the next missing characterization method for the selected sample.")
+    elif not reports:
         actions.append("Import raw data, confirm review-gated columns/parameters, process one method, and generate the first report.")
     else:
         actions.append("Use the latest report refs above for user-facing status; keep detailed audit in local files unless requested.")
-    if not literature_status or literature_status.get("status") in {None, "not_started"}:
+    if reports and (
+        not literature_status or literature_status.get("status") in {None, "not_started"}
+    ):
         actions.append("Run `ea literature setup-preflight` before broad literature acquisition.")
     return actions
 

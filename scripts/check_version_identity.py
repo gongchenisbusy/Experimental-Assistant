@@ -8,8 +8,8 @@ import tomllib
 import yaml
 
 
-EXPECTED_VERSION = "v1.0.0"
-EXPECTED_PACKAGE_VERSION = "1.0.0"
+EXPECTED_VERSION = "v1.1.0"
+EXPECTED_PACKAGE_VERSION = "1.1.0"
 EXPECTED_DISTRIBUTION = "experimental-assistant"
 EXPECTED_PRIMARY_SKILL = "ea"
 SCAN_ROOTS = [
@@ -130,11 +130,11 @@ def main(argv: list[str] | None = None) -> int:
         "pyproject_stable_classifier": "Development Status :: 5 - Production/Stable"
         in pyproject.get("classifiers", []),
         "citation_version": str(citation.get("version")) == EXPECTED_PACKAGE_VERSION,
-        "citation_release_date": str(citation.get("date-released")) == "2026-07-17",
+        "citation_release_date": str(citation.get("date-released")) == "2026-07-22",
         "primary_skill_name": _skill_name(root / "skills" / "ea" / "SKILL.md")
         == EXPECTED_PRIMARY_SKILL,
-        "primary_skill_version": "Experimental Assistant v1.0.0" in skill_text,
-        "primary_skill_agent_version": "v1.0.0"
+        "primary_skill_version": "Experimental Assistant v1.1.0" in skill_text,
+        "primary_skill_agent_version": "v1.1.0"
         in str((skill_agent.get("interface") or {}).get("short_description") or ""),
         "compatibility_skill_removed": not (root / "skills" / "ea-v0-2").exists(),
         "source_version": f'__version__ = "{EXPECTED_PACKAGE_VERSION}"'

@@ -1,0 +1,21 @@
+schema_version: "1.1"
+release: v1.1.0
+status: local_validation_passed
+source_branch: codex/ea-v1.1
+issues: [23, 24, 25, 26]
+follow_up_issues: [27]
+compatibility:
+  project_format: "1.0"
+  python: ["3.11", "3.12", "3.13"]
+  primary_skill: ea
+  ea_feedback_commit: 5fd37ea6770d66b3dc8837a095710e1201c39156
+gates:
+  focused_regressions: pass
+  literature_regressions: pass
+  ea_feedback_companion: pass
+  full_pytest: pass
+  public_release_smoke: pass
+  package_and_signature: pending
+  supply_chain: pending
+  reproducibility: pending
+  public_main_and_assets: pending

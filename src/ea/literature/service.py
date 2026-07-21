@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 import shutil
@@ -15,6 +16,7 @@ from ea import __version__
 from ea.schema.models import EARecord
 from ea.references.service import find_duplicate_reference, register_reference
 from ea.storage.files import (
+    atomic_copy_file,
     atomic_write_text,
     read_markdown_record,
     read_yaml,
@@ -29,7 +31,8 @@ from ea.literature.handoff import (
     normalize_acquisition_handoff,
     render_compact_status_markdown,
 )
-from ea.literature.pipeline import PublicMetadataDiscoveryAdapter
+from ea.literature.pipeline import PublicMetadataDiscoveryAdapter, validate_pdf_payload
+from ea.review import classify_user_response
 
 ProjectScope = Literal["narrow", "ordinary", "review"]
 AccessMode = Literal["index_only", "open_access_only", "user_authenticated"]
@@ -758,6 +761,9 @@ def confirm_literature_selection(
 ) -> dict[str, Any]:
     if selected_top_n <= 0:
         raise ValueError("selected_top_n must be positive")
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        raise ValueError("Literature selection requires clear user confirmation")
     status_path = root / "literature" / "deployment_status.yml"
     status = read_yaml(status_path) if status_path.exists() else {}
     recommended = status.get("recommended_top_n", 50)
@@ -1061,7 +1067,18 @@ def _target_from_candidate(
         },
         "stages": {
             "discovery": {"status": "completed"},
-            "resolve": {"status": "not_started"},
+            "metadata_preflight": {
+                "status": "required",
+                "checks": [
+                    "canonical_doi",
+                    "title",
+                    "year",
+                    "venue",
+                    "document_type",
+                    "supporting_information_parent_doi",
+                ],
+            },
+            "resolve": {"status": "blocked_pending_metadata_preflight"},
             "retrieve": {"status": "not_started"},
             "import": {"status": "not_started"},
             "cache": {"status": "not_started"},
@@ -1098,6 +1115,19 @@ def prepare_literature_acquisition_request(
     project_id = str(
         status.get("project_id") or project.get("project_id", "unknown-project")
     )
+    selected_path = literature_root / "selected_items.yml"
+    selected = read_yaml(selected_path) if selected_path.exists() else {}
+    selected_items = [
+        item for item in selected.get("items") or [] if isinstance(item, dict)
+    ]
+    if not selected_items:
+        raise ValueError(
+            "Literature acquisition requires non-empty selected_items.yml; run search/ranking and confirm the fixed target set first"
+        )
+    if len(selected_items) != int(selected_top_n):
+        raise ValueError(
+            f"Literature selected_items count {len(selected_items)} does not match confirmed selected_top_n {selected_top_n}"
+        )
     request_id = f"lit-acq-{_timestamp_key(created_at)}"
     query_rows = []
     query_data = (
@@ -1116,12 +1146,28 @@ def prepare_literature_acquisition_request(
             }
         )
 
-    candidate_source, candidates = _load_acquisition_candidates(
-        root, int(selected_top_n)
-    )
+    candidate_source = "selected_items"
+    candidates = selected_items
+    for candidate in candidates:
+        document_type = str(
+            candidate.get("document_type") or candidate.get("type") or ""
+        ).strip().lower()
+        if document_type in {
+            "supporting information",
+            "supporting_information",
+            "supplementary material",
+            "component",
+        } and not candidate.get("parent_doi"):
+            raise ValueError(
+                "Supporting Information/component targets require parent_doi and cannot occupy an independent top-N slot"
+            )
     targets, duplicate_targets = _deduplicate_acquisition_targets(
         candidates, project_id=project_id
     )
+    if len(targets) != int(selected_top_n):
+        raise ValueError(
+            f"Literature confirmed scope contains {selected_top_n} items but only {len(targets)} unique targets after deduplication; review and reconfirm the fixed target set"
+        )
     for target in targets:
         target["task_id"] = request_id
     request_path = literature_root / "acquisition_request.yml"
@@ -1189,12 +1235,43 @@ def prepare_literature_acquisition_request(
         ),
     }
     write_yaml(request_path, request)
+    run_path = literature_root / "run.yml"
+    run_record = {
+        "schema_version": "1.1",
+        "run_id": request_id,
+        "project_id": project_id,
+        "status": "acquisition_request_ready",
+        "requested_count": int(selected_top_n),
+        "target_count": len(targets),
+        "target_ids": [target["target_id"] for target in targets],
+        "targets": [
+            {
+                "target_id": target["target_id"],
+                "source_candidate_id": target.get("source_candidate_id"),
+                "doi": target.get("doi"),
+                "title": target.get("title"),
+                "stage": "request_ready",
+                "status": "pending",
+                "blocked_reason": None,
+            }
+            for target in targets
+        ],
+        "last_successful_action": "acquisition_request_prepared",
+        "resume_command": "ea literature acquisition-status /path/to/ea-project",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "request_ref": _project_relative(root, request_path),
+        "target_manifest_ref": _project_relative(root, target_manifest_path),
+        "privacy_boundary": "No credentials, cookies, SAML parameters, session tokens, or browser history are stored.",
+    }
+    write_yaml(run_path, run_record)
     status.update(
         {
             "status": "acquisition_request_ready",
             "acquisition_request_ref": _project_relative(root, request_path),
             "zotero_codex_queries_ref": _project_relative(root, query_manifest_path),
             "zotero_codex_targets_ref": _project_relative(root, target_manifest_path),
+            "literature_run_ref": _project_relative(root, run_path),
             "acquisition_request_status": target_status,
             "summary_for_origin_thread": (
                 f"Literature acquisition request prepared with {len(targets)} target(s). "
@@ -2051,6 +2128,7 @@ def import_zotero_codex_batch_status(
         "external_acquisition_state_ref": "literature/external_acquisition_state.yml",
         "acquisition_status_compact_ref": "literature/acquisition_status_compact.md",
         "sidecar_verification": status_import["sidecar_verification"],
+        "target_updates": handoff_targets,
     }
     write_yaml(external_state_path, handoff_state)
     atomic_write_text(
@@ -3558,6 +3636,9 @@ def reconcile_literature_acquisition(
         or _project_context(root).get("project_id", "unknown-project")
     )
     artifact_paths = {
+        "selected_items": literature_root / "selected_items.yml",
+        "acquisition_request": literature_root / "acquisition_request.yml",
+        "literature_run": literature_root / "run.yml",
         "acquisition_manifest": literature_root / "acquisition_manifest.yml",
         "zotero_codex_status_import": literature_root
         / "zotero_codex_status_import.yml",
@@ -3634,6 +3715,50 @@ def reconcile_literature_acquisition(
             if isinstance(item, dict)
         ]
     origin_sync = artifacts.get("origin_thread_sync", {})
+
+    fixed_scope_counts: dict[str, int] = {}
+    confirmed_count = status.get("selected_top_n")
+    if confirmed_count is not None:
+        fixed_scope_counts["deployment_status.selected_top_n"] = _safe_int(
+            confirmed_count, -1
+        )
+    selected_items = _manifest_items(artifacts.get("selected_items", {}))
+    if "selected_items" in artifacts:
+        fixed_scope_counts["selected_items.items"] = len(selected_items)
+    request = artifacts.get("acquisition_request", {})
+    if request:
+        fixed_scope_counts["acquisition_request.selected_top_n"] = _safe_int(
+            request.get("selected_top_n"), -1
+        )
+        fixed_scope_counts["acquisition_request.target_count"] = _safe_int(
+            request.get("target_count"), -1
+        )
+    literature_run = artifacts.get("literature_run", {})
+    if literature_run:
+        fixed_scope_counts["run.requested_count"] = _safe_int(
+            literature_run.get("requested_count"), -1
+        )
+        fixed_scope_counts["run.target_count"] = _safe_int(
+            literature_run.get("target_count"), -1
+        )
+        fixed_scope_counts["run.targets"] = len(literature_run.get("targets") or [])
+    target_manifest_path = literature_root / "zotero_codex_targets.jsonl"
+    if target_manifest_path.exists():
+        target_manifest_count = sum(
+            1
+            for line in target_manifest_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        fixed_scope_counts["zotero_codex_targets"] = target_manifest_count
+        refs["zotero_codex_targets"] = _project_relative(root, target_manifest_path)
+    if fixed_scope_counts and len(set(fixed_scope_counts.values())) > 1:
+        _reconciliation_finding(
+            findings,
+            severity="error",
+            code="fixed_scope_count_mismatch",
+            message="Confirmed literature scope does not match selected items, request, canonical run, and target manifest counts.",
+            details={"counts": fixed_scope_counts},
+        )
 
     declared_library_count = library.get("item_count")
     if declared_library_count is not None and _safe_int(
@@ -3792,6 +3917,7 @@ def reconcile_literature_acquisition(
             "cached_count": actual_cache_count,
             "reference_count": len(reference_ids),
             "zotero_status_items": len(status_items),
+            "fixed_scope_counts": fixed_scope_counts,
             "external_cache_used": bool(
                 (external_state.get("summary") or {}).get("ready_count")
             ),
@@ -5990,6 +6116,78 @@ def _item_authors(item: dict[str, Any]) -> list[str]:
     return []
 
 
+def _canonical_manifest_doi(value: Any) -> str:
+    return re.sub(
+        r"^https?://(?:dx\.)?doi\.org/",
+        "",
+        str(value or "").strip().lower(),
+    ).rstrip("./")
+
+
+def _validate_manifest_local_pdf(
+    source: Path,
+    *,
+    expected_title: Any,
+    expected_doi: Any,
+) -> dict[str, Any]:
+    from pypdf import PdfReader
+
+    payload = source.read_bytes()
+    validation = validate_pdf_payload(payload, content_type="application/pdf")
+    if validation["status"] != "pass":
+        return {**validation, "status": "invalid_pdf"}
+
+    reader = PdfReader(source)
+    metadata = reader.metadata or {}
+    metadata_title = _pdf_metadata_value(metadata, "/Title")
+    searchable_text = " ".join(
+        [
+            metadata_title,
+            _pdf_metadata_value(metadata, "/Subject"),
+            _pdf_metadata_value(metadata, "/Keywords"),
+        ]
+    )
+    try:
+        searchable_text += " " + (reader.pages[0].extract_text() or "")
+    except Exception:  # noqa: BLE001 - postflight records a stable mismatch
+        pass
+
+    expected_title_text = _normalized_title(expected_title)
+    searchable_title_text = _normalized_title(searchable_text)
+    title_matches = not expected_title_text or (
+        expected_title_text in searchable_title_text
+        or (
+            bool(metadata_title)
+            and _normalized_title(metadata_title) in expected_title_text
+        )
+    )
+    detected_dois = {
+        _canonical_manifest_doi(match.rstrip(".,;)"))
+        for match in re.findall(
+            r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", searchable_text, flags=re.I
+        )
+    }
+    expected_doi_text = _canonical_manifest_doi(expected_doi)
+    doi_matches = not expected_doi_text or expected_doi_text in detected_dois
+    if not title_matches or not doi_matches:
+        return {
+            **validation,
+            "status": "metadata_mismatch",
+            "expected_title": str(expected_title) if expected_title else None,
+            "detected_title": metadata_title or None,
+            "expected_doi": expected_doi_text or None,
+            "detected_dois": sorted(item for item in detected_dois if item),
+            "title_matches": title_matches,
+            "doi_matches": doi_matches,
+        }
+    return {
+        **validation,
+        "status": "verified",
+        "detected_title": metadata_title or None,
+        "detected_dois": sorted(item for item in detected_dois if item),
+    }
+
+
 def import_literature_acquisition_manifest(
     root: Path,
     *,
@@ -6015,6 +6213,7 @@ def import_literature_acquisition_manifest(
     imported: list[dict[str, Any]] = []
     reused: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    fulltext_warnings: list[dict[str, Any]] = []
     manifest_items: list[dict[str, Any]] = []
     cache_items: list[dict[str, Any]] = []
 
@@ -6028,7 +6227,60 @@ def import_literature_acquisition_manifest(
         title = item.get("title")
         doi = item.get("doi")
         url = item.get("url") or item.get("article_url")
-        local_path = item.get("local_path") or item.get("pdf_path")
+        declared_local_path = item.get("local_path") or item.get("pdf_path")
+        local_path = None
+        pdf_verification: dict[str, Any] | None = None
+        if declared_local_path:
+            source = Path(str(declared_local_path))
+            source = source if source.is_absolute() else root / source
+            try:
+                project_local = source.resolve().is_relative_to(root.resolve())
+            except OSError:
+                project_local = False
+            if not project_local:
+                skipped.append(
+                    {
+                        "index": index,
+                        "reason": "unsafe_local_path",
+                        "declared_local_path": str(declared_local_path),
+                        "target_id": item.get("target_id"),
+                        "title": title,
+                        "doi": doi,
+                    }
+                )
+                continue
+            if source.is_file():
+                pdf_verification = _validate_manifest_local_pdf(
+                    source,
+                    expected_title=title,
+                    expected_doi=doi,
+                )
+                if pdf_verification["status"] != "verified":
+                    skipped.append(
+                        {
+                            "index": index,
+                            "reason": pdf_verification["status"],
+                            "declared_local_path": str(declared_local_path),
+                            "target_id": item.get("target_id"),
+                            "title": title,
+                            "doi": doi,
+                            "verification": pdf_verification,
+                        }
+                    )
+                    continue
+                local_path = source.resolve().relative_to(root.resolve()).as_posix()
+            else:
+                pdf_verification = {
+                    "status": "missing_local_file",
+                    "declared_local_path": str(declared_local_path),
+                }
+                fulltext_warnings.append(
+                    {
+                        "index": index,
+                        "reason": "missing_local_file",
+                        "declared_local_path": str(declared_local_path),
+                    }
+                )
         cache_path = item.get("cache_path") or item.get("fulltext_cache_path")
         duplicate = find_duplicate_reference(
             root, doi=doi, url=url, title=title, citation=citation
@@ -6070,6 +6322,7 @@ def import_literature_acquisition_manifest(
             )
         manifest_record = {
             "reference_id": reference_id,
+            "target_id": item.get("target_id"),
             "title": title,
             "doi": doi,
             "url": url,
@@ -6081,6 +6334,8 @@ def import_literature_acquisition_manifest(
             "zotero_attachment_key": item.get("zotero_attachment_key")
             or item.get("attachment_key"),
             "local_path": local_path,
+            "declared_local_path": declared_local_path,
+            "pdf_verification": pdf_verification,
             "cache_path": cache_path,
             "status": item.get("status") or item.get("acquisition_status"),
             "rank": item.get("rank") or item.get("top30_rank"),
@@ -6108,11 +6363,11 @@ def import_literature_acquisition_manifest(
     write_yaml(literature_root / "library_manifest.yml", library_manifest)
     write_yaml(literature_root / "cache_index.yml", cache_index)
 
-    downloaded_fulltext = manifest.get("downloaded_fulltext")
-    if downloaded_fulltext is None:
-        downloaded_fulltext = sum(
-            1 for item in manifest_items if item.get("local_path")
-        )
+    downloaded_fulltext = sum(
+        1
+        for item in manifest_items
+        if (item.get("pdf_verification") or {}).get("status") == "verified"
+    )
     cached_fulltext = manifest.get("cached_fulltext")
     if cached_fulltext is None:
         cached_fulltext = cache_index["cached_count"]
@@ -6136,6 +6391,31 @@ def import_literature_acquisition_manifest(
             "reused_count": len(reused),
             "skipped_count": len(skipped),
         },
+        "target_updates": [
+            {
+                "target_id": item.get("target_id"),
+                "title": item.get("title"),
+                "doi": item.get("doi"),
+                "status": (
+                    "verified"
+                    if (item.get("pdf_verification") or {}).get("status")
+                    == "verified"
+                    else "cache_recorded"
+                    if item.get("cache_path")
+                    else "metadata_imported"
+                ),
+            }
+            for item in manifest_items
+        ]
+        + [
+            {
+                "target_id": item.get("target_id"),
+                "title": item.get("title"),
+                "doi": item.get("doi"),
+                "status": item.get("reason") or "blocked",
+            }
+            for item in skipped
+        ],
     }
     update_path = literature_root / "acquisition_status_update.yml"
     write_yaml(update_path, update)
@@ -6152,11 +6432,89 @@ def import_literature_acquisition_manifest(
         "imported_count": len(imported),
         "reused_count": len(reused),
         "skipped_count": len(skipped),
+        "fulltext_warning_count": len(fulltext_warnings),
         "imported": imported,
         "reused": reused,
         "skipped": skipped,
+        "fulltext_warnings": fulltext_warnings,
         "sync": sync,
     }
+
+
+def _sync_canonical_literature_run(
+    root: Path,
+    *,
+    update: dict[str, Any],
+    synced_at: str,
+) -> dict[str, Any] | None:
+    run_path = root / "literature" / "run.yml"
+    if not run_path.exists():
+        return None
+    run = read_yaml(run_path)
+    targets = [item for item in run.get("targets") or [] if isinstance(item, dict)]
+    target_updates = [
+        item for item in update.get("target_updates") or [] if isinstance(item, dict)
+    ]
+    for target_update in target_updates:
+        update_doi = _canonical_manifest_doi(target_update.get("doi"))
+        update_title = _normalized_title(target_update.get("title"))
+        target = next(
+            (
+                candidate
+                for candidate in targets
+                if (
+                    target_update.get("target_id")
+                    and candidate.get("target_id") == target_update.get("target_id")
+                )
+                or (
+                    update_doi
+                    and _canonical_manifest_doi(candidate.get("doi")) == update_doi
+                )
+                or (
+                    update_title
+                    and _normalized_title(candidate.get("title")) == update_title
+                )
+            ),
+            None,
+        )
+        if target is None:
+            continue
+        target_status = str(target_update.get("status") or "unknown")
+        if target_status in {
+            "verified",
+            "verified_local_pdf",
+            "acquired",
+            "cached",
+            "cache_verified",
+            "reused-cache",
+            "reused_cache",
+        }:
+            target["stage"] = "postflight_verified"
+            target["status"] = "complete"
+            target["blocked_reason"] = None
+        elif target_status in {"needs_login", "needs-login"}:
+            target["stage"] = "needs_user_login"
+            target["status"] = "needs-login"
+            target["blocked_reason"] = target_update.get("blocked_reason") or target_update.get("reason")
+        elif target_status in {
+            "invalid_pdf",
+            "metadata_mismatch",
+            "unsafe_local_path",
+            "blocked",
+        }:
+            target["stage"] = "postflight_failed"
+            target["status"] = "blocked"
+            target["blocked_reason"] = target_status
+        else:
+            target["stage"] = "result_recorded"
+            target["status"] = target_status
+    run["targets"] = targets
+    run["status"] = str(update.get("status") or "acquisition_in_progress")
+    run["updated_at"] = synced_at
+    run["last_successful_action"] = "acquisition_status_synced"
+    run["resume_command"] = "ea literature acquisition-status /path/to/ea-project"
+    write_yaml(run_path, run)
+    return run
 
 
 def sync_literature_acquisition_status(
@@ -6176,7 +6534,8 @@ def sync_literature_acquisition_status(
     for field in STATUS_UPDATE_FIELDS:
         if field in update:
             status[field] = update[field]
-    status["last_acquisition_sync_at"] = synced_at or EARecord.now_iso()
+    synced_at = synced_at or EARecord.now_iso()
+    status["last_acquisition_sync_at"] = synced_at
     status["acquisition_status_update_ref"] = (
         update_path.relative_to(root).as_posix()
         if update_path.is_relative_to(root)
@@ -6207,9 +6566,284 @@ def sync_literature_acquisition_status(
         }
     )
     write_yaml(sync_path, sync_record)
+    run = _sync_canonical_literature_run(root, update=update, synced_at=synced_at)
     return {
         "status_path": str(status_path),
         "sync_path": str(sync_path),
         "status": status,
         "sync": sync_record,
+        "run": run,
     }
+
+
+def literature_acquisition_status(root: Path) -> dict[str, Any]:
+    run_path = root / "literature" / "run.yml"
+    status_path = root / "literature" / "deployment_status.yml"
+    run = read_yaml(run_path) if run_path.exists() else {}
+    status = read_yaml(status_path) if status_path.exists() else {}
+    return {
+        "schema_version": "1.1",
+        "status": run.get("status") or status.get("status") or "not_started",
+        "read_only": True,
+        "run_ref": run_path.relative_to(root).as_posix() if run_path.exists() else None,
+        "requested_count": run.get("requested_count") or status.get("selected_top_n"),
+        "target_count": run.get("target_count"),
+        "targets": run.get("targets") or [],
+        "last_successful_action": run.get("last_successful_action"),
+        "resume_command": run.get("resume_command")
+        or "ea literature plan /path/to/ea-project",
+        "zotero_choice": (
+            read_yaml(root / "literature" / "zotero_choice.yml").get("choice")
+            if (root / "literature" / "zotero_choice.yml").exists()
+            else None
+        ),
+    }
+
+
+def record_zotero_choice(
+    root: Path,
+    *,
+    choice: Literal["existing", "skip", "later"],
+    decided_at: str | None = None,
+) -> dict[str, Any]:
+    if choice not in {"existing", "skip", "later"}:
+        raise ValueError(f"Unsupported Zotero choice: {choice}")
+    path = root / "literature" / "zotero_choice.yml"
+    if path.exists():
+        existing = read_yaml(path)
+        if existing.get("choice") == choice:
+            return {**existing, "path": str(path), "idempotent": True}
+    record = {
+        "schema_version": "1.1",
+        "choice": choice,
+        "status": {
+            "existing": "zotero_selected_pending_readiness",
+            "skip": "no_zotero_mode_selected",
+            "later": "zotero_deferred",
+        }[choice],
+        "decided_at": decided_at or EARecord.now_iso(),
+        "stores_credentials": False,
+        "resume_command": (
+            "ea literature zotero-readiness /path/to/ea-project --no-write"
+            if choice == "existing"
+            else "ea literature acquisition-status /path/to/ea-project"
+        ),
+    }
+    write_yaml(path, record)
+    return {**record, "path": str(path), "idempotent": False}
+
+
+def create_literature_acquisition_session(
+    root: Path,
+    *,
+    target_id: str,
+    publisher: str,
+    canonical_url: str,
+    user_confirmed_login: bool = False,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    run_path = root / "literature" / "run.yml"
+    if not run_path.is_file():
+        raise FileNotFoundError(run_path)
+    run = read_yaml(run_path)
+    targets = run.get("targets") or []
+    if target_id not in {str(item.get("target_id")) for item in targets}:
+        raise KeyError(f"Unknown literature target_id: {target_id}")
+    parsed = urllib.parse.urlsplit(canonical_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Acquisition session requires an http(s) canonical URL")
+    created_at = created_at or EARecord.now_iso()
+    session_path = root / "literature" / "sessions" / f"{target_id}.yml"
+    record = {
+        "schema_version": "1.1",
+        "session_id": f"lit-session-{target_id}",
+        "target_id": target_id,
+        "publisher": publisher,
+        "publisher_domain": parsed.netloc.lower(),
+        "canonical_url_category": "publisher_article_or_landing_page",
+        "stage": "authenticated_resume_ready"
+        if user_confirmed_login
+        else "needs_user_login",
+        "user_confirmed_login": user_confirmed_login,
+        "created_at": created_at,
+        "updated_at": created_at,
+        "resume_command": (
+            f"ea literature acquisition-session /path/to/ea-project --target-id {target_id} "
+            f"--publisher {json.dumps(publisher)} --canonical-url https://{parsed.netloc}/ --login-confirmed"
+        ),
+        "privacy_boundary": "Does not store cookies, credentials, SAML parameters, session tokens, URL queries, fragments, or browser history.",
+    }
+    write_yaml(session_path, record)
+    for target in targets:
+        if str(target.get("target_id")) == target_id:
+            target["stage"] = record["stage"]
+            target["status"] = (
+                "ready_to_resume" if user_confirmed_login else "needs-login"
+            )
+            target["blocked_reason"] = (
+                None if user_confirmed_login else "user_managed_sso_or_mfa_required"
+            )
+    run["targets"] = targets
+    run["status"] = "in_progress"
+    run["updated_at"] = created_at
+    run["last_successful_action"] = "acquisition_session_created"
+    run["resume_command"] = record["resume_command"]
+    write_yaml(run_path, run)
+    return {**record, "path": str(session_path)}
+
+
+def _pdf_metadata_value(metadata: Any, key: str) -> str:
+    value = metadata.get(key) if metadata else None
+    return str(value).strip() if value not in (None, "") else ""
+
+
+def ingest_local_pdfs(
+    root: Path,
+    *,
+    pdf_paths: list[Path],
+    expected_dois: list[str] | None = None,
+    ingested_at: str | None = None,
+) -> dict[str, Any]:
+    from pypdf import PdfReader
+
+    ingested_at = ingested_at or EARecord.now_iso()
+    expected_dois = expected_dois or []
+    if expected_dois and len(expected_dois) != len(pdf_paths):
+        raise ValueError("--doi count must match --pdf count")
+    literature_root = root / "literature"
+    library_path = literature_root / "library_manifest.yml"
+    library = (
+        read_yaml(library_path)
+        if library_path.exists()
+        else {"schema_version": "1.1", "project_id": _project_context(root).get("project_id"), "items": []}
+    )
+    library_items = [item for item in library.get("items") or [] if isinstance(item, dict)]
+    by_sha = {str(item.get("sha256")): item for item in library_items if item.get("sha256")}
+    imported: list[dict[str, Any]] = []
+    reused: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    project_id = str(library.get("project_id") or _project_context(root).get("project_id", "unknown-project"))
+
+    for index, raw_path in enumerate(pdf_paths):
+        source = raw_path if raw_path.is_absolute() else root / raw_path
+        if not source.is_file():
+            rejected.append({"source": str(source), "status": "missing_file"})
+            continue
+        payload = source.read_bytes()
+        validation = validate_pdf_payload(payload, content_type="application/pdf")
+        if validation["status"] != "pass":
+            rejected.append(
+                {
+                    "source": str(source),
+                    "status": "invalid_pdf",
+                    "findings": validation["findings"],
+                }
+            )
+            continue
+        reader = PdfReader(source)
+        metadata = reader.metadata or {}
+        title = _pdf_metadata_value(metadata, "/Title")
+        metadata_text = " ".join(
+            [
+                title,
+                _pdf_metadata_value(metadata, "/Subject"),
+                _pdf_metadata_value(metadata, "/Keywords"),
+            ]
+        )
+        first_page_text = ""
+        try:
+            first_page_text = reader.pages[0].extract_text() or ""
+        except Exception:
+            first_page_text = ""
+        doi_matches = re.findall(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", metadata_text + " " + first_page_text, flags=re.I)
+        detected_doi = doi_matches[0].rstrip(".,;)").lower() if doi_matches else ""
+        expected_doi = (
+            re.sub(r"^https?://(?:dx\.)?doi\.org/", "", expected_dois[index].strip().lower()).rstrip("./")
+            if expected_dois
+            else ""
+        )
+        if expected_doi and detected_doi != expected_doi:
+            rejected.append(
+                {
+                    "source": str(source),
+                    "status": "metadata_mismatch",
+                    "expected_doi": expected_doi,
+                    "detected_doi": detected_doi or None,
+                }
+            )
+            continue
+        if not title or not (detected_doi or expected_doi):
+            rejected.append(
+                {
+                    "source": str(source),
+                    "status": "metadata_mismatch",
+                    "reason": "title_and_doi_required",
+                }
+            )
+            continue
+        sha = hashlib.sha256(payload).hexdigest()
+        if sha in by_sha:
+            reused.append(by_sha[sha])
+            continue
+        destination = literature_root / "fulltext" / f"{sha[:16]}.pdf"
+        atomic_copy_file(source, destination)
+        doi = detected_doi or expected_doi
+        duplicate = find_duplicate_reference(
+            root, doi=doi, url=None, title=title, citation=title
+        )
+        if duplicate:
+            reference_id = duplicate["reference_id"]
+        else:
+            reference = register_reference(
+                root,
+                project_id=project_id,
+                citation=f"{title}. DOI: {doi}.",
+                title=title,
+                doi=doi,
+                local_path=destination.relative_to(root).as_posix(),
+                source_type="local_pdf",
+                notes="Verified local PDF ingest; PDF signature, page count, title, DOI, and SHA-256 recorded.",
+                created_at=ingested_at,
+            )
+            reference_id = reference.stem
+        item = {
+            "reference_id": reference_id,
+            "title": title,
+            "doi": doi,
+            "local_path": destination.relative_to(root).as_posix(),
+            "status": "verified_local_pdf",
+            "sha256": sha,
+            "page_count": validation["page_count"],
+            "pdf_signature": validation["pdf_signature"],
+            "verified_at": ingested_at,
+            "zotero_required": False,
+        }
+        library_items.append(item)
+        by_sha[sha] = item
+        imported.append(item)
+
+    library.update(
+        {
+            "schema_version": "1.1",
+            "project_id": project_id,
+            "updated_at": ingested_at,
+            "item_count": len(library_items),
+            "items": library_items,
+        }
+    )
+    write_yaml(library_path, library)
+    result = {
+        "schema_version": "1.1",
+        "status": "complete" if not rejected else "attention",
+        "imported_count": len(imported),
+        "reused_count": len(reused),
+        "rejected_count": len(rejected),
+        "library_item_count": len(library_items),
+        "imported": imported,
+        "reused": reused,
+        "rejected": rejected,
+        "library_manifest_ref": library_path.relative_to(root).as_posix(),
+        "zotero_required": False,
+    }
+    write_yaml(literature_root / "local_pdf_ingest.yml", result)
+    return result
