@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -9,6 +10,8 @@ from ea.experiments import (
 )
 from ea.samples import recommend_raman_candidates, save_sample_record
 from ea.storage import read_markdown_record, read_yaml
+from ea.cli import main
+from ea.projects import initialize_project
 
 
 PUBLIC_DIALOGUE_7 = (
@@ -119,3 +122,70 @@ def test_raman_candidate_recommendations_include_sources(tmp_path: Path) -> None
     ]
     assert candidates[0].source_label == "exp-20260516-001"
     assert "regular triangular" in candidates[0].reason
+
+
+def test_experiment_and_sample_cli_create_stable_run_table_and_best_sample(
+    tmp_path: Path, capsys
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Run workflow",
+        project_slug="run-workflow",
+        research_direction="CVD optimization",
+        material_system="MoS2",
+        experiment_type="CVD",
+    )
+    add_run = [
+        "experiment",
+        "add",
+        str(tmp_path),
+        "--date",
+        "2026-05-16",
+        "--text",
+        PUBLIC_DIALOGUE_7,
+        "--sample-ref",
+        "sample-run1-best",
+        "--user-response",
+        "可以，保存",
+    ]
+    assert main(add_run) == 0
+    experiment = json.loads(capsys.readouterr().out)
+    assert experiment["experiment_id"] == "exp-20260516-001"
+
+    assert main(
+        [
+            "sample",
+            "add",
+            str(tmp_path),
+            "--sample-id",
+            "sample-run1-best",
+            "--experiment-ref",
+            experiment["experiment_id"],
+            "--quality-status",
+            "candidate_good",
+            "--quality-note",
+            "55 um triangular domain",
+        ]
+    ) == 0
+    sample = json.loads(capsys.readouterr().out)
+    assert sample["sample_id"] == "sample-run1-best"
+
+    assert main(
+        [
+            "sample",
+            "select-best",
+            str(tmp_path),
+            "--sample-id",
+            "sample-run1-best",
+            "--user-response",
+            "确认",
+        ]
+    ) == 0
+    selection = json.loads(capsys.readouterr().out)
+    assert selection["selected_sample_id"] == "sample-run1-best"
+
+    assert main(["--mode", "consult", "experiment", "runs", str(tmp_path)]) == 0
+    runs = json.loads(capsys.readouterr().out)
+    assert runs["read_only"] is True
+    assert runs["runs"][0]["experiment_id"] == "exp-20260516-001"
+    assert runs["runs"][0]["stage_standard"] is True

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "experimental-assistant"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first materials research assistant with review-gated evidence and provenance"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -89,4 +89,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]

@@ -92,7 +92,7 @@ def test_identity_uses_public_distribution_and_ea_skill(monkeypatch) -> None:
 
     result = identity_record()
 
-    assert result["public_version"] == "Experimental Assistant v1.0.0"
+    assert result["public_version"] == "Experimental Assistant v1.1.0"
     assert result["distribution_name"] == "experimental-assistant"
     assert result["skill_folder"] == "ea"
     assert result["skill_invocation"] == "$ea"
@@ -110,7 +110,7 @@ def test_version_human_output_hides_legacy_compatibility_name(
     assert main(["version"]) == 0
     output = capsys.readouterr().out
 
-    assert "Distribution: experimental-assistant 1.0.0" in output
+    assert "Distribution: experimental-assistant 1.1.0" in output
     assert "Codex skill invocation: $ea" in output
     assert "ea-v0-2" not in output
 
@@ -378,7 +378,7 @@ def test_rollback_restores_supported_legacy_skill_backup(
     _install_sources(codex_home)
     target = codex_home / "skills" / "ea" / "SKILL.md"
     target.write_text(
-        target.read_text(encoding="utf-8").replace("v1.0.0", legacy_version),
+        target.read_text(encoding="utf-8").replace("v1.1.0", legacy_version),
         encoding="utf-8",
     )
     validator = _write_validator(tmp_path)
@@ -400,7 +400,7 @@ def test_rollback_rejects_unsupported_legacy_skill_backup(tmp_path: Path) -> Non
     _install_sources(codex_home)
     target = codex_home / "skills" / "ea" / "SKILL.md"
     target.write_text(
-        target.read_text(encoding="utf-8").replace("v1.0.0", "v0.9.6"),
+        target.read_text(encoding="utf-8").replace("v1.1.0", "v0.9.6"),
         encoding="utf-8",
     )
     validator = _write_validator(tmp_path)
@@ -420,7 +420,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     with pytest.raises(SystemExit) as version_exit:
         main(["--version"])
     assert version_exit.value.code == 0
-    assert "v1.0.0" in capsys.readouterr().out
+    assert "v1.1.0" in capsys.readouterr().out
 
     assert main(["version", "--json"]) == 0
     identity = json.loads(capsys.readouterr().out)
@@ -450,7 +450,7 @@ def test_cli_version_install_and_onboarding_use_v097_identity(
     assert installed["identity"]["skill_invocation"] == "$ea"
 
     onboarding = onboarding_post_install_record(event="update", lang="zh")
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v1.0.0"
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v1.1.0"
     assert "compatibility" not in onboarding
 
 
@@ -464,11 +464,11 @@ def test_update_plan_is_read_only_until_confirmed(monkeypatch) -> None:
         },
     )
 
-    result = update_installation(release_ref="v1.0.0", confirmed=False)
+    result = update_installation(release_ref="v1.1.0", confirmed=False)
 
     assert result["status"] == "needs_confirmation"
     assert result["previous_release_ref"] == "v0.9.9"
-    assert result["release_ref"] == "v1.0.0"
+    assert result["release_ref"] == "v1.1.0"
     assert result["read_only"] is True
 
 
@@ -499,7 +499,7 @@ def test_update_rolls_back_cli_when_new_skill_install_fails(
         return Result(0)
 
     result = update_installation(
-        release_ref="v1.0.0",
+        release_ref="v1.1.0",
         confirmed=True,
         uv_executable="/test/uv",
         command_runner=runner,

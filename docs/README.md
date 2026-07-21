@@ -2,12 +2,12 @@
 
 ## 当前权威文档
 
-1. `V1_0_RELEASE_DOSSIER.md` / `V1_0_RELEASE_DOSSIER.yml` / `V1_0_PUBLICATION_VERIFICATION.*`
-   - v1.0.0 候选、发布和下载重放门禁的当前权威记录。
+1. `V1_1_RELEASE_DOSSIER.md` / `V1_1_RELEASE_DOSSIER.yml` (current release) and `V1_0_PUBLICATION_VERIFICATION.*` (historical v1.0 verification)
+   - v1.1.0 候选、发布和下载重放门禁的当前权威记录。
    - 与历史 `V1_0_READINESS_DOSSIER.*` 分离，后者只记录 v0.9.9 晋升快照。
 
-2. `V1_0_RELEASE_NOTES.md` / `V1_0_KNOWN_LIMITATIONS.md` / `V1_0_SUPPORT_PROMISE.md`
-   - 描述 v1.0.0 稳定包合同、有限 Raman 稳定范围和仍需 review 的方法/集成边界。
+2. `V1_1_RELEASE_NOTES.md` / `V1_1_KNOWN_LIMITATIONS.md` / `V1_1_SUPPORT_PROMISE.md`
+   - 描述 v1.1.0 稳定包合同、有限 Raman 稳定范围和仍需 review 的方法/集成边界。
 
 3. `PUBLIC_ONBOARDING.md`
    - 面向陌生公开用户和新 agent 的入门路径。

@@ -19,11 +19,17 @@ from ea.report_messages import (
     localized_source_data_purpose,
 )
 from ea.references import build_report_reference_block, format_inline_citation
-from ea.review import require_confirmed_review
+from ea.review import classify_user_response, require_confirmed_review, write_review_record
+from ea.review.state import content_hash
 from ea.schema import ReportRecord
 from ea.schema.models import EARecord
 from ea.standards import infer_project_slug
-from ea.storage.files import read_yaml, write_markdown_record, write_yaml
+from ea.storage.files import (
+    read_markdown_record,
+    read_yaml,
+    write_markdown_record,
+    write_yaml,
+)
 from ea.storage.ids import next_id, next_standard_id
 
 
@@ -4893,6 +4899,241 @@ def read_yaml_from_markdown_frontmatter(path: Path) -> dict:
 
     frontmatter, _ = read_markdown_record(path)
     return frontmatter
+
+
+def _composite_result_index(root: Path) -> dict[str, tuple[Path, dict[str, Any]]]:
+    index: dict[str, tuple[Path, dict[str, Any]]] = {}
+    for path in sorted((root / "processed").glob("**/*.yml")):
+        if "batches" in path.parts:
+            continue
+        record = read_yaml(path)
+        result_id = record.get("result_id")
+        if not result_id:
+            for key, value in record.items():
+                if key.endswith("_result_id") and value:
+                    result_id = value
+                    break
+        if result_id:
+            index[str(result_id)] = (path, record)
+    return index
+
+
+def generate_composite_report(
+    root: Path,
+    *,
+    project_id: str,
+    result_ids: list[str],
+    sample_ids: list[str],
+    user_response: str,
+    experiment_ids: list[str] | None = None,
+    reference_ids: list[str] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        return {
+            "status": "needs_clear_confirmation",
+            "requires_confirmation": True,
+            "writes": False,
+            "result_ids": list(dict.fromkeys(result_ids)),
+            "sample_ids": list(dict.fromkeys(sample_ids)),
+        }
+    result_ids = list(dict.fromkeys(result_ids))
+    sample_ids = list(dict.fromkeys(sample_ids))
+    if len(result_ids) < 2:
+        raise ValueError("Composite report requires at least two result IDs")
+    if not sample_ids:
+        raise ValueError("Composite report requires at least one stable sample ID")
+    result_index = _composite_result_index(root)
+    missing = [result_id for result_id in result_ids if result_id not in result_index]
+    if missing:
+        raise KeyError(f"Unknown composite result IDs: {', '.join(missing)}")
+
+    result_records: list[dict[str, Any]] = []
+    figure_ids: list[str] = []
+    result_refs: list[str] = []
+    for result_id in result_ids:
+        path, record = result_index[result_id]
+        linked_samples = [str(item) for item in record.get("sample_refs") or []]
+        if linked_samples and not set(linked_samples).intersection(sample_ids):
+            raise ValueError(
+                f"Result {result_id} is not linked to the selected composite sample IDs"
+            )
+        method = path.parent.parent.name
+        result_ref = path.relative_to(root).as_posix()
+        result_refs.append(result_ref)
+        figure_id = record.get("figure_id")
+        if figure_id and str(figure_id) not in figure_ids:
+            figure_ids.append(str(figure_id))
+        result_records.append(
+            {
+                "result_id": result_id,
+                "method": method,
+                "metadata_ref": result_ref,
+                "figure_id": figure_id,
+                "status": record.get("status"),
+                "warning_count": len(record.get("warnings") or []),
+            }
+        )
+
+    day = created_at[:10] if created_at else None
+    report_id = (
+        next_standard_id(
+            root, "report", infer_project_slug(project_id), day=day
+        )
+        if project_id.startswith("prj-")
+        else next_id(root, "report", day)
+    )
+    report_path = root / "reports" / f"{report_id}.md"
+    manifest_path = root / "reports" / "composite-manifests" / f"{report_id}.yml"
+    manifest_ref = manifest_path.relative_to(root).as_posix()
+    review_content = json.dumps(
+        {
+            "project_id": project_id,
+            "result_ids": result_ids,
+            "sample_ids": sample_ids,
+            "experiment_ids": experiment_ids or [],
+            "reference_ids": reference_ids or [],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    manifest = {
+        "schema_version": "1.1",
+        "manifest_type": "reviewed_composite_report",
+        "report_id": report_id,
+        "project_id": project_id,
+        "status": "user_confirmed",
+        "result_ids": result_ids,
+        "sample_ids": sample_ids,
+        "experiment_ids": experiment_ids or [],
+        "reference_ids": reference_ids or [],
+        "results": result_records,
+        "reviewed_content_hash": content_hash(review_content),
+        "created_at": created_at or EARecord.now_iso(),
+    }
+    write_yaml(manifest_path, manifest)
+    review_path = write_review_record(
+        root,
+        target_type="composite_report_manifest",
+        target_ref=manifest_ref,
+        user_response=user_response,
+        reviewed_content=review_content,
+        reviewed_at=created_at,
+        confirm=True,
+    )
+    require_confirmed_review(
+        root,
+        review_path.stem,
+        expected_target_type="composite_report_manifest",
+        expected_target_ref=manifest_ref,
+        expected_content_hash=content_hash(review_content),
+    )
+    manifest["review_refs"] = [review_path.stem]
+    write_yaml(manifest_path, manifest)
+
+    project_frontmatter, _ = read_markdown_record(root / "EA_PROJECT.md")
+    language = str(project_frontmatter.get("default_language") or "zh")
+    reference_block = build_report_reference_block(root, reference_ids or [])
+    display_labels = {"raman": "Raman", "pl": "PL", "afm": "AFM"}
+    method_labels = [
+        display_labels.get(item["method"].lower(), item["method"].upper())
+        for item in result_records
+    ]
+    result_rows = [
+        "| method | result_id | metadata | status | warnings |",
+        "|---|---|---|---|---:|",
+        *[
+            f"| {item['method'].upper()} | `{item['result_id']}` | `{item['metadata_ref']}` | {item.get('status') or 'unknown'} | {item['warning_count']} |"
+            for item in result_records
+        ],
+    ]
+    figure_lines = [
+        f"- `{figure_id}` — report-bound rendering and processed source-data links are maintained in `figures/index.yml`."
+        for figure_id in figure_ids
+    ]
+    body = f"""# {' + '.join(method_labels)} Composite Analysis Report
+
+## Scope
+
+This reviewed composite report combines `{len(result_ids)}` processed results for stable sample ID(s) `{', '.join(sample_ids)}`. It summarizes linked records without converting cross-method agreement into automatic mechanism proof.
+
+## Result Matrix
+
+{chr(10).join(result_rows)}
+
+## Cross-Method Reading Boundary
+
+Raman, PL, and image/topography evidence answer different questions. Agreement may support a reviewed interpretation, but no single plot or automated merge proves layer number, growth mechanism, composition, or causality. Read each method's warnings and source data before promoting a scientific finding.
+
+## Figures
+
+{chr(10).join(figure_lines) if figure_lines else '- No indexed figure was linked.'}
+
+## References
+
+{reference_block['references_markdown']}
+
+## Traceability
+
+- composite manifest: `{manifest_ref}`
+- review: `{review_path.stem}`
+- result metadata: `{', '.join(result_refs)}`
+"""
+    report = ReportRecord(
+        report_id=report_id,
+        project_id=project_id,
+        report_type="composite_analysis",
+        language=language,
+        related_experiments=experiment_ids or [],
+        related_samples=sample_ids,
+        related_results=result_ids,
+        figure_ids=figure_ids,
+        include_next_step_suggestions=False,
+        status="user_reviewed",
+        review_refs=[review_path.stem],
+        created_at=created_at or EARecord.now_iso(),
+        updated_at=created_at or EARecord.now_iso(),
+    )
+    frontmatter = report.model_dump(exclude_none=True)
+    frontmatter["reference_ids"] = reference_block["reference_ids"]
+    frontmatter["numbered_references"] = reference_block["numbered_references"]
+    frontmatter["composite_manifest_ref"] = manifest_ref
+    write_markdown_record(report_path, frontmatter, body)
+    provenance = write_provenance_entry(
+        root,
+        workflow="composite_report_generation",
+        inputs={"records": [manifest_ref, *result_refs], "files": []},
+        outputs={"records": [report_path.relative_to(root).as_posix()], "files": []},
+        parameters={"result_ids": result_ids, "sample_ids": sample_ids},
+        review_refs=[review_path.stem],
+        created_at=created_at,
+    )
+    frontmatter["provenance_refs"] = [provenance.stem]
+    write_markdown_record(report_path, frontmatter, body)
+    for figure_id in figure_ids:
+        update_figure_report_ref(root, figure_id, report_id)
+    register_report(
+        root,
+        report_id=report_id,
+        path=report_path.relative_to(root).as_posix(),
+        project_id=project_id,
+        result_ids=result_ids,
+        figure_ids=figure_ids,
+        sample_ids=sample_ids,
+        experiment_ids=experiment_ids or [],
+        reference_ids=reference_block["reference_ids"],
+    )
+    return {
+        "status": "complete",
+        "report_id": report_id,
+        "report_path": str(report_path),
+        "manifest_path": str(manifest_path),
+        "review_ref": review_path.stem,
+        "result_ids": result_ids,
+        "figure_ids": figure_ids,
+    }
 
 
 def register_report(

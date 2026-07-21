@@ -100,3 +100,51 @@ def test_mode_command_is_read_only_and_describes_all_modes(tmp_path: Path, capsy
     assert result["active_mode"] == "consult"
     assert set(result["modes"]) == {"consult", "record", "execute", "audit"}
     assert result["modes"]["consult"]["writes"] is False
+
+
+def test_consult_and_audit_allow_spectrum_inspection_without_project_writes(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "project"
+    _project(project)
+    spectrum = tmp_path / "spectrum.txt"
+    spectrum.write_text("wavenumber intensity\n100 1\n101 2\n", encoding="utf-8")
+    before = _snapshot(project)
+
+    assert main(["--mode", "consult", "raman", "inspect", str(project), str(spectrum)]) == 0
+    assert json.loads(capsys.readouterr().out)["path"] == str(spectrum)
+    assert main(["--mode", "audit", "pl", "inspect", str(project), str(spectrum)]) == 0
+    assert json.loads(capsys.readouterr().out)["path"] == str(spectrum)
+    assert main(["--mode", "consult", "raman", "list-assignment-libraries"]) == 0
+    capsys.readouterr()
+    assert _snapshot(project) == before
+
+
+def test_consult_still_blocks_spectrum_processing(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "project"
+    _project(project)
+
+    assert main(
+        [
+            "--mode",
+            "consult",
+            "raman",
+            "process",
+            str(project),
+            "--metadata",
+            "raw/raman/char-001/metadata.yml",
+            "--project-id",
+            "project-mode-project",
+            "--x-column",
+            "col_0",
+            "--y-column",
+            "col_1",
+            "--x-unit",
+            "cm^-1",
+            "--column-review-ref",
+            "review-columns",
+            "--parameter-review-ref",
+            "review-parameters",
+        ]
+    ) == 2
+    assert json.loads(capsys.readouterr().out)["code"] == "EA-MODE-COMMAND-BLOCKED"

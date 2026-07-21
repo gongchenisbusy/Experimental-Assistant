@@ -1,6 +1,6 @@
 # Experimental Assistant Capability Matrix
 
-This is a maintainer-facing release-governance contract for v1.0.0. Ordinary user responses and normal command results describe concrete limits and next actions instead of exposing maturity labels.
+This is a maintainer-facing release-governance contract for v1.1.0. Ordinary user responses and normal command results describe concrete limits and next actions instead of exposing maturity labels.
 
 Run `ea capabilities` for the installed machine-readable contract.
 

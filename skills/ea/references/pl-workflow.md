@@ -1,6 +1,6 @@
 # PL Workflow
 
-Use this reference when processing photoluminescence spectra in the Experimental Assistant v1.0.0 skill.
+Use this reference when processing photoluminescence spectra in the Experimental Assistant v1.1.0 skill.
 
 Required gates:
 
@@ -14,7 +14,7 @@ Required gates:
 8. Interpret emission features with project context and literature references. Use confidence labels rather than definitive mechanism claims.
 9. Write memory candidates only after user confirmation.
 
-Current Experimental Assistant v1.0.0 PL compatibility support:
+Current Experimental Assistant v1.1.0 PL compatibility support:
 
 - Raw import uses `ea raw import --characterization-type pl`.
 - Inspection reuses the spectrum reader and identifies common PL files by filename, `AxisUnit[1]=eV`, or an eV-like x range.
@@ -25,6 +25,8 @@ Current Experimental Assistant v1.0.0 PL compatibility support:
 - When a project ID or context matches a built-in material profile with PL rules and the energy can be determined, EA uses the material assignment library to mark dominant near-band-edge PL candidates with medium or low confidence.
 - Current built-in PL profiles include MoS2 and WS2. Assignment metadata records `assignment_source`; inspect a rule with commands such as `ea materials assignments ws2 --method pl`.
 - Reports include PL peak tables, confidence-labeled possible interpretations, file links, References, and provenance.
+- Figures put processed intensity and detected peaks on the primary axis and raw counts on a clearly labelled secondary axis so normalization cannot flatten the reviewed result.
+- Built-in local peak fitting is not part of v1.1. Do not report fitted center/FWHM/R²/uncertainty unless a separately reviewed external method and provenance are supplied.
 
 CLI path:
 
@@ -38,4 +40,4 @@ ea pl process /path/to/ea-project --metadata raw/pl/char-20260630-001/metadata.y
 ea pl report /path/to/ea-project --metadata processed/sample-001/pl/res-project-pl-20260630-001/pl_metadata.yml --sample-ref sample-001 --experiment-ref exp-001
 ```
 
-Future PL work should add replicate handling, emission deconvolution, temperature/power-dependent PL support, more material records, and user-confirmed memory-candidate generation from report interpretations.
+Future PL work should add replicate handling, reviewed emission deconvolution/uncertainty (tracked separately), temperature/power-dependent PL support, more material records, and user-confirmed memory-candidate generation from report interpretations.

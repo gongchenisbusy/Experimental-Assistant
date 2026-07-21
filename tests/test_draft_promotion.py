@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,20 @@ from ea.drafts import draft_artifact_status, promote_draft_artifact, stage_draft
 from ea.projects import initialize_project
 from ea.review import write_review_record
 from ea.storage import read_yaml
+from ea.cli import main
+
+
+def _reviewed_promotion_content(staged: dict) -> str:
+    return json.dumps(
+        {
+            "draft_id": staged["draft_id"],
+            "source_sha256": staged["source_sha256"],
+            "target_ref": staged["target_ref"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _project(root: Path) -> None:
@@ -50,7 +65,7 @@ def test_draft_stage_and_promotion_are_confirmation_review_and_overwrite_gated(t
         target_type="draft_promotion",
         target_ref=manifest_ref,
         user_response="confirmed",
-        reviewed_content="Promote this reviewed draft.",
+        reviewed_content=_reviewed_promotion_content(staged),
         reviewed_at="2026-07-10T18:01:00",
     )
     promotion_preview = promote_draft_artifact(
@@ -106,8 +121,59 @@ def test_draft_refuses_raw_sources_wrong_reviews_and_existing_targets(tmp_path: 
         target_type="draft_promotion",
         target_ref=staged["draft_ref"],
         user_response="confirmed",
-        reviewed_content="correct review",
+        reviewed_content=_reviewed_promotion_content(staged),
     )
     (tmp_path / "reports" / "existing.md").write_text("existing", encoding="utf-8")
     with pytest.raises(FileExistsError, match="refuses to overwrite"):
         promote_draft_artifact(tmp_path, draft_id=staged["draft_id"], review_ref=correct_review.stem, confirmed=True)
+
+
+def test_draft_confirm_promote_is_one_step_idempotent_and_ignores_ambiguous_reply(
+    tmp_path: Path, capsys
+) -> None:
+    _project(tmp_path)
+    source = tmp_path / "candidate.md"
+    source.write_text("# Candidate report\n", encoding="utf-8")
+    staged = stage_draft_artifact(
+        tmp_path,
+        source_path=source,
+        target_ref="reports/final.md",
+        draft_id="draft-20260710-003",
+        confirmed=True,
+    )
+
+    ambiguous = [
+        "draft",
+        "confirm-promote",
+        str(tmp_path),
+        "--draft-id",
+        staged["draft_id"],
+        "--user-response",
+        "再看看",
+    ]
+    assert main(ambiguous) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "needs_clear_confirmation"
+    assert not list((tmp_path / "reviews").glob("*.yml"))
+    assert not (tmp_path / "reports" / "final.md").exists()
+
+    command = [
+        "draft",
+        "confirm-promote",
+        str(tmp_path),
+        "--draft-id",
+        staged["draft_id"],
+        "--user-response",
+        "可以，保存",
+    ]
+    assert main(command) == 0
+    promoted = json.loads(capsys.readouterr().out)
+    assert promoted["status"] == "promoted"
+    assert (tmp_path / "reports" / "final.md").exists()
+    review_paths = list((tmp_path / "reviews").glob("*.yml"))
+    assert len(review_paths) == 1
+
+    assert main(command) == 0
+    repeated = json.loads(capsys.readouterr().out)
+    assert repeated["idempotent"] is True
+    assert list((tmp_path / "reviews").glob("*.yml")) == review_paths

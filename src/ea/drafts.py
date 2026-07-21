@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
-from ea.review import require_confirmed_review
+from ea.review import (
+    classify_user_response,
+    require_confirmed_review,
+    write_review_record,
+)
+from ea.review.state import content_hash
 from ea.schema.models import EARecord
 from ea.storage.files import atomic_copy_file, read_yaml, write_yaml
 from ea.storage.ids import next_id
@@ -140,6 +146,87 @@ def draft_artifact_status(root: Path, *, draft_id: str) -> dict[str, Any]:
     }
 
 
+def _promotion_review_content(manifest: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "draft_id": manifest["draft_id"],
+            "source_sha256": manifest["source_sha256"],
+            "target_ref": manifest["target_ref"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def confirm_and_promote_draft_artifact(
+    root: Path,
+    *,
+    draft_id: str,
+    user_response: str,
+    promoted_at: str | None = None,
+) -> dict[str, Any]:
+    root = root.resolve()
+    manifest_path = root / "drafts" / draft_id / "draft.yml"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(manifest_path)
+    manifest = read_yaml(manifest_path)
+    if manifest.get("status") == "promoted":
+        return {
+            "status": "promoted",
+            "draft_id": draft_id,
+            "target_ref": manifest["target_ref"],
+            "review_ref": manifest.get("review_ref"),
+            "idempotent": True,
+        }
+
+    classification = classify_user_response(user_response)
+    if not classification.can_save:
+        return {
+            "status": "needs_clear_confirmation",
+            "draft_id": draft_id,
+            "target_ref": manifest["target_ref"],
+            "review_ref": manifest.get("review_ref"),
+            "requires_confirmation": True,
+            "writes": False,
+        }
+
+    target = _safe_target(root, str(manifest["target_ref"]))
+    if target.exists():
+        raise FileExistsError(
+            f"Draft promotion refuses to overwrite an existing artifact: {manifest['target_ref']}"
+        )
+    manifest_ref = manifest_path.relative_to(root).as_posix()
+    reviewed_content = _promotion_review_content(manifest)
+    review_ref = manifest.get("review_ref")
+    if review_ref:
+        require_confirmed_review(
+            root,
+            str(review_ref),
+            expected_target_type="draft_promotion",
+            expected_target_ref=manifest_ref,
+            expected_content_hash=content_hash(reviewed_content),
+        )
+    else:
+        review_path = write_review_record(
+            root,
+            target_type="draft_promotion",
+            target_ref=manifest_ref,
+            user_response=user_response,
+            reviewed_content=reviewed_content,
+            reviewed_at=promoted_at,
+            confirm=True,
+        )
+        review_ref = review_path.stem
+    return promote_draft_artifact(
+        root,
+        draft_id=draft_id,
+        review_ref=str(review_ref),
+        confirmed=True,
+        promoted_at=promoted_at,
+    )
+
+
 def promote_draft_artifact(
     root: Path,
     *,
@@ -161,8 +248,8 @@ def promote_draft_artifact(
             "target_ref": manifest["target_ref"],
             "idempotent": True,
         }
-    review = require_confirmed_review(root, review_ref)
     manifest_ref = manifest_path.relative_to(root).as_posix()
+    review = require_confirmed_review(root, review_ref)
     if (
         review.get("target_ref") != manifest_ref
         or review.get("target_type") != "draft_promotion"
@@ -170,6 +257,11 @@ def promote_draft_artifact(
         raise ValueError(
             "Draft promotion review must target this draft.yml with target_type=draft_promotion"
         )
+    require_confirmed_review(
+        root,
+        review_ref,
+        expected_content_hash=content_hash(_promotion_review_content(manifest)),
+    )
     preview = {
         "status": "ready_to_promote",
         "draft_id": draft_id,

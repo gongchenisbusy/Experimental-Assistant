@@ -449,7 +449,7 @@ def _apply_baseline_correction(
     if method != "linear_two_point":
         warning = _warning(
             "thermal_baseline_method_unsupported",
-            "Thermal baseline correction method is not supported by Experimental Assistant v1.0.0.",
+            "Thermal baseline correction method is not supported by Experimental Assistant v1.1.0.",
             severity="medium",
             method=method,
         )
@@ -1031,7 +1031,7 @@ def _analyze_transitions(
     if method != "reviewed_window_screening":
         warning = _warning(
             "thermal_transition_method_unsupported",
-            "Thermal transition analysis method is not supported by Experimental Assistant v1.0.0.",
+            "Thermal transition analysis method is not supported by Experimental Assistant v1.1.0.",
             severity="medium",
             method=method,
         )
@@ -1281,7 +1281,7 @@ def _record_transition_assignments(
     if method != "user_confirmed_transition_assignments":
         warning = _warning(
             "thermal_transition_assignment_method_unsupported",
-            "Thermal transition assignment method is not supported by Experimental Assistant v1.0.0.",
+            "Thermal transition assignment method is not supported by Experimental Assistant v1.1.0.",
             severity="medium",
             method=method,
         )

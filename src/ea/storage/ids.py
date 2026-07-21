@@ -16,6 +16,7 @@ from ea.standards import format_standard_id
 KIND_PREFIX = {
     "project": "project",
     "experiment": "exp",
+    "sample": "sample",
     "characterization": "char",
     "raman_result": "raman-result",
     "image_result": "image-result",

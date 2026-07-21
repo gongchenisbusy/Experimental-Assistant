@@ -8,7 +8,7 @@ import sys
 
 MIN_PYTHON = (3, 11)
 REPOSITORY_URL = "https://github.com/gongchenisbusy/Experimental-Assistant"
-RELEASE_LABEL = "v1.0.0"
+RELEASE_LABEL = "v1.1.0"
 
 
 def main() -> int:
@@ -20,7 +20,7 @@ def main() -> int:
         "check_type": "ea_install_environment_preflight",
         "status": "pass" if python_ok else "fail",
         "product": "Experimental Assistant",
-        "public_version": "Experimental Assistant v1.0.0",
+        "public_version": "Experimental Assistant v1.1.0",
         "python": {
             "executable": sys.executable,
             "version": ".".join(str(part) for part in version),

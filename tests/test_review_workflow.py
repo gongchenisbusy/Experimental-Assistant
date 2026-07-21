@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from ea.review import classify_user_response, promote_review_record, write_review_record
+from ea.review import (
+    classify_user_response,
+    promote_review_record,
+    require_confirmed_review,
+    write_review_record,
+)
+from ea.review.state import ReviewRequiredErrorForRef, content_hash
 from ea.storage import read_yaml
 
 
@@ -95,4 +101,38 @@ def test_review_confirm_does_not_bypass_scientific_memory_candidate(tmp_path: Pa
             user_response="可以，保存",
             reviewed_content="candidate",
             confirm=True,
+        )
+
+
+def test_image_description_allows_explicit_confirmation_and_strong_binding(
+    tmp_path: Path,
+) -> None:
+    target_ref = "raw/sem/char-001/metadata.yml"
+    reviewed_content = "SEM image shows a continuous flake."
+    path = write_review_record(
+        tmp_path,
+        target_type="image_description",
+        target_ref=target_ref,
+        user_response="confirm",
+        reviewed_content=reviewed_content,
+        confirm=True,
+        reviewed_at="2026-07-07T11:00:00",
+    )
+
+    review = require_confirmed_review(
+        tmp_path,
+        path.stem,
+        expected_target_type="image_description",
+        expected_target_ref=target_ref,
+        expected_content_hash=content_hash(reviewed_content),
+    )
+    assert review["explicit_confirm"] is True
+
+    with pytest.raises(ReviewRequiredErrorForRef, match="target_ref"):
+        require_confirmed_review(
+            tmp_path,
+            path.stem,
+            expected_target_type="image_description",
+            expected_target_ref="raw/sem/char-002/metadata.yml",
+            expected_content_hash=content_hash(reviewed_content),
         )

@@ -286,6 +286,7 @@ class ReportRecord(EARecord):
         "electrochemistry_analysis",
         "thermal_analysis",
         "image_analysis",
+        "composite_analysis",
     ]
     language: Literal["zh", "en"] = "zh"
     audience: Literal["self"] = "self"

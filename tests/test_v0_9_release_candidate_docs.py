@@ -10,11 +10,11 @@ from ea.release_package import write_release_package
 
 CURRENT_RELEASE_DOCS = [
     Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md"),
-    Path("docs/V1_0_RELEASE_NOTES.md"),
-    Path("docs/V1_0_KNOWN_LIMITATIONS.md"),
-    Path("docs/V1_0_TRIAL_REPORT.md"),
-    Path("docs/V1_0_RELEASE_DOSSIER.md"),
-    Path("docs/V1_0_ISSUE_DISPOSITION.md"),
+    Path("docs/V1_1_RELEASE_NOTES.md"),
+    Path("docs/V1_1_KNOWN_LIMITATIONS.md"),
+    Path("docs/V1_1_TRIAL_REPORT.md"),
+    Path("docs/V1_1_RELEASE_DOSSIER.md"),
+    Path("docs/V1_1_ISSUE_DISPOSITION.md"),
 ]
 HISTORICAL_V0_9_9_DOCS = [
     Path("docs/V0_9_9_RELEASE_NOTES.md"),
@@ -68,23 +68,23 @@ def test_v1_release_docs_are_public_safe_and_actionable() -> None:
         path: path.read_text(encoding="utf-8") for path in CURRENT_RELEASE_DOCS
     }
 
-    assert "Experimental Assistant v1.0.0 Public Acceptance Matrix" in text_by_path[
+    assert "Experimental Assistant v1.1.0 Public Acceptance Matrix" in text_by_path[
         Path("docs/PUBLIC_ACCEPTANCE_MATRIX.md")
     ]
-    assert "Experimental Assistant v1.0.0 Release Notes" in text_by_path[
-        Path("docs/V1_0_RELEASE_NOTES.md")
+    assert "Experimental Assistant v1.1.0 Release Notes" in text_by_path[
+        Path("docs/V1_1_RELEASE_NOTES.md")
     ]
     assert "Scientific boundaries" in text_by_path[
-        Path("docs/V1_0_KNOWN_LIMITATIONS.md")
+        Path("docs/V1_1_KNOWN_LIMITATIONS.md")
     ]
     assert "Candidate Trial Report" in text_by_path[
-        Path("docs/V1_0_TRIAL_REPORT.md")
+        Path("docs/V1_1_TRIAL_REPORT.md")
     ]
     assert "Release Dossier" in text_by_path[
-        Path("docs/V1_0_RELEASE_DOSSIER.md")
+        Path("docs/V1_1_RELEASE_DOSSIER.md")
     ]
     assert "Issue Disposition" in text_by_path[
-        Path("docs/V1_0_ISSUE_DISPOSITION.md")
+        Path("docs/V1_1_ISSUE_DISPOSITION.md")
     ]
 
     combined = "\n".join(text_by_path.values())
@@ -113,7 +113,7 @@ def test_v0_9_9_release_records_remain_historical() -> None:
 def test_v1_public_version_surfaces_do_not_look_like_v0_2_release() -> None:
     parser_help = build_parser().format_help()
     assert "init-project" in parser_help
-    assert "initialize a public-user Experimental Assistant v1.0.0" in parser_help
+    assert "initialize a public-user Experimental Assistant v1.1.0" in parser_help
     assert "project workspace" in parser_help
 
     combined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_VERSION_SURFACES)
@@ -129,14 +129,14 @@ def test_v1_release_docs_are_packaged(tmp_path: Path) -> None:
     for doc in CURRENT_RELEASE_DOCS:
         assert doc.as_posix() in paths
 
-    assert manifest["release"]["label"] == "v1.0.0"
+    assert manifest["release"]["label"] == "v1.1.0"
     assert manifest["release"]["acceptance_matrix_ref"] == "docs/PUBLIC_ACCEPTANCE_MATRIX.md"
-    assert manifest["release"]["release_notes_ref"] == "docs/V1_0_RELEASE_NOTES.md"
-    assert manifest["release"]["release_dossier_ref"] == "docs/V1_0_RELEASE_DOSSIER.yml"
+    assert manifest["release"]["release_notes_ref"] == "docs/V1_1_RELEASE_NOTES.md"
+    assert manifest["release"]["release_dossier_ref"] == "docs/V1_1_RELEASE_DOSSIER.yml"
     assert manifest["public_repository"]["project_name"] == "Experimental Assistant (EA)"
     assert manifest["public_repository"]["repository_full_name"] == "gongchenisbusy/Experimental-Assistant"
     assert manifest["public_repository"]["release_url"].endswith(
-        "/releases/tag/v1.0.0"
+        "/releases/tag/v1.1.0"
     )
 
     package = write_release_package(Path.cwd(), output=tmp_path / "release.zip", archive_root="ea-release-doc-test")

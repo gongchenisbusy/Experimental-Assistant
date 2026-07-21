@@ -12,10 +12,12 @@ from ea import __version__
 from ea.identity import PUBLIC_CAPABILITY_CONTRACT
 from ea.batch import BatchManifestError, run_batch_manifest, validate_batch_manifest
 from ea.brief import build_project_brief, set_decision_summary
+from ea.command_effects import is_unconditionally_read_only
 from ea.config import doctor_project_config
 from ea.data_import import apply_import, preview_import
 from ea.diagnostics import collect_diagnostics
 from ea.drafts import (
+    confirm_and_promote_draft_artifact,
     draft_artifact_status,
     promote_draft_artifact,
     stage_draft_artifact,
@@ -30,6 +32,7 @@ from ea.evaluation import run_project_evaluation
 from ea.errors import ModeCommandBlockedError, error_record
 from ea.exports import (
     ReportBundleError,
+    export_draft_html_preview,
     export_batch_bundle,
     export_report_html,
     export_report_bundle,
@@ -76,6 +79,12 @@ from ea.estimates import (
     large_work_reminders_disabled,
     set_large_work_reminders,
 )
+from ea.experiments import (
+    list_experiment_runs,
+    save_confirmed_experiment,
+    structure_experiment_log,
+    update_confirmed_experiment,
+)
 from ea.literature import (
     FIELD_TYPES,
     PROPERTY_KINDS,
@@ -107,6 +116,10 @@ from ea.literature import (
     setup_literature_preflight,
     summarize_zotero_codex_readiness,
     sync_literature_acquisition_status,
+    create_literature_acquisition_session,
+    ingest_local_pdfs,
+    literature_acquisition_status,
+    record_zotero_choice,
     validate_literature_data,
     validate_literature_data_schema,
     UnpaywallResolver,
@@ -154,6 +167,7 @@ from ea.references import (
     validate_report_citations,
 )
 from ea.reports import (
+    generate_composite_report,
     generate_electrochemistry_report,
     generate_ftir_report,
     generate_pl_report,
@@ -164,6 +178,7 @@ from ea.reports import (
     generate_xrd_report,
 )
 from ea.review import promote_review_record, write_review_record
+from ea.samples import add_sample_record, select_best_sample
 from ea.skills import (
     register_skill_manifest,
     run_skill_dry_run,
@@ -304,6 +319,13 @@ def build_parser() -> argparse.ArgumentParser:
     draft_promote.add_argument("--draft-id", required=True)
     draft_promote.add_argument("--review-ref", required=True)
     draft_promote.add_argument("--yes", action="store_true")
+    draft_confirm_promote = drafts_sub.add_parser(
+        "confirm-promote",
+        help="confirm and atomically promote one draft without creating duplicate reviews",
+    )
+    draft_confirm_promote.add_argument("workspace", type=Path)
+    draft_confirm_promote.add_argument("--draft-id", required=True)
+    draft_confirm_promote.add_argument("--user-response", required=True)
 
     setup = sub.add_parser(
         "setup",
@@ -344,6 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     public_import_preview.add_argument("--delimiter", default="auto")
     public_import_preview.add_argument("--allow-symlink", action="store_true")
     public_import_preview.add_argument("--max-rows", type=int, default=5)
+    public_import_preview.add_argument("--characterization-type")
     public_import_apply = public_import_sub.add_parser(
         "apply", help="import the exact reviewed source hash as a protected copy"
     )
@@ -408,6 +431,18 @@ def build_parser() -> argparse.ArgumentParser:
     public_report.add_argument("--experiment-ref", action="append", default=[])
     public_report.add_argument("--reference-id", action="append", default=[])
     public_report.add_argument("--yes", action="store_true")
+
+    composite_report = sub.add_parser(
+        "composite-report",
+        help="create one reviewed multi-method report and deliver self-contained HTML",
+    )
+    composite_report.add_argument("workspace", type=Path)
+    composite_report.add_argument("--result-id", action="append", required=True)
+    composite_report.add_argument("--sample-ref", action="append", required=True)
+    composite_report.add_argument("--experiment-ref", action="append", default=[])
+    composite_report.add_argument("--reference-id", action="append", default=[])
+    composite_report.add_argument("--user-response", required=True)
+    composite_report.add_argument("--html-output", type=Path)
 
     update = sub.add_parser(
         "update", help="plan or perform a transactional CLI and skill update"
@@ -631,7 +666,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="render one indexed report as user-readable HTML with embedded figures",
     )
     report_html.add_argument("workspace", type=Path)
-    report_html.add_argument("--report-id", required=True)
+    report_html_source = report_html.add_mutually_exclusive_group(required=True)
+    report_html_source.add_argument("--report-id")
+    report_html_source.add_argument("--draft-id")
+    report_html.add_argument(
+        "--preview",
+        action="store_true",
+        help="render a staged draft with a DRAFT / NOT FORMAL banner",
+    )
     report_html.add_argument("--output", type=Path)
     report_html.add_argument(
         "--no-embed-images",
@@ -703,6 +745,58 @@ def build_parser() -> argparse.ArgumentParser:
     raw_import.add_argument("--characterization-type", default="raman")
     raw_import.add_argument("--sample-ref", action="append", default=[])
     raw_import.add_argument("--experiment-ref", action="append", default=[])
+
+    experiment = sub.add_parser(
+        "experiment", help="add, update, and inspect review-gated experiment runs"
+    )
+    experiment_sub = experiment.add_subparsers(
+        dest="experiment_command", required=True
+    )
+    experiment_add = experiment_sub.add_parser(
+        "add", help="structure and save one user-confirmed experiment run"
+    )
+    experiment_add.add_argument("workspace", type=Path)
+    experiment_add.add_argument("--date", required=True)
+    experiment_add.add_argument("--text", required=True)
+    experiment_add.add_argument("--material")
+    experiment_add.add_argument("--experiment-type")
+    experiment_add.add_argument("--sample-ref", action="append", default=[])
+    experiment_add.add_argument("--user-response", required=True)
+    experiment_update = experiment_sub.add_parser(
+        "update", help="apply a reviewed condition or observation update to one run"
+    )
+    experiment_update.add_argument("workspace", type=Path)
+    experiment_update.add_argument("--experiment-ref", required=True)
+    experiment_update.add_argument("--condition", action="append", default=[])
+    experiment_update.add_argument("--observation")
+    experiment_update.add_argument("--user-response", required=True)
+    experiment_runs = experiment_sub.add_parser(
+        "runs", help="show a compact read-only furnace-run table"
+    )
+    experiment_runs.add_argument("workspace", type=Path)
+
+    sample = sub.add_parser(
+        "sample", help="add stable sample records and select the reviewed best sample"
+    )
+    sample_sub = sample.add_subparsers(dest="sample_command", required=True)
+    sample_add = sample_sub.add_parser("add", help="add one stable sample record")
+    sample_add.add_argument("workspace", type=Path)
+    sample_add.add_argument("--sample-id")
+    sample_add.add_argument("--experiment-ref", required=True)
+    sample_add.add_argument(
+        "--quality-status",
+        choices=["unknown", "candidate_good", "candidate_medium", "candidate_poor"],
+        default="unknown",
+    )
+    sample_add.add_argument("--morphology", action="append", default=[])
+    sample_add.add_argument("--quality-note", action="append", default=[])
+    sample_select = sample_sub.add_parser(
+        "select-best", help="record a user-confirmed best sample for downstream methods"
+    )
+    sample_select.add_argument("workspace", type=Path)
+    sample_select.add_argument("--sample-id", required=True)
+    sample_select.add_argument("--rationale")
+    sample_select.add_argument("--user-response", required=True)
 
     review = sub.add_parser(
         "review", help="write user review records for review-gated workflows"
@@ -1503,6 +1597,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lit_request.add_argument("workspace", type=Path)
     lit_request.add_argument("--confirm-large-work", action="store_true")
+    lit_acquisition_status = literature_sub.add_parser(
+        "acquisition-status",
+        help="show the canonical cross-session literature run and one resume command",
+    )
+    lit_acquisition_status.add_argument("workspace", type=Path)
+    lit_zotero_choice = literature_sub.add_parser(
+        "zotero-choice", help="persist use-existing, skip, or later Zotero choice"
+    )
+    lit_zotero_choice.add_argument("workspace", type=Path)
+    lit_zotero_choice.add_argument(
+        "--choice", choices=["existing", "skip", "later"], required=True
+    )
+    lit_session = literature_sub.add_parser(
+        "acquisition-session",
+        help="record a privacy-safe target session before or after user-managed login",
+    )
+    lit_session.add_argument("workspace", type=Path)
+    lit_session.add_argument("--target-id", required=True)
+    lit_session.add_argument("--publisher", required=True)
+    lit_session.add_argument("--canonical-url", required=True)
+    lit_session.add_argument("--login-confirmed", action="store_true")
+    lit_local_pdf = literature_sub.add_parser(
+        "ingest-local-pdf",
+        help="verify and idempotently register local PDFs without requiring Zotero",
+    )
+    lit_local_pdf.add_argument("workspace", type=Path)
+    lit_local_pdf.add_argument("--pdf", action="append", type=Path, required=True)
+    lit_local_pdf.add_argument("--doi", action="append", default=[])
     lit_setup = literature_sub.add_parser(
         "setup-preflight",
         help="diagnose literature setup readiness without launching Zotero/browser/downloads",
@@ -2309,19 +2431,7 @@ def _project_path(workspace: Path, path: Path) -> Path:
 
 
 def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
-    if args.command in {
-        "version",
-        "capabilities",
-        "mode",
-        "status",
-        "analyze",
-        "doctor",
-        "install-check",
-        "onboarding",
-        "healthcheck",
-        "lookup-figure",
-        "journey",
-    }:
+    if is_unconditionally_read_only(args):
         return True
     if args.command == "diagnostics":
         return args.output is None and not args.debug_json
@@ -2343,6 +2453,8 @@ def _is_explicitly_read_only(args: argparse.Namespace) -> bool:
         return args.memory_command == "show-project"
     if args.command == "literature":
         return (
+            args.literature_command == "acquisition-status"
+            or
             (args.literature_command == "setup-preflight" and args.no_write)
             or (args.literature_command == "zotero-readiness" and args.no_write)
             or (args.literature_command == "data-validate" and args.no_write)
@@ -2373,6 +2485,7 @@ def _mode_allows(args: argparse.Namespace) -> bool:
             "uninstall",
             "codex",
             "report",
+            "composite-report",
             "export",
             "batch",
             "raman",
@@ -2396,6 +2509,9 @@ def _mode_allows(args: argparse.Namespace) -> bool:
             "data-extract",
             "data-plot",
             "data-export",
+            "zotero-choice",
+            "acquisition-session",
+            "ingest-local-pdf",
         }:
             return False
         return True
@@ -2568,6 +2684,12 @@ def _main_impl(argv: list[str] | None = None) -> int:
             )
         elif args.draft_command == "status":
             result = draft_artifact_status(args.workspace, draft_id=args.draft_id)
+        elif args.draft_command == "confirm-promote":
+            result = confirm_and_promote_draft_artifact(
+                args.workspace,
+                draft_id=args.draft_id,
+                user_response=args.user_response,
+            )
         else:
             result = promote_draft_artifact(
                 args.workspace,
@@ -2635,6 +2757,31 @@ def _main_impl(argv: list[str] | None = None) -> int:
         )
         _print_json(result)
         return 0
+    if args.command == "composite-report":
+        project_id = _project_id_from_workspace(args.workspace)
+        result = generate_composite_report(
+            args.workspace,
+            project_id=project_id,
+            result_ids=args.result_id,
+            sample_ids=args.sample_ref,
+            user_response=args.user_response,
+            experiment_ids=args.experiment_ref,
+            reference_ids=args.reference_id,
+        )
+        if result["status"] != "complete":
+            _print_json(result)
+            return 0
+        output_path = args.html_output
+        if output_path and not output_path.is_absolute():
+            output_path = args.workspace / output_path
+        html_result = export_report_html(
+            args.workspace,
+            report_id=str(result["report_id"]),
+            output_path=output_path,
+            embed_images=True,
+        )
+        _print_json({**result, **html_result, "report_path": result["report_path"]})
+        return 0 if html_result["status"] == "complete" else 1
     if args.command == "import":
         if args.import_command == "preview":
             result = preview_import(
@@ -2643,6 +2790,7 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 delimiter=args.delimiter,
                 allow_symlink=args.allow_symlink,
                 max_rows=args.max_rows,
+                characterization_type=args.characterization_type,
             )
         else:
             result = apply_import(
@@ -2859,18 +3007,34 @@ def _main_impl(argv: list[str] | None = None) -> int:
             if output_path and not output_path.is_absolute():
                 output_path = args.workspace / output_path
             try:
-                result = export_report_html(
-                    args.workspace,
-                    report_id=args.report_id,
-                    output_path=output_path,
-                    embed_images=not args.no_embed_images,
-                    include_audit=args.include_audit and not args.no_audit,
-                )
+                if args.draft_id:
+                    if not args.preview:
+                        raise ReportBundleError(
+                            "Draft HTML requires --preview to preserve formal-state boundaries"
+                        )
+                    result = export_draft_html_preview(
+                        args.workspace,
+                        draft_id=args.draft_id,
+                        output_path=output_path,
+                        embed_images=not args.no_embed_images,
+                    )
+                else:
+                    if args.preview:
+                        raise ReportBundleError(
+                            "--preview is only valid with --draft-id"
+                        )
+                    result = export_report_html(
+                        args.workspace,
+                        report_id=args.report_id,
+                        output_path=output_path,
+                        embed_images=not args.no_embed_images,
+                        include_audit=args.include_audit and not args.no_audit,
+                    )
             except ReportBundleError as exc:
                 _print_json({"status": "fail", "error": str(exc)})
                 return 2
             _print_json(result)
-            return 0 if result["status"] == "complete" else 1
+            return 0 if result["status"] in {"complete", "preview"} else 1
         if args.export_command == "batch-bundle":
             output_dir = args.output
             if output_dir and not output_dir.is_absolute():
@@ -2935,6 +3099,92 @@ def _main_impl(argv: list[str] | None = None) -> int:
                 }
             )
             return 0
+    if args.command == "experiment":
+        if args.experiment_command == "runs":
+            _print_json(list_experiment_runs(args.workspace))
+            return 0
+        project_frontmatter, _ = read_markdown_record(
+            args.workspace / "EA_PROJECT.md"
+        )
+        if args.experiment_command == "add":
+            draft = structure_experiment_log(args.text)
+            draft.sample_refs = list(args.sample_ref)
+            path = save_confirmed_experiment(
+                args.workspace,
+                project_id=str(project_frontmatter["project_id"]),
+                material_system=args.material
+                or str(project_frontmatter.get("material_system") or "unknown"),
+                experiment_type=args.experiment_type
+                or str(project_frontmatter.get("experiment_type") or "unknown"),
+                experiment_date=args.date,
+                draft=draft,
+                user_response=args.user_response,
+            )
+        else:
+            updates: dict[str, object] = {}
+            for item in args.condition:
+                if "=" not in item:
+                    raise ValueError("--condition must use KEY=VALUE")
+                key, raw_value = item.split("=", 1)
+                try:
+                    value: object = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    value = raw_value
+                updates[key.strip()] = value
+            path = update_confirmed_experiment(
+                args.workspace,
+                experiment_ref=args.experiment_ref,
+                condition_updates=updates,
+                observation=args.observation,
+                user_response=args.user_response,
+            )
+        record, _ = read_markdown_record(path)
+        _print_json(
+            {
+                "status": "user_confirmed",
+                "experiment_id": record["experiment_id"],
+                "experiment_ref": path.relative_to(args.workspace).as_posix(),
+                "review_refs": record.get("review_refs") or [],
+                "provenance_refs": record.get("provenance_refs") or [],
+            }
+        )
+        return 0
+    if args.command == "sample":
+        if args.sample_command == "add":
+            project_frontmatter, _ = read_markdown_record(
+                args.workspace / "EA_PROJECT.md"
+            )
+            path = add_sample_record(
+                args.workspace,
+                project_id=str(project_frontmatter["project_id"]),
+                material_system=str(
+                    project_frontmatter.get("material_system") or "unknown"
+                ),
+                created_from_experiment=args.experiment_ref,
+                sample_id=args.sample_id,
+                quality_status=args.quality_status,
+                morphology_observations=args.morphology,
+                quality_notes=args.quality_note,
+            )
+            record, _ = read_markdown_record(path)
+            _print_json(
+                {
+                    "status": "created",
+                    "sample_id": record["sample_id"],
+                    "sample_ref": path.relative_to(args.workspace).as_posix(),
+                    "provenance_refs": record.get("provenance_refs") or [],
+                }
+            )
+        else:
+            _print_json(
+                select_best_sample(
+                    args.workspace,
+                    sample_id=args.sample_id,
+                    user_response=args.user_response,
+                    rationale=args.rationale,
+                )
+            )
+        return 0
     if args.command == "review":
         if args.review_command == "add":
             path = write_review_record(
@@ -3775,6 +4025,32 @@ def _main_impl(argv: list[str] | None = None) -> int:
             _print_json(assignment_candidates(args.material, args.method))
             return 0
     if args.command == "literature":
+        if args.literature_command == "acquisition-status":
+            _print_json(literature_acquisition_status(args.workspace))
+            return 0
+        if args.literature_command == "zotero-choice":
+            _print_json(record_zotero_choice(args.workspace, choice=args.choice))
+            return 0
+        if args.literature_command == "acquisition-session":
+            _print_json(
+                create_literature_acquisition_session(
+                    args.workspace,
+                    target_id=args.target_id,
+                    publisher=args.publisher,
+                    canonical_url=args.canonical_url,
+                    user_confirmed_login=args.login_confirmed,
+                )
+            )
+            return 0
+        if args.literature_command == "ingest-local-pdf":
+            _print_json(
+                ingest_local_pdfs(
+                    args.workspace,
+                    pdf_paths=args.pdf,
+                    expected_dois=args.doi,
+                )
+            )
+            return 0
         if args.literature_command == "status":
             project_id = args.project_id or _project_id_from_workspace(args.workspace)
             path = ensure_literature_status(args.workspace, project_id=project_id)

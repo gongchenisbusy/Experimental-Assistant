@@ -3,11 +3,70 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
+import subprocess
 
 import yaml
 
-from ea.release_manifest import build_release_manifest, main, write_release_manifest
+from ea.release_manifest import (
+    build_release_manifest,
+    git_state,
+    iter_release_files,
+    main,
+    write_release_manifest,
+)
 from ea.release_skill_bundle import build_skill_bundle
+
+
+def test_release_file_inventory_excludes_untracked_workspace_artifacts(
+    tmp_path: Path,
+) -> None:
+    tracked = tmp_path / "tracked.txt"
+    local_only = tmp_path / "local-only.txt"
+    tracked.write_text("public\n", encoding="utf-8")
+    local_only.write_text("private workspace artifact\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
+
+    files = iter_release_files(tmp_path, include_roots=["tracked.txt", "local-only.txt"])
+
+    assert files == [tracked]
+
+
+def test_git_state_excludes_untracked_local_artifacts_from_release_dirty_state(
+    tmp_path: Path,
+) -> None:
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("public\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=EA Test",
+            "-c",
+            "user.email=ea-test@example.invalid",
+            "commit",
+            "-qm",
+            "test fixture",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / "local-only.txt").write_text(
+        "private workspace artifact\n", encoding="utf-8"
+    )
+
+    state = git_state(tmp_path)
+
+    assert state["dirty"] is False
+    assert state["dirty_files"] == []
+    assert state["excluded_untracked_count"] == 1
+
+    tracked.write_text("changed\n", encoding="utf-8")
+    state = git_state(tmp_path)
+    assert state["dirty"] is True
+    assert state["dirty_files"] == ["M tracked.txt"]
 
 
 def _minimal_release_root(root: Path) -> Path:
@@ -26,7 +85,7 @@ def _minimal_release_root(root: Path) -> Path:
         """
 [project]
 name = "experimental-assistant"
-version = "1.0.0"
+version = "1.1.0"
 description = "Release test"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=42", "pyyaml>=6.0"]
@@ -55,7 +114,7 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     )
     (root / "README.md").write_text("# EA\n", encoding="utf-8")
     (root / "src" / "ea" / "__init__.py").write_text(
-        "__version__ = '1.0.0'\n", encoding="utf-8"
+        "__version__ = '1.1.0'\n", encoding="utf-8"
     )
     (root / "src" / "ea" / "__pycache__" / "ignored.pyc").write_bytes(b"ignored")
     (root / "skills" / "ea" / "SKILL.md").write_text(
@@ -64,37 +123,37 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     (root / "skill-registry" / "index.yml").write_text("skills: []\n", encoding="utf-8")
     (root / "docs" / "release.md").write_text("# Release\n", encoding="utf-8")
     (root / "docs" / "PUBLIC_ONBOARDING.md").write_text(
-        "# Experimental Assistant v1.0.0 Public Onboarding\n", encoding="utf-8"
+        "# Experimental Assistant v1.1.0 Public Onboarding\n", encoding="utf-8"
     )
     (root / "docs" / "RELEASE_VERIFICATION.md").write_text(
-        "# Experimental Assistant v1.0.0 Release Verification\n", encoding="utf-8"
+        "# Experimental Assistant v1.1.0 Release Verification\n", encoding="utf-8"
     )
     (root / "docs" / "PUBLIC_ACCEPTANCE_MATRIX.md").write_text(
-        "# Experimental Assistant v1.0.0 Public Acceptance Matrix\n", encoding="utf-8"
+        "# Experimental Assistant v1.1.0 Public Acceptance Matrix\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_RELEASE_NOTES.md").write_text(
-        "# Experimental Assistant v1.0.0 Release Notes\n", encoding="utf-8"
+    (root / "docs" / "V1_1_RELEASE_NOTES.md").write_text(
+        "# Experimental Assistant v1.1.0 Release Notes\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_KNOWN_LIMITATIONS.md").write_text(
-        "# Experimental Assistant v1.0.0 Known Limitations\n", encoding="utf-8"
+    (root / "docs" / "V1_1_KNOWN_LIMITATIONS.md").write_text(
+        "# Experimental Assistant v1.1.0 Known Limitations\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_TRIAL_REPORT.md").write_text(
-        "# Experimental Assistant v1.0.0 Candidate Trial Report\n", encoding="utf-8"
+    (root / "docs" / "V1_1_TRIAL_REPORT.md").write_text(
+        "# Experimental Assistant v1.1.0 Candidate Trial Report\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_RELEASE_DOSSIER.md").write_text(
-        "# Experimental Assistant v1.0.0 Release Dossier\n", encoding="utf-8"
+    (root / "docs" / "V1_1_RELEASE_DOSSIER.md").write_text(
+        "# Experimental Assistant v1.1.0 Release Dossier\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_RELEASE_DOSSIER.yml").write_text(
-        "release: v1.0.0\nstatus: candidate\n", encoding="utf-8"
+    (root / "docs" / "V1_1_RELEASE_DOSSIER.yml").write_text(
+        "release: v1.1.0\nstatus: candidate\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_ISSUE_DISPOSITION.md").write_text(
-        "# Experimental Assistant v1.0.0 Issue Disposition\n", encoding="utf-8"
+    (root / "docs" / "V1_1_ISSUE_DISPOSITION.md").write_text(
+        "# Experimental Assistant v1.1.0 Issue Disposition\n", encoding="utf-8"
     )
-    (root / "docs" / "V1_0_SUPPORT_PROMISE.md").write_text(
-        "# Experimental Assistant v1.0.0 Support Promise\n", encoding="utf-8"
+    (root / "docs" / "V1_1_SUPPORT_PROMISE.md").write_text(
+        "# Experimental Assistant v1.1.0 Support Promise\n", encoding="utf-8"
     )
     (root / "docs" / "PROJECT_BUNDLE_VERIFICATION.md").write_text(
-        "# Experimental Assistant v1.0.0 Project Bundle Verification\n",
+        "# Experimental Assistant v1.1.0 Project Bundle Verification\n",
         encoding="utf-8",
     )
     (root / "examples" / "example_manifest.yml").write_text(
@@ -106,13 +165,13 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
     (root / "scripts" / "demo.py").write_text("print('demo')\n", encoding="utf-8")
     (root / "dist" / "ignored.yml").write_text("ignored: true\n", encoding="utf-8")
     build_skill_bundle(repository_root=root)
-    (root / "dist" / "experimental-assistant-1.0.0-sbom.json").write_text(
+    (root / "dist" / "experimental-assistant-1.1.0-sbom.json").write_text(
         json.dumps(
             {
                 "bomFormat": "CycloneDX",
                 "specVersion": "1.5",
                 "metadata": {
-                    "component": {"name": "experimental-assistant", "version": "1.0.0"}
+                    "component": {"name": "experimental-assistant", "version": "1.1.0"}
                 },
                 "components": [],
             }
@@ -121,33 +180,33 @@ ea-release-skill-bundle = "ea.release_skill_bundle:main"
         encoding="utf-8",
     )
     (
-        root / "dist" / "experimental-assistant-1.0.0-vulnerability-report.json"
+        root / "dist" / "experimental-assistant-1.1.0-vulnerability-report.json"
     ).write_text(
         json.dumps({"scanner": "pip-audit", "status": "pass", "vulnerability_count": 0})
         + "\n",
         encoding="utf-8",
     )
-    (root / "dist" / "experimental-assistant-1.0.0-install-smoke.json").write_text(
+    (root / "dist" / "experimental-assistant-1.1.0-install-smoke.json").write_text(
         json.dumps(
             {
                 "status": "pass",
                 "distribution": "experimental-assistant",
-                "version": "1.0.0",
+                "version": "1.1.0",
             }
         )
         + "\n",
         encoding="utf-8",
     )
-    wheel = root / "dist" / "experimental_assistant-1.0.0-py3-none-any.whl"
-    sdist = root / "dist" / "experimental_assistant-1.0.0.tar.gz"
+    wheel = root / "dist" / "experimental_assistant-1.1.0-py3-none-any.whl"
+    sdist = root / "dist" / "experimental_assistant-1.1.0.tar.gz"
     wheel.write_bytes(b"wheel")
     sdist.write_bytes(b"sdist")
-    (root / "dist" / "experimental-assistant-1.0.0-reproducibility.json").write_text(
+    (root / "dist" / "experimental-assistant-1.1.0-reproducibility.json").write_text(
         json.dumps(
             {
                 "status": "pass",
                 "distribution": "experimental-assistant",
-                "version": "1.0.0",
+                "version": "1.1.0",
                 "artifacts": [
                     {
                         "artifact": wheel.name,
@@ -231,13 +290,13 @@ def test_release_manifest_collects_package_metadata_and_checksums(
     assert "docs/PUBLIC_ONBOARDING.md" in paths
     assert "docs/RELEASE_VERIFICATION.md" in paths
     assert "docs/PUBLIC_ACCEPTANCE_MATRIX.md" in paths
-    assert "docs/V1_0_RELEASE_NOTES.md" in paths
-    assert "docs/V1_0_KNOWN_LIMITATIONS.md" in paths
-    assert "docs/V1_0_TRIAL_REPORT.md" in paths
-    assert "docs/V1_0_RELEASE_DOSSIER.md" in paths
-    assert "docs/V1_0_RELEASE_DOSSIER.yml" in paths
-    assert "docs/V1_0_ISSUE_DISPOSITION.md" in paths
-    assert "docs/V1_0_SUPPORT_PROMISE.md" in paths
+    assert "docs/V1_1_RELEASE_NOTES.md" in paths
+    assert "docs/V1_1_KNOWN_LIMITATIONS.md" in paths
+    assert "docs/V1_1_TRIAL_REPORT.md" in paths
+    assert "docs/V1_1_RELEASE_DOSSIER.md" in paths
+    assert "docs/V1_1_RELEASE_DOSSIER.yml" in paths
+    assert "docs/V1_1_ISSUE_DISPOSITION.md" in paths
+    assert "docs/V1_1_SUPPORT_PROMISE.md" in paths
     assert "docs/PROJECT_BUNDLE_VERIFICATION.md" in paths
     assert "examples/example_manifest.yml" in paths
     assert "src/ea/__init__.py" in paths
@@ -333,7 +392,7 @@ def test_release_manifest_cli_writes_summary_json(tmp_path: Path, capsys) -> Non
 
     assert exit_code == 0
     assert summary["status"] == "complete"
-    assert summary["package"] == {"name": "experimental-assistant", "version": "1.0.0"}
+    assert summary["package"] == {"name": "experimental-assistant", "version": "1.1.0"}
     assert Path(summary["manifest"]).exists()
     assert summary["file_count"] > 0
 

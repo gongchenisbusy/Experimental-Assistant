@@ -9,6 +9,8 @@ from ea.literature import setup_literature_preflight
 from ea.memory import refresh_project_working_memory, show_project_working_memory
 from ea.projects import initialize_project
 from ea.storage import read_markdown_record, read_yaml
+from ea.experiments import save_confirmed_experiment, structure_experiment_log
+from ea.samples import save_sample_record
 
 
 def test_project_working_memory_skeleton_refresh_and_show(tmp_path: Path) -> None:
@@ -36,6 +38,59 @@ def test_project_working_memory_skeleton_refresh_and_show(tmp_path: Path) -> Non
     assert shown["exists"] is True
     assert "Project Working Memory" in shown["markdown"]
     assert not (tmp_path / "memory" / "confirmed-findings.md").exists()
+
+
+def test_working_memory_tracks_runs_best_sample_and_method_coverage(tmp_path: Path) -> None:
+    outputs = initialize_project(
+        tmp_path,
+        project_name="Stage-aware memory",
+        project_slug="stage-aware-memory",
+        research_direction="CVD optimization",
+        material_system="MoS2",
+        experiment_type="CVD",
+    )
+    project, _ = read_markdown_record(outputs["project"])
+    draft = structure_experiment_log(
+        "第一炉，流速60，四片，硫源660°C开启，保温时间缩短到1min。"
+        "这个条件保存为阶段实验的标准条件。"
+    )
+    experiment_path = save_confirmed_experiment(
+        tmp_path,
+        project_id=project["project_id"],
+        material_system="MoS2",
+        experiment_type="CVD",
+        experiment_date="2026-05-16",
+        draft=draft,
+        user_response="确认",
+    )
+    experiment, _ = read_markdown_record(experiment_path)
+    save_sample_record(
+        tmp_path,
+        sample_id="sample-best-001",
+        project_id=project["project_id"],
+        material_system="MoS2",
+        created_from_experiment=experiment["experiment_id"],
+        quality_status="candidate_good",
+    )
+    (tmp_path / "samples" / "selection.yml").write_text(
+        "selected_sample_id: sample-best-001\nstatus: user_confirmed\n",
+        encoding="utf-8",
+    )
+    raw_dir = tmp_path / "raw" / "raman" / "char-001"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "metadata.yml").write_text(
+        "characterization_type: raman\nsample_refs: [sample-best-001]\n",
+        encoding="utf-8",
+    )
+
+    refresh_project_working_memory(tmp_path)
+    shown = show_project_working_memory(tmp_path, compact=False)
+
+    assert "exp-20260516-001" in shown["markdown"]
+    assert "sample-best-001" in shown["markdown"]
+    assert "raman: raw=1" in shown["markdown"]
+    assert "Import or process the next missing characterization method" in shown["markdown"]
+    assert "literature setup" not in shown["markdown"].split("## Next Actions", 1)[1].split("##", 1)[0]
 
 
 def test_literature_setup_preflight_groups_public_safe_actions(tmp_path: Path) -> None:
@@ -111,7 +166,7 @@ def test_cli_v0_9_5_new_commands(tmp_path: Path, capsys) -> None:
 
     assert main(["onboarding", "post-install", "--json"]) == 0
     onboarding = json.loads(capsys.readouterr().out)
-    assert onboarding["identity"]["display_version"] == "Experimental Assistant v1.0.0"
+    assert onboarding["identity"]["display_version"] == "Experimental Assistant v1.1.0"
 
     assert main(["memory", "refresh-project", str(tmp_path)]) == 0
     refreshed = json.loads(capsys.readouterr().out)

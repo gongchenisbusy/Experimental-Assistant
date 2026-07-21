@@ -1,4 +1,4 @@
-<h1 align="center">Experimental Assistant v1.0.0</h1>
+<h1 align="center">Experimental Assistant v1.1.0</h1>
 
 <p align="center">
   <strong>From project evidence to better next steps — with the researcher in control.</strong>
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b596d" alt="Experimental Assistant v1.0.0 release"></a>
+  <a href="https://github.com/gongchenisbusy/Experimental-Assistant/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/release-v1.1.0-0b596d" alt="Experimental Assistant v1.1.0 release"></a>
   <a href="https://github.com/gongchenisbusy/Experimental-Assistant/actions/workflows/ci.yml"><img src="https://github.com/gongchenisbusy/Experimental-Assistant/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <img src="https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 through 3.13">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-c58b22" alt="Apache 2.0 license"></a>
@@ -21,7 +21,7 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#public-examples">Public Examples</a> ·
   <a href="docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md">Installation &amp; Updates</a> ·
-  <a href="docs/V1_0_KNOWN_LIMITATIONS.md">Known Limits</a>
+  <a href="docs/V1_1_KNOWN_LIMITATIONS.md">Known Limits</a>
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ EA supports Python 3.11, 3.12, and 3.13 on Windows, macOS, and Ubuntu. Python 3.
 
 ```bash
 uv tool install --python 3.12 \
-  git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
+  git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.1.0
 
 ea setup
 ea doctor
@@ -263,7 +263,7 @@ Trace graphs preserve connections to registered references, reference seeds, bui
 - Advanced image interpretation, complex PDF/table digitization, and scanned-document OCR may require separately authorized tools and review.
 - Release acceptance uses automated tests, public benchmarks, deterministic mock integrations, simulated-agent journeys and reviews, and manual artifact inspection. Simulated evidence is not represented as real-user or independent-expert validation.
 
-Read the [Capability Matrix](docs/CAPABILITY_MATRIX.md), [Known Limitations](docs/V1_0_KNOWN_LIMITATIONS.md), and [Support Promise](docs/V1_0_SUPPORT_PROMISE.md) before using outputs for consequential scientific decisions.
+Read the [Capability Matrix](docs/CAPABILITY_MATRIX.md), [Known Limitations](docs/V1_1_KNOWN_LIMITATIONS.md), and [Support Promise](docs/V1_1_SUPPORT_PROMISE.md) before using outputs for consequential scientific decisions.
 
 ## Everyday project checks
 
@@ -288,7 +288,7 @@ Diagnostics remain local by default, redact common secrets and signed/session UR
 | Stable error codes and next actions | [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md) |
 | Report-bundle verification | [docs/PROJECT_BUNDLE_VERIFICATION.md](docs/PROJECT_BUNDLE_VERIFICATION.md) |
 | Release verification and security | [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) · [docs/RELEASE_SECURITY_POLICY.md](docs/RELEASE_SECURITY_POLICY.md) |
-| Release notes and history | [docs/V1_0_RELEASE_NOTES.md](docs/V1_0_RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md) |
+| Release notes and history | [docs/V1_1_RELEASE_NOTES.md](docs/V1_1_RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md) |
 
 ## Developers
 

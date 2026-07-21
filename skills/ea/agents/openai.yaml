@@ -1,4 +1,4 @@
 interface:
   display_name: "Experimental Assistant"
-  short_description: "v1.0.0 local-first materials research assistant"
+  short_description: "v1.1.0 local-first materials research assistant"
   default_prompt: "Use $ea to guide a review-gated local materials research project from source import to a traceable report or verified export."

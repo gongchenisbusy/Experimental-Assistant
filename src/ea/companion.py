@@ -6,7 +6,7 @@ from typing import Any
 
 from ea.identity import RELEASE_LABEL
 
-EA_FEEDBACK_ACCEPTED_COMMIT = "e1397a84fe39bed9c054cd746f25c9d81643ad0d"
+EA_FEEDBACK_ACCEPTED_COMMIT = "5fd37ea6770d66b3dc8837a095710e1201c39156"
 
 
 def inspect_ea_feedback_companion(codex_home: Path) -> dict[str, Any]:

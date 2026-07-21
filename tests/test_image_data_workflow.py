@@ -7,6 +7,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 
 from ea.cli import main
 from ea.healthcheck import run_healthcheck
@@ -14,6 +15,7 @@ from ea.image_data import create_image_analysis_record, generate_image_analysis_
 from ea.projects import initialize_project
 from ea.raw_import import import_raw_file
 from ea.review import write_review_record
+from ea.review.state import ReviewRequiredErrorForRef
 from ea.skills import validate_skill_manifest
 from ea.storage import read_markdown_record, read_yaml
 
@@ -172,3 +174,37 @@ def test_builtin_image_manifest_is_valid() -> None:
     assert result.ok is True
     assert result.manifest["id"] == "ea.image-analysis"
     assert "confirm_image_description" in result.manifest["review_gates"]
+
+
+def test_image_record_rejects_confirmed_review_for_another_raw_record(
+    tmp_path: Path,
+) -> None:
+    project_id = _project(tmp_path)
+    source = tmp_path / "sem_image.png"
+    _write_test_image(source)
+    raw = import_raw_file(
+        tmp_path,
+        source,
+        project_id=project_id,
+        characterization_type="sem",
+        sample_refs=["sample-img-001"],
+    )
+    review = write_review_record(
+        tmp_path,
+        target_type="image_description",
+        target_ref="raw/sem/another-characterization/metadata.yml",
+        user_response="confirm",
+        reviewed_content="SEM image user note.",
+        confirm=True,
+    )
+
+    with pytest.raises(ReviewRequiredErrorForRef, match="target_ref"):
+        create_image_analysis_record(
+            tmp_path,
+            characterization_metadata_path=raw.metadata_path,
+            project_id=project_id,
+            method="sem",
+            user_description="SEM image user note.",
+            description_review_ref=review.stem,
+            sample_refs=["sample-img-001"],
+        )

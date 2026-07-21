@@ -56,7 +56,7 @@ def _rewrite_current_package_as_v0_9_9(path: Path) -> None:
         for info in old_archive.infolist():
             data = old_archive.read(info.filename)
             name = info.filename
-            if name.endswith("/experimental-assistant-v1.0.0-release-manifest.yml"):
+            if name.endswith("/experimental-assistant-v1.1.0-release-manifest.yml"):
                 manifest = yaml.safe_load(data) or {}
                 manifest["package"]["version"] = "0.9.9"
                 manifest["release"]["version"] = "0.9.9"
@@ -65,7 +65,7 @@ def _rewrite_current_package_as_v0_9_9(path: Path) -> None:
                     manifest, allow_unicode=True, sort_keys=False
                 ).encode("utf-8")
                 name = name.replace(
-                    "experimental-assistant-v1.0.0-release-manifest.yml",
+                    "experimental-assistant-v1.1.0-release-manifest.yml",
                     "experimental-assistant-v0.9.9-release-manifest.yml",
                 )
             new_info = zipfile.ZipInfo(name)
@@ -92,12 +92,12 @@ def test_release_package_writes_zip_manifest_and_checksum_sidecar(
     assert result["archive_sha256"] == _sha256(archive_path)
     assert (
         result["manifest_archive_ref"]
-        == "ea-release/experimental-assistant-v1.0.0-release-manifest.yml"
+        == "ea-release/experimental-assistant-v1.1.0-release-manifest.yml"
     )
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
-        assert "ea-release/experimental-assistant-v1.0.0-release-manifest.yml" in names
+        assert "ea-release/experimental-assistant-v1.1.0-release-manifest.yml" in names
         assert "ea-release/README.md" in names
         assert "ea-release/docs/PUBLIC_ONBOARDING.md" in names
         assert "ea-release/docs/RELEASE_VERIFICATION.md" in names
@@ -110,7 +110,7 @@ def test_release_package_writes_zip_manifest_and_checksum_sidecar(
         assert all(info.date_time == FIXED_ZIP_TIMESTAMP for info in archive.infolist())
         manifest = yaml.safe_load(
             archive.read(
-                "ea-release/experimental-assistant-v1.0.0-release-manifest.yml"
+                "ea-release/experimental-assistant-v1.1.0-release-manifest.yml"
             )
         )
 
@@ -153,7 +153,7 @@ def test_release_package_cli_writes_summary_json(tmp_path: Path, capsys) -> None
     assert summary["status"] == "complete"
     assert Path(summary["archive_path"]).exists()
     assert Path(summary["archive_checksum_path"]).exists()
-    assert summary["package"] == {"name": "experimental-assistant", "version": "1.0.0"}
+    assert summary["package"] == {"name": "experimental-assistant", "version": "1.1.0"}
 
 
 def test_release_package_verifier_passes_for_valid_package(tmp_path: Path) -> None:
@@ -167,10 +167,10 @@ def test_release_package_verifier_passes_for_valid_package(tmp_path: Path) -> No
     assert result["status"] == "pass"
     assert result["check_type"] == "ea_v1_release_package"
     assert result["artifact_type"] == "ea_v1_release_package"
-    assert result["artifact_version"] == "1.0.0"
+    assert result["artifact_version"] == "1.1.0"
     assert (
         result["manifest_archive_ref"]
-        == "ea-release/experimental-assistant-v1.0.0-release-manifest.yml"
+        == "ea-release/experimental-assistant-v1.1.0-release-manifest.yml"
     )
     assert result["checked_count"] == package["file_count"]
     assert result["failures"] == []
@@ -243,7 +243,7 @@ def test_release_package_verifier_reports_missing_embedded_manifest(
     )
     archive_path = Path(package["archive_path"])
     _rewrite_zip(
-        archive_path, skip_suffix="experimental-assistant-v1.0.0-release-manifest.yml"
+        archive_path, skip_suffix="experimental-assistant-v1.1.0-release-manifest.yml"
     )
     Path(package["archive_checksum_path"]).write_text(
         _sha256(archive_path) + "  release.zip\n", encoding="utf-8"

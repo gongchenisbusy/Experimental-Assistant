@@ -5,6 +5,9 @@ import json
 import urllib.parse
 from pathlib import Path
 
+import pytest
+from pypdf import PdfWriter
+
 from ea.brief import build_project_brief
 from ea.cli import main
 from ea.evaluation import run_project_evaluation
@@ -298,7 +301,7 @@ def test_literature_acquisition_request_writes_zotero_codex_targets_after_confir
     assert "No live search" in status["summary_for_origin_thread"]
 
 
-def test_acquisition_request_deduplicates_normalized_doi_and_is_idempotent(tmp_path: Path) -> None:
+def test_acquisition_request_rejects_duplicate_targets_until_scope_is_reconfirmed(tmp_path: Path) -> None:
     initialize_project(
         tmp_path,
         project_name="DOI idempotency",
@@ -321,24 +324,16 @@ def test_acquisition_request_deduplicates_normalized_doi_and_is_idempotent(tmp_p
         },
     )
 
-    first = prepare_literature_acquisition_request(tmp_path, created_at="2026-07-10T19:00:00")
-    first_bytes = (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_bytes()
-    second = prepare_literature_acquisition_request(tmp_path, created_at="2026-07-10T19:00:00")
-    second_bytes = (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_bytes()
-    targets = [json.loads(line) for line in first_bytes.decode("utf-8").splitlines()]
-
-    assert first["request"]["input_candidate_count"] == 3
-    assert first["request"]["target_count"] == 2
-    assert first["request"]["duplicate_target_count"] == 1
-    assert first["request"]["duplicate_targets"][0]["identity"] == "doi:10.1000/same"
-    assert targets[0]["source_candidate_id"] == "cand-1"
-    assert targets[0]["duplicate_source_candidate_ids"] == ["cand-2"]
-    assert [target["target_id"] for target in targets] == ["target-001", "target-002"]
-    assert second["request"] == first["request"]
-    assert second_bytes == first_bytes
+    with pytest.raises(ValueError, match="confirmed scope contains 3 items but only 2 unique targets"):
+        prepare_literature_acquisition_request(
+            tmp_path, created_at="2026-07-10T19:00:00"
+        )
+    assert not (tmp_path / "literature" / "acquisition_request.yml").exists()
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    assert status["status"] == "confirmed_awaiting_acquisition"
 
 
-def test_literature_acquisition_request_without_targets_keeps_search_boundary(tmp_path: Path) -> None:
+def test_literature_acquisition_request_without_targets_keeps_confirmation_state(tmp_path: Path) -> None:
     initialize_project(
         tmp_path,
         project_name="MoS2 Search Request",
@@ -351,13 +346,198 @@ def test_literature_acquisition_request_without_targets_keeps_search_boundary(tm
     plan_literature_deployment(tmp_path, scope="narrow", access_mode="open_access_only")
     confirm_literature_selection(tmp_path, selected_top_n=30, user_response="确认 top 30。")
 
-    result = prepare_literature_acquisition_request(tmp_path, created_at="2026-06-30T16:10:00")
+    with pytest.raises(ValueError, match="non-empty selected_items"):
+        prepare_literature_acquisition_request(
+            tmp_path, created_at="2026-06-30T16:10:00"
+        )
 
-    assert result["request"]["status"] == "awaiting_search_results"
-    assert result["request"]["target_count"] == 0
-    assert "Run literature search/ranking" in result["request"]["next_action"]
-    assert (tmp_path / "literature" / "zotero_codex_queries.jsonl").read_text(encoding="utf-8")
-    assert (tmp_path / "literature" / "zotero_codex_targets.jsonl").read_text(encoding="utf-8") == ""
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    assert status["status"] == "confirmed_awaiting_acquisition"
+    assert not (tmp_path / "literature" / "acquisition_request.yml").exists()
+    assert not (tmp_path / "literature" / "zotero_codex_targets.jsonl").exists()
+
+
+def test_literature_six_target_run_resumes_without_scope_expansion_or_secrets(
+    tmp_path: Path, capsys
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Six target resume",
+        project_slug="six-target-resume",
+        research_direction="resumable literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman and PL",
+        enable_literature=True,
+    )
+    plan_literature_deployment(tmp_path, scope="ordinary")
+    confirm_literature_selection(tmp_path, selected_top_n=6, user_response="确认 top 6")
+    write_yaml(
+        tmp_path / "literature" / "selected_items.yml",
+        {
+            "selection_status": "selected",
+            "selected_top_n": 6,
+            "items": [
+                {
+                    "candidate_id": f"cand-{index:03d}",
+                    "title": f"Verified paper {index}",
+                    "doi": f"10.1000/resume-{index}",
+                }
+                for index in range(1, 7)
+            ],
+        },
+    )
+    first = prepare_literature_acquisition_request(
+        tmp_path, created_at="2026-07-22T10:00:00"
+    )
+    second = prepare_literature_acquisition_request(
+        tmp_path, created_at="2026-07-22T10:00:00"
+    )
+    assert first["request"] == second["request"]
+
+    assert main(["--mode", "consult", "literature", "acquisition-status", str(tmp_path)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["requested_count"] == status["target_count"] == 6
+    assert [item["target_id"] for item in status["targets"]] == [
+        f"target-{index:03d}" for index in range(1, 7)
+    ]
+    assert status["resume_command"] == "ea literature acquisition-status /path/to/ea-project"
+
+    assert main(
+        [
+            "literature",
+            "acquisition-session",
+            str(tmp_path),
+            "--target-id",
+            "target-001",
+            "--publisher",
+            "Example Publisher",
+            "--canonical-url",
+            "https://publisher.example/article/123?session_token=SECRET#private",
+        ]
+    ) == 0
+    capsys.readouterr()
+    session_text = (
+        tmp_path / "literature" / "sessions" / "target-001.yml"
+    ).read_text(encoding="utf-8")
+    assert "SECRET" not in session_text
+    assert "session_token" not in session_text
+    assert "publisher.example" in session_text
+
+    reconciliation = reconcile_literature_acquisition(tmp_path)["reconciliation"]
+    assert "fixed_scope_count_mismatch" not in {
+        item["code"] for item in reconciliation["findings"]
+    }
+    write_yaml(
+        tmp_path / "literature" / "acquisition_status_update.yml",
+        {
+            "status": "acquisition_in_progress",
+            "target_updates": [
+                {
+                    "target_id": "target-002",
+                    "status": "cache_verified",
+                }
+            ],
+        },
+    )
+    synced = sync_literature_acquisition_status(tmp_path)
+    assert synced["run"]["target_count"] == 6
+    assert synced["run"]["targets"][1]["status"] == "complete"
+    assert synced["run"]["targets"][1]["stage"] == "postflight_verified"
+    inconsistent_run = read_yaml(tmp_path / "literature" / "run.yml")
+    inconsistent_run["target_count"] = 5
+    write_yaml(tmp_path / "literature" / "run.yml", inconsistent_run)
+    inconsistent = reconcile_literature_acquisition(tmp_path)["reconciliation"]
+    assert "fixed_scope_count_mismatch" in {
+        item["code"] for item in inconsistent["findings"]
+    }
+
+
+@pytest.mark.parametrize("choice", ["existing", "skip", "later"])
+def test_literature_zotero_choice_is_persisted_once(
+    tmp_path: Path, capsys, choice: str
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Zotero choice",
+        project_slug=f"zotero-choice-{choice}",
+        research_direction="literature",
+        material_system="MoS2",
+        experiment_type="review",
+        enable_literature=True,
+    )
+    command = [
+        "literature",
+        "zotero-choice",
+        str(tmp_path),
+        "--choice",
+        choice,
+    ]
+    assert main(command) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["choice"] == choice
+    assert main(command) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["idempotent"] is True
+
+
+def test_local_pdf_ingest_verifies_three_files_and_is_idempotent_without_zotero(
+    tmp_path: Path, capsys
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="Local PDF ingest",
+        project_slug="local-pdf-ingest",
+        research_direction="local literature",
+        material_system="MoS2",
+        experiment_type="review",
+        enable_literature=True,
+    )
+    pdfs = []
+    dois = []
+    for index in range(1, 4):
+        path = tmp_path / f"paper-{index}.pdf"
+        doi = f"10.1000/local-{index}"
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=200)
+        writer.add_metadata(
+            {"/Title": f"Local verified paper {index}", "/Subject": f"DOI {doi}"}
+        )
+        with path.open("wb") as handle:
+            writer.write(handle)
+        pdfs.append(path)
+        dois.append(doi)
+
+    command = ["literature", "ingest-local-pdf", str(tmp_path)]
+    for path, doi in zip(pdfs, dois, strict=True):
+        command.extend(["--pdf", str(path), "--doi", doi])
+    assert main(command) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["imported_count"] == 3
+    assert first["library_item_count"] == 3
+    assert first["zotero_required"] is False
+
+    assert main(command) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["imported_count"] == 0
+    assert second["reused_count"] == 3
+    assert second["library_item_count"] == 3
+
+    fake_pdf = tmp_path / "not-a-pdf.pdf"
+    fake_pdf.write_text("<html>login page</html>", encoding="utf-8")
+    assert main(
+        [
+            "literature",
+            "ingest-local-pdf",
+            str(tmp_path),
+            "--pdf",
+            str(fake_pdf),
+            "--doi",
+            "10.1000/fake",
+        ]
+    ) == 0
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["rejected_count"] == 1
+    assert rejected["library_item_count"] == 3
 
 
 def test_literature_zotero_bridge_writes_runbook_with_user_settings(tmp_path: Path) -> None:
@@ -2453,13 +2633,73 @@ def test_literature_import_acquisition_manifest_registers_references_and_syncs_s
     assert result["reused_count"] == 0
     assert status["status"] == "acquisition_complete"
     assert status["candidate_count"] == 8
-    assert status["downloaded_fulltext"] == 1
+    assert status["downloaded_fulltext"] == 0
     assert status["cached_fulltext"] == 1
     assert status["reference_import"]["imported_count"] == 2
     assert library["item_count"] == 2
     assert library["items"][0]["reference_id"].startswith("ref-")
     assert cache["cached_count"] == 1
     assert len(references["references"]) == 2
+
+
+def test_literature_import_rejects_invalid_or_metadata_mismatched_pdf(
+    tmp_path: Path,
+) -> None:
+    initialize_project(
+        tmp_path,
+        project_name="MoS2 PDF postflight",
+        project_slug="mos2-pdf-postflight",
+        research_direction="MoS2 literature acquisition",
+        material_system="MoS2",
+        experiment_type="Raman characterization",
+        enable_literature=True,
+    )
+    fulltext = tmp_path / "literature" / "fulltext"
+    fulltext.mkdir(parents=True)
+    (fulltext / "not-a-pdf.pdf").write_text("<html>login required</html>", encoding="utf-8")
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.add_metadata(
+        {
+            "/Title": "Completely different paper",
+            "/Subject": "DOI 10.1000/wrong-doi",
+        }
+    )
+    with (fulltext / "wrong-metadata.pdf").open("wb") as handle:
+        writer.write(handle)
+    manifest_path = tmp_path / "literature" / "acquisition_manifest.yml"
+    write_yaml(
+        manifest_path,
+        {
+            "downloaded_fulltext": 2,
+            "items": [
+                {
+                    "title": "Expected Raman paper",
+                    "doi": "10.1000/expected-one",
+                    "local_path": "literature/fulltext/not-a-pdf.pdf",
+                },
+                {
+                    "title": "Expected PL paper",
+                    "doi": "10.1000/expected-two",
+                    "local_path": "literature/fulltext/wrong-metadata.pdf",
+                },
+            ],
+        },
+    )
+
+    result = import_literature_acquisition_manifest(tmp_path, manifest_path=manifest_path)
+    library = read_yaml(tmp_path / "literature" / "library_manifest.yml")
+    status = read_yaml(tmp_path / "literature" / "deployment_status.yml")
+    references_path = tmp_path / "literature" / "references" / "index.yml"
+
+    assert result["skipped_count"] == 2
+    assert {item["reason"] for item in result["skipped"]} == {
+        "invalid_pdf",
+        "metadata_mismatch",
+    }
+    assert library["item_count"] == 0
+    assert status["downloaded_fulltext"] == 0
+    assert not references_path.exists()
 
 
 def test_literature_import_acquisition_manifest_reuses_duplicate_reference(tmp_path: Path) -> None:
@@ -2591,10 +2831,11 @@ def test_cli_literature_plan_and_confirm(tmp_path: Path, capsys) -> None:
     assert gated["status"] == "needs_confirmation"
     assert gated["estimate"]["requires_confirmation_before_run"] is True
 
-    assert main(["literature", "acquisition-request", str(tmp_path), "--confirm-large-work"]) == 0
-    request = json.loads(capsys.readouterr().out)
-    assert request["request"]["status"] == "awaiting_search_results"
-    assert request["request"]["query_manifest_ref"] == "literature/zotero_codex_queries.jsonl"
+    assert main(["literature", "acquisition-request", str(tmp_path), "--confirm-large-work"]) == 2
+    request_error = json.loads(capsys.readouterr().out)
+    assert request_error["status"] == "error"
+    assert "non-empty selected_items" in request_error["cause"]["message"]
+    assert not (tmp_path / "literature" / "acquisition_request.yml").exists()
 
     write_yaml(
         tmp_path / "literature" / "acquisition_manifest.yml",

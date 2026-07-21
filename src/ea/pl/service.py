@@ -345,18 +345,19 @@ def _plot_pl(
     fig, ax = styled_subplots(figsize=(6.0, 4.0))
     ax.plot(
         processed["pl_axis"],
-        processed["raw_intensity"],
-        color=NATURE_LIKE_COLORS["blue"],
-        linewidth=1.0,
-        alpha=0.5,
-        label="Raw intensity",
-    )
-    ax.plot(
-        processed["pl_axis"],
         processed["processed_intensity"],
         color=NATURE_LIKE_COLORS["orange"],
         linewidth=1.2,
         label="Processed intensity",
+    )
+    raw_axis = ax.twinx()
+    raw_axis.plot(
+        processed["pl_axis"],
+        processed["raw_intensity"],
+        color=NATURE_LIKE_COLORS["blue"],
+        linewidth=0.9,
+        alpha=0.35,
+        label="Raw intensity (counts)",
     )
     if not peaks.empty:
         ax.scatter(
@@ -373,8 +374,14 @@ def _plot_pl(
         xlabel=f"Emission energy ({x_unit})"
         if x_unit != "unknown"
         else "PL axis (unknown unit)",
-        ylabel="Intensity (a.u.)",
+        ylabel="Processed intensity (a.u.)",
     )
+    raw_axis.set_ylabel("Raw intensity (counts)")
+    raw_axis.spines["top"].set_visible(False)
+    raw_axis.grid(False)
+    handles, labels = ax.get_legend_handles_labels()
+    raw_handles, raw_labels = raw_axis.get_legend_handles_labels()
+    ax.legend(handles + raw_handles, labels + raw_labels, frameon=False)
     save_styled_figure(fig, output, footer=footer)
 
 

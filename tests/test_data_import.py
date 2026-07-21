@@ -8,6 +8,12 @@ import pytest
 from ea.cli import main
 from ea.data_import import apply_import, preview_import
 from ea.projects import initialize_project
+from ea.pl import inspect_pl_file
+
+
+FIXTURE_PL = Path(
+    "tests/fixtures/public/test-case-001/raw_data/MoS-PL-2(1).txt"
+).resolve()
 
 
 @pytest.mark.parametrize(
@@ -110,3 +116,27 @@ def test_import_cli_preview_is_compact_json(tmp_path: Path, capsys) -> None:
 
     assert result["read_only"] is True
     assert result["unit_proposals"]["temperature_C"] == "degC"
+
+
+def test_method_aware_pl_preview_matches_pl_inspection() -> None:
+    inspection = inspect_pl_file(FIXTURE_PL)
+
+    preview = preview_import(FIXTURE_PL, characterization_type="pl")
+
+    assert preview["characterization_type"] == "pl"
+    assert preview["row_count"] == inspection.row_count == 8280
+    assert preview["columns"] == inspection.columns == ["col_0", "col_1"]
+    assert preview["x_column_candidate"] == inspection.x_column_candidate
+    assert preview["y_column_candidate"] == inspection.y_column_candidate
+    assert preview["x_unit"] == inspection.x_unit == "eV"
+    assert preview["method_metadata"]["instrument_metadata"]["instrument_model"] == "LabRAM HR Evol"
+
+
+def test_import_cli_accepts_method_aware_preview(tmp_path: Path, capsys) -> None:
+    assert main(
+        ["import", "preview", str(FIXTURE_PL), "--characterization-type", "pl"]
+    ) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["row_count"] == 8280
+    assert result["x_unit"] == "eV"

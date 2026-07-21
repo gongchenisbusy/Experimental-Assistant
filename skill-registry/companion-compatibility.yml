@@ -1,9 +1,9 @@
 schema_version: "1.0"
-ea_release: v1.0.0
+ea_release: v1.1.0
 companions:
   ea-feedback:
     repository: https://github.com/gongchenisbusy/ea-feedback
-    accepted_commit: e1397a84fe39bed9c054cd746f25c9d81643ad0d
+    accepted_commit: 5fd37ea6770d66b3dc8837a095710e1201c39156
     required_context_schema: ea-feedback-context-v2
     required_execution_event_schema: ea-feedback-execution-events-v1
     acceptance_evidence:
@@ -12,6 +12,11 @@ companions:
       - project_virtualenv_cli_discovery
       - partial_literature_execution_events
       - no_gh_verified_email_fallback
+      - active_install_only_default
+      - local_collection_without_github_auth_probe
+      - structured_warning_severity
+      - cross_project_finding_deduplication
+      - multilingual_submission_intent
   zotero-codex-literature:
     compatibility: protocol_range
     acquisition_handoff_reader: ["1.0", "2.0"]

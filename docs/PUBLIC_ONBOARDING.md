@@ -1,6 +1,6 @@
-# Experimental Assistant v1.0.0 Public Onboarding
+# Experimental Assistant v1.1.0 Public Onboarding
 
-This guide is for a new public user or a fresh agent starting from an Experimental Assistant v1.0.0 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
+This guide is for a new public user or a fresh agent starting from an Experimental Assistant v1.1.0 package. It avoids developer-machine assumptions and uses placeholders that the user must replace with local paths. For the shorter clone/install/Codex-skill setup path, read `docs/PUBLIC_INSTALL_AND_CODEX_SKILL_SETUP.md` first.
 
 The distribution is `experimental-assistant`, the CLI is `ea`, and `$ea` is the only public Codex skill.
 
@@ -15,7 +15,7 @@ Requirements:
 Recommended public install:
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.0.0
+uv tool install --python 3.12 git+https://github.com/gongchenisbusy/Experimental-Assistant.git@v1.1.0
 ea setup
 ea doctor
 ```
@@ -72,7 +72,7 @@ Copy the example folder before making experimental edits. It is an orientation a
 
 ## 3. Import And Analyze Characterization Data
 
-Raw files should be imported as controlled project copies before processing. Experimental Assistant v1.0.0 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
+Raw files should be imported as controlled project copies before processing. Experimental Assistant v1.1.0 currently has concrete workflows for Raman, PL, XRD, FTIR, UV-Vis, XPS, electrochemistry, thermal analysis, and image-style characterization records.
 
 Minimal Raman path:
 
@@ -330,13 +330,13 @@ For project-bundle provenance audit, checksum interpretation, and the boundary b
 
 ## 7. Repository Release Checks
 
-Before sharing an Experimental Assistant v1.0.0 repository package:
+Before sharing an Experimental Assistant v1.1.0 repository package:
 
 ```bash
 ea-public-release-smoke
 ea-release-manifest
 ea-release-package
-ea-verify-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip
+ea-verify-release-package dist/experimental-assistant-1.1.0-COMMIT-release.zip
 ea-release-checklist
 ```
 
@@ -351,11 +351,11 @@ ea-release-keygen \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-sign-release-package dist/experimental-assistant-1.0.0-COMMIT-release.zip \
+ea-sign-release-package dist/experimental-assistant-1.1.0-COMMIT-release.zip \
   --private-key /path/to/user-release-private.pem \
   --public-key /path/to/user-release-public.pem
 
-ea-verify-release-signature dist/experimental-assistant-1.0.0-COMMIT-release.zip \
+ea-verify-release-signature dist/experimental-assistant-1.1.0-COMMIT-release.zip \
   --public-key /path/to/user-release-public.pem
 ```
 

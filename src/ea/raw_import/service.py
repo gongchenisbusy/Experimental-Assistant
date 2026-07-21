@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import stat
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -161,53 +162,65 @@ def import_raw_file(
     raw_dir = root / "raw" / characterization_type / characterization_id
     raw_dir.mkdir(parents=True, exist_ok=True)
     destination = raw_dir / source_path.name
-    atomic_copy_file(source_path, destination)
-    readonly_warning = _set_readonly(destination)
-    warnings = []
-    if readonly_warning:
-        warnings.append({"code": "raw_readonly_chmod_failed", "message": readonly_warning, "severity": "medium"})
+    provenance_path: Path | None = None
+    try:
+        atomic_copy_file(source_path, destination)
+        readonly_warning = _set_readonly(destination)
+        warnings = []
+        if readonly_warning:
+            warnings.append({"code": "raw_readonly_chmod_failed", "message": readonly_warning, "severity": "medium"})
 
-    metadata_path = raw_dir / "metadata.yml"
-    record = CharacterizationFile(
-        characterization_id=characterization_id,
-        characterization_type=characterization_type,
-        project_id=project_id,
-        sample_refs=sample_refs,
-        experiment_refs=experiment_refs,
-        original_filename=source_path.name,
-        original_source_path=source_ref,
-        project_raw_path=destination.relative_to(root).as_posix(),
-        sha256=sha256,
-        file_size_bytes=file_size,
-        original_mtime=original_mtime,
-        imported_at=imported_at,
-        import_status="imported",
-        aliases=[],
-        notes=None,
-        provenance_refs=[],
-        review_refs=[],
-    )
-    write_yaml(metadata_path, record.model_dump(exclude_none=True))
-    provenance_path = write_provenance_entry(
-        root,
-        workflow="raw_file_import",
-        inputs={"records": [], "files": [source_ref]},
-        outputs={
-            "records": [metadata_path.relative_to(root).as_posix()],
-            "files": [destination.relative_to(root).as_posix()],
-        },
-        parameters={"import_status": "imported", "sha256": sha256},
-        warnings=warnings,
-        created_at=imported_at,
-    )
-    metadata = read_yaml(metadata_path)
-    metadata["provenance_refs"] = [provenance_path.stem]
-    metadata["warnings"] = warnings
-    write_yaml(metadata_path, metadata)
-    return RawImportResult(
-        characterization_id=characterization_id,
-        import_status="imported",
-        metadata_path=metadata_path,
-        project_raw_path=destination,
-        sha256=sha256,
-    )
+        metadata_path = raw_dir / "metadata.yml"
+        record = CharacterizationFile(
+            characterization_id=characterization_id,
+            characterization_type=characterization_type,
+            project_id=project_id,
+            sample_refs=sample_refs,
+            experiment_refs=experiment_refs,
+            original_filename=source_path.name,
+            original_source_path=source_ref,
+            project_raw_path=destination.relative_to(root).as_posix(),
+            sha256=sha256,
+            file_size_bytes=file_size,
+            original_mtime=original_mtime,
+            imported_at=imported_at,
+            import_status="imported",
+            aliases=[],
+            notes=None,
+            provenance_refs=[],
+            review_refs=[],
+        )
+        write_yaml(metadata_path, record.model_dump(exclude_none=True))
+        provenance_path = write_provenance_entry(
+            root,
+            workflow="raw_file_import",
+            inputs={"records": [], "files": [source_ref]},
+            outputs={
+                "records": [metadata_path.relative_to(root).as_posix()],
+                "files": [destination.relative_to(root).as_posix()],
+            },
+            parameters={"import_status": "imported", "sha256": sha256},
+            warnings=warnings,
+            created_at=imported_at,
+        )
+        metadata = read_yaml(metadata_path)
+        metadata["provenance_refs"] = [provenance_path.stem]
+        metadata["warnings"] = warnings
+        write_yaml(metadata_path, metadata)
+        return RawImportResult(
+            characterization_id=characterization_id,
+            import_status="imported",
+            metadata_path=metadata_path,
+            project_raw_path=destination,
+            sha256=sha256,
+        )
+    except BaseException:
+        if provenance_path is not None:
+            provenance_path.unlink(missing_ok=True)
+        shutil.rmtree(raw_dir, ignore_errors=True)
+        method_dir = raw_dir.parent
+        try:
+            method_dir.rmdir()
+        except OSError:
+            pass
+        raise

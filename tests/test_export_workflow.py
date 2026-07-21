@@ -10,6 +10,7 @@ from PIL import Image
 
 from ea.batch import run_batch_manifest
 from ea.cli import main
+from ea.provenance import write_provenance_entry
 from ea.projects import initialize_project
 from ea.raman import (
     RamanProcessingRequest,
@@ -20,7 +21,13 @@ from ea.raw_import import import_raw_file
 from ea.references import register_reference
 from ea.reports import generate_raman_report
 from ea.review import write_review_record
-from ea.storage import read_markdown_record, read_yaml, write_yaml
+from ea.storage import (
+    read_markdown_record,
+    read_yaml,
+    write_markdown_record,
+    write_yaml,
+)
+from ea.drafts import stage_draft_artifact
 
 
 FIXTURE_RAW = Path(
@@ -479,6 +486,60 @@ def test_cli_exports_report_bundle_zip_archive(tmp_path: Path, capsys) -> None:
     assert any(name.startswith("provenance/") for name in names)
 
 
+def test_report_bundle_deduplicates_protected_provenance_inputs_and_reruns(
+    tmp_path: Path, capsys
+) -> None:
+    built = _build_report_project(tmp_path)
+    raw_metadata_path = next((tmp_path / "raw" / "raman").glob("*/metadata.yml"))
+    raw_metadata = read_yaml(raw_metadata_path)
+    protected_raw_ref = raw_metadata["project_raw_path"]
+    protected_raw_path = tmp_path / protected_raw_ref
+    assert protected_raw_path.exists()
+    assert not (protected_raw_path.stat().st_mode & 0o222)
+
+    provenance_refs = []
+    for minute in (31, 32):
+        provenance = write_provenance_entry(
+            tmp_path,
+            workflow="duplicate_protected_input_regression",
+            inputs={"records": [], "files": [protected_raw_ref]},
+            outputs={"records": [], "files": []},
+            parameters={"minute": minute},
+            created_at=f"2026-06-30T15:{minute}:00",
+        )
+        provenance_refs.append(provenance.stem)
+
+    report_index = read_yaml(tmp_path / "reports" / "index.yml")
+    report_ref = report_index["reports"][built["report_id"]]["path"]
+    report_path = tmp_path / report_ref
+    frontmatter, body = read_markdown_record(report_path)
+    frontmatter["provenance_refs"] = provenance_refs
+    write_markdown_record(report_path, frontmatter, body)
+
+    command = [
+        "export",
+        "report-bundle",
+        str(tmp_path),
+        "--report-id",
+        built["report_id"],
+    ]
+    assert main(command) == 0
+    first = _json_output(capsys)
+    first_manifest = read_yaml(Path(first["manifest_path"]))
+    protected_inputs = [
+        record
+        for record in first_manifest["provenance_inputs"]
+        if record["source_ref"] == protected_raw_ref
+    ]
+    assert len(protected_inputs) == 1
+    assert protected_inputs[0]["copied"] is True
+
+    assert main(command) == 0
+    second = _json_output(capsys)
+    second_manifest = read_yaml(Path(second["manifest_path"]))
+    assert second_manifest["status"] == "complete"
+
+
 def test_cli_exports_report_bundle_with_focused_trace_view(
     tmp_path: Path, capsys
 ) -> None:
@@ -804,6 +865,46 @@ def test_report_bundle_warns_when_linked_reference_file_is_missing(
     assert output["status"] == "warning"
     missing = {(item["kind"], item["reason"]) for item in output["missing_refs"]}
     assert ("reference_file", "missing_source") in missing
+
+
+def test_draft_html_preview_is_marked_and_does_not_change_formal_state(
+    tmp_path: Path, capsys
+) -> None:
+    _build_report_project(tmp_path)
+    source = tmp_path / "candidate-report.md"
+    source.write_text("# Candidate analysis\n\nPreliminary text.\n", encoding="utf-8")
+    staged = stage_draft_artifact(
+        tmp_path,
+        source_path=source,
+        target_ref="reports/future-report.md",
+        draft_id="draft-20260722-001",
+        confirmed=True,
+    )
+    draft_manifest = tmp_path / staged["draft_ref"]
+    before_manifest = draft_manifest.read_bytes()
+    before_report_index = (tmp_path / "reports" / "index.yml").read_bytes()
+    before_reviews = sorted((tmp_path / "reviews").glob("*.yml"))
+
+    assert main(
+        [
+            "export",
+            "report-html",
+            str(tmp_path),
+            "--draft-id",
+            staged["draft_id"],
+            "--preview",
+        ]
+    ) == 0
+    preview = _json_output(capsys)
+    html = Path(preview["html_path"]).read_text(encoding="utf-8")
+
+    assert preview["status"] == "preview"
+    assert preview["formal_state_mutated"] is False
+    assert "DRAFT / NOT FORMAL" in html
+    assert draft_manifest.read_bytes() == before_manifest
+    assert (tmp_path / "reports" / "index.yml").read_bytes() == before_report_index
+    assert sorted((tmp_path / "reviews").glob("*.yml")) == before_reviews
+    assert not (tmp_path / "reports" / "future-report.md").exists()
 
 
 def test_bundle_verifier_fails_for_outside_figure_source_data(

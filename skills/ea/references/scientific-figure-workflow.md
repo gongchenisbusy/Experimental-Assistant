@@ -2,7 +2,7 @@
 
 Use this reference when creating or auditing EA report figures.
 
-Current Experimental Assistant v1.0.0 compatibility support:
+Current Experimental Assistant v1.1.0 compatibility support:
 
 - Backend is Python/matplotlib for all built-in EA figure generation.
 - Shared helpers live in `ea.figures`:

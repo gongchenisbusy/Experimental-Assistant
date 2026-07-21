@@ -1,9 +1,9 @@
 ---
 name: ea
-description: Experimental Assistant v1.0.0 local-first materials research skill. Use when Codex needs to advise without project writes, guide a first project, import protected raw data, run review-gated characterization, collect any user-requested literature data through a project schema, generate traceable reports or verified exports, diagnose/update/rollback EA, or prepare release artifacts without assuming developer-machine accounts, paths, or credentials.
+description: Experimental Assistant v1.1.0 local-first materials research skill. Use when Codex needs to advise without project writes, guide a first project, import protected raw data, run review-gated characterization, collect any user-requested literature data through a project schema, generate traceable reports or verified exports, diagnose/update/rollback EA, or prepare release artifacts without assuming developer-machine accounts, paths, or credentials.
 ---
 
-# Experimental Assistant v1.0.0
+# Experimental Assistant v1.1.0
 
 ## Product Contract
 
@@ -30,13 +30,14 @@ Before changing mode, state the meaningful writes, external actions, or large-wo
 
 1. For an existing project, read `EA_PROJECT.md`, `PROJECT_RULE_CARD.md`, `.ea/project_config.yml`, `.ea/project_format.yml`, `memory/project-working-memory.md`, and only the relevant indexes or recent operation records.
 2. If no project exists, remain in consult until the user chooses to create one. Use `ea start` to preview/create it, then `ea journey` to recover the single next action from import through verified export. Use `ea init-project` only for expert automation.
-3. Import raw files as controlled copies. Never overwrite source files or write generated output below `raw/`.
+3. Use method-aware `ea import preview ... --characterization-type METHOD`, then import raw files as controlled copies. Never overwrite source files or write generated output below `raw/`.
 4. Use CLI writers for IDs, timestamps, schema transitions, review, provenance, migration, and multi-artifact operations. Do not hand-author formal records when a command exists.
-5. Require the relevant ReviewRecord before applying parameters, assignments, normalization, comparability decisions, plots, reports, or durable memory.
+5. Require the relevant target-bound ReviewRecord before applying parameters, assignments, normalization, comparability decisions, plots, reports, or durable memory. Use `ea draft confirm-promote` for a staged artifact when one clear confirmation should create one review and one idempotent promotion.
 6. Continue long work from `ea status`, `ea brief project --no-write`, compact literature/extraction state, and `memory/project-working-memory.md` before reading broad directories.
-7. Before handoff, run health/evaluation/trace checks appropriate to the task. Keep full JSON, hashes, debug logs, and trace graphs on disk unless explicitly requested.
-8. When user input is required, write `需要你补充：` for Chinese sessions (or `Please clarify:` for English) and use a numbered list with one answerable question per line so replies map back to fields.
-9. If an EA command repeatedly fails or the user explicitly reports friction, briefly suggest the separate `ea-feedback` skill. Do not install it, collect diagnostics, or submit feedback without confirmation; always preview a redacted report before a separate submission confirmation.
+7. Deliver requested reports through the complete lifecycle. Use `ea composite-report` for reviewed multi-method results and return its HTML output; use draft HTML preview only when it is clearly marked non-formal.
+8. Before handoff, run health/evaluation/trace checks appropriate to the task. Keep full JSON, hashes, debug logs, and trace graphs on disk unless explicitly requested.
+9. When user input is required, write `需要你补充：` for Chinese sessions (or `Please clarify:` for English) and use a numbered list with one answerable question per line so replies map back to fields.
+10. If an EA command repeatedly fails or the user explicitly reports friction, briefly suggest the separate `ea-feedback` skill. Do not install it, collect diagnostics, or submit feedback without confirmation; always preview a redacted report before a separate submission confirmation.
 
 ## Routing
 

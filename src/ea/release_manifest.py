@@ -123,7 +123,10 @@ def _run_git(root: Path, args: list[str]) -> str | None:
 
 def git_state(root: Path) -> dict[str, Any]:
     status_lines = (
-        _run_git(root, ["status", "--short", "--untracked-files=all"]) or ""
+        _run_git(root, ["status", "--short", "--untracked-files=no"]) or ""
+    ).splitlines()
+    untracked_lines = (
+        _run_git(root, ["ls-files", "--others", "--exclude-standard"]) or ""
     ).splitlines()
     tags = (_run_git(root, ["tag", "--points-at", "HEAD"]) or "").splitlines()
     return {
@@ -132,6 +135,7 @@ def git_state(root: Path) -> dict[str, Any]:
         "tags_at_head": sorted(tag for tag in tags if tag),
         "dirty": bool(status_lines),
         "dirty_files": status_lines,
+        "excluded_untracked_count": len(untracked_lines),
     }
 
 
@@ -158,11 +162,29 @@ def _should_skip(path: Path) -> bool:
     return path.suffix in EXCLUDED_SUFFIXES
 
 
+def _git_tracked_paths(root: Path) -> set[Path] | None:
+    completed = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return {
+        Path(item.decode("utf-8", errors="surrogateescape"))
+        for item in completed.stdout.split(b"\0")
+        if item
+    }
+
+
 def iter_release_files(
     root: Path, include_roots: Iterable[str] = DEFAULT_INCLUDE_ROOTS
 ) -> list[Path]:
     files: list[Path] = []
     seen: set[Path] = set()
+    tracked_paths = _git_tracked_paths(root)
     for rel in include_roots:
         path = root / rel
         if not path.exists():
@@ -174,7 +196,11 @@ def iter_release_files(
         )
         for candidate in candidates:
             rel_path = candidate.relative_to(root)
-            if rel_path in seen or _should_skip(rel_path):
+            if (
+                rel_path in seen
+                or _should_skip(rel_path)
+                or (tracked_paths is not None and rel_path not in tracked_paths)
+            ):
                 continue
             seen.add(rel_path)
             files.append(candidate)
@@ -231,16 +257,16 @@ def build_release_manifest(
         "release": {
             "label": RELEASE_LABEL,
             "version": metadata.get("version"),
-            "relationship_to_v1": "Formal v1 stable release of the feature-frozen v0.9.9 contract after current-candidate automated, simulated, benchmark, lifecycle, security, and packaging gates.",
+            "relationship_to_v1": "Backward-compatible v1.1 reliability release that preserves the stable v1 contract while fixing issue-backed workflow integrity, reporting, review, and protected-file defects.",
             "acceptance_matrix_ref": "docs/PUBLIC_ACCEPTANCE_MATRIX.md",
-            "release_notes_ref": "docs/V1_0_RELEASE_NOTES.md",
-            "known_limitations_ref": "docs/V1_0_KNOWN_LIMITATIONS.md",
-            "manual_test_checklist_ref": "docs/V1_0_TRIAL_REPORT.md",
-            "agent_handoff_ref": "docs/V1_0_RELEASE_DOSSIER.md",
-            "trial_report_ref": "docs/V1_0_TRIAL_REPORT.md",
-            "issue_disposition_ref": "docs/V1_0_ISSUE_DISPOSITION.md",
-            "support_promise_ref": "docs/V1_0_SUPPORT_PROMISE.md",
-            "release_dossier_ref": "docs/V1_0_RELEASE_DOSSIER.yml",
+            "release_notes_ref": "docs/V1_1_RELEASE_NOTES.md",
+            "known_limitations_ref": "docs/V1_1_KNOWN_LIMITATIONS.md",
+            "manual_test_checklist_ref": "docs/V1_1_TRIAL_REPORT.md",
+            "agent_handoff_ref": "docs/V1_1_RELEASE_DOSSIER.md",
+            "trial_report_ref": "docs/V1_1_TRIAL_REPORT.md",
+            "issue_disposition_ref": "docs/V1_1_ISSUE_DISPOSITION.md",
+            "support_promise_ref": "docs/V1_1_SUPPORT_PROMISE.md",
+            "release_dossier_ref": "docs/V1_1_RELEASE_DOSSIER.yml",
         },
         "git": git_state(root),
         "release_inputs": {

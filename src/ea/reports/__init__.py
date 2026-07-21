@@ -7,6 +7,7 @@ from ea.reports.service import (
     generate_uv_vis_report,
     generate_xps_report,
     generate_xrd_report,
+    generate_composite_report,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "generate_uv_vis_report",
     "generate_xps_report",
     "generate_xrd_report",
+    "generate_composite_report",
 ]

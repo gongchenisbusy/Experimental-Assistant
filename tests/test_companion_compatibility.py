@@ -10,7 +10,7 @@ from ea.storage.files import read_yaml
 def test_compatibility_manifest_matches_runtime_constant() -> None:
     manifest = read_yaml(Path("skill-registry/companion-compatibility.yml"))
 
-    assert manifest["ea_release"] == "v1.0.0"
+    assert manifest["ea_release"] == "v1.1.0"
     assert (
         manifest["companions"]["ea-feedback"]["accepted_commit"]
         == EA_FEEDBACK_ACCEPTED_COMMIT
