@@ -27,7 +27,9 @@ def test_release_file_inventory_excludes_untracked_workspace_artifacts(
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
 
-    files = iter_release_files(tmp_path, include_roots=["tracked.txt", "local-only.txt"])
+    files = iter_release_files(
+        tmp_path, include_roots=["tracked.txt", "local-only.txt"]
+    )
 
     assert files == [tracked]
 
