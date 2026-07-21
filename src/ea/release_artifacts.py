@@ -43,7 +43,7 @@ def _venv_executable(venv_root: Path, name: str) -> Path:
 def _install_env(constraints: Path) -> dict[str, str]:
     env = os.environ.copy()
     if constraints.is_file():
-        env["PIP_CONSTRAINT"] = str(constraints.resolve())
+        env["PIP_CONSTRAINT"] = constraints.resolve().as_uri()
     else:
         env.pop("PIP_CONSTRAINT", None)
     return env

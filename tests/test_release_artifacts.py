@@ -42,7 +42,7 @@ def test_artifact_install_uses_absolute_constraint_path(
 
     env = _install_env(constraints)
 
-    assert env["PIP_CONSTRAINT"] == str(constraints.resolve())
+    assert env["PIP_CONSTRAINT"] == constraints.resolve().as_uri()
 
 
 def test_reproducibility_requires_identical_wheel_and_sdist(tmp_path: Path) -> None:
