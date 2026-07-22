@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://gongchenisbusy.github.io/Experimental-Assistant/demo/">Live Demo</a> ·
   <a href="docs/QUICKSTART_ZH.md">中文快速入门</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#public-examples">Public Examples</a> ·
@@ -32,6 +33,38 @@
 
 > [!IMPORTANT]
 > EA produces reviewable evidence and candidate interpretations. It does not independently prove material identity, phase, mechanism, performance, calibration validity, or exhaustive literature coverage.
+
+## Live end-to-end demo
+
+Follow a real screenshot-based workflow from a natural-language CVD MoS₂ research goal to project setup, reviewed baseline conditions, six experiment records, process optimization, Raman/PL/AFM characterization, and the final traceable report.
+
+<p align="center">
+  <strong><a href="https://gongchenisbusy.github.io/Experimental-Assistant/demo/">Open the interactive Demo</a></strong> ·
+  <a href="https://gongchenisbusy.github.io/Experimental-Assistant/">Open the complete analysis report</a> ·
+  <a href="examples/test1-mos2-demo/README.md">Inspect the Demo source</a>
+</p>
+
+<table>
+<tr>
+<td width="33.33%" align="center" valign="top">
+<a href="https://gongchenisbusy.github.io/Experimental-Assistant/demo/#stage-project"><img src="examples/test1-mos2-demo/site/assets/qa/01-project-goal.png" width="100%" alt="Natural-language MoS2 research goal and EA project guidance"></a><br>
+<strong>Start from natural language</strong><br>
+EA turns an incomplete research goal into a reviewable project path.
+</td>
+<td width="33.33%" align="center" valign="top">
+<a href="https://gongchenisbusy.github.io/Experimental-Assistant/demo/#stage-logs"><img src="examples/test1-mos2-demo/site/assets/qa/07-cvd-run-002.png" width="100%" alt="EA compares two CVD experiment records without overclaiming causality"></a><br>
+<strong>Accumulate experimental context</strong><br>
+Successive runs are compared while observations, hypotheses, and confounders remain distinct.
+</td>
+<td width="33.33%" align="center" valign="top">
+<a href="https://gongchenisbusy.github.io/Experimental-Assistant/demo/#stage-analysis"><img src="examples/test1-mos2-demo/site/assets/qa/15-characterization-report.png" width="100%" alt="EA Raman PL and AFM integrated analysis output"></a><br>
+<strong>Generate a bounded report</strong><br>
+Raman, PL, and AFM evidence is combined with explicit confidence and interpretation limits.
+</td>
+</tr>
+</table>
+
+The live page shows one representative exchange per stage for a fast overview. Each stage can expand to reveal all 15 exchanges in chronological order, and the complete EA-generated HTML report can be opened inline or as a standalone page.
 
 ## What EA does
 

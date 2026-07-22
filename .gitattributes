@@ -10,3 +10,6 @@
 *.tiff binary
 *.whl binary
 *.zip binary
+
+# Preserve public instrument exports byte-for-byte, including vendor line endings.
+examples/test1-mos2-demo/source-inputs/data/*.txt -text -eol
