@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Experimental Assistant 真实 CVD MoS₂ 研究流程 Demo：从自然语言建项目、实验日志和工艺优化，到 Raman、PL、AFM 综合分析与完整报告。">
+  <meta property="og:title" content="Experimental Assistant 全流程 Demo">
+  <meta property="og:description" content="15 组真实问答，展示 EA 如何把自然语言实验记录转化为可复核的研究项目、分析过程和完整报告。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://gongchenisbusy.github.io/Experimental-Assistant/demo/">
+  <meta property="og:image" content="https://gongchenisbusy.github.io/Experimental-Assistant/demo/assets/qa/15-characterization-report.png">
+  <title>Experimental Assistant 全流程 Demo</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#demo-content">跳到演示内容</a>
+
+  <header class="topbar">
+    <a class="brand" href="https://github.com/gongchenisbusy/Experimental-Assistant">Experimental Assistant</a>
+    <nav aria-label="页面导航">
+      <a href="#workflow">流程</a>
+      <a href="#stage-analysis">数据分析</a>
+      <a href="#stage-report">完整报告</a>
+      <a href="https://github.com/gongchenisbusy/Experimental-Assistant">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="demo-content">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <p class="eyebrow">公开截图演示 · CVD MoS₂ on mica</p>
+        <h1 id="page-title">从一句研究目标，到可复核的数据分析报告</h1>
+        <p class="hero-lede">
+          这是一条由 15 组真实问答组成的 Experimental Assistant（EA）研究流程。用户始终使用自然语言；EA 负责整理条件、保留未知项、累计实验记录、提出控制变量建议，并在用户确认后完成 Raman、PL 与 AFM 综合分析。
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#workflow">开始浏览</a>
+          <a class="button button-secondary" href="https://gongchenisbusy.github.io/Experimental-Assistant/">打开完整分析报告</a>
+        </div>
+      </div>
+      <aside class="hero-summary" aria-label="演示摘要">
+        <div><strong>15</strong><span>组真实问答</span></div>
+        <div><strong>6</strong><span>轮 CVD 记录</span></div>
+        <div><strong>3</strong><span>种表征证据</span></div>
+        <div><strong>1</strong><span>份完整报告</span></div>
+      </aside>
+    </section>
+
+    <section class="workflow-overview" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-intro">
+        <p class="eyebrow">60 秒快速浏览</p>
+        <h2 id="workflow-title">一条连续的研究工作流</h2>
+        <p>每个阶段默认展示一张代表性问答；点击阶段下方的展开栏，可以按时间顺序查看该阶段全部问答。</p>
+      </div>
+
+      <ol class="workflow-steps">
+        <li><a href="#stage-project"><span>01</span>项目创建</a></li>
+        <li><a href="#stage-baseline"><span>02</span>基线确认</a></li>
+        <li><a href="#stage-logs"><span>03</span>实验日志</a></li>
+        <li><a href="#stage-optimization"><span>04</span>工艺优化</a></li>
+        <li><a href="#stage-analysis"><span>05</span>表征分析</a></li>
+        <li><a href="#stage-report"><span>06</span>完整报告</a></li>
+      </ol>
+
+      <div class="details-controls" aria-label="详细内容控制">
+        <button type="button" data-action="expand-all">展开全部阶段</button>
+        <button type="button" data-action="collapse-all">收起全部阶段</button>
+        <span id="details-status" class="sr-only" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="stage" id="stage-project" aria-labelledby="stage-project-title">
+      <div class="stage-header">
+        <p class="stage-number">01</p>
+        <div>
+          <p class="eyebrow">Research setup</p>
+          <h2 id="stage-project-title">研究目标与项目创建</h2>
+          <p>用户只需要说明想研究什么。EA 先理解目标、提出实验和表征路线，再在获得确认后建立正式项目。</p>
+        </div>
+      </div>
+      <figure class="main-shot">
+        <a href="assets/qa/01-project-goal.png" target="_blank" rel="noopener">
+          <img src="assets/qa/01-project-goal.png" alt="用户用自然语言说明在 mica 上通过 CVD 生长单层 MoS₂ 的目标，EA 给出实验和表征建议" fetchpriority="high">
+        </a>
+        <figcaption><strong>代表问答 Q01</strong>：EA 从非结构化研究目标开始，提出分步调参与多种表征交叉确认路线。</figcaption>
+      </figure>
+      <details class="stage-details">
+        <summary><span>查看本阶段全部 2 组问答</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="timeline">
+          <article class="qa-item">
+            <div class="qa-index">Q01</div>
+            <div class="qa-body">
+              <h3>从自然语言研究目标开始</h3>
+              <p>用户说明材料、衬底、生长方法和目标；EA 给出初步路线，并把需要继续确认的信息明确列出。</p>
+              <a class="qa-image" href="assets/qa/01-project-goal.png" target="_blank" rel="noopener"><img src="assets/qa/01-project-goal.png" alt="Q01 研究目标问答" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q02</div>
+            <div class="qa-body">
+              <h3>建立正式研究项目</h3>
+              <p>用户只回复“创建”，EA 即建立项目骨架、完成检查，并把后续工作引导到具体实验条件确认。</p>
+              <a class="qa-image" href="assets/qa/02-create-project.png" target="_blank" rel="noopener"><img src="assets/qa/02-create-project.png" alt="Q02 创建 EA 项目问答" loading="lazy"></a>
+            </div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="stage" id="stage-baseline" aria-labelledby="stage-baseline-title">
+      <div class="stage-header">
+        <p class="stage-number">02</p>
+        <div>
+          <p class="eyebrow">Baseline review</p>
+          <h2 id="stage-baseline-title">基线实验方法确认</h2>
+          <p>EA 从普通实验描述中提取条件，把已知、近似和未知信息分开记录，再通过几轮自然对话形成可复核的基线方案。</p>
+        </div>
+      </div>
+      <figure class="main-shot">
+        <a href="assets/qa/03-baseline-conditions.png" target="_blank" rel="noopener">
+          <img src="assets/qa/03-baseline-conditions.png" alt="EA 将自然语言 CVD 条件整理成当前条件和待确认项表格" loading="lazy">
+        </a>
+        <figcaption><strong>代表问答 Q03</strong>：把配比、温度、气氛、硫源和衬底条件整理成“当前条件／待确认”表格。</figcaption>
+      </figure>
+      <details class="stage-details">
+        <summary><span>查看本阶段全部 3 组问答</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="timeline">
+          <article class="qa-item">
+            <div class="qa-index">Q03</div>
+            <div class="qa-body">
+              <h3>从不完整描述提取实验条件</h3>
+              <p>EA 提取 KI/MoO₃ 比例、升温过程、气氛和衬底信息，同时保留仍需确认的真实温度、流量和几何位置。</p>
+              <a class="qa-image" href="assets/qa/03-baseline-conditions.png" target="_blank" rel="noopener"><img src="assets/qa/03-baseline-conditions.png" alt="Q03 基线条件整理" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q04</div>
+            <div class="qa-body">
+              <h3>补充流量、硫源操作和目标形貌</h3>
+              <p>EA 根据补充信息形成 B0 候选方案，但继续指出前驱体实际用量无法确定，避免把“差不多”改写成精确事实。</p>
+              <a class="qa-image" href="assets/qa/04-baseline-clarifications.png" target="_blank" rel="noopener"><img src="assets/qa/04-baseline-clarifications.png" alt="Q04 基线条件补充和候选方案" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q05</div>
+            <div class="qa-body">
+              <h3>保存带未知项的实验基线</h3>
+              <p>用户确认无法补充准确用量；EA 把它作为“近似取用、未定量”的未受控变量保存，并保留后续补记空间。</p>
+              <a class="qa-image" href="assets/qa/05-save-baseline.png" target="_blank" rel="noopener"><img src="assets/qa/05-save-baseline.png" alt="Q05 保存带未知项的基线配方" loading="lazy"></a>
+            </div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="stage" id="stage-logs" aria-labelledby="stage-logs-title">
+      <div class="stage-header">
+        <p class="stage-number">03</p>
+        <div>
+          <p class="eyebrow">Experiment history</p>
+          <h2 id="stage-logs-title">连续实验日志与跨炉比较</h2>
+          <p>实验者继续用日常语言逐炉记录。EA 将观察事实、用户推测、混杂变量和下一步建议分开，并在新记录到来时自动形成跨炉比较。</p>
+        </div>
+      </div>
+      <figure class="main-shot">
+        <a href="assets/qa/07-cvd-run-002.png" target="_blank" rel="noopener">
+          <img src="assets/qa/07-cvd-run-002.png" alt="EA 比较 80 sccm 和 40 sccm 两炉 CVD 结果并提出 60 sccm 中间测试点" loading="lazy">
+        </a>
+        <figcaption><strong>代表问答 Q07</strong>：EA 比较两个流量条件，同时明确“两炉不足以证明流量是唯一原因”。</figcaption>
+      </figure>
+      <details class="stage-details">
+        <summary><span>查看本阶段全部 5 组问答</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="timeline">
+          <article class="qa-item">
+            <div class="qa-index">Q06</div>
+            <div class="qa-body">
+              <h3>第一炉：80 sccm</h3>
+              <p>EA 记录三片 mica 的生长情况，把“边缘内凹”作为观察，把“流量偏大”保留为待验证假设。</p>
+              <a class="qa-image" href="assets/qa/06-cvd-run-001.png" target="_blank" rel="noopener"><img src="assets/qa/06-cvd-run-001.png" alt="Q06 第一炉 80 sccm 实验记录" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q07</div>
+            <div class="qa-body">
+              <h3>第二炉：40 sccm 与跨炉比较</h3>
+              <p>EA 自动对比 80 与 40 sccm，提出 60 sccm 作为中点，同时说明还存在硫量、Mo 源、温度和衬底位置等变量。</p>
+              <a class="qa-image" href="assets/qa/07-cvd-run-002.png" target="_blank" rel="noopener"><img src="assets/qa/07-cvd-run-002.png" alt="Q07 第二炉 40 sccm 与两炉比较" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q08</div>
+            <div class="qa-body">
+              <h3>通过用户确认保存正式记录</h3>
+              <p>用户明确回复“是，确认保存”，两份草案才转为正式实验记录，流量归因仍保留为待检验假设。</p>
+              <a class="qa-image" href="assets/qa/08-confirm-runs-001-002.png" target="_blank" rel="noopener"><img src="assets/qa/08-confirm-runs-001-002.png" alt="Q08 确认保存前两炉实验记录" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q09</div>
+            <div class="qa-body">
+              <h3>第三炉：60 sccm 与旧硫源</h3>
+              <p>形貌有所改善，但硫源使用历史形成混杂；EA 因此不把单炉结果直接解释为最佳流量。</p>
+              <a class="qa-image" href="assets/qa/09-cvd-run-003.png" target="_blank" rel="noopener"><img src="assets/qa/09-cvd-run-003.png" alt="Q09 第三炉 60 sccm 实验记录" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q10</div>
+            <div class="qa-body">
+              <h3>第四炉：更换新舟与新硫源</h3>
+              <p>面对刺状和不规则形貌，EA 列出供硫、舟残留、Mo 源差异和空间不均匀等候选解释，并提出控制变量顺序。</p>
+              <a class="qa-image" href="assets/qa/10-cvd-run-004.png" target="_blank" rel="noopener"><img src="assets/qa/10-cvd-run-004.png" alt="Q10 第四炉更换新舟和硫源后的分析" loading="lazy"></a>
+            </div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="stage" id="stage-optimization" aria-labelledby="stage-optimization-title">
+      <div class="stage-header">
+        <p class="stage-number">04</p>
+        <div>
+          <p class="eyebrow">Controlled optimization</p>
+          <h2 id="stage-optimization-title">供硫优化与阶段标准</h2>
+          <p>当结果相互牵连时，EA 优先固定硫源几何状态、记录真实温度曲线，并用单变量测试筛选启动点与终温，最后再形成阶段条件。</p>
+        </div>
+      </div>
+      <figure class="main-shot">
+        <a href="assets/qa/13-cvd-run-006-stage-standard.png" target="_blank" rel="noopener">
+          <img src="assets/qa/13-cvd-run-006-stage-standard.png" alt="EA 根据第六炉结果建立 CVD 阶段标准条件 S1" loading="lazy">
+        </a>
+        <figcaption><strong>代表问答 Q13</strong>：在重复结果改善后，EA 建立阶段标准 S1，并继续要求重复性和表征确认。</figcaption>
+      </figure>
+      <details class="stage-details">
+        <summary><span>查看本阶段全部 3 组问答</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="timeline">
+          <article class="qa-item">
+            <div class="qa-index">Q11</div>
+            <div class="qa-body">
+              <h3>把“优化供硫曲线”拆成可验证步骤</h3>
+              <p>EA 建议先测真实温度、固定硫舟状态，再依次改变终温与启动点，避免一炉同时改动多个条件。</p>
+              <a class="qa-image" href="assets/qa/11-sulfur-supply-optimization.png" target="_blank" rel="noopener"><img src="assets/qa/11-sulfur-supply-optimization.png" alt="Q11 供硫曲线优化建议" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q12</div>
+            <div class="qa-body">
+              <h3>第五炉：660 ℃ 启动硫源</h3>
+              <p>形貌明显改善，但 EA 仍将它视为候选条件，要求重复一炉并使用 Raman 或 AFM 区分单层与疑似双层区域。</p>
+              <a class="qa-image" href="assets/qa/12-cvd-run-005.png" target="_blank" rel="noopener"><img src="assets/qa/12-cvd-run-005.png" alt="Q12 第五炉 660 摄氏度启动硫源结果" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q13</div>
+            <div class="qa-body">
+              <h3>第六炉：保存阶段标准 S1</h3>
+              <p>重复后成功率提高，EA 保存阶段条件，并安排后续多炉复现和 Raman、PL、AFM 表征。</p>
+              <a class="qa-image" href="assets/qa/13-cvd-run-006-stage-standard.png" target="_blank" rel="noopener"><img src="assets/qa/13-cvd-run-006-stage-standard.png" alt="Q13 第六炉结果与阶段标准 S1" loading="lazy"></a>
+            </div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="stage" id="stage-analysis" aria-labelledby="stage-analysis-title">
+      <div class="stage-header">
+        <p class="stage-number">05</p>
+        <div>
+          <p class="eyebrow">Characterization</p>
+          <h2 id="stage-analysis-title">Raman、PL 与 AFM 综合分析</h2>
+          <p>EA 先帮助选择代表样品和测点，再把三类表征放入同一证据框架中，明确结果、可信度和外推边界。</p>
+        </div>
+      </div>
+      <figure class="main-shot">
+        <a href="assets/qa/15-characterization-report.png" target="_blank" rel="noopener">
+          <img src="assets/qa/15-characterization-report.png" alt="EA 完成 Raman PL 和 AFM 综合分析并输出完整报告" loading="lazy">
+        </a>
+        <figcaption><strong>代表问答 Q15</strong>：三类证据一致支持被测区域为单层 MoS₂，同时明确结论不能外推到整片样品。</figcaption>
+      </figure>
+      <details class="stage-details">
+        <summary><span>查看本阶段全部 2 组问答</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="timeline">
+          <article class="qa-item">
+            <div class="qa-index">Q14</div>
+            <div class="qa-body">
+              <h3>选择 Raman 样品和测点</h3>
+              <p>EA 根据各炉结果给出样品优先级，并建议同时测规则三角形、疑似双层区域和裸 mica 背景。</p>
+              <a class="qa-image" href="assets/qa/14-raman-sample-selection.png" target="_blank" rel="noopener"><img src="assets/qa/14-raman-sample-selection.png" alt="Q14 Raman 样品和测点选择" loading="lazy"></a>
+            </div>
+          </article>
+          <article class="qa-item">
+            <div class="qa-index">Q15</div>
+            <div class="qa-body">
+              <h3>上传数据并生成综合分析</h3>
+              <p>EA 从 Raman 峰位与峰间距、PL 主峰和 AFM 台阶三方面交叉判断，生成 Markdown、HTML 和可核验资料包。</p>
+              <a class="qa-image" href="assets/qa/15-characterization-report.png" target="_blank" rel="noopener"><img src="assets/qa/15-characterization-report.png" alt="Q15 Raman PL AFM 综合分析和报告输出" loading="lazy"></a>
+            </div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="stage report-stage" id="stage-report" aria-labelledby="stage-report-title">
+      <div class="stage-header">
+        <p class="stage-number">06</p>
+        <div>
+          <p class="eyebrow">Generated report</p>
+          <h2 id="stage-report-title">EA 实际生成的完整数据分析报告</h2>
+          <p>报告保留样品与数据来源、处理方法、拟合结果、图表、证据交叉判断、限制和溯源摘要。它不是重新排版的宣传稿，而是本次 Demo 的真实输出。</p>
+        </div>
+      </div>
+
+      <div class="report-summary">
+        <div class="report-metrics" aria-label="报告关键结果">
+          <div><span>Raman 峰</span><strong>386.07 / 405.86 cm⁻¹</strong></div>
+          <div><span>峰间距</span><strong>19.78 ± 0.05 cm⁻¹</strong></div>
+          <div><span>PL 主峰</span><strong>1.879 eV</strong></div>
+          <div><span>AFM 台阶</span><strong>0.79 nm</strong></div>
+        </div>
+        <div class="report-callout">
+          <p class="eyebrow">结论边界</p>
+          <h3>高可信度支持被测区域为单层 MoS₂</h3>
+          <p>结论只适用于本次测量区域，不能外推为整片 mica 或整炉样品均匀单层。</p>
+          <a class="button button-primary" href="https://gongchenisbusy.github.io/Experimental-Assistant/">在新页面打开完整报告</a>
+        </div>
+      </div>
+
+      <details class="stage-details report-details">
+        <summary><span>在本页展开完整 HTML 报告</span><span class="chevron" aria-hidden="true">⌄</span></summary>
+        <div class="report-frame-wrap">
+          <p class="frame-note">以下内容直接加载公开报告：<a href="https://gongchenisbusy.github.io/Experimental-Assistant/">https://gongchenisbusy.github.io/Experimental-Assistant/</a></p>
+          <iframe title="EA MoS₂ Raman、PL 与 AFM 综合分析报告" data-src="https://gongchenisbusy.github.io/Experimental-Assistant/"></iframe>
+        </div>
+      </details>
+    </section>
+
+    <section class="closing" aria-labelledby="closing-title">
+      <p class="eyebrow">What this demo shows</p>
+      <h2 id="closing-title">普通输入，持续记录，审慎结论</h2>
+      <p>整个过程中，用户不需要编写结构化命令。EA 将自然语言转成可追溯记录，但不会把缺失参数、用户推测或单次实验结果自动升级为确定事实。</p>
+      <div class="closing-actions">
+        <a class="button button-primary" href="https://github.com/gongchenisbusy/Experimental-Assistant">查看 Experimental Assistant 仓库</a>
+        <a class="button button-secondary" href="https://gongchenisbusy.github.io/Experimental-Assistant/">查看完整报告</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Experimental Assistant · Local-first · Review-gated · Traceable</p>
+    <p><a href="https://github.com/gongchenisbusy/Experimental-Assistant">GitHub repository</a></p>
+  </footer>
+</body>
+</html>
